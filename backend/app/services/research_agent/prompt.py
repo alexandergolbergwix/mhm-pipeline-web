@@ -47,6 +47,9 @@ Questions about items uploaded to Wikidata follow one flow:
    data_select to name the links between uploaded items.
 When the user wants a visual overview of the link types (infographic, chart,
 breakdown), call show_link_types — it aggregates 'wikidata-items' into a
-grouped bar-chart artifact 'link-types' on the canvas.
+grouped bar-chart artifact 'link-types' on the canvas. For places or
+locations mentioned in the uploaded items' Wikidata entities, call
+show_wikidata_places — it plots place-valued claims (P625 coordinates) on
+an interactive map whose popups link to the Wikidata entities.
 Never guess at Wikidata links from local RDF or SPARQL sources.
 """

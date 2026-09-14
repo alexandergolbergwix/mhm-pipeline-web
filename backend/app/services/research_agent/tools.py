@@ -52,6 +52,7 @@ TOOL_NAMES = (
     "wikidata_fetch_items",
     "show_movement_map",
     "show_link_types",
+    "show_wikidata_places",
     "export_pdf",
     "canvas_upsert_artifact",
     "canvas_list_versions",
@@ -139,7 +140,7 @@ async def dispatch_tool(ctx: ToolContext, name: str, arguments: dict[str, Any] |
     result = await handler(ctx, arguments)
     if name in ("canvas_upsert_artifact", "canvas_list_versions", "create_download_link"):
         return result if isinstance(result, dict) else {"result": result}
-    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg", "wikidata_uploaded_items", "wikidata_fetch_items", "show_movement_map", "show_link_types", "export_pdf"):
+    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg", "wikidata_uploaded_items", "wikidata_fetch_items", "show_movement_map", "show_link_types", "show_wikidata_places", "export_pdf"):
         return result if isinstance(result, dict) else {"result": result}
     slimmed = slim_result(result)
     return slimmed if isinstance(slimmed, dict) else {"result": slimmed}
@@ -1030,6 +1031,124 @@ async def _tool_show_link_types(ctx: ToolContext, args: dict[str, Any]) -> dict[
     }
 
 
+async def _wikidata_sparql_query(query: str) -> dict[str, Any]:
+    """Run one SELECT against the public Wikidata query service."""
+    import httpx
+
+    resp = await httpx.AsyncClient(timeout=30.0).get(
+        "https://query.wikidata.org/sparql",
+        params={"query": query, "format": "json"},
+        headers={
+            "Accept": "application/sparql-results+json",
+            "User-Agent": "MHM-Pipeline-Web/1.0 (research-agent; contact via project admin)",
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+async def _tool_show_wikidata_places(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Plot every place-valued claim on our uploaded items on an interactive map.
+
+    Reads the source QIDs from the claim dataset, runs one read-only WDQS
+    query for claims whose object carries P625 coordinates, and places a
+    point-map artifact where each popup links to the Wikidata entities
+    (Rule R25 — the planner receives only a digest).
+    """
+    import re
+
+    key = str(args.get("artifact_key") or _WIKIDATA_ITEMS_KEY).strip()
+    _, columns, rows = await _dataset_rows(ctx, {"artifact_key": key})
+    if "qid" not in columns:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dataset '{key}' has no qid column. Run wikidata_fetch_items first.",
+        )
+    q_idx = columns.index("qid")
+    qids: list[str] = []
+    for row in rows:
+        qid = _cell_str(row[q_idx]) if 0 <= q_idx < len(row) else None
+        if qid and qid.startswith("Q") and qid not in qids:
+            qids.append(qid)
+    qids = qids[:150]
+    if not qids:
+        raise HTTPException(status_code=404, detail=f"No QIDs stored in '{key}'. Run wikidata_fetch_items first.")
+
+    values = " ".join(f"wd:{q}" for q in qids)
+    query = (
+        "SELECT ?item ?itemLabel ?prop ?propLabel ?place ?placeLabel ?coord WHERE {"
+        f" VALUES ?item {{ {values} }}"
+        " ?item ?p ?place ."
+        " ?place wdt:P625 ?coord ."
+        " ?prop wikibase:directClaim ?p ."
+        ' SERVICE wikibase:label { bd:serviceParam wikibase:language "en,he". }'
+        "} LIMIT 3000"
+    )
+    data = await _wikidata_sparql_query(query)
+    coord_re = re.compile(r"Point\(([-\d.]+) ([-\d.]+)\)")
+    points: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for binding in data.get("results", {}).get("bindings", []):
+        coord = str(binding.get("coord", {}).get("value") or "")
+        match = coord_re.search(coord)
+        if not match:
+            continue
+        lon, lat = float(match.group(1)), float(match.group(2))
+        item_uri = str(binding.get("item", {}).get("value") or "")
+        place_uri = str(binding.get("place", {}).get("value") or "")
+        item_qid = item_uri.rsplit("/", 1)[-1]
+        place_qid = place_uri.rsplit("/", 1)[-1]
+        dedupe = (item_qid, place_qid)
+        if dedupe in seen:
+            continue
+        seen.add(dedupe)
+        points.append({
+            "item_qid": item_qid,
+            "item_label": str(binding.get("itemLabel", {}).get("value") or item_qid)[:160],
+            "property": str(binding.get("prop", {}).get("value") or "").rsplit("/", 1)[-1],
+            "property_label": str(binding.get("propLabel", {}).get("value") or "")[:80],
+            "place_qid": place_qid,
+            "place_label": str(binding.get("placeLabel", {}).get("value") or place_qid)[:160],
+            "lat": lat,
+            "lon": lon,
+        })
+    if not points:
+        raise HTTPException(
+            status_code=404,
+            detail="No place-valued claims with coordinates found for this project's items.",
+        )
+    content = {
+        "map": "points",
+        "title": str(args.get("title") or "Places mentioned in our Wikidata items")[:120],
+        "points": points,
+    }
+    await upsert_artifact(
+        ctx.db, ctx.thread,
+        artifact_key="wikidata-places",
+        kind="map",
+        title=content["title"],
+        content=content,
+        created_by="agent",
+    )
+    await ctx.db.commit()
+    place_counts: dict[str, int] = {}
+    for point in points:
+        place_counts[point["place_label"]] = place_counts.get(point["place_label"], 0) + 1
+    top_places = sorted(place_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:15]
+    return {
+        "artifact_key": "wikidata-places",
+        "point_count": len(points),
+        "distinct_places": len(place_counts),
+        "items_with_places": len({p["item_qid"] for p in points}),
+        "top_places": [{"place": name, "claims": count} for name, count in top_places],
+        "note": (
+            "Placed the place-mentions map on the canvas as 'wikidata-places' — "
+            "each popup links to the item and the place on Wikidata. It shows "
+            "only place-valued claims with P625 coordinates."
+        ),
+    }
+
+
 _COMMON_PROP_LABELS = {
     "P31": "instance of",
     "P50": "author",
@@ -1099,6 +1218,7 @@ TOOL_HANDLERS = {
     "wikidata_fetch_items": _tool_wikidata_fetch_items,
     "show_movement_map": _tool_show_movement_map,
     "show_link_types": _tool_show_link_types,
+    "show_wikidata_places": _tool_show_wikidata_places,
     "export_pdf": _tool_export_pdf,
     "canvas_upsert_artifact": _tool_canvas_upsert,
     "canvas_list_versions": _tool_canvas_list,

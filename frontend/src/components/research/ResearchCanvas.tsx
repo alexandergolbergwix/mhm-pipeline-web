@@ -1,8 +1,10 @@
 import {lazy, Suspense, useEffect, useState} from "react";
 import {Glass} from "@/components/glass";
 import {ResearchAgent, type ResearchArtifact} from "@/api/researchAgent";
+import type {WikidataPlacePoint} from "@/components/research/WikidataPlacesPanel";
 
 const ProvenanceMapPanel = lazy(() => import("@/components/research/ProvenanceMapPanel"));
+const WikidataPlacesPanel = lazy(() => import("@/components/research/WikidataPlacesPanel"));
 const PeopleNetworkPanel = lazy(() => import("@/components/research/PeopleNetworkPanel"));
 const CoOccurrencePanel = lazy(() => import("@/components/research/CoOccurrencePanel"));
 
@@ -150,6 +152,14 @@ function ArtifactBody({
   artifact: ResearchArtifact;
   onSaved: (artifact: ResearchArtifact) => void;
 }) {
+  if (artifact.kind === "map" && Array.isArray(artifact.content?.points)) {
+    const points = artifact.content.points as WikidataPlacePoint[];
+    return (
+      <Suspense fallback={<p className="muted text-sm">Loading map…</p>}>
+        <WikidataPlacesPanel points={points} />
+      </Suspense>
+    );
+  }
   if (artifact.kind === "map") {
     const cn = typeof artifact.content?.cn === "string" ? artifact.content.cn : undefined;
     return (

@@ -104,7 +104,11 @@ artifact carries the manuscript's `cn`; the canvas passes it to
 opens with that manuscript's provenance chain preselected — corpus maps
 (`cn: null`) open with the mode toggle and manuscript picker. It
 queries the existing `get_provenance_map` / `list_manuscripts` routers — no
-duplicated geo logic (R14). `show_link_types` aggregates the `wikidata-items`
+duplicated geo logic (R14). `show_wikidata_places` runs one read-only WDQS
+query over the `wikidata-items` QIDs and places the `wikidata-places` map
+artifact (kind `map`, `map: "points"`, rendered by `WikidataPlacesPanel`):
+every place-valued claim with P625 coordinates, each popup linking to the
+item and the place on Wikidata. `show_link_types` aggregates the `wikidata-items`
 claim dataset into the `link-types` canvas artifact (kind `chart`, rendered
 by the canvas `ChartView`: grouped bars per property family) and returns a
 top-links digest. `export_pdf` renders any saved artifact as a

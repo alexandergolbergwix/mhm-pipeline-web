@@ -75,7 +75,10 @@ a control number) — it places the movement map on the canvas and returns
 a small digest. When the user wants a visual overview of the link types
 (infographic, chart, breakdown), call show_link_types — it aggregates
 'wikidata-items' into a grouped bar chart artifact 'link-types' on the
-canvas. To hand the user a PDF, call export_pdf with the
+canvas. When the user asks for places/locations mentioned in the
+uploaded items' Wikidata entities, call show_wikidata_places — it plots
+place-valued claims (P625 coordinates) on an interactive map whose
+popups link to the Wikidata entities. To hand the user a PDF, call export_pdf with the
 artifact_key (e.g. after canvas_upsert_artifact) and give them the
 download_path. Never invent download links.
 
@@ -408,6 +411,11 @@ def build_agent(grant: str):
     async def show_link_types(artifact_key: str = "wikidata-items") -> dict[str, Any]:
         """Aggregate saved claim rows into a link-type chart on the canvas (families of properties with counts)."""
         return await call("show_link_types", {"artifact_key": artifact_key})
+
+    @agent.tool_plain
+    async def show_wikidata_places(artifact_key: str = "wikidata-items") -> dict[str, Any]:
+        """Plot every place-valued claim on our uploaded items on an interactive canvas map; popups link to the Wikidata entities."""
+        return await call("show_wikidata_places", {"artifact_key": artifact_key})
 
     @agent.tool_plain
     async def export_pdf(artifact_key: str) -> dict[str, Any]:

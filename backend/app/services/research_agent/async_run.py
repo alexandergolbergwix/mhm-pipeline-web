@@ -136,13 +136,21 @@ async def iter_stream(
         if client is None:  # pragma: no cover — get_redis succeeded above
             return
         cursor = last_id
+        import redis.exceptions  # noqa: PLC0415
+
+        redis_errors = (
+            redis.exceptions.TimeoutError,  # NOT a builtin TimeoutError subclass
+            redis.exceptions.ConnectionError,  # NOT a builtin ConnectionError subclass
+            TimeoutError,
+            ConnectionError,
+        )
         try:
             while time.monotonic() < deadline:
                 try:
                     resp = await client.xread({key: cursor}, block=_XREAD_BLOCK_MS, count=200)
                 except asyncio.CancelledError:
                     raise
-                except (TimeoutError, ConnectionError) as exc:  # noqa: PERF203
+                except redis_errors as exc:  # noqa: PERF203
                     logger.warning("agui stream xread failed for %s: %s", run_id, exc)
                     yield {"type": "RUN_ERROR", "message": "The agent event stream was interrupted."}
                     return

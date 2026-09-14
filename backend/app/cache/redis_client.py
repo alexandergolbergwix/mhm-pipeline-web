@@ -61,4 +61,11 @@ async def open_redis() -> Any:
         return None
     import redis.asyncio as aioredis  # noqa: PLC0415
 
-    return aioredis.from_url(url, decode_responses=False, ssl_cert_reqs=None)
+    # socket_timeout must be None: redis-py defaults it to 5s, which kills
+    # any XREAD BLOCK longer than 5s (production incident 2026-09-14).
+    return aioredis.from_url(
+        url,
+        decode_responses=False,
+        socket_timeout=None,
+        ssl_cert_reqs=None,
+    )
