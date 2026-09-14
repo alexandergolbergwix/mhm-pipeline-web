@@ -151,9 +151,10 @@ function ArtifactBody({
   onSaved: (artifact: ResearchArtifact) => void;
 }) {
   if (artifact.kind === "map") {
+    const cn = typeof artifact.content?.cn === "string" ? artifact.content.cn : undefined;
     return (
       <Suspense fallback={<p className="muted text-sm">Loading map…</p>}>
-        <ProvenanceMapPanel projectId={projectId} />
+        <ProvenanceMapPanel projectId={projectId} initialCn={cn} />
       </Suspense>
     );
   }

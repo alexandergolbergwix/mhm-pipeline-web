@@ -91,7 +91,11 @@ planner extracts facts with `data_info` (columns + sample), `data_select`
 **Visualization + export skills (Rule R25).** `show_movement_map` (cn
 optional — one manuscript or the whole corpus) upserts the `movement-map`
 canvas artifact (kind `map`, rendered by `ProvenanceMapPanel`) and returns a
-digest: ms label, stop count, place names (≤40), manuscript count. It
+digest: ms label, stop count, place names (≤40), manuscript count. The
+artifact carries the manuscript's `cn`; the canvas passes it to
+`ProvenanceMapPanel` (`initialCn`) so an agent-placed single-manuscript map
+opens with that manuscript's provenance chain preselected — corpus maps
+(`cn: null`) open with the mode toggle and manuscript picker. It
 queries the existing `get_provenance_map` / `list_manuscripts` routers — no
 duplicated geo logic (R14). `show_link_types` aggregates the `wikidata-items`
 claim dataset into the `link-types` canvas artifact (kind `chart`, rendered

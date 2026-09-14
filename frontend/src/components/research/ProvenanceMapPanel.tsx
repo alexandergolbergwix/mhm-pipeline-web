@@ -118,12 +118,19 @@ function ModeToggle({mode, onChange}: {mode: Mode; onChange: (m: Mode) => void})
 function SingleManuscriptView({
   projectId,
   list,
+  initialCn,
 }: {
   projectId: string;
   list: ManuscriptPick[];
+  initialCn?: string;
 }) {
   const [filter, setFilter] = useState("");
-  const [cn, setCn] = useState<string>("");
+  const [cn, setCn] = useState<string>(initialCn ?? "");
+
+  // A canvas map artifact names its manuscript — follow it (agent-placed maps).
+  useEffect(() => {
+    if (initialCn) setCn(initialCn);
+  }, [initialCn]);
   const [data, setData] = useState<ProvenanceMap | null>(null);
   const [loading, setLoading] = useState(false);
   const [includeUnapproved, setIncludeUnapproved] = useState(false);
@@ -862,7 +869,13 @@ function CorpusView({projectId}: {projectId: string}) {
 // Root component
 // ═══════════════════════════════════════════════════════════════════════════
 
-export default function ProvenanceMapPanel({projectId}: {projectId: string}) {
+export default function ProvenanceMapPanel({
+  projectId,
+  initialCn,
+}: {
+  projectId: string;
+  initialCn?: string;
+}) {
   const [mode, setMode] = useState<Mode>("single");
   const [list, setList] = useState<ManuscriptPick[]>([]);
 
@@ -878,7 +891,7 @@ export default function ProvenanceMapPanel({projectId}: {projectId: string}) {
     <div className="space-y-4">
       <ModeToggle mode={mode} onChange={setMode} />
       {mode === "single" ? (
-        <SingleManuscriptView projectId={projectId} list={list} />
+        <SingleManuscriptView projectId={projectId} list={list} initialCn={initialCn} />
       ) : (
         <CorpusView projectId={projectId} />
       )}
