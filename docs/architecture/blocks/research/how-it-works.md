@@ -113,3 +113,13 @@ context stays small: `data_info` / `data_select` / `data_distinct` /
 `data_search` / `data_agg` read the artifact server-side and return capped
 slices (≤50 rows, 200-char cells), so follow-up questions cost tokens
 proportional to the answer, not the result size.
+
+**Visualization + export skills (Rule R25).** `show_movement_map` reuses
+`get_provenance_map` / `list_manuscripts` (R14), upserts the
+`movement-map` artifact (kind `map` — the canvas renders
+`ProvenanceMapPanel`), and returns counts + place names only. `export_pdf`
+verifies the artifact, renders it with fpdf2 (DejaVu Sans covers Hebrew;
+core-font fallback replaces non-Latin-1 chars), and returns a
+`download_path` served by the existing cookie-authenticated download route
+(`format=pdf` added to `artifact_export_bytes`). The PDF is regenerated per
+request — nothing is cached to disk.

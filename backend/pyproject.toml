@@ -29,6 +29,9 @@ dependencies = [
     "scipy>=1.10",
     "requests>=2.32",
     "aiosqlite>=0.20",
+    # Chat export_pdf skill: render canvas artifacts as PDFs (fpdf2 is
+    # pure Python; DejaVu on the Heroku stack covers Hebrew).
+    "fpdf2>=2.8",
     "wikibaseintegrator>=0.12",
     # Stage 2 — NER + classifier inference. CPU-only torch is fine; the
     # web tier currently runs the Person model on the HF Hub. Heroku has

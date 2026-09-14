@@ -47,6 +47,8 @@ TOOL_NAMES = (
     "data_distinct",
     "data_search",
     "data_agg",
+    "show_movement_map",
+    "export_pdf",
     "canvas_upsert_artifact",
     "canvas_list_versions",
     "create_download_link",
@@ -433,13 +435,118 @@ async def _tool_download_link(ctx: ToolContext, args: dict[str, Any]) -> Any:
     fmt = str(args.get("format") or "json").lower()
     if not key:
         raise HTTPException(status_code=400, detail="artifact_key is required.")
-    if fmt not in ("json", "csv", "md", "ttl", "bibtex", "ris"):
+    if fmt not in ("json", "csv", "md", "ttl", "bibtex", "ris", "pdf"):
         raise HTTPException(status_code=400, detail="Unsupported download format.")
     path = (
         f"/api/research-agent/threads/{ctx.thread.id}/artifacts/{key}/download"
         f"?format={fmt}"
     )
     return {"download_path": path, "format": fmt, "artifact_key": key}
+
+
+# ── Visualization + export skills (Rule R25) ─────────────────────────────
+
+async def _tool_show_movement_map(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Put the provenance movement map on the canvas and return a digest."""
+    from app.routers.research_provenance import (
+        get_provenance_map,
+        list_manuscripts,
+    )
+
+    cn = str(args.get("cn") or args.get("control_number") or "").strip()
+    include_unapproved = bool(args.get("include_unapproved") or False)
+
+    if cn:
+        result = await get_provenance_map(
+            ctx.claims.project_id, cn, include_unapproved, ctx.auth, ctx.db,
+        )
+        data = result.model_dump() if hasattr(result, "model_dump") else result
+        label = str(data.get("ms_label") or cn)
+        stops = data.get("stops") or []
+        places = [
+            str(s.get("label") or "") for s in stops
+            if s.get("lat") is not None and s.get("lon") is not None
+        ]
+        years = [s["year"] for s in stops if s.get("year") is not None]
+        content = {
+            "cn": cn,
+            "ms_label": label,
+            "stop_count": len(stops),
+            "places": places[:40],
+            "dropped": len(data.get("dropped") or []),
+        }
+        title = f"Movement map: {label}"[:80]
+    else:
+        rows = await list_manuscripts(ctx.claims.project_id, ctx.auth, ctx.db)
+        picks = [
+            r.model_dump() if hasattr(r, "model_dump") else r for r in rows
+        ]
+        content = {
+            "cn": None,
+            "ms_label": "Corpus movement map",
+            "manuscript_count": len(picks),
+            "manuscripts": [
+                {
+                    "cn": p.get("control_number"),
+                    "label": _cell_str(p.get("label"), 120),
+                    "production_year": p.get("production_year"),
+                }
+                for p in picks[:40]
+            ],
+        }
+        title = "Movement map (corpus)"[:80]
+
+    await upsert_artifact(
+        ctx.db, ctx.thread,
+        artifact_key="movement-map",
+        kind="map",
+        title=title,
+        content=content,
+        created_by="agent",
+    )
+    await ctx.db.commit()
+    digest = {"artifact_key": "movement-map", "kind": "map", **content}
+    digest["note"] = (
+        "Movement map placed on the canvas (Movement map tab). "
+        "Summarize the places; do not re-fetch the full map data."
+    )
+    return digest
+
+
+async def _tool_export_pdf(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Render a saved artifact as a PDF and return its download path."""
+    key = str(args.get("artifact_key") or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="artifact_key is required.")
+    row = (
+        await ctx.db.execute(
+            select(ResearchAgentArtifact)
+            .where(
+                ResearchAgentArtifact.thread_id == ctx.thread.id,
+                ResearchAgentArtifact.artifact_key == key,
+            )
+            .order_by(ResearchAgentArtifact.version.desc())
+            .limit(1)
+        )
+    ).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"No artifact '{key}' on this thread.")
+    # Fail early if PDF rendering is impossible (fonts, fpdf missing).
+    content = row.content if isinstance(row.content, dict) else {}
+    text = str(content.get("text") or json.dumps(content, ensure_ascii=False, indent=2))
+    from app.services.research_agent.pdf import render_pdf
+
+    render_pdf(str(row.title or key), text)
+    path = (
+        f"/api/research-agent/threads/{ctx.thread.id}/artifacts/{key}/download"
+        f"?format=pdf"
+    )
+    return {
+        "artifact_key": key,
+        "title": row.title,
+        "download_path": path,
+        "note": "PDF ready at download_path (cookie-authenticated).",
+    }
 
 
 async def _tool_wikidata(ctx: ToolContext, args: dict[str, Any]) -> Any:
@@ -651,6 +758,8 @@ TOOL_HANDLERS = {
     "data_distinct": _tool_data_distinct,
     "data_search": _tool_data_search,
     "data_agg": _tool_data_agg,
+    "show_movement_map": _tool_show_movement_map,
+    "export_pdf": _tool_export_pdf,
     "canvas_upsert_artifact": _tool_canvas_upsert,
     "canvas_list_versions": _tool_canvas_list,
     "create_download_link": _tool_download_link,
@@ -687,5 +796,11 @@ def artifact_export_bytes(kind: str, content: dict[str, Any], fmt: str) -> tuple
     if fmt == "ris":
         text = str(content.get("ris") or "")
         return text.encode("utf-8"), "application/x-research-info-systems", "artifact.ris"
+    if fmt == "pdf":
+        from app.services.research_agent.pdf import render_pdf
+
+        title = str(content.get("title") or "Research artifact")
+        text = str(content.get("text") or json.dumps(content, ensure_ascii=False, indent=2))
+        return render_pdf(title, text), "application/pdf", "artifact.pdf"
     body = json.dumps(content, ensure_ascii=False, indent=2).encode("utf-8")
     return body, "application/json; charset=utf-8", "artifact.json"

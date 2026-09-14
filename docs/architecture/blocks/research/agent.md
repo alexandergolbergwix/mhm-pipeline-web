@@ -86,3 +86,14 @@ planner extracts facts with `data_info` (columns + sample), `data_select`
 `data_search` (substring across cells), and `data_agg`
 (count / min / max / sum / avg) — all reading the artifact server-side with
 200-char cells, so the planner context never carries raw row dumps.
+
+**Visualization + export skills (Rule R25).** `show_movement_map` (cn
+optional — one manuscript or the whole corpus) upserts the `movement-map`
+canvas artifact (kind `map`, rendered by `ProvenanceMapPanel`) and returns a
+digest: ms label, stop count, place names (≤40), manuscript count. It
+queries the existing `get_provenance_map` / `list_manuscripts` routers — no
+duplicated geo logic (R14). `export_pdf` renders any saved artifact as a
+PDF server-side (`research_agent/pdf.py`, fpdf2 + DejaVu Sans with Hebrew
+coverage; core-font fallback replaces non-Latin-1 chars) and returns a
+`download_path` — the planner never touches PDF bytes. `create_download_link`
+and the artifact download route accept `format=pdf`.

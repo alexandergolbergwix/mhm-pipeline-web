@@ -52,6 +52,13 @@ data_select (filter a column by eq/contains/in), data_distinct (value
 counts), data_search (substring across all columns), data_agg
 (count/min/max/sum/avg). Keep queries to the smallest skill that answers
 the question, then summarize the facts in prose.
+
+Visualizations: when the user asks how a manuscript moved, or where it
+was produced / owned / travelled, call show_movement_map (optionally with
+a control number) — it places the movement map on the canvas and returns
+a small digest. To hand the user a PDF, call export_pdf with the
+artifact_key (e.g. after canvas_upsert_artifact) and give them the
+download_path. Never invent download links.
 """
 
 PLANNER_RETRIES = 3
@@ -398,6 +405,17 @@ class ResearchAgent:
             async def data_agg(artifact_key: str, column: str, fn: str = "count") -> dict[str, Any]:
                 """Aggregate a column: count, min, max, sum, or avg (numeric cells)."""
                 return await call("data_agg", {"artifact_key": artifact_key, "column": column, "fn": fn})
+
+            @agent.tool_plain
+            async def show_movement_map(cn: str | None = None) -> dict[str, Any]:
+                """Place the provenance movement map on the canvas; cn = control number for one manuscript, omit for the corpus."""
+                args = {"cn": cn} if cn else {}
+                return await call("show_movement_map", args)
+
+            @agent.tool_plain
+            async def export_pdf(artifact_key: str) -> dict[str, Any]:
+                """Render a saved artifact as a PDF and return its download_path."""
+                return await call("export_pdf", {"artifact_key": artifact_key})
 
             del heroku  # used only to fail closed when unset inside _call_tool
 
