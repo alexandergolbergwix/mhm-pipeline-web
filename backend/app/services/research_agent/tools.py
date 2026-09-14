@@ -56,6 +56,7 @@ TOOL_NAMES = (
     "wikidata_pack",
     "export_pdf",
     "canvas_upsert_artifact",
+    "canvas_describe",
     "canvas_list_versions",
     "create_download_link",
     "wikidata_entity",
@@ -1208,6 +1209,61 @@ async def _tool_show_wikidata_places(ctx: ToolContext, args: dict[str, Any]) -> 
     }
 
 
+async def _tool_canvas_describe(ctx: ToolContext, _args: dict[str, Any]) -> dict[str, Any]:
+    """Describe the current canvas: every artifact (key, kind, title,
+    version) plus, for dataset artifacts, their columns and row counts —
+    so the planner can reuse saved data instead of refetching."""
+    from sqlalchemy import func  # noqa: PLC0415
+
+    latest = (
+        await ctx.db.execute(
+            select(
+                ResearchAgentArtifact.artifact_key,
+                ResearchAgentArtifact.kind,
+                func.max(ResearchAgentArtifact.version).label("version"),
+            )
+            .where(ResearchAgentArtifact.thread_id == ctx.thread.id)
+            .group_by(
+                ResearchAgentArtifact.artifact_key,
+                ResearchAgentArtifact.kind,
+            )
+            .order_by(ResearchAgentArtifact.artifact_key)
+            .limit(20)
+        )
+    ).all()
+    out: list[dict[str, Any]] = []
+    for key, kind, version in latest:
+        entry: dict[str, Any] = {"artifact_key": key, "kind": kind, "version": version}
+        row = (
+            await ctx.db.execute(
+                select(ResearchAgentArtifact)
+                .where(
+                    ResearchAgentArtifact.thread_id == ctx.thread.id,
+                    ResearchAgentArtifact.artifact_key == key,
+                    ResearchAgentArtifact.version == int(version),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            entry["title"] = str(row.title or "")[:80]
+            if kind == "sparql" and isinstance(row.content, dict):
+                columns = row.content.get("columns") or []
+                rows_ = row.content.get("rows") or []
+                entry["columns"] = [str(c) for c in columns][:12]
+                entry["row_count"] = len(rows_)
+        out.append(entry)
+    return {
+        "artifacts": out,
+        "artifact_count": len(out),
+        "note": (
+            "Canvas inventory (latest versions). Use data_info / data_select "
+            "on dataset artifacts instead of refetching; canvas_upsert_artifact "
+            "to place new artifacts."
+        ),
+    }
+
+
 _COMMON_PROP_LABELS = {
     "P31": "instance of",
     "P50": "author",
@@ -1281,6 +1337,7 @@ TOOL_HANDLERS = {
     "wikidata_pack": _tool_wikidata_pack,
     "export_pdf": _tool_export_pdf,
     "canvas_upsert_artifact": _tool_canvas_upsert,
+    "canvas_describe": _tool_canvas_describe,
     "canvas_list_versions": _tool_canvas_list,
     "create_download_link": _tool_download_link,
     "wikidata_entity": _tool_wikidata,

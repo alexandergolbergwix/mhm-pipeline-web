@@ -242,6 +242,33 @@ async def test_wikidata_pack_runs_all_steps_and_reports_errors(sample_run):
     assert "show_wikidata_places" in result["steps"]
 
 
+async def test_canvas_describe_lists_artifacts_and_dataset_schemas(sample_run):
+    body, headers = await _headers(sample_run)
+    seed = await sample_run["client"].put(
+        f"/api/research-agent/threads/{body['thread_id']}/artifacts/wikidata-items",
+        json={
+            "kind": "sparql",
+            "title": "Wikidata items (live claims)",
+            "content": {
+                "columns": ["qid", "label", "property", "value", "target_is_ours"],
+                "rows": [["Q1", "x", "P17", "Q801", ""], ["Q2", "y", "P17", "Q38", ""]],
+            },
+        },
+    )
+    assert seed.status_code == 200, seed.text
+    resp = await sample_run["client"].post(
+        "/api/research-agent/tools",
+        headers=headers,
+        json={"name": "canvas_describe", "arguments": {}},
+    )
+    assert resp.status_code == 200, resp.text
+    result = resp.json()["result"]
+    entry = next(a for a in result["artifacts"] if a["artifact_key"] == "wikidata-items")
+    assert entry["kind"] == "sparql"
+    assert entry["row_count"] == 2
+    assert "property" in entry["columns"]
+
+
 async def test_export_pdf_and_download(sample_run):
     body, headers = await _headers(sample_run)
     put = await sample_run["client"].put(

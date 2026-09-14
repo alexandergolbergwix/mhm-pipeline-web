@@ -644,6 +644,39 @@ def _public_base_url(request: Request) -> str:
     return f"{proto}://{host}"
 
 
+async def _canvas_digest(db: AsyncSession, thread_id: uuid.UUID) -> str:
+    """One line per canvas artifact (latest version) — the planner's view
+    of what is ACTUALLY on the canvas right now, from the DB, not from
+    the possibly-stale frontend state."""
+    from app.models.research_agent import ResearchAgentArtifact  # noqa: PLC0415
+    from sqlalchemy import func  # noqa: PLC0415
+
+    rows = (
+        await db.execute(
+            select(
+                ResearchAgentArtifact.artifact_key,
+                ResearchAgentArtifact.kind,
+                func.max(ResearchAgentArtifact.version).label("version"),
+                func.max(ResearchAgentArtifact.title).label("title"),
+            )
+            .where(ResearchAgentArtifact.thread_id == thread_id)
+            .group_by(
+                ResearchAgentArtifact.artifact_key,
+                ResearchAgentArtifact.kind,
+            )
+            .order_by(ResearchAgentArtifact.artifact_key)
+            .limit(15)
+        )
+    ).all()
+    if not rows:
+        return "The canvas is currently empty."
+    lines = [
+        f"- {r.artifact_key} ({r.kind}) \"{(r.title or '')[:80]}\" v{r.version}"
+        for r in rows
+    ]
+    return "The canvas currently holds these artifacts (key, kind, title, version):\n" + "\n".join(lines)
+
+
 async def _grant_for_token(db: AsyncSession, token: str) -> tuple[GrantClaims, Any]:
     claims = GrantClaims.from_payload(verify_tool_jwt(token))
     grant = await db.get(ResearchAgentGrant, claims.grant_id)
@@ -718,6 +751,7 @@ async def start_async_agui(
         f"{_public_base_url(request)}/api/research-agent/agui-events"
     )
     merged_forwarded["run_id"] = run_id
+    merged_forwarded["canvas_digest"] = await _canvas_digest(db, claims.thread_id)
     dispatch_body["forwardedProps"] = merged_forwarded
 
     import httpx  # noqa: PLC0415

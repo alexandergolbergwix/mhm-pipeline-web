@@ -255,14 +255,30 @@ def project_id_from_grant(token: str) -> str:
         return ""
 
 
-def build_agent(grant: str):
-    """Build the planner with every tool wired to Heroku via the grant."""
+def build_agent(grant: str, canvas_digest: str = ""):
+    """Build the planner with every tool wired to Heroku via the grant.
+
+    ``canvas_digest`` (server-side truth from the thread's artifacts) is
+    injected into the system prompt so the planner knows what is on the
+    canvas before its first word.
+    """
     from pydantic_ai import Agent
     from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.openai import OpenAIProvider
 
     async def call(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         return await call_tool(grant, name, arguments or {})
+
+    system_prompt = _SYSTEM
+    if canvas_digest:
+        system_prompt += (
+            "\n\nCanvas context (server-side truth, may be newer than this chat):\n"
+            f"{canvas_digest}\n"
+            "Refer to artifacts by key. Check data_info on an existing dataset "
+            "before refetching. When the user says 'the map' or 'the chart', "
+            "match it against this list first — do not describe artifacts from "
+            "memory. For a fuller inventory (dataset columns and row counts), "
+            "call canvas_describe."        )
 
     model = OpenAIChatModel(
         os.environ.get("RESEARCH_AGENT_MODEL") or DEFAULT_MODEL,
@@ -272,7 +288,7 @@ def build_agent(grant: str):
         ),
     )
     agent_kwargs: dict[str, Any] = {
-        "system_prompt": _SYSTEM,
+        "system_prompt": system_prompt,
         "retries": PLANNER_RETRIES,
     }
     try:
@@ -361,6 +377,11 @@ def build_agent(grant: str):
     async def canvas_list_versions(artifact_key: str | None = None) -> dict[str, Any]:
         args = {"artifact_key": artifact_key} if artifact_key else {}
         return await call("canvas_list_versions", args)
+
+    @agent.tool_plain
+    async def canvas_describe() -> dict[str, Any]:
+        """Inventory of the current canvas: artifacts with kind, title, version; datasets with columns + row counts."""
+        return await call("canvas_describe", {})
 
     @agent.tool_plain
     async def create_download_link(artifact_key: str, format: str = "json") -> dict[str, Any]:
@@ -662,7 +683,7 @@ async def run_agui_detached(body: dict[str, Any]) -> dict[str, Any]:
     )
     project_id = project_id_from_grant(grant)
 
-    agent = build_agent(grant)
+    agent = build_agent(grant, canvas_digest=str(forwarded.get("canvas_digest") or ""))
     outcome = "died"
     try:
         response = await AGUIAdapter.dispatch_request(request, agent=agent)
@@ -774,7 +795,10 @@ class ResearchAgent:
 
                     return StreamingResponse(cache_events(), media_type="text/event-stream")
 
-            agent = build_agent(grant)
+            agent = build_agent(
+                grant,
+                canvas_digest=str((body.get("forwardedProps") or {}).get("canvas_digest") or ""),
+            )
 
             try:
                 response = await AGUIAdapter.dispatch_request(request, agent=agent)
