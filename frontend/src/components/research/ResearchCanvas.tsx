@@ -205,35 +205,84 @@ function hasTabular(content: Record<string, unknown>): boolean {
   return Array.isArray(content.columns) && Array.isArray(content.rows);
 }
 
-type ChartGroup = {name: string; items: Array<{label: string; count: number}>};
+type ChartGroup = {name: string; items: Array<{label: string; count: number; internal?: number}>};
+
+const FAMILY_COLORS: Record<string, string> = {
+  "Wikidata properties": "#4c8dff",
+  "MHM ontology": "#8f6bff",
+  "FRBRoo / LRMoo (IFLA)": "#e0a13a",
+  "CIDOC CRM": "#39b58e",
+  "RDF / RDFS": "#7c8aa0",
+  "Other": "#9aa3b2",
+};
 
 function ChartView({content}: {content: Record<string, unknown>}) {
   const groups = (Array.isArray(content.groups) ? content.groups : []) as ChartGroup[];
-  const max = Math.max(1, ...groups.flatMap((g) => g.items.map((i) => i.count || 0)));
-  const total = Number(content.total_claims) || groups.reduce((s, g) => s + g.items.reduce((a, i) => a + (i.count || 0), 0), 0);
+  const total = Number(content.total_claims) || groups.reduce(
+    (s, g) => s + g.items.reduce((a, i) => a + (i.count || 0), 0), 0,
+  );
+  const internal = Number(content.internal_links) || 0;
+  const stats: Array<{label: string; value: string; accent?: boolean}> = [
+    {label: "claims", value: total.toLocaleString()},
+    {label: "properties", value: String(content.distinct_properties ?? groups.reduce((s, g) => s + g.items.length, 0))},
+    {label: "items", value: String(content.items_counted ?? "—")},
+    ...(internal > 0 ? [{label: "links between our items", value: internal.toLocaleString(), accent: true}] : []),
+  ];
   return (
     <div className="space-y-4">
-      <div className="text-xs muted">
-        {total.toLocaleString()} claims · {String(content.distinct_properties ?? "")} distinct properties
-        {content.items_counted ? ` · ${Number(content.items_counted).toLocaleString()} items` : ""}
+      <div className="flex flex-wrap gap-2">
+        {stats.map((s) => (
+          <div
+            key={s.label}
+            className={`rounded-xl border px-3 py-1.5 ${s.accent ? "border-biu-sky/40 bg-biu-sky/10" : "border-white/10 bg-[var(--surface-inset)]"}`}
+          >
+            <span className={`text-base font-semibold tabular-nums ${s.accent ? "text-biu-sky" : "text-ink"}`}>{s.value}</span>
+            <span className="ml-1.5 text-xs muted">{s.label}</span>
+          </div>
+        ))}
       </div>
-      {groups.map((group) => (
-        <div key={group.name} className="space-y-1.5">
-          <div className="text-sm font-medium text-ink">{group.name}</div>
-          {group.items.map((item) => (
-            <div key={item.label} className="flex items-center gap-2">
-              <div className="w-56 shrink-0 truncate text-xs" title={item.label}>{item.label}</div>
-              <div className="flex-1 h-4 rounded bg-[var(--surface-inset)] overflow-hidden">
-                <div
-                  className="h-full rounded bg-[var(--accent, #4c8dff)]"
-                  style={{width: `${Math.max(2, Math.round((item.count / max) * 100))}%`}}
-                />
+      {groups.map((group) => {
+        const color = FAMILY_COLORS[group.name] ?? "#9aa3b2";
+        const groupTotal = group.items.reduce((a, i) => a + (i.count || 0), 0);
+        return (
+          <div key={group.name} className="rounded-xl border border-white/10 bg-[var(--surface-inset)] p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{background: color}} />
+                <span className="text-sm font-medium text-ink">{group.name}</span>
               </div>
-              <div className="w-14 text-right text-xs tabular-nums">{item.count.toLocaleString()}</div>
+              <span className="text-xs muted tabular-nums">
+                {groupTotal.toLocaleString()} · {total > 0 ? Math.round((groupTotal / total) * 100) : 0}%
+              </span>
             </div>
-          ))}
-        </div>
-      ))}
+            {group.items.map((item) => (
+              <div key={item.label} className="flex items-center gap-2">
+                <div className="w-56 shrink-0 truncate text-xs text-muted" title={item.label}>{item.label}</div>
+                <div className="flex-1 h-4 rounded-md overflow-hidden" style={{background: "rgba(127,127,127,0.12)"}}>
+                  <div
+                    className="h-full rounded-md transition-all"
+                    style={{width: `${Math.max(2, Math.round((item.count / Math.max(1, group.items[0].count)) * 100))}%`, background: color, opacity: 0.55 + 0.45 * (item.count / Math.max(1, group.items[0].count))}}
+                  />
+                </div>
+                {item.internal ? (
+                  <span
+                    className="shrink-0 rounded-full border border-biu-sky/40 px-1.5 py-0.5 text-[10px] text-biu-sky"
+                    title="Claims whose target is one of our own uploaded QIDs"
+                  >
+                    ↺ {item.internal}
+                  </span>
+                ) : null}
+                <div className="w-14 text-right text-xs tabular-nums text-ink">{item.count.toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      {internal > 0 ? (
+        <p className="text-xs muted">
+          ↺ marks properties whose claim target is one of our own uploaded QIDs — links between items in this project.
+        </p>
+      ) : null}
     </div>
   );
 }

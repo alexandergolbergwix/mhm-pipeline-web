@@ -110,8 +110,12 @@ sources (`legacy` and `canonical`, `approved_only=False`) for items carrying
 `existing_qid`, and saves the union as the `wikidata-uploads`
 dataset (qid, local_id, entity_type, label, statements, source).
 `wikidata_fetch_items` batches those QIDs through `wbgetentities`
-(`wiki.fetch_wikidata_entities_batch`, 50 ids/call, ≤300 QIDs) and saves one
-row per claim property as the `wikidata-items` dataset. The session wiki
+(`wiki.fetch_wikidata_entities_batch`, 50 ids/call, ≤300 QIDs), extracts the
+real claim datavalues (QIDs, strings, dates, amounts), and saves one row per
+claim value as the `wikidata-items` dataset — with a `target_is_ours` column
+that flags claims pointing at one of the project's own uploaded QIDs.
+`show_link_types` turns that dataset into the `link-types` chart (grouped
+bars, internal-links badge ↺). The session wiki
 token comes from the curator's Settings bot password when valid, else the
 server-held publication credential (Rule R18); a failed login degrades to
 an anonymous read (Rule R27). Both prompts (Modal

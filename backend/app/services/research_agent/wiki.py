@@ -85,29 +85,62 @@ async def fetch_wikibase_entity(
     return _slim_entity(entity)
 
 
+def _claim_value(snak: dict[str, Any]) -> str | None:
+    """Human-readable datavalue for one claim: QID, string, date, or amount."""
+    datatype = snak.get("datatype")
+    value = (snak.get("datavalue") or {}).get("value")
+    if value is None:
+        return None
+    if datatype == "wikibase-item" and isinstance(value, dict):
+        return str(value.get("id")) if value.get("id") else None
+    if datatype == "time" and isinstance(value, dict):
+        return str(value.get("time") or "")[:10] or None
+    if datatype == "quantity" and isinstance(value, dict):
+        return str(value.get("amount") or "") or None
+    if isinstance(value, dict):  # monolingualtext
+        return str(value.get("text") or "") or None
+    return str(value) if str(value).strip() else None
+
+
 def _slim_entity(entity: dict[str, Any]) -> dict[str, Any]:
     from app.services.research_agent.sanitize import quarantine_text
+
+    def _clean(text: str, limit: int) -> str:
+        return quarantine_text(text, max_chars=limit)["value"]
 
     labels = entity.get("labels") or {}
     descriptions = entity.get("descriptions") or {}
     aliases = entity.get("aliases") or {}
     claims = entity.get("claims") or {}
+    claim_values: dict[str, list[str]] = {}
+    for prop, statements in claims.items():
+        values: list[str] = []
+        for statement in statements[:4]:
+            snak = statement.get("mainsnak") or {}
+            if snak.get("snaktype") != "value":
+                continue
+            raw = _claim_value(snak)
+            if raw:
+                values.append(_clean(raw, 160))
+        if values:
+            claim_values[prop] = values
     return {
         "id": entity.get("id"),
         "labels": {
-            lang: quarantine_text(val.get("value"), max_chars=240)["value"]
+            lang: _clean(val.get("value"), 240)
             for lang, val in labels.items()
         },
         "descriptions": {
-            lang: quarantine_text(val.get("value"), max_chars=480)
+            lang: _clean(val.get("value"), 480)
             for lang, val in descriptions.items()
         },
         "aliases": {
-            lang: [quarantine_text(a.get("value"), max_chars=120)["value"] for a in items if a.get("value")]
+            lang: [_clean(a.get("value"), 120) for a in items if a.get("value")]
             for lang, items in aliases.items()
         },
         "claim_properties": sorted(claims.keys())[:80],
         "claim_count": len(claims),
+        "claim_values": claim_values,
         "sitelinks": sorted((entity.get("sitelinks") or {}).keys())[:40],
     }
 

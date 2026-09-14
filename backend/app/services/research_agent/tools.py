@@ -888,42 +888,52 @@ async def _tool_wikidata_fetch_items(ctx: ToolContext, args: dict[str, Any]) -> 
         raise HTTPException(status_code=404, detail=f"No QIDs stored in '{key}'. Run wikidata_uploaded_items first.")
 
     entities = await fetch_wikidata_entities_batch(qids, bot_token=ctx.wiki_token)
+    ours = set(qids)  # every fetched QID is one of this project's uploads
     out: list[list[str | None]] = []
     for qid in qids:
         entity = entities.get(qid) or {}
         label = (entity.get("labels") or {}).get("en") or (entity.get("labels") or {}).get("he") or ""
-        props = entity.get("claim_properties") or []
-        if entity.get("missing") or not props:
-            out.append([qid, _cell_str(label, 160), None, "missing or no claims"])
+        claim_values = entity.get("claim_values") or {}
+        if entity.get("missing") or not (claim_values or entity.get("claim_properties")):
+            out.append([qid, _cell_str(label, 160), None, "missing or no claims", ""])
             continue
-        for prop in props:
-            out.append([qid, _cell_str(label, 160), _cell_str(prop, 24), "claim"])
+        for prop, values in (claim_values or {}).items():
+            for value in values:
+                out.append([
+                    qid, _cell_str(label, 160), _cell_str(prop, 24), value[:200],
+                    "ours" if value[:200] in ours else "",
+                ])
     await upsert_artifact(
         ctx.db, ctx.thread,
         artifact_key=_WIKIDATA_ITEMS_KEY,
         kind="sparql",
         title="Wikidata items (live claims)",
         content={
-            "columns": ["qid", "label", "property", "value"],
+            "columns": ["qid", "label", "property", "value", "target_is_ours"],
             "rows": out,
         },
         created_by="agent",
     )
     await ctx.db.commit()
     prop_counts: dict[str, int] = {}
+    internal_links = 0
     for row in out:
         if row[2]:
             prop_counts[str(row[2])] = prop_counts.get(str(row[2]), 0) + 1
+        if row[4] == "ours":
+            internal_links += 1
     top = sorted(prop_counts.items(), key=lambda kv: (-kv[1], kv[0]))[:20]
     return {
         "artifact_key": _WIKIDATA_ITEMS_KEY,
         "fetched": len(qids),
         "claim_rows": len(out),
         "distinct_properties": len(prop_counts),
+        "internal_links": internal_links,
         "top_properties": top,
         "note": (
-            "Live Wikidata claims saved as dataset artifact 'wikidata-items'. "
-            "Analyze with data_distinct / data_select / data_search."
+            "Live Wikidata claims with real datavalues saved as dataset artifact "
+            "'wikidata-items' (target_is_ours marks claims pointing at our own "
+            "uploaded QIDs). Analyze with data_distinct / data_select / data_search."
         ),
     }
 
@@ -950,7 +960,10 @@ async def _tool_show_link_types(ctx: ToolContext, args: dict[str, Any]) -> dict[
         )
     p_idx = columns.index(prop_col)
     q_idx = columns.index("qid") if "qid" in columns else None
+    v_idx = columns.index("value") if "value" in columns else None
+    ours_idx = columns.index("target_is_ours") if "target_is_ours" in columns else None
     counts: dict[str, int] = {}
+    internal_counts: dict[str, int] = {}
     qids: set[str] = set()
     for row in rows:
         prop = _cell_str(row[p_idx]) if 0 <= p_idx < len(row) else None
@@ -959,6 +972,11 @@ async def _tool_show_link_types(ctx: ToolContext, args: dict[str, Any]) -> dict[
         counts[prop] = counts.get(prop, 0) + 1
         if q_idx is not None and 0 <= q_idx < len(row):
             qids.add(_cell_str(row[q_idx]) or "")
+        if (
+            ours_idx is not None and 0 <= ours_idx < len(row)
+            and _cell_str(row[ours_idx]) == "ours"
+        ):
+            internal_counts[prop] = internal_counts.get(prop, 0) + 1
     qids.discard("")
     if not counts:
         raise HTTPException(status_code=404, detail=f"Dataset '{key}' has no claim rows.")
@@ -969,13 +987,16 @@ async def _tool_show_link_types(ctx: ToolContext, args: dict[str, Any]) -> dict[
         groups.setdefault(_link_family(prop), []).append({
             "label": _link_label(prop),
             "count": count,
+            "internal": internal_counts.get(prop, 0),
         })
+    internal_total = sum(internal_counts.values())
     content = {
         "chart": "bar",
         "title": str(args.get("title") or "Types of links on our uploaded Wikidata items")[:120],
         "total_claims": sum(counts.values()),
         "distinct_properties": len(counts),
         "items_counted": len(qids),
+        "internal_links": internal_total,
         "groups": [
             {"name": name, "items": items}
             for name, items in sorted(groups.items(), key=lambda kv: -sum(i["count"] for i in kv[1]))
@@ -991,7 +1012,7 @@ async def _tool_show_link_types(ctx: ToolContext, args: dict[str, Any]) -> dict[
     )
     await ctx.db.commit()
     digest = [
-        {"label": item["label"], "count": item["count"]}
+        {"label": item["label"], "count": item["count"], "internal": item["internal"]}
         for group in content["groups"] for item in group["items"][:8]
     ]
     return {
@@ -999,6 +1020,7 @@ async def _tool_show_link_types(ctx: ToolContext, args: dict[str, Any]) -> dict[
         "claim_rows": content["total_claims"],
         "distinct_properties": content["distinct_properties"],
         "items_counted": content["items_counted"],
+        "internal_links": internal_total,
         "groups": [
             {"name": g["name"], "properties": len(g["items"]), "claims": sum(i["count"] for i in g["items"])}
             for g in content["groups"]

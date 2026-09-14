@@ -66,14 +66,14 @@ async def test_show_link_types_groups_properties(sample_run):
             "kind": "sparql",
             "title": "Wikidata items (live claims)",
             "content": {
-                "columns": ["qid", "label", "property", "value"],
+                "columns": ["qid", "label", "property", "value", "target_is_ours"],
                 "rows": [
-                    ["Q1111", "Ms", "P31", "manuscript"],
-                    ["Q1111", "Ms", "P1476", "title"],
-                    ["Q2222", "Work", "P50", "author"],
-                    ["Q3333", "Tradition", "lrmoo:R4_embodies", "work"],
-                    ["Q3333", "Tradition", "https://w3id.org/mhm/ontology#witnesses", "ms"],
-                    ["Q4444", "Ms2", "cidoc:P72_has_language", "hebrew"],
+                    ["Q1111", "Ms", "P31", "Q87167", ""],
+                    ["Q1111", "Ms", "P1476", "title", ""],
+                    ["Q2222", "Work", "P50", "Q127398", "ours"],
+                    ["Q3333", "Tradition", "lrmoo:R4_embodies", "work", ""],
+                    ["Q3333", "Tradition", "https://w3id.org/mhm/ontology#witnesses", "ms", ""],
+                    ["Q4444", "Ms2", "cidoc:P72_has_language", "hebrew", ""],
                 ],
             },
         },
@@ -90,10 +90,12 @@ async def test_show_link_types_groups_properties(sample_run):
     assert result["claim_rows"] == 6
     assert result["distinct_properties"] == 6
     assert result["items_counted"] == 4
+    assert result["internal_links"] == 1
     group_names = {g["name"] for g in result["groups"]}
     assert {"Wikidata properties", "FRBRoo / LRMoo (IFLA)", "MHM ontology", "CIDOC CRM"} <= group_names
-    top = {d["label"] for d in result["top_links"]}
+    top = {d["label"]: d for d in result["top_links"]}
     assert "P31 — instance of" in top and "mhm:witnesses" in top
+    assert top["P50 — author"]["internal"] == 1
 
     # The chart artifact was persisted on the thread.
     versions = await sample_run["client"].post(

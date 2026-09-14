@@ -73,9 +73,11 @@ async def test_fetch_items_uses_wikidata_api(sample_run, db_session):
     })
     slim = {
         "Q1111": {"id": "Q1111", "labels": {"en": "Ms Jerusalem 8"},
-                  "claim_properties": ["P31", "P3959"], "claim_count": 2},
+                  "claim_properties": ["P31", "P3959"], "claim_count": 2,
+                  "claim_values": {"P31": ["Q87167"], "P3959": ["Ms Jerusalem 8"]}},
         "Q127398": {"id": "Q127398", "labels": {"en": "Moses Maimonides"},
-                    "claim_properties": ["P31", "P569", "P570"], "claim_count": 3},
+                    "claim_properties": ["P31", "P569", "P570"], "claim_count": 3,
+                    "claim_values": {"P31": ["Q5"], "P569": ["1138-01-01"], "P570": ["1204-12-13"]}},
     }
     with patch(
         "app.services.research_agent.wiki.fetch_wikidata_entities_batch",
@@ -93,6 +95,12 @@ async def test_fetch_items_uses_wikidata_api(sample_run, db_session):
     })
     counts = {v["value"]: v["count"] for v in distinct["values"]}
     assert counts["P31"] == 2 and counts["P3959"] == 1 and counts["P569"] == 1
+    # Real datavalues replace the old "claim" placeholder.
+    hits = await _call(sample_run, minted["headers"], "data_select", {
+        "artifact_key": "wikidata-items", "column": "value", "op": "eq", "value": "Q87167",
+    })
+    assert hits["match_count"] == 1
+    assert result["internal_links"] == 0
 
 
 async def test_fetch_items_without_uploads_is_404(sample_run):
