@@ -1034,19 +1034,45 @@ async def _tool_show_link_types(ctx: ToolContext, args: dict[str, Any]) -> dict[
 
 
 async def _wikidata_sparql_query(query: str) -> dict[str, Any]:
-    """Run one SELECT against the public Wikidata query service."""
+    """Run one SELECT against the public Wikidata query service.
+
+    Retries transient 5xx/timeouts — the endpoint 502/503s occasionally,
+    and one failure used to push the planner into improvising hand-built
+    HTML "maps" that render as raw code on the canvas.
+    """
+    import asyncio
+
     import httpx
 
-    resp = await httpx.AsyncClient(timeout=30.0).get(
-        "https://query.wikidata.org/sparql",
-        params={"query": query, "format": "json"},
-        headers={
-            "Accept": "application/sparql-results+json",
-            "User-Agent": "MHM-Pipeline-Web/1.0 (research-agent; contact via project admin)",
-        },
+    delay = 1.0
+    for attempt in range(3):
+        try:
+            resp = await httpx.AsyncClient(timeout=30.0).get(
+                "https://query.wikidata.org/sparql",
+                params={"query": query, "format": "json"},
+                headers={
+                    "Accept": "application/sparql-results+json",
+                    "User-Agent": "MHM-Pipeline-Web/1.0 (research-agent; contact via project admin)",
+                },
+            )
+            if resp.status_code < 500:
+                resp.raise_for_status()
+                return resp.json()
+            last_error = f"Wikidata SPARQL returned HTTP {resp.status_code}"
+        except httpx.HTTPStatusError as exc:
+            last_error = f"Wikidata SPARQL returned HTTP {exc.response.status_code}"
+        except httpx.HTTPError as exc:
+            last_error = f"Wikidata SPARQL unreachable: {exc}"
+        if attempt < 2:
+            await asyncio.sleep(delay)
+            delay *= 2
+    raise HTTPException(
+        status_code=502,
+        detail=(
+            f"{last_error} after retries. Retry show_wikidata_places shortly — "
+            "never hand-build the map as an HTML/markdown artifact."
+        ),
     )
-    resp.raise_for_status()
-    return resp.json()
 
 
 _PACK_DIGEST_SKIP = {"preview", "sample", "rows", "values"}
