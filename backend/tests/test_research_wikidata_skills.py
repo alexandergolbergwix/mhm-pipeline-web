@@ -177,10 +177,15 @@ async def test_uploaded_items_includes_publication_execution_qids(sample_run, db
     with patch(
         "app.routers.wikidata_studio.studio_items_for_project",
         new=AsyncMock(return_value=[]),
-    ):
+    ) as items_mock:
         result = await _call(sample_run, minted["headers"], "wikidata_uploaded_items", {})
     assert result["uploaded_count"] == 1
     assert result["by_type"] == {"unknown": 1}
+    # Run ids must cross the boundary as str — asyncpg pgproto.UUID breaks
+    # uuid.UUID() downstream on Postgres (AttributeError 'replace').
+    for call in items_mock.call_args_list:
+        for run_id in call.args[0]:
+            assert isinstance(run_id, str)
     info = await _call(sample_run, minted["headers"], "data_info", {"artifact_key": "wikidata-uploads"})
     assert info["row_count"] == 1
     row = (info.get("sample") or [[None] * 6])[0]

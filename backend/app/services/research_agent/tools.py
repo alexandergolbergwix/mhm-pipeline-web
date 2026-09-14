@@ -774,7 +774,9 @@ async def _tool_wikidata_uploaded_items(ctx: ToolContext, _args: dict[str, Any])
             select(Run.id).where(Run.project_id == ctx.claims.project_id)
         )
     ).scalars().all()
-    project_run_ids = list(run_rows)
+    # asyncpg returns pgproto.UUID, and uuid.UUID(pgproto.UUID) raises
+    # AttributeError ('replace') — consumers expect str run ids.
+    project_run_ids = [str(r) for r in run_rows]
 
     if project_run_ids:
         succeeded = (
