@@ -59,8 +59,17 @@ async def execute_hmo_item_build(
     refresh_authority: bool = True,
     on_progress: ProgressCb | None = None,
     should_cancel: CancelCb | None = None,
+    rdf_resume: dict[str, Any] | None = None,
+    rdf_checkpoint: dict[str, Any] | None = None,
 ) -> HmoItemBuildJobResult:
-    """Run the full HMO item build pipeline inside an open session."""
+    """Run the full HMO item build pipeline inside an open session.
+
+    ``rdf_resume``/``rdf_checkpoint`` carry the streaming RDF build's
+    resume state (job-service R26): the checkpoint dict is mutated in
+    place by the build and surfaced to the caller through ``on_progress``
+    payloads under ``payload["checkpoint"]`` so the job row can persist
+    it and pass it back after a crash.
+    """
     run = await db.get(Run, run_id)
     if run is None:
         raise HmoItemBuildError(f"run {run_id} not found", conflict=True)
@@ -195,6 +204,15 @@ async def execute_hmo_item_build(
                 sub_message=str(payload.get("message") or payload.get("current_control_number") or ""),
             )
 
+        if rdf_resume:
+            await progress(
+                "rdf",
+                2,
+                3,
+                "Step 2 of 3: Resuming RDF graph rebuild…",
+                sub_processed=int(rdf_resume.get("record_index") or 0),
+            )
+
         try:
             rdf_result = await build_rdf_graph(
                 marc_records=[dict(row.marc) for row in records],
@@ -202,6 +220,8 @@ async def execute_hmo_item_build(
                 entities_by_cn=entities_by_cn,
                 output_path=ttl_path,
                 on_progress=rdf_sub,
+                resume=rdf_resume,
+                checkpoint=rdf_checkpoint,
             )
             await upsert_rdf_artifact(
                 db,

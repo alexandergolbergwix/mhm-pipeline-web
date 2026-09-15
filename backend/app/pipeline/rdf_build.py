@@ -233,6 +233,53 @@ def _prepare_record_for_rdf(rec: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+# Persist a resume checkpoint to the job row every N streamed records
+# (job-service R26). A crash between checkpoints re-maps at most N records.
+CHECKPOINT_EVERY_RECORDS = 25
+
+
+def _run_coverage_reports_subprocess(output_path: Path) -> tuple[
+    Path | None, int | None, Path | None, int | None, int | None, list[str], int | None,
+]:
+    """Build the graph index + coverage reports in a child process.
+
+    Both reports re-parse the whole artifact into an rdflib Graph — a
+    memory spike this large belongs outside the (512 MB) job parent.
+    The child writes the report files plus a small ``rdf_build_stats.json``
+    summary the parent reads back. Raises on non-zero exit.
+    """
+    import subprocess
+    import sys
+
+    backend_root = Path(__file__).resolve().parents[2]
+    stats_path = output_path.parent / "rdf_build_stats.json"
+    cmd = [
+        sys.executable, "-m", "app.pipeline.rdf_coverage_reports",
+        str(output_path),
+        "--stats-out", str(stats_path),
+    ]
+    proc = subprocess.run(
+        cmd, cwd=str(backend_root), capture_output=True, text=True, timeout=1800,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"rdf_coverage_reports exited {proc.returncode}: "
+            f"{(proc.stderr or '')[-400:]}",
+        )
+    stats = json.loads(stats_path.read_text(encoding="utf-8"))
+    coverage_path = output_path.parent / "rdf_projection_coverage.json"
+    ontology_coverage_path = output_path.parent / "ontology_coverage.json"
+    return (
+        coverage_path if coverage_path.exists() else None,
+        stats.get("unknown_count"),
+        ontology_coverage_path if ontology_coverage_path.exists() else None,
+        stats.get("ontology_class_count"),
+        stats.get("ontology_property_count"),
+        list(stats.get("ontology_missing_terms") or []),
+        stats.get("triples_count"),
+    )
+
+
 def _run_mapper_sync(
     marc_records: list[dict],
     authority_matches: list[dict],
@@ -242,6 +289,8 @@ def _run_mapper_sync(
     kima_places_by_cn: dict[str, dict[str, str]] | None = None,
     build_options: RdfBuildOptions | None = None,
     on_record_done: Callable[[int, int, str], None] | None = None,
+    resume: dict[str, Any] | None = None,
+    checkpoint: dict[str, Any] | None = None,
 ) -> tuple[
     int,
     int,
@@ -283,99 +332,145 @@ def _run_mapper_sync(
         add_cataloging_view=opts.add_cataloging_view,
         add_philological_overlay=opts.add_philological_overlay,
     )
-    combined = Graph()
 
     from converter.config.namespaces import bind_namespaces  # noqa: PLC0415
 
-    bind_namespaces(combined)
-
-    manuscripts = 0
-    errors: list[str] = []
-    total_records = len(marc_records)
-    for idx, raw_rec in enumerate(marc_records):
-        rec = _prepare_record_for_rdf(raw_rec)
-        cn = str(
-            rec.get("_control_number")
-            or rec.get("control_number")
-            or rec.get("controlNumber")
-            or f"rec_{id(raw_rec)}"
-        )
-        # URI-safe CN: strip surrounding/embedded quotes and replace any
-        # character that is not valid inside a URI fragment with "_".
-        # Used only for URI construction in build_graph; the raw cn is kept
-        # for authority-match lookups so cross-references are not broken.
-        cn_uri = re.sub(r"[^\w.\-]", "_", cn.strip("\"'")).strip("_") or cn
-
-        # Merge approved NER entities into the MARC record's field lists.
-        # Try both the raw CN (possibly with surrounding quotes from the DB)
-        # and the stripped version so the lookup is robust.
-        cn_stripped = cn.strip("\"'")
-        ner_ents = ents_by_cn.get(cn) or ents_by_cn.get(cn_stripped) or []
-        if ner_ents:
-            merge_approved_ner(rec, ner_ents)
-
-        ml_genres = rec.get("ml_genres") or []
-        if isinstance(ml_genres, list) and ml_genres:
-            merge_ml_genres(rec, ml_genres)
-        apply_genre_classifier_fallback(rec)
-
-        rec_matches = matches_by_cn.get(cn) or matches_by_cn.get(cn_stripped) or []
-        if rec_matches:
-            merge_approved_authority(rec, rec_matches)
-
-        kima_places = kima_by_cn.get(cn) or kima_by_cn.get(cn_stripped) or {}
-        if kima_places:
-            merge_kima_places_dict(rec, kima_places)
-
-        try:
-            # Build ExtractedData from the dict — same pattern as
-            # MarcToRdfMapper.map_json_records.
-            extracted = ExtractedData()
-            for field_name in vars(extracted):
-                if field_name.startswith("_"):
-                    continue
-                if field_name in rec:
-                    setattr(extracted, field_name, rec[field_name])
-            extracted.control_number = cn_uri
-            if rec.get("marc_authority_matches"):
-                extracted.marc_authority_matches = rec["marc_authority_matches"]
-
-            graph = mapper.graph_builder.build_graph(extracted, cn_uri)
-            for triple in graph:
-                combined.add(triple)
-            manuscripts += 1
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"record {cn}: {exc}")
-            logger.warning("RDF mapping failed for %s: %s", cn, exc)
-        if on_record_done is not None:
-            on_record_done(idx + 1, total_records, cn)
-
-    if overrides:
-        for ov in overrides:
-            subj = URIRef(ov["subject_uri"])
-            pred = URIRef(ov["predicate_uri"])
-            for triple in list(combined.triples((subj, pred, None))):
-                combined.remove(triple)
-            datatype = URIRef(ov["new_datatype"]) if ov.get("new_datatype") else None
-            lang = ov.get("new_lang")
-            if datatype:
-                combined.add((subj, pred, Literal(ov["new_value"], datatype=datatype)))
-            elif lang:
-                combined.add((subj, pred, Literal(ov["new_value"], lang=lang)))
-            else:
-                combined.add((subj, pred, Literal(ov["new_value"])))
+    # ── Streaming build (job-service R26) ─────────────────────────────
+    # One record subgraph at a time: serialize it to a Turtle chunk,
+    # append to the artifact, then free it. The old path accumulated
+    # every triple in one ``combined`` Graph, which is what R14/R15-killed
+    # the 512 MB dyno on ~900-record runs. The graph index and coverage
+    # reports re-parse the finished artifact in a subprocess, so the
+    # parent never holds more than one record graph.
+    resume_from = int((resume or {}).get("record_index") or 0)
+    resume_offset = int((resume or {}).get("file_bytes") or 0)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    combined.serialize(destination=str(output_path), format="turtle")
+    if (
+        resume_from > 0 and resume_offset > 0
+        and output_path.exists()
+        and output_path.stat().st_size >= resume_offset
+    ):
+        # Truncate to the last checkpoint byte offset so a partially
+        # written chunk from the killed run cannot corrupt the file.
+        # A wiped artifact (dyno /tmp) falls back to a fresh build.
+        with open(output_path, "r+b") as fh:
+            fh.truncate(resume_offset)
+        mode = "ab"
+    else:
+        resume_from = 0
+        mode = "wb"
 
-    try:
-        from app.pipeline.graph_index import build_and_persist_index  # noqa: PLC0415
+    chunk_path = output_path.with_name(output_path.name + ".chunk")
+    triples_count = 0
+    # Records before the checkpoint already counted toward the resumed
+    # run's totals — start from the checkpoint's manuscript count.
+    manuscripts = int((resume or {}).get("manuscripts") or 0)
+    errors: list[str] = []
+    total_records = len(marc_records)
+    with open(output_path, mode) as out_fh:
+        for idx, raw_rec in enumerate(marc_records):
+            if idx < resume_from:
+                if on_record_done is not None:
+                    on_record_done(idx + 1, total_records, str(raw_rec.get("_control_number") or ""))
+                continue
+            rec = _prepare_record_for_rdf(raw_rec)
+            cn = str(
+                rec.get("_control_number")
+                or rec.get("control_number")
+                or rec.get("controlNumber")
+                or f"rec_{id(raw_rec)}"
+            )
+            # URI-safe CN: strip surrounding/embedded quotes and replace any
+            # character that is not valid inside a URI fragment with "_".
+            # Used only for URI construction in build_graph; the raw cn is kept
+            # for authority-match lookups so cross-references are not broken.
+            cn_uri = re.sub(r"[^\w.\-]", "_", cn.strip("\"'")).strip("_") or cn
 
-        build_and_persist_index(
-            combined, output_path.parent, corpus_manuscript_count=manuscripts,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Graph index/catalog build failed: %s", exc)
+            # Merge approved NER entities into the MARC record's field lists.
+            # Try both the raw CN (possibly with surrounding quotes from the DB)
+            # and the stripped version so the lookup is robust.
+            cn_stripped = cn.strip("\"'")
+            ner_ents = ents_by_cn.get(cn) or ents_by_cn.get(cn_stripped) or []
+            if ner_ents:
+                merge_approved_ner(rec, ner_ents)
+
+            ml_genres = rec.get("ml_genres") or []
+            if isinstance(ml_genres, list) and ml_genres:
+                merge_ml_genres(rec, ml_genres)
+            apply_genre_classifier_fallback(rec)
+
+            rec_matches = matches_by_cn.get(cn) or matches_by_cn.get(cn_stripped) or []
+            if rec_matches:
+                merge_approved_authority(rec, rec_matches)
+
+            kima_places = kima_by_cn.get(cn) or kima_by_cn.get(cn_stripped) or {}
+            if kima_places:
+                merge_kima_places_dict(rec, kima_places)
+
+            try:
+                # Build ExtractedData from the dict — same pattern as
+                # MarcToRdfMapper.map_json_records.
+                extracted = ExtractedData()
+                for field_name in vars(extracted):
+                    if field_name.startswith("_"):
+                        continue
+                    if field_name in rec:
+                        setattr(extracted, field_name, rec[field_name])
+                extracted.control_number = cn_uri
+                if rec.get("marc_authority_matches"):
+                    extracted.marc_authority_matches = rec["marc_authority_matches"]
+
+                graph = mapper.graph_builder.build_graph(extracted, cn_uri)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"record {cn}: {exc}")
+                logger.warning("RDF mapping failed for %s: %s", cn, exc)
+                if on_record_done is not None:
+                    on_record_done(idx + 1, total_records, cn)
+                if checkpoint is not None:
+                    checkpoint["record_index"] = idx + 1
+                continue
+
+            # Overrides are subject-scoped: record URIs embed the CN, so an
+            # override can only touch triples of the record whose subgraph
+            # contains its subject. Applying them here (instead of over the
+            # whole corpus graph) preserves the old semantics while streaming.
+            for ov in (overrides or []):
+                subj = URIRef(ov["subject_uri"])
+                pred = URIRef(ov["predicate_uri"])
+                if (subj, pred, None) not in graph:
+                    continue
+                for triple in list(graph.triples((subj, pred, None))):
+                    graph.remove(triple)
+                datatype = URIRef(ov["new_datatype"]) if ov.get("new_datatype") else None
+                lang = ov.get("new_lang")
+                if datatype:
+                    graph.add((subj, pred, Literal(ov["new_value"], datatype=datatype)))
+                elif lang:
+                    graph.add((subj, pred, Literal(ov["new_value"], lang=lang)))
+                else:
+                    graph.add((subj, pred, Literal(ov["new_value"])))
+
+            triples_count += len(graph)
+
+            # Serialize this record's subgraph as a complete Turtle document
+            # and append it. Repeated @prefix directives across chunks are
+            # legal Turtle, so the concatenated file parses as one graph.
+            graph.serialize(destination=str(chunk_path), format="turtle")
+            with open(chunk_path, "rb") as chunk_fh:
+                out_fh.write(chunk_fh.read())
+            manuscripts += 1
+
+            # Free the subgraph before the next record.
+            del graph
+            if checkpoint is not None and ((idx + 1) % CHECKPOINT_EVERY_RECORDS == 0 or idx + 1 == total_records):
+                checkpoint["record_index"] = idx + 1
+                checkpoint["file_bytes"] = out_fh.tell()
+                checkpoint["manuscripts"] = manuscripts
+                checkpoint["triples_count"] = triples_count
+            if on_record_done is not None:
+                on_record_done(idx + 1, total_records, cn)
+    chunk_path.unlink(missing_ok=True)
 
     coverage_path: Path | None = None
     unknown_count: int | None = None
@@ -384,41 +479,21 @@ def _run_mapper_sync(
     ontology_property_count: int | None = None
     ontology_missing_terms: list[str] = []
     try:
-        from converter.wikidata.projection_coverage import (  # noqa: PLC0415
-            write_projection_coverage_report,
+        # The index and coverage reports re-parse the whole artifact into
+        # an rdflib Graph — run them in a subprocess so the parent's
+        # memory stays flat (same pattern as the eval-agent runner). The
+        # parse also yields the authoritative distinct-triple count: the
+        # artifact is a set of triples, so per-record chunk counts can
+        # double-count statements shared across records.
+        coverage_path, unknown_count, ontology_coverage_path, ontology_class_count, ontology_property_count, ontology_missing_terms, artifact_triples = _run_coverage_reports_subprocess(
+            output_path,
         )
-
-        coverage_path = output_path.parent / "rdf_projection_coverage.json"
-        write_projection_coverage_report(output_path, [], coverage_path)
-
-        report = json.loads(coverage_path.read_text(encoding="utf-8"))
-        unknown_count = sum(
-            1 for cls in report.get("classes", [])
-            if cls.get("projection_status") == "unknown"
-        )
+        triples_count = artifact_triples if artifact_triples is not None else triples_count
     except Exception as exc:  # noqa: BLE001
-        logger.warning("RDF projection coverage report failed: %s", exc)
-
-    try:
-        from converter.rdf.ontology_coverage import (  # noqa: PLC0415
-            build_coverage_report,
-            write_coverage_report,
-        )
-
-        ontology_path = Path(__file__).resolve().parents[2] / "ontology" / "hebrew-manuscripts.ttl"
-        ontology_report = build_coverage_report(output_path, ontology_path)
-        ontology_coverage_path = output_path.parent / "ontology_coverage.json"
-        write_coverage_report(ontology_report, ontology_coverage_path)
-        ontology_class_count = ontology_report.classes_covered
-        ontology_property_count = ontology_report.properties_covered
-        ontology_missing_terms = (
-            ontology_report.missing_classes + ontology_report.missing_properties
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("HMO ontology coverage report failed: %s", exc)
+        logger.warning("RDF coverage subprocess failed: %s", exc)
 
     return (
-        len(combined),
+        triples_count,
         manuscripts,
         errors,
         coverage_path,
@@ -440,6 +515,8 @@ async def build_rdf_graph(
     kima_places_by_cn: dict[str, dict[str, str]] | None = None,
     build_options: RdfBuildOptions | None = None,
     on_progress: Callable[[dict[str, Any]], Any] | None = None,
+    resume: dict[str, Any] | None = None,
+    checkpoint: dict[str, Any] | None = None,
 ) -> RdfBuildResult:
     """Run ``MarcToRdfMapper`` over MARC + authority data, write Turtle.
 
@@ -448,6 +525,13 @@ async def build_rdf_graph(
     work-titles are merged into each MARC record's field lists before
     ``ExtractedData`` is built, so they appear in the RDF graph alongside
     the authority-enriched data.
+
+    Streaming + resume (job-service R26): records are mapped and
+    serialized one subgraph at a time. ``checkpoint`` is a caller-owned
+    dict mutated in place every ``CHECKPOINT_EVERY_RECORDS`` records with
+    ``{record_index, file_bytes, manuscripts, triples_count}``; pass its
+    contents back as ``resume`` after a crash to skip already-mapped
+    records and truncate the artifact to the last safe byte offset.
 
     Returns a structured result so the router can report counts +
     timestamps without re-parsing the TTL.
@@ -465,6 +549,8 @@ async def build_rdf_graph(
             "message": cn,
             "current_control_number": cn,
         }
+        if checkpoint is not None:
+            payload["checkpoint"] = dict(checkpoint)
         fut = asyncio.run_coroutine_threadsafe(_emit_progress(on_progress, payload), loop)
 
         def _log_progress_err(f: asyncio.Future[None]) -> None:
@@ -494,6 +580,8 @@ async def build_rdf_graph(
         kima_places_by_cn or {},
         build_options,
         _sync_progress if on_progress else None,
+        resume,
+        checkpoint,
     )
     if errors:
         logger.warning(

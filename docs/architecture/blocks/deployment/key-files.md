@@ -4,8 +4,9 @@
 
 | File | Purpose |
 |---|---|
-| `Procfile` | `release: bash scripts/release.sh` · `web: bash scripts/start.sh` |
+| `Procfile` | `release: bash scripts/release.sh` · `web: bash scripts/start.sh` · `worker: bash scripts/start_worker.sh` |
 | `scripts/start.sh` | Web entrypoint: exports `EVAL_AGENT_ROOT`/`EVAL_AGENT_STATE_DIR`, `cd backend`, `uvicorn app.main:app` with `--proxy-headers --forwarded-allow-ips='*'`, `$PORT`, `WEB_CONCURRENCY` workers |
+| `scripts/start_worker.sh` | Worker entrypoint (Rule W-235): same eval-agent env, `RUN_JOB_ROLE=worker`, `RUN_JOB_MAINTENANCE_INTERVAL=10`, `python -m app.jobs_worker` — executes heavy job kinds off the web dyno |
 | `scripts/release.sh` | Release phase: fail-fast eval-agent bundle check (`locate_eval_agent()`), then `alembic upgrade head` |
 | `backend/alembic.ini` + `backend/app/migrations/` | Alembic config (`script_location = app/migrations`); versions `0001`…`0042_research_agent` |
 | `backend/app/settings.py` | Pydantic settings, canonical-first cohort/percentage rollout, and Heroku `postgres://` normalization |

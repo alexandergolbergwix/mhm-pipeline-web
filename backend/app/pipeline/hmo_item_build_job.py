@@ -36,6 +36,11 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
         "message": "Starting HMO item build (3 steps)…",
     })
 
+    # Streaming RDF resume (job-service R26): the checkpoint dict is mutated
+    # in place by the build and persisted with every progress write; a
+    # restarted job passes it back as resume state.
+    rdf_checkpoint: dict = {}
+
     async def on_progress(
         phase: str,
         processed: int,
@@ -62,6 +67,8 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
             progress["sub_unit"] = sub_unit
         if sub_message:
             progress["sub_message"] = sub_message
+        if rdf_checkpoint:
+            progress["checkpoint"] = dict(rdf_checkpoint)
         await update_job_progress(job_id, progress)
 
     async def should_cancel() -> bool:
@@ -69,6 +76,23 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
 
     try:
         async with session_scope() as db:
+            job = await db.get(RunJob, job_id)
+            prev_checkpoint = (
+                job.progress.get("checkpoint")
+                if job is not None and isinstance(job.progress, dict) else None
+            ) or {}
+            rdf_resume: dict | None = None
+            if (
+                not force_rebuild
+                and prev_checkpoint.get("signature")
+                and int(prev_checkpoint.get("record_index") or 0) > 0
+            ):
+                rdf_resume = {
+                    k: prev_checkpoint[k] for k in ("record_index", "file_bytes", "manuscripts")
+                }
+                rdf_checkpoint.update(prev_checkpoint)
+            else:
+                rdf_checkpoint["signature"] = uuid.uuid4().hex[:16]
             result = await execute_hmo_item_build(
                 db,
                 run_id,
@@ -76,6 +100,8 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
                 refresh_authority=refresh_authority,
                 on_progress=on_progress,
                 should_cancel=should_cancel,
+                rdf_resume=rdf_resume,
+                rdf_checkpoint=rdf_checkpoint,
             )
     except HmoItemBuildError as exc:
         if str(exc) == "cancelled" or await is_cancel_requested(job_id):

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import uuid
+from dataclasses import asdict
 from typing import Any
 
 from sqlalchemy import select
@@ -43,8 +46,7 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
             return
 
         run_id = job.run_id
-        params = job.params or {}
-        records = (
+        params = job.params or {}        records = (
             await db.execute(
                 select(RunRecord)
                 .where(RunRecord.run_id == run_id)
@@ -112,6 +114,29 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
         )
         total = len(marc_records)
 
+        # Streaming resume (job-service R26): a crashed run's checkpoint in
+        # job.progress lets the retry skip already-mapped records. The
+        # signature pins the corpus + options; any change starts fresh.
+        signature = hashlib.sha256(json.dumps({
+            "run_id": str(run_id),
+            "total": total,
+            "first": marc_records[0].get("_control_number") if marc_records else None,
+            "last": marc_records[-1].get("_control_number") if marc_records else None,
+            "opts": asdict(opts),
+        }, sort_keys=True).encode()).hexdigest()[:16]
+        prev_checkpoint = (
+            job.progress.get("checkpoint")
+            if isinstance(job.progress, dict) else None
+        ) or {}
+        resume: dict[str, Any] | None = None
+        if (
+            prev_checkpoint.get("signature") == signature
+            and int(prev_checkpoint.get("record_index") or 0) > 0
+            and not bool(params.get("force_rebuild"))
+        ):
+            resume = {k: prev_checkpoint[k] for k in ("record_index", "file_bytes", "manuscripts")}
+        checkpoint: dict[str, Any] = {"signature": signature}
+
     await update_job_progress(job_id, {
         "phase": "building",
         "processed": 0,
@@ -128,6 +153,14 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
         async def _report_progress(payload: dict[str, Any]) -> None:
             await update_job_progress(job_id, payload)
 
+        if resume is not None:
+            await update_job_progress(job_id, {
+                "phase": "building",
+                "processed": int(resume.get("record_index") or 0),
+                "total": total,
+                "message": f"Resuming RDF build at record {resume.get('record_index')}…",
+            })
+
         result = await build_rdf_graph(
             marc_records=marc_records,
             authority_matches=authority_matches,
@@ -137,6 +170,8 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
             kima_places_by_cn=kima_places_by_cn,
             build_options=opts,
             on_progress=_report_progress,
+            resume=resume,
+            checkpoint=checkpoint,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("RDF build job failed for run %s", run_id)

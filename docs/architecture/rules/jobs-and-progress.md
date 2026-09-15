@@ -451,3 +451,37 @@ Invariant: guard every `finally`-block `yield` in a verify event stream with
 trace keeps the verdicts for resume/replay) and always run the DB/cache
 persistence; only skip the `yield`. A unit test (`test_verify_stream_close.py`)
 pins the helper's semantics and asserts every channel module imports the guard.
+
+### Rule W-234 — RDF graph builds MUST stream, never accumulate (added 2026-09-15)
+
+`_run_mapper_sync` used to add every record's triples into one `combined`
+rdflib `Graph` and serialize at the end — peak memory was the whole corpus
+graph (147k+ triples on ~900-record runs) plus the serialization buffer.
+On the 512 MB web dyno that produced three R14/R15 crashes in one day
+while a bulk verify ran alongside. The build now maps one record subgraph
+at a time, applies `RdfTripleOverride`s within that subgraph (record URIs
+embed the CN, so scoping by containment preserves the old semantics),
+appends a Turtle chunk (repeated `@prefix` blocks are legal Turtle) to the
+artifact, and frees the subgraph.
+
+Checkpoints every 25 records — `{record_index, file_bytes, manuscripts,
+signature}` in `job.progress.checkpoint` — let a restarted job truncate
+the artifact to the last safe byte offset and skip already-mapped records
+(the signature pins run_id + corpus bounds + options; a wiped `/tmp`
+artifact falls back to a fresh build). The graph index and both coverage
+reports re-parse the finished artifact in a **subprocess**
+(`app.pipeline.rdf_coverage_reports`), which also yields the authoritative
+distinct-triple count: the artifact is a set of triples, so per-record
+chunk counts can double-count statements shared across records.
+
+### Rule W-235 — Heavy jobs run one at a time, on the worker dyno (added 2026-09-15)
+
+Admission now adds a shared heavy cap across the build + verify + upload
+slot classes (`RUN_JOB_MAX_HEAVY`, default 1): a build and a bulk verify
+may never run concurrently on the same small dyno. Process role derives
+from the Heroku `DYNO` name (`RUN_JOB_ROLE` overrides): `web.*` executes
+only light kinds, `worker.*` everything. A queued heavy job waits
+`RUN_JOB_WORKER_GRACE` (default 120 s) for a worker tick, then any alive
+process claims it — strictness never traps a job in `queued` forever. The
+worker entrypoint is `python -m app.jobs_worker` (Procfile `worker:`,
+scale with `heroku ps:scale worker=1`).

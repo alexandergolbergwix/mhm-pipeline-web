@@ -105,8 +105,12 @@ FastAPI on Heroku dynos
    └─ Wikibase Cloud / Wikidata — external write targets (guarded)
 ```
 
-Background work runs as claimed, heartbeated **run jobs** (`run_job_service`).
-AI verify jobs stream verdicts to the UI via `run_jobs.progress.session_snapshot`
+Background work runs as claimed, heartbeated **run jobs** (`run_job_service`)
+on a dedicated **worker dyno** (heavy builds/verifies; the web dyno executes
+only light kinds and self-heals queued heavy jobs if the worker is down —
+Rule W-235). RDF graph builds stream one record subgraph at a time with
+checkpoints (Rule W-234). AI verify jobs stream verdicts to the UI via
+`run_jobs.progress.session_snapshot`
 while running (multi-dyno safe) and `run_jobs.result.session_snapshot` at
 finish — see the [eval-agent](docs/architecture/blocks/eval-agent/README.md)
 and [job-service](docs/architecture/blocks/job-service/README.md) blocks.

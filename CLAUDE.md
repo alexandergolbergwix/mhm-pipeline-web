@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-233)
+## Architectural rules (W-1…W-235)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -211,6 +211,8 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-61** — Rejected verify-job enqueue requests MUST reset the curator modal
 - **W-64** — Verify-job progress MUST count distinct candidates, not stream events
 - **W-233** — Verify stream `finally` blocks MUST never yield while closing (`generator_is_closing()`); a yield under `GeneratorExit` fails the cancelled job and skips verdict persistence
+- **W-234** — RDF graph builds MUST stream per-record subgraphs, checkpoint every 25 records, and run index/coverage post-processing in a subprocess — never accumulate a whole-corpus Graph
+- **W-235** — Heavy jobs (build/verify/upload slots) share one admission cap and execute on the worker dyno; web claims a queued heavy job only after the worker grace window
 - **W-105** — Studio “Approve all visible” MUST run as a background job
 - **W-106** — All Studio / RDF builds MUST run as `run_jobs` with inline progress
 - **W-107** — All Studio publish/upload paths MUST run as `run_jobs`

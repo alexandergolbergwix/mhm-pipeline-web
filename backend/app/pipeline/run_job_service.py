@@ -119,6 +119,50 @@ def _max_running_global() -> int:
     return _int_env("RUN_JOB_MAX_RUNNING", 2)
 
 
+# Heavy = memory-hungry slot classes (graph builds, bulk verifies, uploads).
+# They share ONE extra cap: on the 512 MB web dyno, a build + a verify
+# subprocess together R14/R15-killed the dyno (2026-09-15 incidents). A
+# heavy job waits for capacity instead of racing another heavy job.
+_HEAVY_CLASSES = frozenset({SLOT_BUILD, SLOT_VERIFY, SLOT_UPLOAD})
+
+
+def _max_running_heavy() -> int:
+    return _int_env("RUN_JOB_MAX_HEAVY", 1)
+
+
+def _process_role() -> str:
+    """Which jobs this process may execute (R27 worker split).
+
+    Derived from the Heroku ``DYNO`` name: ``web.*`` executes only light
+    kinds; ``worker.*`` executes everything; absent DYNO (dev/CI) runs
+    all. Override with ``RUN_JOB_ROLE``.
+    """
+    raw = os.environ.get("RUN_JOB_ROLE", "").strip()
+    if raw in ("web", "worker", "all"):
+        return raw
+    dyno = os.environ.get("DYNO", "")
+    if dyno.startswith("web."):
+        return "web"
+    if dyno.startswith("worker."):
+        return "worker"
+    return "all"
+
+
+def _may_execute(kind: str) -> bool:
+    role = _process_role()
+    if role in ("worker", "all"):
+        return True
+    # Web executes only light kinds; heavy kinds belong to the worker.
+    return _admission_slot_class(kind) == SLOT_LIGHT
+
+
+# If no worker is alive (scaled to 0 / crashed), a web process may still
+# claim a heavy job after it has waited this long — self-healing over
+# strictness so jobs can never queue forever.
+def _worker_claim_grace() -> timedelta:
+    return timedelta(seconds=_int_env("RUN_JOB_WORKER_GRACE", 120))
+
+
 def _max_running_for_slot(slot: str) -> int:
     defaults = {
         SLOT_VERIFY: 1,
@@ -161,12 +205,19 @@ def _kinds_for_slot(slot: str) -> frozenset[str]:
     return frozenset()
 
 
-def _admission_allows(global_running: int, class_running: int, kind: str) -> bool:
+def _admission_allows(
+    global_running: int,
+    heavy_running: int,
+    class_running: int,
+    kind: str,
+) -> bool:
     if global_running >= _max_running_global():
         return False
     slot = _admission_slot_class(kind)
     if slot == SLOT_OTHER:
         return True
+    if slot in _HEAVY_CLASSES and heavy_running >= _max_running_heavy():
+        return False
     return class_running < _max_running_for_slot(slot)
 
 
@@ -184,6 +235,7 @@ async def _count_running_jobs(
     db: AsyncSession,
     *,
     slot: str | None = None,
+    heavy: bool = False,
 ) -> int:
     stmt = (
         select(func.count())
@@ -194,6 +246,12 @@ async def _count_running_jobs(
         kinds = _kinds_for_slot(slot)
         if kinds:
             stmt = stmt.where(RunJob.kind.in_(tuple(kinds)))
+    elif heavy:
+        heavy_kinds: set[str] = set()
+        for heavy_slot in _HEAVY_CLASSES:
+            heavy_kinds.update(_kinds_for_slot(heavy_slot))
+        if heavy_kinds:
+            stmt = stmt.where(RunJob.kind.in_(tuple(heavy_kinds)))
     return int((await db.execute(stmt)).scalar_one())
 
 
@@ -537,14 +595,29 @@ async def _try_claim_queued_job(
     kind: str,
 ) -> bool:
     """Claim a queued row only when global + class admission slots are free."""
+    if not _may_execute(kind):
+        # This process (web) does not execute heavy kinds — leave the row
+        # queued for a worker, unless it has waited past the grace window
+        # (no worker alive): then web self-heals and claims it anyway.
+        row = (
+            await db.execute(select(RunJob).where(RunJob.id == job_id))
+        ).scalar_one_or_none()
+        if row is None:
+            return False
+        waited = _now() - (row.updated_at or row.created_at or _now())
+        if waited < _worker_claim_grace():
+            await _mark_waiting_for_capacity(db, job_id)
+            return False
+
     global_running = await _count_running_jobs(db)
+    heavy_running = await _count_running_jobs(db, heavy=True)
     slot = _admission_slot_class(kind)
     class_running = (
         await _count_running_jobs(db, slot=slot)
         if slot != SLOT_OTHER
         else 0
     )
-    if not _admission_allows(global_running, class_running, kind):
+    if not _admission_allows(global_running, heavy_running, class_running, kind):
         await _mark_waiting_for_capacity(db, job_id)
         return False
 
@@ -684,8 +757,9 @@ async def run_job_maintenance_loop() -> None:
     Sleeps first — the lifespan already runs a startup pass, so an
     immediate tick would be redundant.
     """
+    interval = _int_env("RUN_JOB_MAINTENANCE_INTERVAL", MAINTENANCE_INTERVAL_SECONDS)
     while True:
-        await asyncio.sleep(MAINTENANCE_INTERVAL_SECONDS)
+        await asyncio.sleep(interval)
         try:
             await run_job_maintenance_tick()
         except Exception:  # noqa: BLE001 — the loop must survive any tick failure

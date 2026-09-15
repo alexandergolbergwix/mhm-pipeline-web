@@ -41,6 +41,17 @@ MUST have a Postgres write-through (`RdfArtifact`, `WikidataStudioCache`,
 `HmoStudioItemCache`, `HmoCoverageCache`) because dyno disk evaporates on
 every deploy.
 
+**Worker dyno split (Rule W-235, 2026-09-15).** The Procfile adds a
+`worker:` formation running `scripts/start_worker.sh` →
+`python -m app.jobs_worker` (same recovery + maintenance loop, 10 s tick).
+The role derives from `DYNO`: `web.*` claims only light kinds, `worker.*`
+everything — so a graph build or bulk verify never shares the 512 MB web
+dyno's memory with the API. Heavy jobs also share one admission cap
+(`RUN_JOB_MAX_HEAVY`, default 1). If the worker is scaled to 0, a queued
+heavy job is claimed by web after `RUN_JOB_WORKER_GRACE` (120 s), so
+nothing queues forever. Scale it with `heroku ps:scale worker=1` after the
+first deploy that ships the split.
+
 **Modal.** `modal/modal_app.py` bundles the four NER/genre models; deployed
 once via `modal deploy modal_app.py` (never imported by the backend — Rule
 W-15). Weights are pre-baked via `run_function(_bake_weights)` *before* the

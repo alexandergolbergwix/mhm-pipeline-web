@@ -55,6 +55,24 @@ re-spawns them after a terminal job or on each maintenance tick. Caps:
 `RUN_JOB_MAX_RUNNING`, `RUN_JOB_MAX_VERIFY`, `RUN_JOB_MAX_BUILD`,
 `RUN_JOB_MAX_UPLOAD`, `RUN_JOB_MAX_LIGHT`.
 
+**Heavy cap + worker split (Rules W-235 / R27, 2026-09-15).** The
+build + verify + upload slot classes share one extra cap
+(`RUN_JOB_MAX_HEAVY`, default 1) — a graph build and a bulk verify never
+run concurrently on the same small dyno. The process role derives from
+`DYNO` (`RUN_JOB_ROLE` overrides): `web.*` claims only light kinds,
+`worker.*` everything. A queued heavy job waits `RUN_JOB_WORKER_GRACE`
+(default 120 s) for a worker tick, then web claims it itself so nothing
+queues forever. The worker is `python -m app.jobs_worker`
+(Procfile `worker:`, `heroku ps:scale worker=1`).
+
+**Streaming RDF builds (Rule W-234 / R26).** `rdf_build.py` maps one
+record subgraph at a time, appends a Turtle chunk per record, checkpoints
+every 25 records into `job.progress.checkpoint`, and rebuilds the graph
+index + coverage reports in a subprocess (`rdf_coverage_reports`) that
+also yields the authoritative distinct-triple count. A restarted build
+truncates the artifact to the checkpoint byte offset and skips
+already-mapped records.
+
 **Interrupted verify resume (Rule W-130).** Stale/failed verify jobs carry
 `result.resumable` + judged/total. Wikidata/HMO streams write each verdict to
 the inference cache immediately so Continue (`override_cache=false`) warm-hits

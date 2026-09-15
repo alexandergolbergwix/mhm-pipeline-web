@@ -19,6 +19,8 @@
 | `WIKIDATA_PUBLICATION_LIVE_TOKEN`, `WIKIDATA_PUBLICATION_TEST_TOKEN` | `publication/credentials.py` via the execution worker | Optional server-held fallback tokens when the account has no saved credential for the selected wiki (W-217). The worker resolves a target-bound token only after it claims a queued execution. Absent saved credentials and fallback tokens fail closed. |
 | `WEB_CONCURRENCY`, `PORT` | `start.sh` | uvicorn workers / bind port |
 | `RUN_JOB_MAX_RUNNING`, `RUN_JOB_MAX_VERIFY`, `RUN_JOB_MAX_BUILD`, `RUN_JOB_MAX_UPLOAD`, `RUN_JOB_MAX_LIGHT` | `run_job_service.py` | Per-dyno job admission caps (defaults 2 / 1 / 1 / 1 / 2); excess jobs stay `queued` until a slot frees (Rule W-129) |
+| `RUN_JOB_MAX_HEAVY` | `run_job_service.py` | Shared cap across the build + verify + upload slots (default 1) — a build and a bulk verify never run concurrently on one small dyno (Rule W-235) |
+| `RUN_JOB_ROLE`, `RUN_JOB_WORKER_GRACE`, `RUN_JOB_MAINTENANCE_INTERVAL` | `run_job_service.py`, `scripts/start_worker.sh` | Worker split (Rule W-235): role from `DYNO` unless overridden (`web` = light kinds only, `worker`/`all` = everything); a queued heavy job waits the grace window (default 120 s) for a worker tick before web self-heals and claims it; maintenance tick cadence (worker sets 10 s) |
 | `ENV`, `COOKIE_SECURE`, `FRONTEND_ORIGIN`, `SESSION_TTL_HOURS` | `settings.py` | Prod flags, cookie policy, link bases |
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_NOTIFICATION_EMAIL`, `TURNSTILE_SECRET_KEY`/`SITE_KEY` | email/turnstile services | Unset → log-only mail / Turnstile bypass (dev) |
 | `WIKIBASE_CLOUD_*` | `settings.py:52-62` | Server-held OAuth for HMO Wikibase Cloud writes |

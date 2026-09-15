@@ -16,7 +16,7 @@ import threading
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 import rdflib
 from rdflib import RDF, RDFS, Graph, Literal
@@ -117,15 +117,38 @@ def _is_manuscript(_category: str, _node_id: str, type_locals: set[str]) -> bool
     return bool(type_locals & _MANUSCRIPT_TYPE_LOCALS)
 
 
-def scan_graph(graph: Graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Scan an rdflib graph into node and edge records for the index."""
-    node_categories: dict[str, str] = {}
-    node_type_locals: dict[str, set[str]] = {}
-    node_labels: dict[str, str] = {}
-    node_props: dict[str, dict[str, list[str]]] = {}
-    degree: dict[str, int] = {}
+def create_scan_state() -> dict[str, Any]:
+    """Fresh accumulator for :func:`scan_triples_into`.
 
-    for s, p, o in graph:
+    Streaming builds feed per-record subgraphs here and never hold the
+    whole corpus graph in memory — the state holds only the index-sized
+    node/edge records, which are persisted to SQLite by
+    :func:`build_and_persist_index_from_state` anyway.
+    """
+    return {
+        "node_categories": {},
+        "node_type_locals": {},
+        "node_labels": {},
+        "node_props": {},
+        "degree": {},
+        "candidates": set(),
+        "raw_edges": [],
+    }
+
+
+def scan_triples_into(state: dict[str, Any], triples: Iterable[tuple[Any, Any, Any]]) -> int:
+    """Accumulate one chunk of triples into ``state``; returns chunk size."""
+    node_categories: dict[str, str] = state["node_categories"]
+    node_type_locals: dict[str, set[str]] = state["node_type_locals"]
+    node_labels: dict[str, str] = state["node_labels"]
+    node_props: dict[str, dict[str, list[str]]] = state["node_props"]
+    degree: dict[str, int] = state["degree"]
+    candidates: set[str] = state["candidates"]
+    raw_edges: list[tuple[str, str, str]] = state["raw_edges"]
+
+    count = 0
+    for s, p, o in triples:
+        count += 1
         s_id = str(s)
         degree[s_id] = degree.get(s_id, 0) + 1
 
@@ -139,6 +162,8 @@ def scan_graph(graph: Graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
 
         o_id = str(o)
         degree[o_id] = degree.get(o_id, 0) + 1
+        candidates.add(s_id)
+        candidates.add(o_id)
 
         if p == RDF.type:
             local = _local_name(str(o))
@@ -146,23 +171,24 @@ def scan_graph(graph: Graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
             category = _category_for_type(local)
             if category != "Other" or s_id not in node_categories:
                 node_categories[s_id] = category
+            continue
 
-    candidate_ids: set[str] = set()
-    raw_edges: list[tuple[str, str, str]] = []
-    for s, p, o in graph:
-        if isinstance(o, Literal):
-            continue
-        if p == RDF.type:
-            candidate_ids.add(str(s))
-            candidate_ids.add(str(o))
-            continue
-        s_id, o_id = str(s), str(o)
-        candidate_ids.add(s_id)
-        candidate_ids.add(o_id)
         raw_edges.append((s_id, str(p), o_id))
+    return count
+
+
+def finish_scan(state: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Reduce a filled scan state into the node/edge records for the index."""
+    node_categories: dict[str, str] = state["node_categories"]
+    node_type_locals: dict[str, set[str]] = state["node_type_locals"]
+    node_labels: dict[str, str] = state["node_labels"]
+    node_props: dict[str, dict[str, list[str]]] = state["node_props"]
+    degree: dict[str, int] = state["degree"]
+    candidates: set[str] = state["candidates"]
+    raw_edges: list[tuple[str, str, str]] = state["raw_edges"]
 
     nodes: list[dict[str, Any]] = []
-    for nid in candidate_ids:
+    for nid in candidates:
         category = node_categories.get(nid) or _infer_category_from_uri(nid)
         label = node_labels.get(nid) or _local_name(nid)
         props = node_props.get(nid, {})
@@ -194,6 +220,13 @@ def scan_graph(graph: Graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]]
         })
 
     return nodes, edges
+
+
+def scan_graph(graph: Graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Scan an rdflib graph into node and edge records for the index."""
+    state = create_scan_state()
+    scan_triples_into(state, graph)
+    return finish_scan(state)
 
 
 def build_catalog(
@@ -241,6 +274,33 @@ def build_and_persist_index(
 ) -> GraphCatalog:
     """Scan graph, write SQLite index + catalog JSON. Returns catalog."""
     nodes, edges = scan_graph(graph)
+    catalog = build_catalog(nodes, edges, corpus_manuscript_count=corpus_manuscript_count)
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    catalog_path = run_dir / "graph_catalog.json"
+    catalog_path.write_text(
+        json.dumps(catalog.to_dict(), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    index_path = run_dir / "graph_index.sqlite"
+    _write_sqlite(index_path, nodes, edges)
+    return catalog
+
+
+def build_and_persist_index_from_state(
+    state: dict[str, Any],
+    run_dir: Path,
+    *,
+    corpus_manuscript_count: int | None = None,
+) -> GraphCatalog:
+    """Streaming twin of :func:`build_and_persist_index`.
+
+    Consumes a :func:`create_scan_state` accumulator fed by
+    :func:`scan_triples_into` so a build never needs the whole corpus
+    graph in memory (job-service R26).
+    """
+    nodes, edges = finish_scan(state)
     catalog = build_catalog(nodes, edges, corpus_manuscript_count=corpus_manuscript_count)
 
     run_dir.mkdir(parents=True, exist_ok=True)

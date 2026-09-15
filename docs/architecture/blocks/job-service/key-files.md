@@ -4,7 +4,8 @@
 
 | File | Purpose |
 |---|---|
-| `backend/app/pipeline/run_job_service.py` | Core: create/claim/admission gate (W-129)/heartbeat/reap/respawn/admit, spawn + dispatch, progress, finish, cancel, serialise; stale verify → resumable (W-130) |
+| `backend/app/pipeline/run_job_service.py` | Core: create/claim/admission gate (W-129, heavy cap + web/worker role split W-235)/heartbeat/reap/respawn/admit, spawn + dispatch, progress, finish, cancel, serialise; stale verify → resumable (W-130) |
+| `backend/app/jobs_worker.py` + `scripts/start_worker.sh` | Worker-dyno entrypoint (W-235): recovery + maintenance loop off the web dyno |
 | `backend/app/pipeline/verify_resume.py` | Auto-resume helpers: `apply_verify_job_auto_resume`, resumable result copy (W-130 / W-134) |
 | `backend/app/pipeline/run_job_params.py` | Bounded per-kind request validation + server-side secret injection; slow scope loading stays in workers |
 | `backend/app/routers/run_jobs.py` | HTTP API: list mine, list per run, start (201/409), get, cancel |
@@ -16,6 +17,8 @@
 | `backend/app/pipeline/authority_re_enrich_job.py` | Legacy `authority_re_enrich` worker retained for rollback only; new jobs are rejected by default |
 | `backend/app/pipeline/verify_job.py` | `ner_verify` / `wikidata_verify` / `hmo_item_verify` worker (shared); `authority_verify` is retired compatibility code |
 | `backend/app/pipeline/rdf_build_job.py` | `rdf_build` worker |
+| `backend/app/pipeline/rdf_build.py` | Streaming graph build (W-234): per-record subgraph → Turtle chunk append, checkpoints, subprocess post-processing |
+| `backend/app/pipeline/rdf_coverage_reports.py` | Child-process graph index + coverage reports (`python -m app.pipeline.rdf_coverage_reports`) |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | `wikidata_studio_build` worker |
 | `backend/app/pipeline/wikidata_upload_job.py` | `wikidata_upload` worker; two-pass deferred links; `steps` / `eta_seconds` for tray View modal (W-141 / W-192); dry-run/test/live all render `WikidataUploadSteps` |
 | `backend/app/pipeline/wikidata_publication_prepare_job.py` | Builds a sealed Publication Release as a build-class job; job parameters contain only source selection and actor ID |

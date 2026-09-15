@@ -16,6 +16,48 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:3ee373ed60bbcffa2a58a14cc9052532",
+      "path": "backend/app/pipeline/hmo_item_build_exec.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed pre-existing variable name (refreshed_authority result); no credential value",
+      "expires": "2027-03-15"
+    },
+    {
+      "fingerprint": "sha256:fb4454da2963057662784431f39109e9",
+      "path": "backend/app/pipeline/hmo_item_build_exec.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed pre-existing dict variable (entities_by_cn); no credential value",
+      "expires": "2027-03-15"
+    },
+    {
+      "fingerprint": "sha256:b62d8d942c87f63ba5df2e3cbd9d6b93",
+      "path": "backend/app/pipeline/hmo_item_build_job.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed dict(params) body variable; no credential value",
+      "expires": "2027-03-15"
+    },
+    {
+      "fingerprint": "sha256:aa7de8b9a8243879b3d21f70e10f03b6",
+      "path": "backend/app/pipeline/hmo_item_build_job.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "Reviewed refresh_authority parameter name; no credential value",
+      "expires": "2027-03-15"
+    },
+    {
+      "fingerprint": "sha256:351d94f3124b6ff23d4d4e9cec4ad9b1",
+      "path": "backend/app/pipeline/rdf_build_job.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed entities_by_cn variable name; no credential value",
+      "expires": "2027-03-15"
+    },
+    {
+      "fingerprint": "sha256:9d2b9911f25b23514b015ea8596c8a9c",
+      "path": "backend/app/pipeline/rdf_build_job.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed authority_matches parameter name; no credential value",
+      "expires": "2027-03-15"
+    },
+    {
       "fingerprint": "sha256:1aa53cc37c1c35eb07c390370852e808",
       "path": "backend/app/pipeline/research_aggregate.py",
       "rule_id": "generic-assigned-secret",

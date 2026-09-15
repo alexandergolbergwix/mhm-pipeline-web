@@ -533,3 +533,100 @@ async def test_fail_stale_non_verify_keeps_generic_message(db_session, sample_ru
     assert job.status == JOB_STATUS_FAILED
     assert job.result is None
     assert "Cancel and start again" in (job.error or "")
+
+
+@pytest.mark.asyncio
+async def test_heavy_cap_blocks_build_while_verify_running(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """R26: a build and a bulk verify may never run concurrently (R14/R15)."""
+    monkeypatch.setenv("RUN_JOB_MAX_HEAVY", "1")
+    monkeypatch.setenv("RUN_JOB_MAX_RUNNING", "10")
+    monkeypatch.setenv("RUN_JOB_MAX_VERIFY", "1")
+    monkeypatch.setenv("RUN_JOB_MAX_BUILD", "1")
+
+    await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_RUNNING,
+        claimed_by=WORKER_ID,
+    )
+    queued_build = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_QUEUED,
+    )
+
+    claimed = await _try_claim_with_admission(
+        db_session, queued_build.id, JOB_KIND_RDF_BUILD, status=JOB_STATUS_QUEUED,
+    )
+    assert claimed is False
+    await db_session.refresh(queued_build)
+    assert queued_build.status == JOB_STATUS_QUEUED
+    assert queued_build.progress.get("message") == CAPACITY_WAIT_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_web_role_defers_heavy_job_until_grace(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """R27: a web process leaves heavy kinds to the worker until the grace
+    window lapses, then claims the job itself (self-healing)."""
+    monkeypatch.setenv("RUN_JOB_ROLE", "web")
+    monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "0")
+
+    queued = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_QUEUED,
+    )
+
+    claimed = await _try_claim_with_admission(
+        db_session, queued.id, JOB_KIND_RDF_BUILD, status=JOB_STATUS_QUEUED,
+    )
+    assert claimed is True
+    await db_session.refresh(queued)
+    assert queued.status == JOB_STATUS_RUNNING
+
+
+@pytest.mark.asyncio
+async def test_web_role_leaves_fresh_heavy_job_for_worker(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """R27: a freshly queued heavy job waits for the worker's tick."""
+    monkeypatch.setenv("RUN_JOB_ROLE", "web")
+    monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "9999")
+
+    queued = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_QUEUED,
+    )
+
+    claimed = await _try_claim_with_admission(
+        db_session, queued.id, JOB_KIND_RDF_BUILD, status=JOB_STATUS_QUEUED,
+    )
+    assert claimed is False
+    await db_session.refresh(queued)
+    assert queued.status == JOB_STATUS_QUEUED
+    assert queued.progress.get("message") == CAPACITY_WAIT_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_web_role_executes_light_kinds(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """R27: light kinds (bulk approve) still run on the web dyno."""
+    monkeypatch.setenv("RUN_JOB_ROLE", "web")
+    monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "9999")
+
+    queued = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_EXTRACTION,
+        status=JOB_STATUS_QUEUED,
+    )
+
+    claimed = await _try_claim_with_admission(
+        db_session, queued.id, JOB_KIND_EXTRACTION, status=JOB_STATUS_QUEUED,
+    )
+    assert claimed is True
