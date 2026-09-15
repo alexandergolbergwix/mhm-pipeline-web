@@ -105,7 +105,11 @@ def _verdict_identity(ev: AgentEvent) -> str | None:
     for source in sources:
         if not isinstance(source, dict):
             continue
-        for key in ("_local_id", "_item_id", "local_id", "id"):
+        # ``_entity_id`` is the NER/Extraction channel identity
+        # (extraction_verify._approval_to_ner_shape); the others cover
+        # authority / Wikidata / HMO candidates. Without it the NER job
+        # progress stays at 0/total for the whole run.
+        for key in ("_local_id", "_item_id", "local_id", "id", "_entity_id"):
             value = str(source.get(key) or "").strip()
             if value:
                 return value

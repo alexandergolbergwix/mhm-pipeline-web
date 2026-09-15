@@ -44,6 +44,13 @@
       "expires": "2027-09-13"
     },
     {
+      "fingerprint": "sha256:01c018cf888aae21ba62a3c4481e63b4",
+      "path": "backend/app/pipeline/verify_job.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "SimpleNamespace auth stub built from job.created_by; not a credential",
+      "expires": "2027-03-15"
+    },
+    {
       "fingerprint": "sha256:050a1528886b07667204edf2bda7f537",
       "path": "backend/app/pipeline/verify_session_store.py",
       "rule_id": "generic-assigned-secret",

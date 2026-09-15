@@ -5,8 +5,25 @@ from __future__ import annotations
 import uuid
 
 from app.pipeline.agent_runner import AgentEvent
-from app.pipeline.verify_job import _progress_with_snapshot
+from app.pipeline.verify_job import _progress_with_snapshot, _verdict_identity
 from app.pipeline.verify_session_store import slim_job_session_snapshot
+
+
+def test_verdict_identity_accepts_ner_entity_id() -> None:
+    """NER candidates carry ``_entity_id``; without it judged stays 0/total."""
+    event = AgentEvent(
+        type="agent.verdict",
+        payload={"candidate": {"_entity_id": "e-1", "text": "x"}},
+    )
+    assert _verdict_identity(event) == "e-1"
+
+
+def test_verdict_identity_prefers_local_id() -> None:
+    event = AgentEvent(
+        type="agent.verdict",
+        payload={"candidate": {"_entity_id": "e-1", "_local_id": "ms::1"}},
+    )
+    assert _verdict_identity(event) == "ms::1"
 
 
 def test_progress_skips_snapshot_mid_run(monkeypatch) -> None:

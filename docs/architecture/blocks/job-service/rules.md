@@ -65,7 +65,7 @@
     leaving the modal running with no job or verdict events.
 
 
-16. **R16 — Verify-job progress counts unique candidate identities only.** `agent.stats` is advisory and streamed/replayed `agent.verdict` events may repeat; `verify_job.py` MUST derive `processed` from the deduplicated candidate local IDs and cap it at `scope_size`. *Why:* a 294-item Wikidata verify displayed 395/294 while still running (Rule W-64).
+16. **R16 — Verify-job progress counts unique candidate identities only.** `agent.stats` is advisory and streamed/replayed `agent.verdict` events may repeat; `verify_job.py` MUST derive `processed` from the deduplicated candidate local IDs and cap it at `scope_size`. The identity keys MUST cover every channel's candidate shape — `_local_id` / `_item_id` / `local_id` / `id` / `_entity_id` (NER/extraction candidates carry `_entity_id` only). *Why:* a 294-item Wikidata verify displayed 395/294 while still running (Rule W-64); an 1829-item NER verify sat at 0/1829 for the whole run because `_entity_id` was not read (found 2026-09-15).
 
 17. **R17 — Studio “Approve all visible” MUST be a `run_jobs` kind, never a browser PATCH storm.** `hmo_item_bulk_approve` / `wikidata_item_bulk_approve` take `local_ids`, version via `apply_event`, report progress, and honour cancel. *Why:* thousands of sequential override PATCHes hung the curator UI and did nothing useful (Rule W-105).
 
