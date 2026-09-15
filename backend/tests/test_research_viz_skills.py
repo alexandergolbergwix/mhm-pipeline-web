@@ -188,10 +188,11 @@ async def test_show_wikidata_places_maps_place_claims(sample_run):
     assert resp.status_code == 200, resp.text
     result = resp.json()["result"]
     assert result["artifact_key"] == "wikidata-places"
+    # One dot per place; Israel carries the one (deduped) manuscript mention.
     assert result["point_count"] == 1
-    assert result["distinct_places"] == 1
+    assert result["mention_count"] == 1
     assert result["items_with_places"] == 1
-    assert result["top_places"][0]["place"] == "Israel"
+    assert result["top_places"][0] == {"place": "Israel", "manuscripts": 1}
     assert "P625" in result["note"]
 
 

@@ -49,24 +49,26 @@ export function ResearchCanvas({
   return (
     <Glass className="flex flex-col h-full min-h-[32rem] gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1">
-          {artifacts.length === 0 ? (
-            <span className="text-xs muted">Canvas is empty. Ask in chat or use an action.</span>
-          ) : artifacts.map((art) => (
-            <button
-              key={art.artifact_key}
-              type="button"
-              onClick={() => onSelect(art.artifact_key)}
-              className={`text-xs px-2 py-1 rounded-lg border ${
-                art.artifact_key === active?.artifact_key
-                  ? "border-biu-sky/40 bg-biu-sky/15 text-biu-sky"
-                  : "border-white/10 text-muted"
-              }`}
+        {artifacts.length === 0 ? (
+          <span className="text-xs muted">Canvas is empty. Ask in chat or use an action.</span>
+        ) : (
+          <label className="flex items-center gap-2 min-w-0 flex-1">
+            <span className="text-xs muted shrink-0">Canvas ({artifacts.length}):</span>
+            <select
+              value={active?.artifact_key ?? ""}
+              onChange={(e) => onSelect(e.target.value)}
+              aria-label="Canvas artifact history — newest last"
+              data-testid="canvas-artifact-select"
+              className="flex-1 min-w-0 max-w-[36rem] truncate text-xs px-2 py-1.5 rounded-lg border border-white/10 bg-[var(--surface-inset)] text-ink"
             >
-              {art.title || art.artifact_key}
-            </button>
-          ))}
-        </div>
+              {artifacts.map((art, i) => (
+                <option key={art.artifact_key} value={art.artifact_key}>
+                  {artifacts.length - i}. {art.title || art.artifact_key}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {active ? (
           <div className="flex gap-2 text-xs">
             <a
