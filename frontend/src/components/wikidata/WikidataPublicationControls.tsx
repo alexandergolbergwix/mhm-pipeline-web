@@ -136,7 +136,7 @@ export function WikidataPublicationControls({
         <p className="text-lg font-medium">{executionWaitingForReview ? "Upload actions complete" : executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : executionFinishedSuccessfully ? "Upload complete" : execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
         <p className="text-sm muted">{release.entity_count} items in this Release · Target: {publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}</p>
         {plan && <p className="text-sm">{actionCount(plan.action_counts, "create")} new · {actionCount(plan.action_counts, "update")} updates · {actionCount(plan.action_counts, "skip")} reused without updates · {actionCount(plan.action_counts, "blocked")} need attention</p>}
-        {plan && <div className="rounded-md border border-white/10 bg-black/10 p-3" data-testid="publication-result-summary" aria-live="polite">
+        {plan && <div className="rounded-md border border-white/10 surface-inset p-3" data-testid="publication-result-summary" aria-live="polite">
           <p className="text-sm font-medium">{includedCount.toLocaleString()} of {release.entity_count.toLocaleString()} records prepared</p>
           <p className="text-xs muted">
             {omittedCount.toLocaleString()} record{omittedCount === 1 ? "" : "s"} not included in this publication.
@@ -220,7 +220,7 @@ export function WikidataPublicationControls({
               </details>
               {action.consent && <div className="mt-2 space-y-1">
                 <a href={`https://${publication.target === "live" ? "www" : "test"}.wikidata.org/wiki/${action.consent.qid}`}
-                  target="_blank" rel="noopener noreferrer" className="text-accent underline">Review {action.consent.qid}</a>
+                  target="_blank" rel="noopener noreferrer" className="link-accent underline">Review {action.consent.qid}</a>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={selectedKeys.includes(action.entity_key)}
                     disabled={busy || executionActive || !readiness.approvalCurrent || !publication.source_current}

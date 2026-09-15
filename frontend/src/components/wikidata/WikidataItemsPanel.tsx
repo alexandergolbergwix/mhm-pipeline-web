@@ -41,6 +41,8 @@ export interface WikidataItemsPanelProps {
   onApprovedOnlyChange: (v: boolean) => void;
   onForceRebuildChange: (v: boolean) => void;
   onUploadApprovedOnlyChange: (v: boolean) => void;
+  onSourceChange?: (v: "legacy" | "canonical") => void;
+  onSwitchToLegacySidebar?: () => void;
   onBuildLoaded?: (build: StudioBuild) => void;
 }
 
@@ -54,6 +56,8 @@ export function WikidataItemsPanel({
   onApprovedOnlyChange,
   onForceRebuildChange,
   onUploadApprovedOnlyChange,
+  onSourceChange,
+  onSwitchToLegacySidebar,
   onBuildLoaded,
 }: WikidataItemsPanelProps) {
   const [build, setBuild] = useState<StudioBuild | null>(null);
@@ -104,6 +108,14 @@ export function WikidataItemsPanel({
       .filter((item) => item.local_id && visible.has(item.local_id) && item.approved !== true)
       .map((item) => item.local_id as string);
   }, [build?.items, filteredIds]);
+
+  const attentionCount = useMemo(
+    () => (build?.items ?? []).filter((item) => {
+      const overall = String(item.ai_verdict?.overall ?? "").toLowerCase();
+      return overall !== "full" && overall !== "pass";
+    }).length,
+    [build?.items],
+  );
 
   const loadItems = useCallback(async (opts?: {silent?: boolean}) => {
     const silent = Boolean(opts?.silent);
@@ -373,168 +385,130 @@ export function WikidataItemsPanel({
         <LoadingOverlay message="Loading Wikidata items…" detail={buildProgress} className="rounded-xl z-30" />
       )}
 
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
+      {/* Zone A — Review */}
+      <div className="space-y-3">
         <div>
           <div className="kicker">Wikidata Items</div>
-          <h3 className="text-lg font-medium">
-            {build?.summary.total_items ?? 0} item{(build?.summary.total_items ?? 0) === 1 ? "" : "s"}
-          </h3>
-          <p className="muted text-sm mt-1">
-            These records come from the reviewed HMO Wikibase catalogue. Review, approve, preview the
-            Wikidata changes, then publish only when the result is ready.
+          <h3 className="text-lg font-medium">Review records</h3>
+          <p className="muted text-sm mt-1" data-testid="wikidata-review-status">
+            {build?.summary.total_items ?? 0} items · {build?.approved_item_count ?? 0} approved
+            {" · "}{attentionCount} need attention
           </p>
         </div>
-        <details className="space-y-3"><summary className="cursor-pointer text-sm">Source tools and exports</summary>
-        <div className="flex flex-wrap items-center gap-2">
-          <a
-            href={Studio.exportItemsUrl(runId, "json")}
-            download
-            className="button-ghost text-xs"
-            data-testid="wikidata-items-export-json"
-          >
-            Export JSON
-          </a>
-          <a
-            href={Studio.exportItemsUrl(runId, "csv")}
-            download
-            className="button-ghost text-xs"
-            data-testid="wikidata-items-export-csv"
-          >
-            Export CSV
-          </a>
+        <div className="flex flex-wrap items-center gap-2" data-testid="wikidata-item-lifecycle-bar">
+          <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">
+            <button
+              type="button"
+              onClick={() => onApprovedOnlyChange(false)}
+              className={`px-3 py-1 rounded-full transition ${!approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"}`}
+            >
+              All matches
+            </button>
+            <button
+              type="button"
+              onClick={() => onApprovedOnlyChange(true)}
+              className={`px-3 py-1 rounded-full transition ${approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"}`}
+            >
+              Approved only
+            </button>
+          </GlassPill>
           <button
             type="button"
-            className="button-ghost text-xs"
-            onClick={() => importRef.current?.click()}
-            data-testid="wikidata-items-import-btn"
+            className="button-ghost text-sm"
+            disabled={loading || (studioBuildJob != null && isJobActive(studioBuildJob.status))}
+            onClick={() => void refresh({nextForceRebuild: forceRebuild})}
           >
-            Import overrides
+            {loading || (studioBuildJob != null && isJobActive(studioBuildJob.status))
+              ? "Rebuilding…"
+              : "Rebuild"}
           </button>
-          <input
-            ref={importRef}
-            type="file"
-            accept=".json,.csv"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void handleImport(f);
-              e.target.value = "";
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
+            <button
+              type="button"
+              className="button-ghost text-xs"
+              disabled={!nonPassingIds.length}
+              data-testid="wikidata-items-verify-nonpassing"
+              title="Re-judge only items that are not already full/pass. Unchanged fulls stick across schema bumps (Rule W-175)."
+              onClick={() => openVerify(nonPassingIds, "audit_wikidata_item")}
+            >
+              Verify non-passing ({nonPassingIds.length})
+            </button>
+            <button
+              type="button"
+              className="button-ghost text-xs"
+              disabled={!filteredIds.length}
+              data-testid="wikidata-items-verify-ai"
+              title="Judge every currently filtered row (including fulls that sticky-full would otherwise skip only when override-cache is on)."
+              onClick={() => openVerify(filteredIds, "audit_wikidata_item")}
+            >
+              Verify visible ({filteredIds.length})
+            </button>
+            <button
+              type="button"
+              className="button-ghost text-xs"
+              disabled={!autofixItemIds.length}
+              data-testid="wikidata-items-autofix-ai"
+              onClick={() => openVerify(autofixItemIds, "autofix_from_wikidata")}
+            >
+              Autofix with AI ({autofixItemIds.length})
+            </button>
+            <button
+              type="button"
+              className="button-primary text-xs"
+              disabled={!pendingVisibleIds.length || approveBusy}
+              data-testid="wikidata-items-approve-visible"
+              title="Approve every currently filtered row that is not already approved (runs as a background job)."
+              onClick={() => void approveAllVisible()}
+            >
+              {approveBusy
+                ? "Approving…"
+                : `Approve all visible (${pendingVisibleIds.length})`}
+            </button>
+          </div>
+        </div>
+        {error && <p className="text-danger text-sm">{error}</p>}
+        {approveFeedback && <p className="text-sm text-biu-sky" role="status">{approveFeedback}</p>}
+        {studioBuildJob && (
+          <JobProgressInline
+            job={studioBuildJob}
+            labels={{
+              running: "Building Wikidata items…",
+              succeeded: "Build complete:",
+              failed: "Build failed:",
+              cancelled: "Build cancelled:",
             }}
           />
-          <SectionExportMenu section="wikidata-studio" runId={runId} availableFormats={["json", "csv", "ttl"]} approvedOnly={approvedOnly} />
-          <button type="button" className="button-ghost text-xs" onClick={() => void refresh()} disabled={loading}>
-            Refresh
-          </button>
-          <button
-            type="button"
-            className="button-primary text-xs"
-            disabled={!nonPassingIds.length}
-            data-testid="wikidata-items-verify-nonpassing"
-            title="Re-judge only items that are not already full/pass. Unchanged fulls stick across schema bumps (Rule W-175)."
-            onClick={() => openVerify(nonPassingIds, "audit_wikidata_item")}
-          >
-            Verify non-passing ({nonPassingIds.length})
-          </button>
-          <button
-            type="button"
-            className="button-ghost text-xs"
-            disabled={!filteredIds.length}
-            data-testid="wikidata-items-verify-ai"
-            title="Judge every currently filtered row (including fulls that sticky-full would otherwise skip only when override-cache is on)."
-            onClick={() => openVerify(filteredIds, "audit_wikidata_item")}
-          >
-            Verify visible ({filteredIds.length})
-          </button>
-          <button
-            type="button"
-            className="button-ghost text-xs"
-            disabled={!autofixItemIds.length}
-            data-testid="wikidata-items-autofix-ai"
-            onClick={() => openVerify(autofixItemIds, "autofix_from_wikidata")}
-          >
-            Autofix with AI ({autofixItemIds.length})
-          </button>
-          <button
-            type="button"
-            className="button-primary text-xs"
-            disabled={!pendingVisibleIds.length || approveBusy}
-            data-testid="wikidata-items-approve-visible"
-            title="Approve every currently filtered row that is not already approved (runs as a background job)."
-            onClick={() => void approveAllVisible()}
-          >
-            {approveBusy
-              ? "Approving…"
-              : `Approve all visible (${pendingVisibleIds.length})`}
-          </button>
-        </div>
-        </details>
-      </div>
-
-      <details><summary className="cursor-pointer text-sm">Source settings and rebuild</summary>
-      <div className="flex flex-wrap gap-2 items-center border-b border-white/5 pb-4" data-testid="wikidata-item-lifecycle-bar">
-        <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">
-          <button
-            type="button"
-            onClick={() => onApprovedOnlyChange(false)}
-            className={`px-3 py-1 rounded-full transition ${!approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"}`}
-          >
-            All matches
-          </button>
-          <button
-            type="button"
-            onClick={() => onApprovedOnlyChange(true)}
-            className={`px-3 py-1 rounded-full transition ${approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"}`}
-          >
-            Approved only
-          </button>
-        </GlassPill>
-        <button
-          type="button"
-          className="button-ghost text-sm"
-          disabled={loading || (studioBuildJob != null && isJobActive(studioBuildJob.status))}
-          onClick={() => void refresh({nextForceRebuild: forceRebuild})}
-        >
-          {loading || (studioBuildJob != null && isJobActive(studioBuildJob.status))
-            ? "Rebuilding…"
-            : "Rebuild"}
-        </button>
-        <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={forceRebuild}
-            onChange={(e) => onForceRebuildChange(e.target.checked)}
-            className="accent-biu-sky"
-            data-testid="wikidata-rebuild-skip-cache"
-          />
-          Skip cache (force fresh build)
-        </label>
-        <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={uploadApprovedOnly}
-            onChange={(e) => onUploadApprovedOnlyChange(e.target.checked)}
-            className="accent-biu-sky"
-            data-testid="wikidata-upload-approved-only"
-          />
-          Approved items only
-        </label>
-        {build && (
-          <span className="text-[11px] muted">
-            {build.approved_item_count} of {build.summary.total_items} approved
-          </span>
         )}
-        <a
-          href={Studio.qsUrl(runId, approvedOnly, uploadApprovedOnly, true)}
-          download
-          className="button-ghost text-sm ml-auto"
-          data-testid="wikidata-qs-download"
-        >
-          Download QuickStatements (gated)
-        </a>
+        {approveJob && (
+          <JobProgressInline
+            job={approveJob}
+            labels={{
+              running: "Approving visible items…",
+              succeeded: "Approve complete:",
+              failed: "Approve failed:",
+              cancelled: "Approve cancelled:",
+            }}
+          />
+        )}
+        {buildPresent && (Boolean(build?.items?.length) || !loading) && (
+          <WikidataItemTable
+            items={build?.items ?? []}
+            onFilteredChange={setFilteredIds}
+            onOpenItem={setOpenItem}
+            onToggleApproved={(item, next) => void handleToggleApproved(item, next)}
+            judgingIds={judgingIds}
+          />
+        )}
+        {!buildPresent && !loading && (
+          <p className="muted text-sm">
+            {source === "canonical"
+              ? "No HMO canonical records yet — complete the HMO upload read-back first."
+              : "No items yet — rebuild after approving authority matches."}
+          </p>
+        )}
       </div>
 
-      </details>
-
+      {/* Zone B — Publish */}
       {build && (
         <WikidataPublicationPanel
           runId={runId}
@@ -571,48 +545,120 @@ export function WikidataItemsPanel({
         />
       )}
 
-      {error && <p className="text-danger text-sm">{error}</p>}
-      {approveFeedback && <p className="text-sm text-biu-sky" role="status">{approveFeedback}</p>}
-      {studioBuildJob && (
-        <JobProgressInline
-          job={studioBuildJob}
-          labels={{
-            running: "Building Wikidata items…",
-            succeeded: "Build complete:",
-            failed: "Build failed:",
-            cancelled: "Build cancelled:",
-          }}
-        />
-      )}
-      {approveJob && (
-        <JobProgressInline
-          job={approveJob}
-          labels={{
-            running: "Approving visible items…",
-            succeeded: "Approve complete:",
-            failed: "Approve failed:",
-            cancelled: "Approve cancelled:",
-          }}
-        />
-      )}
-      {buildPresent && (Boolean(build?.items?.length) || !loading) && (
-        <details open={!publicationActive}><summary className="cursor-pointer text-sm">Browse and edit source items</summary>
-        <WikidataItemTable
-          items={build?.items ?? []}
-          onFilteredChange={setFilteredIds}
-          onOpenItem={setOpenItem}
-          onToggleApproved={(item, next) => void handleToggleApproved(item, next)}
-          judgingIds={judgingIds}
-        />
-        </details>
-      )}
-      {!buildPresent && !loading && (
-        <p className="muted text-sm">
-          {source === "canonical"
-            ? "No HMO canonical records yet — complete the HMO upload read-back first."
-            : "No items yet — rebuild after approving authority matches."}
-        </p>
-      )}
+      {/* Zone C — Advanced */}
+      <details className="space-y-3">
+        <summary className="cursor-pointer text-sm">Advanced: source, exports, rebuild</summary>
+        <div className="space-y-3 pt-2">
+          <div className="flex flex-wrap gap-2 items-center">
+            <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={forceRebuild}
+                onChange={(e) => onForceRebuildChange(e.target.checked)}
+                className="accent-biu-sky"
+                data-testid="wikidata-rebuild-skip-cache"
+              />
+              Skip cache (force fresh build)
+            </label>
+            <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={uploadApprovedOnly}
+                onChange={(e) => onUploadApprovedOnlyChange(e.target.checked)}
+                className="accent-biu-sky"
+                data-testid="wikidata-upload-approved-only"
+              />
+              Approved items only
+            </label>
+            {build && (
+              <span className="text-[11px] muted">
+                {build.approved_item_count} of {build.summary.total_items} approved
+              </span>
+            )}
+            <a
+              href={Studio.qsUrl(runId, approvedOnly, uploadApprovedOnly, true)}
+              download
+              className="button-ghost text-sm ml-auto"
+              data-testid="wikidata-qs-download"
+            >
+              Download QuickStatements (gated)
+            </a>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="kicker text-xs">Export &amp; import</span>
+            <a
+              href={Studio.exportItemsUrl(runId, "json")}
+              download
+              className="button-ghost text-xs"
+              data-testid="wikidata-items-export-json"
+            >
+              Export JSON
+            </a>
+            <a
+              href={Studio.exportItemsUrl(runId, "csv")}
+              download
+              className="button-ghost text-xs"
+              data-testid="wikidata-items-export-csv"
+            >
+              Export CSV
+            </a>
+            <button
+              type="button"
+              className="button-ghost text-xs"
+              onClick={() => importRef.current?.click()}
+              data-testid="wikidata-items-import-btn"
+            >
+              Import overrides
+            </button>
+            <input
+              ref={importRef}
+              type="file"
+              accept=".json,.csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleImport(f);
+                e.target.value = "";
+              }}
+            />
+            <SectionExportMenu section="wikidata-studio" runId={runId} availableFormats={["json", "csv", "ttl"]} approvedOnly={approvedOnly} />
+          </div>
+          {(onSourceChange || onSwitchToLegacySidebar) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="kicker text-xs">Data source</span>
+              <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">
+                {onSourceChange && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onSourceChange("legacy")}
+                      className={`px-3 py-1 rounded-full transition ${source === "legacy" ? "bg-white/12 text-ink" : "muted hover:text-ink"}`}
+                    >
+                      Legacy source
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSourceChange("canonical")}
+                      className={`px-3 py-1 rounded-full transition ${source === "canonical" ? "bg-biu-sky/20 text-ink" : "muted hover:text-ink"}`}
+                    >
+                      Reviewed HMO records
+                    </button>
+                  </>
+                )}
+                {onSwitchToLegacySidebar && (
+                  <button
+                    type="button"
+                    onClick={onSwitchToLegacySidebar}
+                    className="px-3 py-1 rounded-full transition muted hover:text-ink"
+                  >
+                    Legacy sidebar
+                  </button>
+                )}
+              </GlassPill>
+            </div>
+          )}
+        </div>
+      </details>
 
       {openItem && (
         <WikidataItemDetailDrawer

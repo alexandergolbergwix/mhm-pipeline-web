@@ -26,6 +26,9 @@
 - `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `wikidataUploadProgressModal.spec.ts`, `useVerifyJob.spec.ts`, `verifyResume.spec.ts`, `throttledProgressRefresh.spec.ts`, `studioUploadProgress.spec.ts`, `canvasState.spec.ts`, `ResearchChat.spec.tsx` — R1–R4, R11, R13–R23 plus Research Assistant AG-UI canvas reducer, chat wait dots, and pydantic-ai retry humanize.
 - `frontend/e2e/wikidata-upload-panel.spec.ts` — compatibility dry-run/test
   radios and historic live two-step progress modal + job tray.
+- `frontend/e2e/wikidata-studio-theme.spec.ts` — light/dark theming of the
+  Publication panel (no hardcoded dark surfaces, W-35), header theme toggle,
+  and scheme persistence across reload.
 - `frontend/e2e/wikidata-publication.spec.ts` — default Publication target
   controls do not render beside compatibility upload controls. It also checks
   that **Resolve N items with AI** requests blocked-only automatic resolution.

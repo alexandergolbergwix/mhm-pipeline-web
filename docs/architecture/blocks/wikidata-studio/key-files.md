@@ -76,7 +76,7 @@
 | `backend/app/models/wikidata_studio_cache.py` | `WikidataStudioCache` — one row per `(run_id, approved_only)`, fingerprint-keyed build result |
 | `backend/app/models/item_override.py` | `WikidataItemOverride` — curator diff + `approved` + `ai_verdict`/`ai_verdict_at` |
 | `frontend/src/routes/WikidataStudio.tsx` | Studio page: modern review table (default) + legacy sidebar/table toggle; `useProjectEvents` → job-tray live progress |
-| `frontend/src/components/wikidata/WikidataItemsPanel.tsx` | Orchestrator: lifecycle bar, Publication-first target controls, compatibility upload hub after API unavailability, review table, drawer, verify + upload progress modals; **Approve all visible** → `wikidata_item_bulk_approve` job |
+| `frontend/src/components/wikidata/WikidataItemsPanel.tsx` | Orchestrator: Review zone (status line, scope pill, Rebuild, AI verify/autofix/approve toolbar, always-visible review table), Publication panel, compatibility upload hub after API unavailability, collapsed Advanced area (skip-cache, upload scope, exports/import, data-source switch), drawer, verify + upload progress modals; **Approve all visible** → `wikidata_item_bulk_approve` job |
 | `backend/app/pipeline/studio_item_bulk_approve.py` | Shared HMO/Wikidata bulk-approve core (versioned overrides) |
 | `backend/app/pipeline/studio_item_bulk_approve_job.py` | Background worker for Studio bulk approve |
 | `frontend/src/components/wikidata/WikidataItemTable.tsx` | HMO-parity review table with a labelled search field, filters, badges, pagination, and direct record editing |

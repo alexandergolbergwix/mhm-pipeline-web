@@ -397,8 +397,8 @@
       "fingerprint": "sha256:5caad6463c7bf4b49ec7e73c1db75a18",
       "path": "frontend/src/components/wikidata/WikidataItemsPanel.tsx",
       "rule_id": "generic-assigned-secret",
-      "reason": "Reviewed source or documentation text; it is not a credential.",
-      "expires": "2026-09-06"
+      "reason": "refreshToken is a React useState counter (number) that remounts the upload panel; not a credential; reviewed false positive",
+      "expires": "2027-03-15"
     },
     {
       "fingerprint": "sha256:60010bc21c188e6299e8c3850956aadd",

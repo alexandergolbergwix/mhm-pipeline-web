@@ -15,9 +15,14 @@ bookmark compatibility). Project pages under `/projects/:projectId{,/history,/en
 
 **Wikidata Studio workflow.** The modern review surface defaults to the
 reviewed HMO Wikibase read-back and carries the selected source through build,
-refresh, verification, and upload-job parameters. The page presents review,
-approval, preview, and public publication as separate steps; technical legacy
-projection remains available as an explicit alternate source. The item drawer
+refresh, verification, and upload-job parameters. The page is laid out in three
+zones — **Review** (status line plus the item review table, always visible,
+with the scope pill, Rebuild, and the AI verify/autofix/approve toolbar),
+**Publish** (the Publication panel), and one collapsed **Advanced**
+`<details>` ("Advanced: source, exports, rebuild") holding skip-cache, the
+upload approved-only scope, exports/import, the data-source switch, and the
+legacy-sidebar toggle. The review table is mounted unconditionally (no
+unmount/remount flicker during jobs; block R14). The item drawer
 exposes a QID-bound **accept foreign modify** checkbox when `existing_qid` is
 set (Rule W-99); uploads load those accepts from `WikidataItemOverride`.
 The Publication panel owns the test/live target choice. The compatibility
@@ -103,7 +108,13 @@ frosted glass on Safari/Firefox. The inner layer uses `glassSafeInset`
 (`liquidGlassMath.ts`) so labels are not clipped by the curve (R21).
 Displacement maps are memoised in `glassMapCache.ts`. Raw
 `className="glass"` / `glass-pill` are deprecated legacy aliases; form
-fields keep the plain-CSS `input-glass`.
+fields keep the plain-CSS `input-glass`. Theming runs through CSS custom
+properties on `<html data-theme="…">` with the store in `stores/theme.ts`;
+the toggle lives in the global header (`Layout.tsx`) on every page. Raw
+hardcoded surfaces (`bg-slate-9*`, unremapped `bg-black/*`) are banned —
+use `<Glass>` or tokens (`surface-inset`, `link-accent`, `badge-*`);
+`index.css:316-384` remaps the legacy white/black opacity utilities for
+light mode.
 
 **Build tooling.** Vite 5 + `@vitejs/plugin-react`; `@` aliases `src/`;
 dev server proxies `/api` to the FastAPI backend on :8000 (production

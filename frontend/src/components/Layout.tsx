@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import {Glass, GlassPill} from "@/components/glass";
 import {JobTrayBootstrap} from "@/components/jobs/JobTray";
+import {ThemeToggle} from "@/components/ThemeToggle";
 import {useAuth} from "@/stores/auth";
 
 
@@ -27,6 +28,7 @@ export function Layout({children}: Props) {
         </nav>
 
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <span className="text-sm muted hidden md:inline">
             {user?.name} <span className="opacity-60">· {user?.email}</span>
           </span>

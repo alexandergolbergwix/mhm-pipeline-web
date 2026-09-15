@@ -14,6 +14,7 @@ import {
 import type {StudioBuild, StudioItem} from "@/api/wikidataStudio";
 import {WikidataPublicationControls} from "@/components/wikidata/WikidataPublicationControls";
 import {usePublicationEntityPage} from "@/hooks/usePublicationEntityPage";
+import {Glass} from "@/components/glass";
 
 import {useRunJobs} from "@/stores/runJobs";
 import {JobProgressInline} from "@/components/jobs/JobProgressInline";
@@ -256,7 +257,7 @@ export function WikidataPublicationPanel({
   }, [operation, publication, prepareJobId, runId]);
 
   return (
-    <section className="rounded-xl border border-biu-sky/20 bg-slate-950 p-4 space-y-4" data-testid="wikidata-publication-panel">
+    <Glass as="section" className="p-4 space-y-4" data-testid="wikidata-publication-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="kicker">Publication</div>
@@ -398,7 +399,7 @@ export function WikidataPublicationPanel({
                     <span className="block text-ink">{entity.label}</span>
                     <span className="muted text-xs">{entity.statement_count} statements</span>
                     {entity.policy_reason && <p className="mt-2 muted">Automatic policy: {entity.policy_reason}</p>}
-                    {entity.reference_only && <p className="mt-2 text-accent">Use {entity.target_qid} without updates. Connections use this QID.</p>}
+                    {entity.reference_only && <p className="mt-2 link-accent">Use {entity.target_qid} without updates. Connections use this QID.</p>}
                     {!!entity.deferred_statements?.length && <details className="mt-2 text-warn">
                       <summary className="cursor-pointer">
                         {entity.deferred_statements.length} connection{entity.deferred_statements.length === 1 ? "" : "s"} not included
@@ -442,6 +443,6 @@ export function WikidataPublicationPanel({
           setError(caught instanceof ApiError ? caught.detail : String(caught));
         }); }}>Cancel Publication job</button>}
       {!publication && error && <p className="text-sm text-danger" role="alert">{error}</p>}
-    </section>
+    </Glass>
   );
 }

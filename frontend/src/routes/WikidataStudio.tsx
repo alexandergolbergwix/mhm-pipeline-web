@@ -277,26 +277,7 @@ export default function WikidataStudio() {
             <div className="kicker">
               Wikidata Studio · <Link to={`/runs/${runId}/overview`} className="hover:text-ink underline">back to run</Link>
             </div>
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-semibold">Review records for Wikidata</h2>
-                <p className="muted text-sm mt-1">Prepared from the reviewed HMO Wikibase records. Nothing is published until you choose a public upload.</p>
-              </div>
-              <details className="text-xs">
-                <summary className="cursor-pointer muted">View options</summary>
-                <GlassPill as="div" className="mt-2 px-1 py-1 flex gap-1 text-xs">
-                  <button type="button" onClick={() => { setProjectionSource("legacy"); }} className={projectionSource === "legacy" ? "px-3 py-1 rounded-full bg-white/12 text-ink" : "px-3 py-1 rounded-full muted"}>Legacy source</button>
-                  <button type="button" onClick={() => { setProjectionSource("canonical"); }} className={projectionSource === "canonical" ? "px-3 py-1 rounded-full bg-biu-sky/20 text-ink" : "px-3 py-1 rounded-full muted"}>Reviewed HMO records</button>
-                  <button
-                    type="button"
-                    onClick={() => setReviewMode("legacy")}
-                    className="px-3 py-1 rounded-full transition muted hover:text-ink"
-                  >
-                    Legacy sidebar
-                  </button>
-                </GlassPill>
-              </details>
-            </div>
+            <h2 className="text-2xl font-semibold">Review records for Wikidata</h2>
           </Glass>
 
           <WikidataItemsPanel
@@ -309,6 +290,8 @@ export default function WikidataStudio() {
             onApprovedOnlyChange={setApprovedOnly}
             onForceRebuildChange={setForceRebuild}
             onUploadApprovedOnlyChange={setUploadApprovedOnly}
+            onSourceChange={setProjectionSource}
+            onSwitchToLegacySidebar={() => setReviewMode("legacy")}
             onBuildLoaded={setBuild}
           />
         </div>

@@ -63,7 +63,10 @@ that remain outside this publication. Omitted connections show a named property
 and target first; technical JSON remains inside a disclosure. The manual editor
 uses explicit English and Hebrew field labels, language direction metadata, and
 one Hebrew alias per row. These labels change the interface only; the digest,
-approval, and publication gates remain unchanged.
+approval, and publication gates remain unchanged. The panel renders on the
+shared `<Glass>` surface (Rule W-35) and sits below the always-visible review
+table on the Studio page — the zone order is Review, then Publish, then one
+collapsed Advanced area for exports and rebuild options.
 
 ## API
 

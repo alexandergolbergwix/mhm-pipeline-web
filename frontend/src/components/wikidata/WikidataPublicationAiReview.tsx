@@ -126,7 +126,7 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
       {!reportCurrent && !reportPreparedThisRelease && <p className="text-warn">This report does not match the current Release and Plan.</p>}
       <ul className="space-y-3">{report.items.map((item) => <li key={item.entity_key} className="text-sm">
         <p>{item.label} · {item.status.replaceAll("_", " ")}</p><p className="muted">{item.reason}</p>
-        {item.qid && <a className="text-accent underline" target="_blank" rel="noopener noreferrer"
+        {item.qid && <a className="link-accent underline" target="_blank" rel="noopener noreferrer"
           href={`https://${publication.target === "live" ? "www" : "test"}.wikidata.org/wiki/${item.qid}`}>Review {item.qid}</a>}
       </li>)}</ul>
       {!report.automatic && <button type="button" className="button-primary text-sm" disabled={busy || active || loading || recommended.length === 0}
