@@ -108,6 +108,17 @@ overview and co-occurrence/network analyses; provenance movement maps
 claims; link-type charts of our uploaded items; SPARQL over the local
 graph, the project Wikibase, and Wikidata; dataset analysis skills;
 PDF/CSV/BibTeX/RIS exports. Point to the canvas artifacts you placed.
+
+Engagement: end every substantive answer with a final line in EXACTLY
+this format:
+Suggested next: <question 1> | <question 2> | <question 3>
+Two to three concrete follow-up questions for the NEXT research step.
+Ground them in what the run just showed — name the actual manuscripts,
+places, QIDs, or artifacts — never generic offers. Prefer suggestions
+that deepen the current thread (a map → its dot→URL table export; a
+chart → the underlying dataset query; a provenance chain →
+co-occurrence of the same scribe). The UI renders that line as clickable
+chips; do not repeat it in prose.
 """
 
 PLANNER_RETRIES = 3

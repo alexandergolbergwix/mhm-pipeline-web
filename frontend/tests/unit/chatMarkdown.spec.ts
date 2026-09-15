@@ -1,4 +1,4 @@
-import {renderChatMarkdown} from "@/components/research/ResearchChat";
+import {renderChatMarkdown, splitSuggestions} from "@/components/research/ResearchChat";
 import {describe, expect, it} from "vitest";
 
 describe("renderChatMarkdown", () => {
@@ -20,5 +20,22 @@ describe("renderChatMarkdown", () => {
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
     expect(html).toContain("<strong>ok</strong>");
+  });
+});
+
+describe("splitSuggestions", () => {
+  it("extracts the Suggested next line into chips", () => {
+    const {body, suggestions} = splitSuggestions(
+      "The map is on the canvas.\n\nSuggested next: Export the dot→URL table? | Map one manuscript? | Show link types?",
+    );
+    expect(body).toBe("The map is on the canvas.");
+    expect(suggestions).toHaveLength(3);
+    expect(suggestions[0]).toContain("Export");
+  });
+
+  it("leaves answers without suggestions untouched", () => {
+    const {body, suggestions} = splitSuggestions("Plain answer.");
+    expect(body).toBe("Plain answer.");
+    expect(suggestions).toHaveLength(0);
   });
 });

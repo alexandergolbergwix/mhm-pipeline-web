@@ -74,6 +74,39 @@ export function renderChatMarkdown(text: string): string {
     );
 }
 
+/** Splits a trailing "Suggested next: a | b | c" line off the answer body. */
+export function splitSuggestions(text: string): {body: string; suggestions: string[]} {
+  const marker = "Suggested next:";
+  const idx = text.lastIndexOf(marker);
+  if (idx === -1) return {body: text, suggestions: []};
+  const body = text.slice(0, idx).trimEnd();
+  const suggestions = text
+    .slice(idx + marker.length)
+    .split("|")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+  return {body, suggestions};
+}
+
+function SuggestionChips({suggestions, onPick}: {suggestions: string[]; onPick: (text: string) => void}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {suggestions.map((s) => (
+        <button
+          key={s}
+          type="button"
+          onClick={() => onPick(s)}
+          className="text-xs px-2.5 py-1 rounded-full border border-biu-sky/40 text-biu-sky hover:bg-biu-sky/10 transition-colors text-left"
+        >
+          {s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ChatMarkdown({text}: {text: string}) {
   const html = text
     .split(/\n{2,}/)
@@ -135,24 +168,35 @@ export function ResearchChat({
         data-testid="research-chat-log"
         aria-busy={busy}
       >
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={msg.role === "user" ? "text-ink" : "text-muted"}
-          >
-            <div className="kicker mb-0.5">{msg.role === "user" ? "You" : "Assistant"}</div>
-            {msg.role === "user" ? (
-              <p className="whitespace-pre-wrap">{messageText(msg)}</p>
-            ) : (
-              <ChatMarkdown text={messageText(msg)} />
-            )}
-          </div>
-        ))}
+        {messages.map((msg, idx) => {
+          const isAssistant = msg.role !== "user";
+          const {body, suggestions} = isAssistant
+            ? splitSuggestions(messageText(msg))
+            : {body: messageText(msg), suggestions: []};
+          return (
+            <div
+              key={idx}
+              className={msg.role === "user" ? "text-ink" : "text-muted"}
+            >
+              <div className="kicker mb-0.5">{msg.role === "user" ? "You" : "Assistant"}</div>
+              {msg.role === "user" ? (
+                <p className="whitespace-pre-wrap">{body}</p>
+              ) : (
+                <>
+                  <ChatMarkdown text={body} />
+                  {!busy && idx === messages.length - 1 ? (
+                    <SuggestionChips suggestions={suggestions} onPick={onSend} />
+                  ) : null}
+                </>
+              )}
+            </div>
+          );
+        })}
         {busy ? <ActivityTrack ui={{activity, thinking}} /> : null}
         {streamingText ? (
           <div className="text-muted">
             <div className="kicker mb-0.5">Assistant</div>
-            <ChatMarkdown text={streamingText} />
+            <ChatMarkdown text={splitSuggestions(streamingText).body} />
           </div>
         ) : null}
         {busy && !streamingText ? <WaitingDots /> : null}
