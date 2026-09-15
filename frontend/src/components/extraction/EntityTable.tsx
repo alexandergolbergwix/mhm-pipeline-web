@@ -500,7 +500,7 @@ export function EntityTable(props: EntityTableProps) {
       <div className={CURATOR_TABLE_SCROLL_CLASS} ref={parentRef}>
        <div className="min-w-max">
       <div
-        className="sticky top-0 z-20 grid items-center gap-2 border-b border-white/10 bg-[rgba(16,24,36,0.92)] backdrop-blur px-2 py-2 text-xs uppercase tracking-wide kicker"
+        className="sticky top-0 z-20 grid items-center gap-2 border-b border-white/10 bg-[var(--surface-table-head)] backdrop-blur px-2 py-2 text-xs uppercase tracking-wide kicker"
         style={{ gridTemplateColumns: gridTemplate }}
       >
         <input
@@ -548,7 +548,7 @@ export function EntityTable(props: EntityTableProps) {
         })}
       </div>
       <div
-        className="sticky top-[42px] z-10 grid items-center gap-1 border-b border-white/10 bg-[rgba(16,24,36,0.85)] backdrop-blur px-2 py-1 text-xs"
+        className="sticky top-[42px] z-10 grid items-center gap-1 border-b border-white/10 bg-[var(--surface-table-head)] backdrop-blur px-2 py-1 text-xs"
         style={{ gridTemplateColumns: gridTemplate }}
       >
         <span />

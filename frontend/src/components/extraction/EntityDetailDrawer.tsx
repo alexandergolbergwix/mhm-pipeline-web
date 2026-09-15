@@ -217,7 +217,7 @@ export function EntityDetailDrawer(props: EntityDetailDrawerProps) {
       {/* Quick action row — sticky at top so curator can decide
           without scrolling. */}
       {entity && (
-        <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 border-b border-white/5 bg-[rgba(16,24,36,0.6)]">
+        <div className="sticky top-0 z-10 flex items-center gap-2 px-4 py-2 border-b border-white/5 bg-[var(--surface-table-head)]">
           <button type="button"
                   disabled={busy}
                   onClick={() => patchEntity({ approved: !entity.approved })}
