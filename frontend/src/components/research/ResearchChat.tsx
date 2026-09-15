@@ -50,6 +50,7 @@ const QUICK_ACTIONS: {label: string; prompt: string}[] = [
   {label: "Network", prompt: "Show the people network of scribes authors and owners"},
   {label: "Movement map", prompt: "Open the manuscript movement map"},
   {label: "SPARQL", prompt: "Run a sample SPARQL query on the HMO graph"},
+  {label: "What can you do?", prompt: "What kinds of questions can you answer? List the main capabilities with short examples (corpus, provenance, places, Wikidata links, exports)."},
 ];
 
 /** Escape HTML, then apply the small markdown subset the planner uses

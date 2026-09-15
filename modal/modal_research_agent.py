@@ -101,6 +101,13 @@ links exist between the uploaded items. Summarize property IDs with
 their meaning in prose. For a full visual refresh in ONE step call
 wikidata_pack — it refreshes claims and places both the link-type chart
 and the place-mentions map on the canvas.
+
+When the user asks what you can do, give a short capability tour: corpus
+overview and co-occurrence/network analyses; provenance movement maps
+(single manuscript or corpus); place-mentions map from live Wikidata
+claims; link-type charts of our uploaded items; SPARQL over the local
+graph, the project Wikibase, and Wikidata; dataset analysis skills;
+PDF/CSV/BibTeX/RIS exports. Point to the canvas artifacts you placed.
 """
 
 PLANNER_RETRIES = 3
