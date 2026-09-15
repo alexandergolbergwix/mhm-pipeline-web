@@ -281,8 +281,11 @@ def build_agent(grant: str, canvas_digest: str = ""):
         system_prompt += (
             "\n\nCanvas context (server-side truth, may be newer than this chat):\n"
             f"{canvas_digest}\n"
-            "Refer to artifacts by key. Check data_info on an existing dataset "
-            "before refetching. When the user says 'the map' or 'the chart', "
+            "Refer to artifacts by key. Reuse datasets WITHIN a run; but a dataset "
+            "saved in an earlier session may be stale — when a question "
+            "depends on live values (claims, coordinates), re-run "
+            "wikidata_fetch_items even if 'wikidata-items' already exists. "
+            "When the user says 'the map' or 'the chart', "
             "match it against this list first — do not describe artifacts from "
             "memory. For a fuller inventory (dataset columns and row counts), "
             "call canvas_describe."        )
