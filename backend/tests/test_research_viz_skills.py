@@ -125,6 +125,43 @@ async def test_show_link_types_without_property_column_is_404(sample_run):
     assert resp.status_code == 404
 
 
+async def test_placeholder_dataset_is_rejected_409(sample_run):
+    """A pre-datavalue dataset (all values the 'claim' placeholder) must be
+    refused with a refresh instruction — analysing it produced confident
+    nonsense in production (the 'zero place claims' incident)."""
+    body, headers = await _headers(sample_run)
+    seed = await sample_run["client"].put(
+        f"/api/research-agent/threads/{body['thread_id']}/artifacts/wikidata-items",
+        json={
+            "kind": "sparql",
+            "title": "stale fetch",
+            "content": {
+                "columns": ["qid", "label", "property", "value"],
+                "rows": [
+                    ["Q1111", "Ms", "P17", "claim"],
+                    ["Q2222", "Ms2", "P195", "claim"],
+                    ["Q3333", "Ms3", "P1071", "claim"],
+                ],
+            },
+        },
+    )
+    assert seed.status_code == 200, seed.text
+    resp = await sample_run["client"].post(
+        "/api/research-agent/tools",
+        headers=headers,
+        json={"name": "show_link_types", "arguments": {}},
+    )
+    assert resp.status_code == 409
+    assert "wikidata_fetch_items" in resp.json()["detail"]
+
+    places = await sample_run["client"].post(
+        "/api/research-agent/tools",
+        headers=headers,
+        json={"name": "show_wikidata_places", "arguments": {}},
+    )
+    assert places.status_code == 409
+
+
 async def test_show_wikidata_places_maps_place_claims(sample_run):
     body, headers = await _headers(sample_run)
     seed = await sample_run["client"].put(

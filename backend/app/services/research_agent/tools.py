@@ -11,6 +11,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -914,6 +915,8 @@ async def _tool_wikidata_fetch_items(ctx: ToolContext, args: dict[str, Any]) -> 
         content={
             "columns": ["qid", "label", "property", "value", "target_is_ours"],
             "rows": out,
+            "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "fetched_qids": len(qids),
         },
         created_by="agent",
     )
@@ -951,6 +954,7 @@ async def _tool_show_link_types(ctx: ToolContext, args: dict[str, Any]) -> dict[
     """
     key = str(args.get("artifact_key") or _WIKIDATA_ITEMS_KEY).strip()
     _, columns, rows = await _dataset_rows(ctx, {"artifact_key": key})
+    _ensure_fresh_claim_dataset(columns, rows)
     prop_col = "property" if "property" in columns else ("p" if "p" in columns else None)
     if prop_col is None:
         raise HTTPException(
@@ -1078,6 +1082,30 @@ async def _wikidata_sparql_query(query: str) -> dict[str, Any]:
 _PACK_DIGEST_SKIP = {"preview", "sample", "rows", "values"}
 
 
+def _ensure_fresh_claim_dataset(columns: list[str], rows: list) -> None:
+    """Refuse placeholder-era claim datasets (409).
+
+    Datasets fetched before the datavalue fix store the literal "claim"
+    in every value cell; analysing them yields confident nonsense (the
+    planner once concluded 'zero place claims' on items carrying 120).
+    Fewer than 20% real values ⇒ stale, refetch required.
+    """
+    if "value" not in columns or not rows:
+        return
+    v_idx = columns.index("value")
+    values = [_cell_str(r[v_idx]) for r in rows if len(r) > v_idx]
+    placeholders = sum(1 for v in values if v in ("claim", "missing or no claims", ""))
+    if values and placeholders > len(values) * 0.8:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This claim dataset predates real datavalues (most value cells "
+                "are placeholders). Run wikidata_fetch_items to refresh it, "
+                "then retry — never analyse the placeholder version."
+            ),
+        )
+
+
 async def _tool_wikidata_pack(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     """One round-trip: refresh the claim dataset, then place the link-type
     chart AND the place-mentions map.
@@ -1128,6 +1156,7 @@ async def _tool_show_wikidata_places(ctx: ToolContext, args: dict[str, Any]) -> 
 
     key = str(args.get("artifact_key") or _WIKIDATA_ITEMS_KEY).strip()
     _, columns, rows = await _dataset_rows(ctx, {"artifact_key": key})
+    _ensure_fresh_claim_dataset(columns, rows)
     if "qid" not in columns:
         raise HTTPException(
             status_code=404,
@@ -1161,10 +1190,13 @@ async def _tool_show_wikidata_places(ctx: ToolContext, args: dict[str, Any]) -> 
     # (production feedback 2026-09-14: "Modern Greek" dots). P195
     # (collection) stays in: holding institutions are the dominant real
     # "location" lens in the manuscript claims — dropping it collapsed
-    # the map to 2 dots.
+    # the map to 2 dots. P19/P20/P937/P740 cover the ~70 person items
+    # (scribes/authors): birth place, death place, work location,
+    # publication place — the movement signal.
     _PLACE_PROPS = {
         "P17", "P131", "P159", "P189", "P276", "P706", "P1071", "P495", "P5566",
         "P195",
+        "P19", "P20", "P937", "P740",
     }
     coord_re = re.compile(r"Point\(([-\d.]+) ([-\d.]+)\)")
     # One dot per place; every manuscript that mentions the place is
@@ -1230,9 +1262,10 @@ async def _tool_show_wikidata_places(ctx: ToolContext, args: dict[str, Any]) -> 
         "top_places": top_places,
         "note": (
             "Placed the place map on the canvas as 'wikidata-places' — one dot "
-            "per place; each popup lists the manuscripts mentioning it with "
-            "links to their Wikidata entities. Only location-semantics claims "
-            "(P17/P131/P159/P189/P276/P706/P1071/P495/P5566/P195) with P625 "
+            "per place; each popup lists the manuscripts/people mentioning it "
+            "with links to their Wikidata entities. Location-semantics claims "
+            "(P195 collection, P7153, P1071, P276, P17, P131, P159, P189, "
+            "P706, P1071, P495, P5566, P19, P20, P937, P740) with P625 "
             "coordinates are plotted."
         ),
     }
