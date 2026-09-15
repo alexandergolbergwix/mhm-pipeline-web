@@ -373,11 +373,15 @@ async def _session_event_stream(
                 persist_session_event(base, ev)
                 yield ev
     finally:
+        from app.pipeline.agent_runner import generator_is_closing
+
+        closing = generator_is_closing()
         on_disk_verdicts = read_run_verdicts(state_dir) if (uncached and state_dir) else []
         for v in on_disk_verdicts:
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(base, ev)
-            yield ev
+            if not closing:
+                yield ev
 
         # ── Persist verdicts to ExtractionApproval rows ────────────
         # Two sources: freshly-produced on-disk verdicts AND verdicts
@@ -443,7 +447,8 @@ async def _session_event_stream(
             },
         )
         persist_session_event(base, end_ev)
-        yield end_ev
+        if not closing:
+            yield end_ev
 
 
 async def _write_ner_verdicts_to_cache(

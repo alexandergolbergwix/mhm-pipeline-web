@@ -384,13 +384,17 @@ async def _session_event_stream(
                 persist_session_event(base, ev)
                 yield ev
     finally:
+        from app.pipeline.agent_runner import generator_is_closing
+
+        closing = generator_is_closing()
         on_disk_verdicts = read_run_verdicts(state_dir) if (uncached and state_dir) else []
         if on_disk_verdicts:
             _enrich_verdict_match_ids(on_disk_verdicts, matches)
         for v in on_disk_verdicts:
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(base, ev)
-            yield ev
+            if not closing:
+                yield ev
 
         pre_cached_verdicts = [
             {
@@ -449,7 +453,8 @@ async def _session_event_stream(
             },
         )
         persist_session_event(base, end_ev)
-        yield end_ev
+        if not closing:
+            yield end_ev
 
 
 def _authority_verdict_query_summary(

@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -94,6 +95,18 @@ def _python_for(eval_agent_root: Path) -> str:
 
 
 _VERIFY_STATE_TMP = Path("/tmp/mhm-eval-agent-state")
+
+
+def generator_is_closing() -> bool:
+    """True in a ``finally`` block while the async generator is being closed.
+
+    Yielding while ``GeneratorExit`` is pending raises ``RuntimeError:
+    async generator ignored GeneratorExit`` — it killed the cancelled NER
+    verify job before its verdict-persistence ``finally`` finished (job
+    993884a7, 2026-09-15). Guard every ``finally``-block ``yield`` in the
+    verify event streams with this check: always persist, never yield.
+    """
+    return sys.exc_info()[0] is GeneratorExit
 
 
 def resolve_verify_state_base() -> Path:

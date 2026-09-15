@@ -237,13 +237,17 @@ async def hmo_schema_verify_event_stream(
                 persist_session_event(session_dir, ev)
                 yield ev
     finally:
+        from app.pipeline.agent_runner import generator_is_closing
+
+        closing = generator_is_closing()
         on_disk_verdicts = (
             read_run_verdicts(state_dir) if (uncached_items and not eval_agent_error) else []
         )
         for v in on_disk_verdicts:
             ev = AgentEvent(type="agent.verdict", payload=v)
             persist_session_event(session_dir, ev)
-            yield ev
+            if not closing:
+                yield ev
 
         if on_disk_verdicts:
             try:
@@ -269,4 +273,5 @@ async def hmo_schema_verify_event_stream(
             },
         )
         persist_session_event(session_dir, end_ev)
-        yield end_ev
+        if not closing:
+            yield end_ev

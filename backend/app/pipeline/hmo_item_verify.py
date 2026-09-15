@@ -303,6 +303,9 @@ async def hmo_item_verify_event_stream(
                     except (TypeError, ValueError):
                         runner_exit_code = None
     finally:
+        from app.pipeline.agent_runner import generator_is_closing
+
+        closing = generator_is_closing()
         from app.pipeline.verify_outcome import (  # noqa: PLC0415
             merge_fresh_verdicts,
             resolve_verify_session_outcome,
@@ -340,7 +343,8 @@ async def hmo_item_verify_event_stream(
             if local_id not in streamed_fresh_verdict_keys:
                 ev = AgentEvent(type="agent.verdict", payload=v)
                 persist_session_event(session_dir, ev)
-                yield ev
+                if not closing:
+                    yield ev
             verdicts_to_persist.append(v)
 
         if verdicts_to_persist:
@@ -377,4 +381,5 @@ async def hmo_item_verify_event_stream(
             },
         )
         persist_session_event(session_dir, end_ev)
-        yield end_ev
+        if not closing:
+            yield end_ev

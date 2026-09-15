@@ -432,3 +432,22 @@ background job the curator actually runs.
 
 Invariant: `partition_wikidata_verify_cache` is the single implementation, and both
 entry points call it. A test asserts the hand-rolled loop is gone from both.
+
+### Rule W-233 — Verify stream `finally` blocks MUST never yield while closing (added 2026-09-15)
+
+Every verify event stream (extraction/NER, authority, Wikidata Studio, HMO items,
+HMO schema) finishes inside a `finally` that reads the eval-agent's on-disk
+verdicts, persists them to the DB and cache, and emits a `session.end` event.
+Those `finally` blocks used to `yield` those events unconditionally. When a
+curator cancels a verify job, the runner calls `stream.aclose()`, `GeneratorExit`
+is raised at the suspension point, and any `yield` in the `finally` raises
+`RuntimeError: async generator ignored GeneratorExit`. The exception surfaced as
+the job's error — a *cancelled* run became *failed* — and aborted the `finally`
+before the verdict-persistence code ran: job 993884a7 (1829-item NER verify,
+2026-09-15) was cancelled at 51 judged and persisted **zero** verdicts.
+
+Invariant: guard every `finally`-block `yield` in a verify event stream with
+`agent_runner.generator_is_closing()` — always `persist_session_event` (so the
+trace keeps the verdicts for resume/replay) and always run the DB/cache
+persistence; only skip the `yield`. A unit test (`test_verify_stream_close.py`)
+pins the helper's semantics and asserts every channel module imports the guard.

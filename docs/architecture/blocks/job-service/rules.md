@@ -86,3 +86,5 @@
     *Why:* a full Release and its remote checks cannot fit inside the HTTP timeout.
 
 24. **R24 — Publication AI review uses a private job route (W-222).** The generic job endpoint rejects this kind. Encrypted grants carry credentials. The worker saves progress and supports cancellation. *Why:* a report must survive refresh without a synchronous AI request.
+
+25. **R25 — Verify stream `finally` blocks MUST never yield (W-233).** Every verify event stream (extraction/NER, authority, Wikidata Studio, HMO items, HMO schema) persists on-disk verdicts + `session.end` in its `finally`; guard each `yield` there with `agent_runner.generator_is_closing()`. A yield while `GeneratorExit` is pending raises `RuntimeError: async generator ignored GeneratorExit`, flips a cancelled job to *failed*, and skips verdict persistence entirely. *Why:* cancelling an 1829-item NER verify at 51 judged lost all 51 verdicts (job 993884a7, 2026-09-15).
