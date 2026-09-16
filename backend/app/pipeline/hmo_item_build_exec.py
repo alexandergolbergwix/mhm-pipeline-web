@@ -195,6 +195,7 @@ async def execute_hmo_item_build(
             # seconds instead of re-querying VIAF/KIMA 5k times. Fresh
             # lookups only on the explicit Rebuild (skip cache).
             skip_cache=force_rebuild,
+            skip_fresh_enriched=not force_rebuild,
             records=list(records),
             existing_rows=list(matches),
             on_progress=authority_sub,

@@ -115,6 +115,11 @@ class AuthorityMatch(Base):
     approved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
+    # When this row was last (re-)enriched — a re-run skips entities whose
+    # enrichment is still fresh instead of re-matching all of them (R33).
+    enriched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,

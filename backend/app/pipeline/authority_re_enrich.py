@@ -7,6 +7,8 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from datetime import datetime, timezone
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,6 +45,7 @@ async def re_enrich_run(
     matcher: Any,
     *,
     skip_cache: bool,
+    skip_fresh_enriched: bool = False,
     records: list[RunRecord],
     existing_rows: list[AuthorityMatch],
     on_progress: ProgressCb | None = None,
@@ -66,6 +69,11 @@ async def re_enrich_run(
         )
         existing_idx[key].append(m)
         orphan_pairs.append((m, key))
+        # Rows created before the enriched_at feature (or by the finalize
+        # cross-link pass) carry no stamp — treat their creation as their
+        # enrichment so a re-run can skip them like any fresh row.
+        if m.enriched_at is None:
+            m.enriched_at = m.created_at
 
     # Materialise records before any await — async ORM cannot lazy-load after
     # matcher threads / flush expire attributes on the shared session.
@@ -86,6 +94,7 @@ async def re_enrich_run(
     updated = 0
     newly_matched = 0
     orphans_removed = 0
+    skipped_fresh = 0
     # True when re-enrichment materially changed any AuthorityMatch row —
     # the HMO item build rebuilds RDF + items only when this is set, so a
     # no-op refresh can hit the item fingerprint cache instead of burning
@@ -93,6 +102,21 @@ async def re_enrich_run(
     content_changed = False
     total = len(work)
     last_emit = 0.0
+
+    # When not forcing fresh lookups, entities whose row was enriched after
+    # the last upstream input change are skipped entirely — a restarted or
+    # repeated pass visits them instantly instead of re-matching (R33).
+    # No NER rows → no upstream constraint → every enriched row is fresh.
+    fresh_cutoff: datetime | None = None
+    if not skip_cache:
+        from app.models.extraction_approval import ExtractionApproval  # noqa: PLC0415
+
+        ner_latest = await db.scalar(
+            select(func.max(ExtractionApproval.updated_at)).where(
+                ExtractionApproval.run_id == run_id,
+            )
+        )
+        fresh_cutoff = ner_latest or datetime(1970, 1, 1, tzinfo=timezone.utc)
 
     async def _maybe_progress(processed: int, control_number: str, text: str) -> None:
         nonlocal last_emit
@@ -115,6 +139,22 @@ async def re_enrich_run(
         kind = entity.get("kind", "person")
         key = match_key(control_number, clean_text, kind, clean_role)
         produced_keys.add(key)
+
+        # Skip entities whose enrichment is still fresh (R33): nothing
+        # upstream changed since their last match, so re-matching would
+        # return the same answer at network-lookup cost. Their row gets
+        # its produced_keys entry right below (orphan purge still sees it).
+        matches = existing_idx.get(key, [])
+        primary = matches[0] if matches else None
+        if (
+            fresh_cutoff is not None
+            and primary is not None
+            and primary.enriched_at is not None
+            and primary.enriched_at >= fresh_cutoff
+        ):
+            skipped_fresh += 1
+            await _maybe_progress(checked, control_number, clean_text)
+            continue
 
         try:
             candidates = await matcher.match(
@@ -183,6 +223,7 @@ async def re_enrich_run(
             # RDF graph — write it through but never count it as a change
             # (otherwise the item fingerprint cache would never hit).
             primary.confidence = c.confidence
+            primary.enriched_at = datetime.now(timezone.utc)
         else:
             row = AuthorityMatch(
                 run_id=run_id,
@@ -198,6 +239,7 @@ async def re_enrich_run(
                 source=c.source,
                 payload=c.payload,
                 approved=(kind == "place" and bool(c.wikidata_qid and c.mazal_id) and int((c.payload or {}).get("source_count") or 0) >= 2),
+                enriched_at=datetime.now(timezone.utc),
             )
             db.add(row)
             await db.flush()
@@ -242,6 +284,7 @@ async def re_enrich_run(
         "orphans_removed": orphans_removed,
         "cross_linked": cross_linked,
         "wikidata_crosschecked": wd_crosschecked,
+        "skipped_fresh": skipped_fresh,
         # Any row mutation (or the finalize pass adding cross-links) means
         # the downstream RDF/TTL — and therefore the item cache — is stale.
         "content_changed": bool(
