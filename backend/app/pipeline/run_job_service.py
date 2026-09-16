@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session_scope
+from app.pipeline.modal_job_client import MODAL_JOB_KINDS
 from app.models.run_job import (
     ACTIVE_JOB_STATUSES,
     JOB_KIND_AUTHORITY_RE_ENRICH,
@@ -437,6 +438,34 @@ async def recover_resumable_verify_jobs() -> int:
     return len(spawn_ids)
 
 
+async def cancel_requested_queued_jobs() -> int:
+    """Finalize queued jobs whose curator pressed Cancel (Rule W-236).
+
+    A running job's owner polls ``is_cancel_requested`` and finalizes
+    itself — but a queued job waiting for capacity has no owner, so the
+    flag alone would leave it in ``queued`` forever (and the grace
+    self-heal would later claim it despite the cancel).
+    """
+    async with session_scope() as db:
+        rows = (
+            await db.execute(
+                select(RunJob).where(
+                    RunJob.status == JOB_STATUS_QUEUED,
+                    RunJob.cancel_requested_at.is_not(None),
+                )
+            )
+        ).scalars().all()
+        if not rows:
+            return 0
+        finished = _now()
+        for job in rows:
+            job.status = JOB_STATUS_CANCELLED
+            job.error = "Cancelled by user"
+            job.finished_at = finished
+        await db.commit()
+        return len(rows)
+
+
 async def fail_stale_jobs() -> int:
     """Mark long-running jobs with no recent heartbeat as failed.
 
@@ -619,6 +648,15 @@ async def _try_claim_queued_job(
     kind: str,
 ) -> bool:
     """Claim a queued row only when global + class admission slots are free."""
+    queued_cancel = (
+        await db.execute(
+            select(RunJob.cancel_requested_at).where(RunJob.id == job_id)
+        )
+    ).scalar_one_or_none()
+    if queued_cancel is not None:
+        # Cancel raced the claim — the maintenance pass finalizes it.
+        return False
+
     if not _may_execute(kind):
         # This process (web) does not execute heavy kinds — leave the row
         # queued for a worker. Web self-heals and claims it when no worker
@@ -775,6 +813,7 @@ async def run_job_maintenance_tick() -> None:
     reaped by its own tick.
     """
     await _heartbeat_owned_jobs()
+    await cancel_requested_queued_jobs()
     await fail_stale_jobs()
     await _respawn_orphaned_jobs()
     await admit_waiting_jobs()
@@ -833,6 +872,18 @@ async def _execute_job(job_id: uuid.UUID) -> None:
                     "standalone Authority jobs are retired; rebuild or verify canonical HMO entities",
                 )
                 return
+
+        # Modal execution (Rule W-237): rdf_build / hmo_item_build may run
+        # on the mhm-jobs Modal app when MODAL_JOBS_URL is configured. The
+        # claimed process stays the owner (heartbeat via _background_tasks)
+        # and polls; Modal writes progress + terminal state. False → local
+        # fallback below (Rule W-15 degradation).
+        if kind in MODAL_JOB_KINDS:
+            from app.pipeline.modal_job_client import run_on_modal  # noqa: PLC0415
+
+            if await run_on_modal(job_id, kind):
+                return
+            logger.info("modal execution declined for %s job %s — running locally", kind, job_id)
 
         if kind == JOB_KIND_AUTHORITY_RE_ENRICH:
             from app.pipeline.authority_re_enrich_job import (  # noqa: PLC0415

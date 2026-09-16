@@ -744,3 +744,56 @@ async def test_web_role_self_heals_starved_heavy_job(
     assert claimed is True
     await db_session.refresh(queued)
     assert queued.status == JOB_STATUS_RUNNING
+
+
+@pytest.mark.asyncio
+async def test_cancel_finalizes_queued_job_without_owner(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """R28 regression (2026-09-16): a queued job waiting for capacity has no
+    owner to poll the cancel flag — the maintenance pass must finalize it."""
+    from app.pipeline.run_job_service import cancel_requested_queued_jobs
+
+    monkeypatch.setenv("RUN_JOB_ROLE", "web")
+    monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "9999")
+
+    queued = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_QUEUED,
+    )
+    from app.pipeline.run_job_service import request_cancel
+    await request_cancel(db_session, queued.id)
+    await db_session.refresh(queued)
+    assert queued.status == JOB_STATUS_QUEUED  # flag only, until the tick
+
+    finalized = await cancel_requested_queued_jobs()
+    assert finalized == 1
+    await db_session.refresh(queued)
+    assert queued.status == "cancelled"
+    assert queued.error == "Cancelled by user"
+
+
+@pytest.mark.asyncio
+async def test_cancel_requested_queued_job_is_never_claimed(
+    db_session, sample_run, monkeypatch,
+    monkeypatch2=None,
+) -> None:
+    """Even with all slots free, a queued job with a cancel request must
+    not be claimed (web role after grace, or worker role)."""
+    monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "0")
+
+    queued = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_QUEUED,
+    )
+    from app.pipeline.run_job_service import request_cancel
+    await request_cancel(db_session, queued.id)
+
+    claimed = await _try_claim_with_admission(
+        db_session, queued.id, JOB_KIND_RDF_BUILD, status=JOB_STATUS_QUEUED,
+    )
+    assert claimed is False
+    await db_session.refresh(queued)
+    assert queued.status == JOB_STATUS_QUEUED

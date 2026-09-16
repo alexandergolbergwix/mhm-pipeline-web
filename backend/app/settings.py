@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     # Modal AG-UI base URL (no trailing slash). Empty → local stub stream.
     research_agent_modal_url: str = Field(default="")
     research_agent_enabled: bool = Field(default=True)
+
+    # ── Modal job execution (Rule W-237) ───────────────────────────────
+    # Base URL of the mhm-jobs Modal web endpoint (no trailing slash) and
+    # the shared bearer token. Empty URL → rdf_build / hmo_item_build run
+    # locally on Heroku (the fallback path is always kept — Rule W-15).
+    modal_jobs_url: str = Field(default="")
+    modal_jobs_token: str = Field(default="")
     # Qubrid Chat Completions — used for research-thread AI titles.
     qubrid_api_key: str = Field(default="")
     qubrid_base_url: str = Field(default="https://platform.qubrid.com/v1")

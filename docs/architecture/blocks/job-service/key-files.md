@@ -19,6 +19,7 @@
 | `backend/app/pipeline/rdf_build_job.py` | `rdf_build` worker |
 | `backend/app/pipeline/rdf_build.py` | Streaming graph build (W-234): per-record subgraph → Turtle chunk append, checkpoints, subprocess post-processing |
 | `backend/app/pipeline/rdf_coverage_reports.py` | Child-process graph index + coverage reports (`python -m app.pipeline.rdf_coverage_reports`) |
+| `backend/app/pipeline/modal_job_client.py` + `modal/modal_jobs.py` | Optional Modal execution for `rdf_build` / `hmo_item_build` (W-237): dispatch + poll, local fallback always kept |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | `wikidata_studio_build` worker |
 | `backend/app/pipeline/wikidata_upload_job.py` | `wikidata_upload` worker; two-pass deferred links; `steps` / `eta_seconds` for tray View modal (W-141 / W-192); dry-run/test/live all render `WikidataUploadSteps` |
 | `backend/app/pipeline/wikidata_publication_prepare_job.py` | Builds a sealed Publication Release as a build-class job; job parameters contain only source selection and actor ID |

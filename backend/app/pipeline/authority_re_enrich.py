@@ -86,6 +86,11 @@ async def re_enrich_run(
     updated = 0
     newly_matched = 0
     orphans_removed = 0
+    # True when re-enrichment materially changed any AuthorityMatch row —
+    # the HMO item build rebuilds RDF + items only when this is set, so a
+    # no-op refresh can hit the item fingerprint cache instead of burning
+    # a full rebuild.
+    content_changed = False
     total = len(work)
     last_emit = 0.0
 
@@ -137,20 +142,42 @@ async def re_enrich_run(
             for dup in matches[1:]:
                 await db.delete(dup)
                 orphans_removed += 1
+                content_changed = True
             existing_idx[key] = [primary]
-            primary.entity_text = clean_text
-            primary.role = clean_role
-            primary.entity_kind = kind
-            primary.matched_name = c.matched_name
-            primary.mazal_id = c.mazal_id
-            primary.viaf_id = c.viaf_id
-            primary.wikidata_qid = c.wikidata_qid
+            # Only touch rows whose content actually changed (and only
+            # count those as "updated") so a no-op refresh keeps the
+            # downstream fingerprint caches valid.
+            _CONTENT_FIELDS = (
+                ("entity_text", clean_text),
+                ("role", clean_role),
+                ("entity_kind", kind),
+                ("matched_name", c.matched_name),
+                ("mazal_id", c.mazal_id),
+                ("viaf_id", c.viaf_id),
+                ("wikidata_qid", c.wikidata_qid),
+                ("source", c.source),
+                ("payload", c.payload),
+            )
+            row_changed = False
+            for field, new_val in _CONTENT_FIELDS:
+                if getattr(primary, field) != new_val:
+                    setattr(primary, field, new_val)
+                    row_changed = True
+            new_approved = (
+                kind == "place"
+                and bool(c.wikidata_qid and c.mazal_id)
+                and int((c.payload or {}).get("source_count") or 0) >= 2
+            )
+            if bool(primary.approved) != bool(new_approved):
+                primary.approved = new_approved
+                row_changed = True
+            if row_changed:
+                updated += 1
+                content_changed = True
+            # Confidence is a volatile model score that does not reach the
+            # RDF graph — write it through but never count it as a change
+            # (otherwise the item fingerprint cache would never hit).
             primary.confidence = c.confidence
-            primary.source = c.source
-            primary.payload = c.payload
-            if kind == "place" and c.wikidata_qid and c.mazal_id and int((c.payload or {}).get("source_count") or 0) >= 2:
-                primary.approved = True
-            updated += 1
         else:
             row = AuthorityMatch(
                 run_id=run_id,
@@ -203,4 +230,9 @@ async def re_enrich_run(
         "orphans_removed": orphans_removed,
         "cross_linked": cross_linked,
         "wikidata_crosschecked": wd_crosschecked,
+        # Any row mutation (or the finalize pass adding cross-links) means
+        # the downstream RDF/TTL — and therefore the item cache — is stale.
+        "content_changed": bool(
+            content_changed or newly_matched or orphans_removed or cross_linked
+        ),
     }

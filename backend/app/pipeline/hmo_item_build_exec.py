@@ -130,7 +130,7 @@ async def execute_hmo_item_build(
                 sub_message=message,
             )
 
-        await re_enrich_run(
+        enrich_stats = await re_enrich_run(
             db,
             run,
             authority_pipeline.get_default_matcher(),
@@ -140,7 +140,13 @@ async def execute_hmo_item_build(
             on_progress=authority_sub,
         )
         await db.commit()
-        force_rdf_rebuild = True
+        # Rebuild RDF + items only when enrichment actually changed a row
+        # (Rule W-238): an unchanged refresh must hit the item fingerprint
+        # cache instead of burning a full rebuild every click. An explicit
+        # force_rebuild (Rebuild (skip cache)) always rebuilds.
+        force_rdf_rebuild = bool(force_rebuild) or bool(
+            (enrich_stats or {}).get("content_changed")
+        )
         refreshed_authority = True
 
     if not force_rdf_rebuild:

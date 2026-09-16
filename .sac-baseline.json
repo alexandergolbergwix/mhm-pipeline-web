@@ -457,6 +457,20 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:91b33a93baa56570e674b52d5543b2a6",
+      "path": "modal/modal_jobs.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "modal.Secret.from_name references a secret by NAME; the value stays in the Modal secret store",
+      "expires": "2027-03-15"
+    },
+    {
+      "fingerprint": "sha256:49fabdc5bb2ac5875ea9b7269fa35c02",
+      "path": "modal/modal_jobs.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "modal.Secret.from_name references a secret by NAME; the value stays in the Modal secret store",
+      "expires": "2027-03-15"
+    },
+    {
       "fingerprint": "sha256:60010bc21c188e6299e8c3850956aadd",
       "path": "modal/modal_research_agent.py",
       "rule_id": "generic-assigned-secret",
