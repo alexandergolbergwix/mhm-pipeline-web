@@ -184,6 +184,20 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:7ed1f0dd6ade86e8149c7e3a7661f518",
+      "path": "backend/app/routers/hmo_studio.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "AuthContext Depends parameter name; no credential value",
+      "expires": "2027-03-15"
+    },
+    {
+      "fingerprint": "sha256:19d83dfe436d6035cd9dbe87e7e1014c",
+      "path": "backend/app/routers/hmo_studio.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "AuthContext parameter; no credential value",
+      "expires": "2027-03-15"
+    },
+    {
       "fingerprint": "sha256:e9f16e50f34080c6fe6855a5340f6281",
       "path": "backend/app/routers/hmo_studio_items.py",
       "rule_id": "generic-assigned-secret",

@@ -815,7 +815,17 @@ async def studio_status(
     await _lookup_run_with_access(db, run_id, auth)
 
     ttl_path = rdf_output_path_for_run(str(run_id))
-    await ensure_ttl_on_disk(ttl_path, run_id, db)
+    try:
+        await ensure_ttl_on_disk(ttl_path, run_id, db)
+    except Exception:
+        # A failed materialization must not brick the Build items button:
+        # the durable artifact + the build exec handle a missing local TTL.
+        logger.exception("TTL materialization failed for run %s", run_id)
+    from app.models.rdf_artifact import RdfArtifact  # noqa: PLC0415
+
+    rdf_artifact_exists = (
+        await db.get(RdfArtifact, run_id)
+    ) is not None
     manifest_dir = hmo_pipeline.manifest_dir_for_run(str(run_id))
     coverage_cache = hmo_pipeline.coverage_path_for_run(str(run_id))
     upload_report = hmo_pipeline.upload_report_path_for_run(str(run_id))
@@ -859,7 +869,7 @@ async def studio_status(
 
     return HmoStatus(
         state=state,
-        rdf_present=ttl_path.exists(),
+        rdf_present=ttl_path.exists() or rdf_artifact_exists,
         manifest_count=manifest_count,
         coverage_present=coverage_cache.exists(),
         last_upload_at=last_upload_at,
