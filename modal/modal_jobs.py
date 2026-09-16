@@ -53,7 +53,7 @@ image = (
 
 app = modal.App(
     "mhm-jobs",
-    secrets=[modal.Secret.from_name("mhm-jobs")],
+    secrets=[modal.Secret.from_name("mhm-jobs2")],
 )
 
 
@@ -105,7 +105,7 @@ def _run_job_detached(job_id: str, kind: str) -> dict:
     cpu=2,
     memory=8192,
     timeout=_TIMEOUT_S,
-    secrets=[modal.Secret.from_name("mhm-jobs")],
+    secrets=[modal.Secret.from_name("mhm-jobs2")],
 )
 def run_modal_job_detached(job_id: str, kind: str) -> dict:
     return _run_job_detached(job_id, kind)
@@ -116,7 +116,7 @@ def run_modal_job_detached(job_id: str, kind: str) -> dict:
     cpu=1,
     memory=512,
     scaledown_window=300,
-    secrets=[modal.Secret.from_name("mhm-jobs")],
+    secrets=[modal.Secret.from_name("mhm-jobs2")],
 )
 @modal.fastapi_endpoint(label="mhm-jobs-run", method="POST")
 def run(request_body: dict) -> dict:
