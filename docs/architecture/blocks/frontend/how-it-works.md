@@ -28,7 +28,10 @@ set (Rule W-99); uploads load those accepts from `WikidataItemOverride`.
 The Publication panel owns the test/live target choice. The compatibility
 upload panel is hidden by default. It appears only when the Publication API
 reports that the service is unavailable. The page never shows both target
-groups at the same time (Rule W-213).
+groups at the same time (Rule W-213). A build failure with "no durable HMO
+canonical entities" renders an actionable panel — the canonical source has
+no read-back for this run yet, so the page links to HMO Studio's
+Build items → upload flow instead of a bare error.
 The result panel states how many records are prepared and how many remain outside
 the publication. Omitted connections show a readable property and target before
 the technical payload. The item editor labels each English and Hebrew field,

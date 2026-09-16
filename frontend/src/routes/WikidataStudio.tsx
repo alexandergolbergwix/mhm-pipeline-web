@@ -267,7 +267,39 @@ export default function WikidataStudio() {
       });
   }, [build, existFilter, minStmts]);
 
-  if (error) return <Layout><Glass className="p-6 text-danger">{error}</Glass></Layout>;
+  if (error) {
+    const canonicalMissing = error.includes("no durable HMO canonical entities");
+    return (
+      <Layout>
+        <Glass as="section" className="p-6 space-y-3">
+          <p className="text-danger text-sm">{error}</p>
+          {canonicalMissing && (
+            <div className="space-y-2 text-sm">
+              <p className="muted">
+                This run has no uploaded HMO Wikibase items yet, so the
+                <b className="text-ink"> Reviewed HMO records </b>
+                source has nothing to project.
+              </p>
+              <ol className="list-disc pl-5 space-y-1">
+                <li>
+                  Open <Link to={`/runs/${runId}/hmo-studio`} className="text-biu-sky underline">HMO Studio</Link> and run
+                  <b className="text-ink"> Build items</b>.
+                </li>
+                <li>
+                  Upload the built items to HMO Wikibase — the read-back
+                  stores the canonical entities.
+                </li>
+                <li>Return here and rebuild the review table.</li>
+              </ol>
+              <Link to={`/runs/${runId}/hmo-studio`} className="button-primary text-sm inline-block">
+                Go to HMO Studio
+              </Link>
+            </div>
+          )}
+        </Glass>
+      </Layout>
+    );
+  }
 
   if (reviewMode === "modern" && runId) {
     return (
