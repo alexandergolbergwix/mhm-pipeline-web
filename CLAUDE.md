@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-238)
+## Architectural rules (W-1…W-239)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -216,6 +216,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-236** — Cancelling a queued job MUST finalize it: the maintenance pass finalizes queued rows carrying `cancel_requested_at`, and the claim path refuses them
 - **W-237** — rdf_build / hmo_item_build may execute on Modal (mhm-jobs app, body-token auth, Postgres via Modal secret); dispatch failure or unset MODAL_JOBS_URL always degrades to the Heroku runner
 - **W-238** — A no-op authority refresh must hit the item fingerprint cache: `re_enrich_run` reports `content_changed`, and only that (or an explicit force_rebuild) triggers the RDF/item rebuild
+- **W-239** — "Build items" on an unchanged run short-circuits to the item cache (input-change check against `built_at`); a changed approval/NER row/override bypasses it
 - **W-105** — Studio “Approve all visible” MUST run as a background job
 - **W-106** — All Studio / RDF builds MUST run as `run_jobs` with inline progress
 - **W-107** — All Studio publish/upload paths MUST run as `run_jobs`

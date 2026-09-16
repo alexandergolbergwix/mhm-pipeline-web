@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.extraction_approval import ExtractionApproval
-from app.models.run import AuthorityMatch, Run, RunRecord
+from app.models.run import AuthorityMatch, Run, RunRecord, RdfTripleOverride
 from app.pipeline import hmo_item_build
 from app.pipeline.rdf_build import (
     build_rdf_graph,
@@ -99,6 +99,62 @@ async def execute_hmo_item_build(
 
     async def cancelled() -> bool:
         return bool(should_cancel and await should_cancel())
+
+    # ── Idempotence short-circuit (Rule W-239) ─────────────────────────
+    # "Build items" on an unchanged run must be instant. When a cached
+    # item build exists and no input changed since it was built
+    # (authority matches, approvals, NER rows, overrides), serve the
+    # cache directly instead of re-running the 3-step pipeline.
+    if not force_rebuild:
+        from app.models.hmo_studio_item_cache import (  # noqa: PLC0415
+            HmoStudioItemCache,
+        )
+        from sqlalchemy import func as _func  # noqa: PLC0415
+
+        cache_row = (
+            await db.execute(
+                select(HmoStudioItemCache).where(
+                    HmoStudioItemCache.run_id == run_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if cache_row is not None:
+            built_at = cache_row.built_at
+            match_latest = await db.scalar(
+                select(
+                    _func.max(
+                        _func.coalesce(
+                            AuthorityMatch.approved_at,
+                            AuthorityMatch.created_at,
+                        )
+                    )
+                ).where(AuthorityMatch.run_id == run_id)
+            )
+            ner_latest = await db.scalar(
+                select(_func.max(ExtractionApproval.updated_at)).where(
+                    ExtractionApproval.run_id == run_id,
+                )
+            )
+            override_latest = await db.scalar(
+                select(_func.max(RdfTripleOverride.created_at)).where(
+                    RdfTripleOverride.run_id == run_id,
+                )
+            )
+            candidates = [t for t in (match_latest, ner_latest, override_latest) if t is not None]
+            latest_change = max(candidates) if candidates else None
+            if latest_change is None or latest_change <= built_at:
+                await progress(
+                    "done", 3, 3,
+                    f"Cached build from {built_at:%Y-%m-%d %H:%M} — nothing changed since.",
+                )
+                return HmoItemBuildJobResult(
+                    from_cache=True,
+                    entity_count=cache_row.entity_count,
+                    deferred_link_count=cache_row.deferred_link_count,
+                    skipped_statement_count=cache_row.skipped_statement_count,
+                    refreshed_authority=False,
+                    rebuilt_rdf=False,
+                )
 
     ttl_path = rdf_output_path_for_run(str(run_id))
     force_rdf_rebuild = False
