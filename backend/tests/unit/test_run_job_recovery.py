@@ -17,6 +17,7 @@ from app.models.run_job import (
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
     JOB_KIND_WIKIDATA_UPLOAD,
+    JOB_STATUS_CANCELLED,
     JOB_KIND_WIKIDATA_VERIFY,
     JOB_STATUS_FAILED,
     JOB_STATUS_QUEUED,
@@ -573,6 +574,21 @@ async def test_web_role_defers_heavy_job_until_grace(
     """R27: a web process leaves heavy kinds to the worker until the grace
     window lapses, then claims the job itself (self-healing)."""
     monkeypatch.setenv("RUN_JOB_ROLE", "web")
+    # Isolation: close out heavy rows left by earlier tests.
+    from app.models.run_job import RunJob as _RJ2
+    await db_session.execute(
+        update(_RJ2)
+        .where(_RJ2.status == JOB_STATUS_RUNNING)
+        .values(status=JOB_STATUS_FAILED, error="test isolation")
+    )
+    await db_session.execute(
+        update(_RJ2)
+        .where(_RJ2.status == JOB_STATUS_QUEUED, _RJ2.kind == JOB_KIND_RDF_BUILD)
+        .values(status=JOB_STATUS_CANCELLED)
+    )
+    await db_session.commit()
+
+
     monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "0")
 
     queued = await _add_job(
@@ -595,6 +611,21 @@ async def test_web_role_leaves_fresh_heavy_job_for_worker(
 ) -> None:
     """R27: a freshly queued heavy job waits for the worker's tick."""
     monkeypatch.setenv("RUN_JOB_ROLE", "web")
+    # Isolation: close out heavy rows left by earlier tests.
+    from app.models.run_job import RunJob as _RJ2
+    await db_session.execute(
+        update(_RJ2)
+        .where(_RJ2.status == JOB_STATUS_RUNNING)
+        .values(status=JOB_STATUS_FAILED, error="test isolation")
+    )
+    await db_session.execute(
+        update(_RJ2)
+        .where(_RJ2.status == JOB_STATUS_QUEUED, _RJ2.kind == JOB_KIND_RDF_BUILD)
+        .values(status=JOB_STATUS_CANCELLED)
+    )
+    await db_session.commit()
+
+
     monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "9999")
 
     queued = await _add_job(
@@ -618,6 +649,21 @@ async def test_web_role_executes_light_kinds(
 ) -> None:
     """R27: light kinds (bulk approve) still run on the web dyno."""
     monkeypatch.setenv("RUN_JOB_ROLE", "web")
+    # Isolation: close out heavy rows left by earlier tests.
+    from app.models.run_job import RunJob as _RJ2
+    await db_session.execute(
+        update(_RJ2)
+        .where(_RJ2.status == JOB_STATUS_RUNNING)
+        .values(status=JOB_STATUS_FAILED, error="test isolation")
+    )
+    await db_session.execute(
+        update(_RJ2)
+        .where(_RJ2.status == JOB_STATUS_QUEUED, _RJ2.kind == JOB_KIND_RDF_BUILD)
+        .values(status=JOB_STATUS_CANCELLED)
+    )
+    await db_session.commit()
+
+
     monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "9999")
 
     queued = await _add_job(
@@ -630,3 +676,71 @@ async def test_web_role_executes_light_kinds(
         db_session, queued.id, JOB_KIND_EXTRACTION, status=JOB_STATUS_QUEUED,
     )
     assert claimed is True
+
+
+@pytest.mark.asyncio
+async def test_web_role_self_heals_starved_heavy_job(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """R27 regression (2026-09-15): a heavy job queued for hours with no
+    worker must be claimed by web — the capacity-wait stamp refreshes
+    updated_at, so the grace must measure from created_at, and a stale
+    worker claim must not count as an alive worker."""
+    monkeypatch.setenv("RUN_JOB_ROLE", "web")
+    # Isolation: close out heavy rows left by earlier tests.
+    from app.models.run_job import RunJob as _RJ2
+    await db_session.execute(
+        update(_RJ2)
+        .where(_RJ2.status == JOB_STATUS_RUNNING)
+        .values(status=JOB_STATUS_FAILED, error="test isolation")
+    )
+    await db_session.execute(
+        update(_RJ2)
+        .where(_RJ2.status == JOB_STATUS_QUEUED, _RJ2.kind == JOB_KIND_RDF_BUILD)
+        .values(status=JOB_STATUS_CANCELLED)
+    )
+    await db_session.commit()
+
+
+    monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "120")
+
+    # A worker claimed a verify job once but its heartbeat is long stale
+    # (worker dyno gone) — it must not count as an alive worker.
+    stale_worker_job = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_WIKIDATA_VERIFY,
+        status=JOB_STATUS_RUNNING,
+        claimed_by="worker.1:deadbeef",
+    )
+    await _backdate(db_session, stale_worker_job.id, by=timedelta(minutes=10))
+
+    queued = await _add_job(
+        db_session, sample_run,
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_QUEUED,
+    )
+    # Simulate hours of "Waiting for capacity…" churn: updated_at is
+    # fresh (the wait stamp refreshes it every tick), created_at is old.
+    from app.models.run_job import RunJob as _RJ
+    await db_session.execute(
+        update(_RJ)
+        .where(_RJ.id == queued.id)
+        .values(created_at=_now() - timedelta(hours=3), updated_at=_now())
+    )
+    await db_session.commit()
+
+    # The maintenance tick reaps the stale row (fail_stale_jobs) before
+    # admit_waiting_jobs — mirror that order here, with the spawn loop
+    # captured so the background runner does not race this test.
+    from app.pipeline.run_job_service import fail_stale_jobs  # noqa: PLC0415
+    monkeypatch.setattr(
+        run_job_service, "spawn_job", lambda job_id: None,
+    )
+    assert await fail_stale_jobs() >= 1
+
+    claimed = await _try_claim_with_admission(
+        db_session, queued.id, JOB_KIND_RDF_BUILD, status=JOB_STATUS_QUEUED,
+    )
+    assert claimed is True
+    await db_session.refresh(queued)
+    assert queued.status == JOB_STATUS_RUNNING

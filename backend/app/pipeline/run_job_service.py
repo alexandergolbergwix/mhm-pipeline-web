@@ -163,6 +163,11 @@ def _worker_claim_grace() -> timedelta:
     return timedelta(seconds=_int_env("RUN_JOB_WORKER_GRACE", 120))
 
 
+# A running row claimed by a ``worker.*`` dyno with a heartbeat inside this
+# window proves the worker formation is alive.
+WORKER_ALIVE_WINDOW = timedelta(seconds=120)
+
+
 def _max_running_for_slot(slot: str) -> int:
     defaults = {
         SLOT_VERIFY: 1,
@@ -589,6 +594,25 @@ async def _mark_waiting_for_capacity(db: AsyncSession, job_id: uuid.UUID) -> Non
         await _notify_job_update(db, job)
 
 
+async def _worker_alive_recently(db: AsyncSession) -> bool:
+    """True when a ``worker.*`` process heartbeat a running job recently.
+
+    Used by web-role processes to decide whether a queued heavy job still
+    has a chance to be picked up by the worker formation (Rule W-235).
+    """
+    cutoff = _now() - WORKER_ALIVE_WINDOW
+    res = await db.execute(
+        select(func.count())
+        .select_from(RunJob)
+        .where(
+            RunJob.status == JOB_STATUS_RUNNING,
+            RunJob.claimed_by.like("worker.%"),
+            RunJob.updated_at >= cutoff,
+        )
+    )
+    return int(res.scalar_one()) > 0
+
+
 async def _try_claim_queued_job(
     db: AsyncSession,
     job_id: uuid.UUID,
@@ -597,14 +621,19 @@ async def _try_claim_queued_job(
     """Claim a queued row only when global + class admission slots are free."""
     if not _may_execute(kind):
         # This process (web) does not execute heavy kinds — leave the row
-        # queued for a worker, unless it has waited past the grace window
-        # (no worker alive): then web self-heals and claims it anyway.
+        # queued for a worker. Web self-heals and claims it when no worker
+        # heartbeat is recent AND the job has waited past the grace window
+        # from created_at (the capacity-wait stamp refreshes updated_at on
+        # every maintenance tick, so updated_at can never measure the wait).
         row = (
             await db.execute(select(RunJob).where(RunJob.id == job_id))
         ).scalar_one_or_none()
         if row is None:
             return False
-        waited = _now() - (row.updated_at or row.created_at or _now())
+        if await _worker_alive_recently(db):
+            await _mark_waiting_for_capacity(db, job_id)
+            return False
+        waited = _now() - (row.created_at or _now())
         if waited < _worker_claim_grace():
             await _mark_waiting_for_capacity(db, job_id)
             return False
