@@ -200,6 +200,12 @@ async def execute_hmo_item_build(
             on_progress=authority_sub,
         )
         await db.commit()
+        # Recycle the pooled connection: the next phases are long CPU-bound
+        # stretches during which an idle Postgres connection gets dropped
+        # server-side — that is what killed step 3 with
+        # "cannot call Transaction.rollback(): connection is closed"
+        # (2026-09-16). expire_on_commit=False keeps loaded rows usable.
+        await db.close()
         # Rebuild RDF + items only when enrichment actually changed a row
         # (Rule W-238): an unchanged refresh must hit the item fingerprint
         # cache instead of burning a full rebuild every click. An explicit
@@ -297,6 +303,8 @@ async def execute_hmo_item_build(
                 manuscripts_count=rdf_result.manuscripts_count,
             )
             await db.commit()
+            # Recycle again before the export (same idle-drop risk as above).
+            await db.close()
             rebuilt_rdf = True
         except Exception as exc:
             logger.exception("Internal HMO RDF source build failed for run %s", run_id)

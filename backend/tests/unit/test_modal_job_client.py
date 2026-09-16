@@ -24,32 +24,38 @@ from app.pipeline import modal_job_client
 from app.pipeline.modal_job_client import run_on_modal
 
 
+WORKER_ID = "web.1:test"
+
+
 def _settings(monkeypatch, *, url="https://test--mhm-jobs-run.modal.run", token="tok") -> None:
     from app.settings import get_settings
 
     settings = get_settings()
     monkeypatch.setattr(settings, "modal_jobs_url", url, raising=False)
     monkeypatch.setattr(settings, "modal_jobs_token", token, raising=False)
+    # The lease hand-off requires claimed_by == WORKER_ID — pin the real
+    # constant to the test value so _add_running_job's claim matches.
+    monkeypatch.setattr("app.pipeline.run_job_service.WORKER_ID", WORKER_ID)
 
 
 @pytest.mark.asyncio
 async def test_run_on_modal_disabled_without_url(db_session, sample_run, monkeypatch) -> None:
     _settings(monkeypatch, url="")
-    job = await _add_running_job(db_session, sample_run)
+    job = await _add_running_job(db_session, sample_run, claimed_by=WORKER_ID)
     assert await run_on_modal(job.id, JOB_KIND_RDF_BUILD) is False
 
 
 @pytest.mark.asyncio
 async def test_run_on_modal_kind_not_eligible(db_session, sample_run, monkeypatch) -> None:
     _settings(monkeypatch)
-    job = await _add_running_job(db_session, sample_run)
+    job = await _add_running_job(db_session, sample_run, claimed_by=WORKER_ID)
     assert await run_on_modal(job.id, "wikidata_studio_build") is False
 
 
 @pytest.mark.asyncio
 async def test_run_on_modal_dispatch_error_falls_back(db_session, sample_run, monkeypatch) -> None:
     _settings(monkeypatch)
-    job = await _add_running_job(db_session, sample_run)
+    job = await _add_running_job(db_session, sample_run, claimed_by=WORKER_ID)
 
     class _Boom:
         def __init__(self, *a, **kw):
@@ -62,7 +68,7 @@ async def test_run_on_modal_dispatch_error_falls_back(db_session, sample_run, mo
 @pytest.mark.asyncio
 async def test_run_on_modal_rejected_status_falls_back(db_session, sample_run, monkeypatch) -> None:
     _settings(monkeypatch)
-    job = await _add_running_job(db_session, sample_run)
+    job = await _add_running_job(db_session, sample_run, claimed_by=WORKER_ID)
 
     class _Resp:
         status_code = 409
@@ -91,7 +97,7 @@ async def test_run_on_modal_rejected_status_falls_back(db_session, sample_run, m
 @pytest.mark.asyncio
 async def test_run_on_modal_polls_until_terminal(db_session, sample_run, monkeypatch) -> None:
     _settings(monkeypatch)
-    job = await _add_running_job(db_session, sample_run)
+    job = await _add_running_job(db_session, sample_run, claimed_by=WORKER_ID)
 
     class _Resp:
         status_code = 202
@@ -138,7 +144,7 @@ async def test_run_on_modal_polls_until_terminal(db_session, sample_run, monkeyp
 
 
 @pytest.mark.asyncio
-async def _add_running_job(db, sample_run):
+async def _add_running_job(db, sample_run, *, claimed_by="web.1:test"):
     job = RunJob(
         project_id=sample_run["project_id"],
         run_id=sample_run["run_id"],
@@ -146,9 +152,108 @@ async def _add_running_job(db, sample_run):
         status=JOB_STATUS_RUNNING,
         params={},
         progress={},
+        claimed_by=claimed_by,
         created_by=sample_run["user_id"],
     )
     db.add(job)
     await db.commit()
     await db.refresh(job)
     return job
+
+
+@pytest.mark.asyncio
+async def test_fresh_modal_executor_prevents_rival_dispatch(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """W-237: when a live modal container holds the executor lease, a
+    re-dispatching web process must NOT spawn a rival container — it polls
+    until the container finalizes the row (this is what stopped the
+    4400/260/4465/300 double-writer progress jumps)."""
+    _settings(monkeypatch)
+    job = await _add_running_job(
+        db_session, sample_run, claimed_by="modal-executor:live1",
+    )
+
+    dispatches: list[dict] = []
+
+    class _Resp:
+        status_code = 202
+        text = ""
+
+        def json(self):
+            return {}
+
+    class _Client:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, *a, **kw):
+            dispatches.append({"url": url})
+            return _Resp()
+
+    monkeypatch.setattr(modal_job_client.httpx, "AsyncClient", _Client)
+
+    flips = {"n": 0}
+
+    async def _fake_sleep(_seconds: float) -> None:
+        flips["n"] += 1
+        if flips["n"] == 1:
+            job.status = JOB_STATUS_SUCCEEDED
+            job.progress = {"phase": "done"}
+            await db_session.commit()
+
+    monkeypatch.setattr(modal_job_client.asyncio, "sleep", _fake_sleep)
+
+    assert await run_on_modal(job.id, JOB_KIND_RDF_BUILD) is True
+    assert dispatches == [], "a live modal lease must not be re-dispatched"
+
+
+@pytest.mark.asyncio
+async def test_stale_modal_executor_is_taken_over(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """A dead container's stale executor claim may be re-dispatched."""
+    _settings(monkeypatch)
+    job = await _add_running_job(
+        db_session, sample_run, claimed_by="modal-executor:dead1",
+    )
+    # Heartbeat long stale — the container is gone.
+    from app.pipeline.run_job_service import _now
+    job.updated_at = _now() - timedelta(seconds=600)
+    await db_session.commit()
+
+    class _Resp:
+        status_code = 202
+        text = ""
+
+        def json(self):
+            return {}
+
+    class _Client:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, *a, **kw):
+            return _Resp()
+
+    monkeypatch.setattr(modal_job_client.httpx, "AsyncClient", _Client)
+
+    async def _fake_sleep(_seconds: float) -> None:
+        job.status = JOB_STATUS_SUCCEEDED
+        await db_session.commit()
+
+    monkeypatch.setattr(modal_job_client.asyncio, "sleep", _fake_sleep)
+
+    assert await run_on_modal(job.id, JOB_KIND_RDF_BUILD) is True

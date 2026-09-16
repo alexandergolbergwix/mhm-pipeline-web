@@ -771,10 +771,15 @@ async def _heartbeat_owned_jobs() -> int:
             .where(
                 RunJob.id.in_(live_ids),
                 RunJob.status == JOB_STATUS_RUNNING,
-                RunJob.claimed_by == WORKER_ID,
+                # WORKER_ID: rows executing in this process. modal-%: rows
+                # this process dispatched to the mhm-jobs Modal app and is
+                # polling (Rule W-237) — the polling task is the liveness
+                # owner while the container does the compute.
+                RunJob.claimed_by.in_([WORKER_ID])
+                | RunJob.claimed_by.like("modal-%"),
             )
             .values(updated_at=func.now())
-            .execution_options(synchronize_session=False)
+            .execution_options(synchronize_session=False),
         )
         await db.commit()
         return res.rowcount or 0
