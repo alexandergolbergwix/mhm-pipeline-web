@@ -46,7 +46,8 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
             return
 
         run_id = job.run_id
-        params = job.params or {}        records = (
+        params = job.params or {}
+        records = (
             await db.execute(
                 select(RunRecord)
                 .where(RunRecord.run_id == run_id)
