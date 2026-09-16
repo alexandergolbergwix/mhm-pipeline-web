@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import hmac
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,7 @@ from app.models.run_job import (
     SUPPORTED_JOB_KINDS,
     RunJob,
 )
+from app.pipeline.modal_job_client import notify_modal_finished
 from app.pipeline.run_job_params import prepare_job_params
 from app.pipeline.run_job_service import (
     ActiveJobError,
@@ -25,6 +27,7 @@ from app.pipeline.run_job_service import (
     serialise_job,
 )
 from app.routers.runs import _lookup_run_with_access
+from app.settings import get_settings
 
 router = APIRouter(tags=["run-jobs"])
 
@@ -117,6 +120,26 @@ async def get_run_job(
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
     return serialise_job(job, include_session_snapshot=include_session_snapshot)
+
+
+@router.post("/runs/{run_id}/jobs/{job_id}/modal-event")
+async def modal_job_event(
+    run_id: uuid.UUID,
+    job_id: uuid.UUID,
+    request: Request,
+) -> dict[str, Any]:
+    """Modal completion webhook (Rule W-237).
+
+    The mhm-jobs container POSTs here (bearer = MODAL_JOBS_TOKEN) when a
+    dispatched job reaches a terminal state, so the dispatching web
+    process wakes instantly instead of sleep-polling the row.
+    """
+    expected = get_settings().modal_jobs_token
+    supplied = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    if not expected or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid token")
+    notify_modal_finished(job_id)
+    return {"ok": True}
 
 
 @router.post("/runs/{run_id}/jobs/{job_id}/cancel")

@@ -857,12 +857,14 @@ def spawn_job(job_id: uuid.UUID) -> None:
 
 async def _execute_job(job_id: uuid.UUID) -> None:
     kind: str | None = None
+    run_id: uuid.UUID | None = None
     try:
         async with session_scope() as db:
             job = await db.get(RunJob, job_id)
             if job is None:
                 return
             kind = job.kind
+            run_id = job.run_id
             if not await _try_claim_with_admission(
                 db, job_id, kind, status=job.status,
             ):
@@ -881,12 +883,12 @@ async def _execute_job(job_id: uuid.UUID) -> None:
         # Modal execution (Rule W-237): rdf_build / hmo_item_build may run
         # on the mhm-jobs Modal app when MODAL_JOBS_URL is configured. The
         # claimed process stays the owner (heartbeat via _background_tasks)
-        # and polls; Modal writes progress + terminal state. False → local
-        # fallback below (Rule W-15 degradation).
+        # and waits on the completion webhook; Modal writes progress +
+        # terminal state. False → local fallback below (Rule W-15).
         if kind in MODAL_JOB_KINDS:
             from app.pipeline.modal_job_client import run_on_modal  # noqa: PLC0415
 
-            if await run_on_modal(job_id, kind):
+            if await run_on_modal(job_id, run_id, kind):
                 return
             logger.info("modal execution declined for %s job %s — running locally", kind, job_id)
 

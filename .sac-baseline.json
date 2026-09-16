@@ -289,6 +289,13 @@
       "expires": "2027-09-14"
     },
     {
+      "fingerprint": "sha256:9288a8a9295587e27b9f2d984fa2fd62",
+      "path": "backend/app/routers/run_jobs.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed pre-existing code identifier; no credential value",
+      "expires": "2027-03-15"
+    },
+    {
       "fingerprint": "sha256:3e863acdf25c047ce43748acfe986762",
       "path": "backend/app/routers/section_export.py",
       "rule_id": "generic-assigned-secret",
@@ -468,6 +475,13 @@
       "path": "frontend/src/components/wikidata/WikidataItemsPanel.tsx",
       "rule_id": "generic-assigned-secret",
       "reason": "refreshToken is a React useState counter (number) that remounts the upload panel; not a credential; reviewed false positive",
+      "expires": "2027-03-15"
+    },
+    {
+      "fingerprint": "sha256:39c90b82bd857f67b781a96cae50f0af",
+      "path": "modal/modal_jobs.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "reads the shared webhook token from env at runtime; no credential literal",
       "expires": "2027-03-15"
     },
     {

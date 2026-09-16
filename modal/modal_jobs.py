@@ -31,7 +31,7 @@ import os
 import modal
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
-_TIMEOUT_S = 7200
+_TIMEOUT_S = 14400  # 4 h — the 5.3k-entity authority pass needs headroom
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -67,23 +67,61 @@ def _authorize(authorization: str | None) -> bool:
     return hmac.compare_digest(supplied, expected)
 
 
-def _run_job_detached(job_id: str, kind: str) -> dict:
+def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
     """Container entry: run the exact Heroku job runner for one claimed row."""
     import asyncio
+    import uuid as _uuid
 
-    async def _execute() -> None:
-        # Verify the row is still claimed + running (web is the arbiter).
-        from sqlalchemy import select
+    async def _execute() -> dict:
+        from datetime import datetime, timedelta, timezone
+
+        from sqlalchemy import select, update
 
         from app.db import session_scope
         from app.models.run_job import RunJob
 
-        async with session_scope() as db:
-            job = (
-                await db.execute(select(RunJob).where(RunJob.id == job_id))
-            ).scalar_one_or_none()
-        if job is None or job.status != "running":
-            return  # cancelled / already finalized while we cold-started
+        executor_id = f"modal-executor:{_uuid.uuid4().hex[:8]}"
+        now = datetime.now(timezone.utc)
+        stale = now - timedelta(seconds=120)
+
+        # Exclusive lease: exactly one container may run this job. A
+        # preemption restart re-enters here while the dead container's
+        # claim may still look fresh — sleep ONCE until its heartbeat
+        # would have gone stale (no busy waiting), then take over.
+        acquired = False
+        for _attempt in range(3):
+            async with session_scope() as db:
+                row = (
+                    await db.execute(select(RunJob).where(RunJob.id == job_id))
+                ).scalar_one_or_none()
+                if row is None or row.status != "running":
+                    return {"ok": False, "job_id": job_id, "error": "row not running"}
+                res = await db.execute(
+                    update(RunJob)
+                    .where(
+                        RunJob.id == job_id,
+                        RunJob.status == "running",
+                        (
+                            (RunJob.claimed_by == "modal-dispatch")
+                            | (
+                                RunJob.claimed_by.like("modal-executor:%")
+                                & (RunJob.updated_at < stale)
+                            )
+                        ),
+                    )
+                    .values(claimed_by=executor_id, updated_at=datetime.now(timezone.utc))
+                    .execution_options(synchronize_session=False),
+                )
+                await db.commit()
+            if (res.rowcount or 0) == 1:
+                acquired = True
+                break
+            # Lease held by a container that may still be alive: sleep until
+            # its claim would be stale, then retry (bounded).
+            await asyncio.sleep(125)
+            stale = datetime.now(timezone.utc) - timedelta(seconds=120)
+        if not acquired:
+            return {"ok": False, "job_id": job_id, "error": "lease not acquired"}
 
         if kind == "rdf_build":
             from app.pipeline.rdf_build_job import run_rdf_build_job
@@ -96,8 +134,27 @@ def _run_job_detached(job_id: str, kind: str) -> dict:
         else:
             raise ValueError(f"kind {kind!r} has no Modal executor")
 
-    asyncio.run(_execute())
-    return {"ok": True, "job_id": job_id, "kind": kind}
+        # Completion webhook — wakes the Heroku poller instantly (it also
+        # runs a slow row check as the safety net, so a missed webhook is
+        # not fatal).
+        if callback_url:
+            import httpx
+
+            token = os.environ.get("MODAL_JOBS_TOKEN", "")
+            for attempt in range(3):
+                try:
+                    resp = await httpx.AsyncClient(timeout=15.0).post(
+                        callback_url,
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                    if resp.status_code < 500:
+                        break
+                except Exception:  # noqa: BLE001 — webhook is best-effort
+                    pass
+                await asyncio.sleep(2.0 * (attempt + 1))
+        return {"ok": True, "job_id": job_id, "kind": kind}
+
+    return asyncio.run(_execute())
 
 
 @app.function(
@@ -107,8 +164,8 @@ def _run_job_detached(job_id: str, kind: str) -> dict:
     timeout=_TIMEOUT_S,
     secrets=[modal.Secret.from_name("mhm-jobs2")],
 )
-def run_modal_job_detached(job_id: str, kind: str) -> dict:
-    return _run_job_detached(job_id, kind)
+def run_modal_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
+    return _run_job_detached(job_id, kind, callback_url)
 
 
 @app.function(
@@ -141,10 +198,12 @@ def run(request_body: dict) -> dict:
     if not job_id or kind not in ("rdf_build", "hmo_item_build"):
         raise HTTPException(status_code=422, detail="job_id and kind required")
 
-    # Row must be running (web already claimed it under the heavy cap).
+    # Row must be running AND hold the dispatch lease (the Heroku client
+    # sets claimed_by='modal-dispatch' right before calling us — this is
+    # what makes double dispatch after a web restart harmless).
     import asyncio
 
-    async def _check() -> str | None:
+    async def _check() -> tuple[str | None, str | None]:
         from sqlalchemy import select
 
         from app.db import session_scope
@@ -154,14 +213,24 @@ def run(request_body: dict) -> dict:
             job = (
                 await db.execute(select(RunJob).where(RunJob.id == job_id))
             ).scalar_one_or_none()
-        return str(job.status) if job is not None else None
+        if job is None:
+            return None, None
+        return str(job.status), str(job.claimed_by or "")
 
-    status = asyncio.run(_check())
+    status, claimed_by = asyncio.run(_check())
     if status != "running":
         raise HTTPException(
             status_code=409,
             detail=f"job {job_id} is {status or 'missing'}, expected running",
         )
+    if claimed_by != "modal-dispatch":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"job {job_id} is not holding the dispatch lease "
+                f"(claimed_by={claimed_by or 'none'})"
+            ),
+        )
 
-    run_modal_job_detached.spawn(job_id, kind)
+    run_modal_job_detached.spawn(job_id, kind, str(request_body.get("callback_url") or ""))
     return {"ok": True, "spawned": True}

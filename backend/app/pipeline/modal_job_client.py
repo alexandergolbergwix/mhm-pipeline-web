@@ -5,19 +5,25 @@ execute on the ``mhm-jobs`` Modal app instead of the Heroku dyno: the web
 process stays the claimer/arbiter (admission, heartbeat, cancel) and the
 Modal function does the compute, writing progress and the terminal state
 directly to Postgres. The local runner is always the fallback — a Modal
-outage, dispatch failure, or poll timeout degrades to the pre-existing
+outage, dispatch failure, or missed webhook degrades to the pre-existing
 Heroku path (Rule W-15: Modal is a deploy target, never a hard dependency).
 
-Protocol (see ``modal/modal_jobs.py``):
+Execution protocol (see ``modal/modal_jobs.py``):
 
-1. ``POST {MODAL_JOBS_URL}/run`` with ``{job_id, kind}`` and
-   ``Authorization: Bearer {MODAL_JOBS_TOKEN}`` → ``202`` means the detached
-   Modal function spawned.
-2. This process then polls the ``run_jobs`` row until it reaches a terminal
-   status, heartbeating so ``fail_stale_jobs`` does not reap the running
-   row (the poll runs inside the claiming process's owned task). If the
-   poll exceeds the Modal function's timeout budget the local runner takes
-   over — the RDF build resumes from its checkpoint.
+1. This process takes the exclusive **dispatch lease** — a conditional
+   UPDATE moving ``claimed_by`` to ``modal-dispatch`` (from its own claim,
+   or from a stale modal executor). A second dispatcher finds the lease
+   held and waits instead of spawning a rival container.
+2. ``POST {MODAL_JOBS_URL}`` with ``{job_id, kind, token, callback_url}``
+   → ``202`` means the detached Modal function spawned. The container
+   first atomically acquires ``claimed_by = modal-executor:<uuid>`` — a
+   preemption restart waits for the dead container's lease to go stale,
+   then takes over.
+3. The web task waits on an ``asyncio.Event`` (no busy waiting): the
+   container POSTs the completion webhook when the job reaches a terminal
+   state. A slow 60 s row check is the only safety net; if the wait budget
+   lapses with no live container, the local runner takes over (the RDF
+   build resumes from its checkpoint).
 """
 
 from __future__ import annotations
@@ -26,11 +32,11 @@ import asyncio
 import logging
 import time
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
 
 import httpx
-from sqlalchemy import func, select, update
+from sqlalchemy import select
 
 from app.settings import get_settings
 
@@ -42,27 +48,36 @@ MODAL_JOB_KINDS = frozenset({"rdf_build", "hmo_item_build"})
 
 # Modal web endpoint: dispatch must be quick (it only spawns).
 _DISPATCH_TIMEOUT_S = 20.0
-# The detached Modal function runs with timeout=14400; poll past it.
-_POLL_TIMEOUT_S = 15000.0
-# Seconds between row polls (also the cadence at which progress is relayed).
-_POLL_INTERVAL_S = 10.0
+# The detached Modal function runs with timeout=14400 (4 h).
+_WAIT_BUDGET_S = 15000.0
+# Safety-net row check while waiting for the completion webhook.
+_SAFETY_TICK_S = 60.0
 _TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
 # A modal-executor claim whose heartbeat is older than this is dead and
 # may be taken over (by a re-dispatch or the local runner).
 _STALE_AFTER_S = 120
 
+# One waiter per in-flight Modal job, keyed by job id (this process only —
+# WEB_CONCURRENCY is 1 in production, per run_job_service).
+_WAITERS: dict[str, asyncio.Event] = {}
 
-def _now_utc() -> Any:
-    from datetime import datetime, timezone
 
+def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _stale_cutoff() -> Any:
+def _stale_cutoff() -> datetime:
     return _now_utc() - timedelta(seconds=_STALE_AFTER_S)
 
 
-async def _dispatch(job_id: str, kind: str) -> bool:
+def notify_modal_finished(job_id: uuid.UUID | str) -> None:
+    """Wake the poller waiting for this job (called by the Modal webhook)."""
+    event = _WAITERS.get(str(job_id))
+    if event is not None:
+        event.set()
+
+
+async def _dispatch(job_id: str, kind: str, callback_url: str, token: str) -> bool:
     """Spawn the detached Modal run. Returns True on 202."""
     settings = get_settings()
     base = settings.modal_jobs_url.rstrip("/")
@@ -73,7 +88,8 @@ async def _dispatch(job_id: str, kind: str) -> bool:
             json={
                 "job_id": job_id,
                 "kind": kind,
-                "token": settings.modal_jobs_token,
+                "token": token,
+                "callback_url": callback_url,
             },
         )
     if resp.status_code == 202:
@@ -87,22 +103,17 @@ async def _dispatch(job_id: str, kind: str) -> bool:
 
 async def run_on_modal(
     job_id: uuid.UUID,
+    run_id: uuid.UUID,
     kind: str,
     *,
     on_progress: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> bool:
     """Execute one job on Modal. Return False to run it locally instead.
 
-    Exclusive execution is enforced with a dispatch lease (Rule W-237):
-    the claiming process moves the row's ``claimed_by`` to
-    ``modal-dispatch`` (only from its own claim, or from a stale modal
-    executor), and the Modal container atomically takes
-    ``modal-executor:<uuid>``. A second dispatch finds the lease held and
-    polls instead of spawning a rival container.
-
-    True only when the row reached a terminal status. While polling, the
-    claiming process stays alive (its heartbeat covers the running row
-    for ``fail_stale_jobs``).
+    True only when the row reached a terminal status. While waiting, the
+    claiming process stays alive (its heartbeat covers the running row for
+    ``fail_stale_jobs``); completion arrives via webhook, with a slow row
+    check as the safety net.
     """
     settings = get_settings()
     if not settings.modal_jobs_url or kind not in MODAL_JOB_KINDS:
@@ -111,6 +122,7 @@ async def run_on_modal(
     from app.db import session_scope  # noqa: PLC0415
     from app.models.run_job import RunJob  # noqa: PLC0415
     from app.pipeline.run_job_service import WORKER_ID  # noqa: PLC0415
+    from sqlalchemy import update  # noqa: PLC0415
 
     async def _lease_for_dispatch() -> bool:
         async with session_scope() as db:
@@ -125,7 +137,10 @@ async def run_on_modal(
                         & (RunJob.updated_at < _stale_cutoff())
                     ),
                 )
-                .values(claimed_by="modal-dispatch", updated_at=func.now())
+                .values(
+                    claimed_by="modal-dispatch",
+                    updated_at=datetime.now(timezone.utc),
+                )
                 .execution_options(synchronize_session=False),
             )
             await db.commit()
@@ -138,11 +153,16 @@ async def run_on_modal(
         return False
     if not holds_lease:
         # Either another executor holds a fresh lease or the row changed
-        # state — poll until terminal instead of spawning a rival.
-        logger.info("modal: lease held elsewhere for %s job %s — polling", kind, job_id)
-        return await _poll_until_terminal(job_id, on_progress)
+        # state — wait for it instead of spawning a rival container.
+        logger.info("modal: lease held elsewhere for %s job %s — waiting", kind, job_id)
+        return await _wait_for_terminal(job_id, on_progress)
+
+    callback_url = (
+        f"{settings.public_base_url.rstrip('/')}"
+        f"/api/runs/{run_id}/jobs/{job_id}/modal-event"
+    )
     try:
-        accepted = await _dispatch(str(job_id), kind)
+        accepted = await _dispatch(str(job_id), kind, callback_url, settings.modal_jobs_token)
     except Exception as exc:  # noqa: BLE001 — network errors degrade locally
         logger.warning("modal dispatch failed for %s %s: %s", kind, job_id, exc)
         return False
@@ -150,55 +170,67 @@ async def run_on_modal(
         return False
 
     logger.info("modal: dispatched %s job %s", kind, job_id)
-    return await _poll_until_terminal(job_id, on_progress)
+    return await _wait_for_terminal(job_id, on_progress)
 
 
-async def _poll_until_terminal(
+async def _wait_for_terminal(
     job_id: uuid.UUID,
-    on_progress: Callable[[dict[str, Any]], Awaitable[None]] | None,
+    on_progress: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> bool:
-    """Poll the row to a terminal status while heartbeating via ownership.
+    """Wait (event-driven) for the row to reach a terminal status.
 
-    When the poll budget lapses but a Modal container is still alive
-    (fresh ``modal-executor`` heartbeat), keep waiting — running the job
-    locally in parallel would reintroduce the double-writer bug. Only a
-    stale modal claim falls back to local execution.
+    Woken by the Modal completion webhook; a 60 s row check is the safety
+    net for a missed webhook. The wait budget matches the Modal function's
+    timeout; past it, only a live container heartbeat keeps the wait alive
+    — otherwise the caller falls back to local execution.
     """
-    started = time.monotonic()
     from app.db import session_scope  # noqa: PLC0415
     from app.models.run_job import RunJob  # noqa: PLC0415
 
+    key = str(job_id)
+    waiter = _WAITERS.setdefault(key, asyncio.Event())
+    started = time.monotonic()
     last_progress: dict[str, Any] = {}
-    while True:
-        await asyncio.sleep(_POLL_INTERVAL_S)
-        async with session_scope() as db:
-            job = (
-                await db.execute(select(RunJob).where(RunJob.id == job_id))
-            ).scalar_one_or_none()
-            if job is None:
-                logger.warning("modal poll: job %s vanished", job_id)
-                return False
-            progress = dict(job.progress or {})
-            status = str(job.status)
-            claimed_by = str(job.claimed_by or "")
-            updated_at = job.updated_at
-        if progress != last_progress and on_progress is not None:
+
+    try:
+        while True:
             try:
-                await on_progress(progress)
-            except Exception:  # noqa: BLE001 — progress relay must not kill the poll
-                logger.exception("modal poll progress relay failed")
-            last_progress = progress
-        if status in _TERMINAL_STATUSES:
-            logger.info("modal: job %s finished as %s", job_id, status)
-            return True
-        poll_expired = time.monotonic() - started >= _POLL_TIMEOUT_S
-        # A live Modal container keeps updated_at fresh via its progress writes.
-        modal_alive = claimed_by.startswith("modal-executor:") and (
-            updated_at is not None and updated_at >= _stale_cutoff()
-        )
-        if poll_expired and not modal_alive:
-            logger.warning(
-                "modal poll for job %s expired with no live container — local fallback",
-                job_id,
+                await asyncio.wait_for(waiter.wait(), timeout=_SAFETY_TICK_S)
+            except asyncio.TimeoutError:
+                pass
+            waiter.clear()
+
+            async with session_scope() as db:
+                job = (
+                    await db.execute(select(RunJob).where(RunJob.id == job_id))
+                ).scalar_one_or_none()
+                if job is None:
+                    logger.warning("modal wait: job %s vanished", job_id)
+                    return False
+                progress = dict(job.progress or {})
+                status = str(job.status)
+                claimed_by = str(job.claimed_by or "")
+                updated_at = job.updated_at
+
+            if progress != last_progress and on_progress is not None:
+                try:
+                    await on_progress(progress)
+                except Exception:  # noqa: BLE001 — relay must not kill the wait
+                    logger.exception("modal progress relay failed")
+                last_progress = progress
+            if status in _TERMINAL_STATUSES:
+                logger.info("modal: job %s finished as %s", job_id, status)
+                return True
+
+            budget_spent = time.monotonic() - started >= _WAIT_BUDGET_S
+            container_alive = claimed_by.startswith("modal-executor:") and (
+                updated_at is not None and updated_at >= _stale_cutoff()
             )
-            return False
+            if budget_spent and not container_alive:
+                logger.warning(
+                    "modal wait for job %s expired with no live container — local fallback",
+                    job_id,
+                )
+                return False
+    finally:
+        _WAITERS.pop(key, None)

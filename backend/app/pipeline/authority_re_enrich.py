@@ -132,6 +132,11 @@ async def re_enrich_run(
         await _maybe_progress(checked, control_number, clean_text)
 
         if not candidates:
+            # Commit per entity: the transaction must never stay open
+            # across the next entity's network lookups — the engine sets
+            # idle_in_transaction_session_timeout=120s and Postgres kills
+            # the connection mid-pass otherwise (Rule W-240).
+            await db.commit()
             continue
 
         c = candidates[0]
@@ -198,6 +203,13 @@ async def re_enrich_run(
             await db.flush()
             existing_idx[key] = [row]
             newly_matched += 1
+
+        # Commit per entity: the transaction must never stay open across
+        # the next entity's network lookups — the engine sets
+        # idle_in_transaction_session_timeout=120s and Postgres kills the
+        # connection mid-pass otherwise (Rule W-240). Also makes a
+        # preempted Modal restart cheap: committed matches stay committed.
+        await db.commit()
 
     for m, key in orphan_pairs:
         if key not in produced_keys:

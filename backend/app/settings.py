@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # locally on Heroku (the fallback path is always kept — Rule W-15).
     modal_jobs_url: str = Field(default="")
     modal_jobs_token: str = Field(default="")
+    # Public origin of THIS backend (custom domain) — used to build the
+    # webhook URL the Modal runner calls when a job finishes so the web
+    # poller wakes instantly instead of sleep-polling.
+    public_base_url: str = Field(default="")
     # Qubrid Chat Completions — used for research-thread AI titles.
     qubrid_api_key: str = Field(default="")
     qubrid_base_url: str = Field(default="https://platform.qubrid.com/v1")
