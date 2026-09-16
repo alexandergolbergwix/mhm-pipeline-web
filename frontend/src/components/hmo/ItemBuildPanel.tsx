@@ -97,12 +97,16 @@ export function ItemBuildPanel({runId, rdfPresent, onBuilt, compact = false}: It
   }
 
   const building = busy || (buildJob != null && isJobActive(buildJob.status));
+  const buildDisabledReason = building
+    ? "A build is already running — watch its progress here or in the job tray (bottom-right)."
+    : "No RDF graph for this run yet. Open the RDF Graph stage, build the graph, then come back — items are created from it.";
 
   const actions = (
     <div className="flex flex-wrap items-center gap-3">
       <button
         onClick={() => void doBuild(false)}
         disabled={building || !rdfPresent}
+        title={building || !rdfPresent ? buildDisabledReason : undefined}
         className="button-primary text-sm"
         data-testid="hmo-build-items"
       >
@@ -114,13 +118,23 @@ export function ItemBuildPanel({runId, rdfPresent, onBuilt, compact = false}: It
           disabled={building || !rdfPresent}
           className="button-ghost text-sm"
           data-testid="hmo-rebuild-skip-cache"
-          title="Bypass the cached item build, refresh authority + RDF, and re-export (background job)"
+          title={
+            building || !rdfPresent
+              ? buildDisabledReason
+              : "Bypass the cached item build, refresh authority + RDF, and re-export (background job)"
+          }
         >
           {building ? "Rebuilding…" : "Rebuild (skip cache)"}
         </button>
       )}
       {!rdfPresent && (
-        <span className="text-xs muted">Build the RDF graph first.</span>
+        <span className="text-xs muted">
+          Build the RDF graph first —{" "}
+          <a href={`/runs/${runId}/rdf`} className="text-biu-sky hover:underline">
+            open the RDF Graph stage
+          </a>
+          .
+        </span>
       )}
       {status?.build_present && (
         <GlassPill className="px-3 py-0.5 text-[10px] kicker text-biu-sky">
