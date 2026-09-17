@@ -134,6 +134,13 @@ async def build_items_for_run(
 
     await _stage(2, "Exporting Wikibase drafts from the RDF graph…")
     schema_mappings = await _load_schema_mappings(db)
+    # Release the read transaction before the CPU-bound threadpool stages:
+    # exporter + resolve + SHACL run for minutes, and an open transaction
+    # across them is an idle-in-connection kill at the next write (Rule
+    # W-240) — 2026-09-17: the export failed with "cannot call
+    # Transaction.commit(): the underlying connection is closed" and the
+    # built-in retry sent the whole build back to step 1.
+    await db.commit()
     drafts = await run_in_threadpool(HmoWikibaseExporter().from_ttl, ttl_path)
     await run_in_threadpool(assert_export_quality, drafts)
     await _stage(3, "Resolving entities against Wikibase mappings…")
