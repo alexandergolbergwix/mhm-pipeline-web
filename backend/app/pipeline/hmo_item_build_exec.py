@@ -325,10 +325,23 @@ async def execute_hmo_item_build(
     if await cancelled():
         raise HmoItemBuildError("cancelled", conflict=False)
 
+    async def export_sub(processed: int, total: int, message: str) -> None:
+        await progress(
+            "export",
+            3,
+            3,
+            "Step 3 of 3: Exporting Wikibase item drafts…",
+            sub_processed=processed,
+            sub_total=total,
+            sub_unit="steps",
+            sub_message=message,
+        )
+
     try:
         result = await hmo_item_build.build_items_for_run(
             db, run_id, Path(ttl_path),
             force_rebuild=force_rebuild or force_rdf_rebuild,
+            on_progress=export_sub,
         )
     except UnmappedOntologyUriError as exc:
         raise HmoItemBuildError(

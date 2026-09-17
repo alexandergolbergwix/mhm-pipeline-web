@@ -134,6 +134,11 @@ async def re_enrich_run(
         message = f"{control_number}: {label}" if label else control_number
         await on_progress(processed, total, message)
 
+    async def _emit_phase(processed: int, message: str) -> None:
+        if on_progress is None or total <= 0:
+            return
+        await on_progress(min(processed, total), total, message)
+
     # ── Phase A — concurrent matching (R34) ───────────────────────────
     # matcher.match is network-bound (VIAF HTTP, KIMA/Mazal lookups);
     # running 5k+ of them serially costs hours. Entities that need a
@@ -184,6 +189,12 @@ async def re_enrich_run(
     # close() it here (Phase B mutates/deletes these in-memory rows).
     await db.commit()
 
+    if pending:
+        await _emit_phase(
+            len(work) - len(pending),
+            f"Replaying {skipped_fresh} fresh entities; matching {len(pending)} pending…",
+        )
+
     async def _match_one(
         item: tuple[str, dict, dict, str, str, str],
     ) -> tuple[str, list]:
@@ -208,8 +219,26 @@ async def re_enrich_run(
 
     match_results: dict[str, list] = {}
     if pending:
-        results = await asyncio.gather(*[_match_one(item) for item in pending])
-        match_results = {key: cands for key, cands in results}
+        # Per-completion progress (W-113): the sweep reaches the full bar
+        # in seconds, then the concurrent match used to run with zero UI
+        # feedback for the whole fan-out (2026-09-17: the build sat at
+        # "5295 / 5295 entities" while matching ran). Report each
+        # completed match so the bar climbs back to the total as results
+        # land; the pending count is unique entity keys (R16).
+        sweep_done = len(work) - len(pending)
+        matched_done = 0
+        last_match_emit = 0.0
+        for coro in asyncio.as_completed([_match_one(item) for item in pending]):
+            key, candidates = await coro
+            match_results[key] = candidates
+            matched_done += 1
+            now = time.monotonic()
+            if matched_done == len(pending) or now - last_match_emit >= 1.0:
+                last_match_emit = now
+                await _emit_phase(
+                    sweep_done + matched_done,
+                    f"Matching pending entities… {matched_done}/{len(pending)}",
+                )
 
     # ── Phase B — serial DB apply, short per-entity transactions ──────
     for key, control_number, marc, entity, clean_text, clean_role, kind in pending:
@@ -317,11 +346,17 @@ async def re_enrich_run(
     wd_crosschecked = 0
     _FINALIZE_CHUNK = 400
     rows_list = list(remaining_rows)
+    finalize_done = 0
     for i in range(0, len(rows_list), _FINALIZE_CHUNK):
         chunk_stats = finalize_authority_matches(rows_list[i:i + _FINALIZE_CHUNK])
         cross_linked += chunk_stats["cross_linked"]
         wd_crosschecked += chunk_stats["wikidata_crosschecked"]
         await db.commit()
+        finalize_done = min(finalize_done + _FINALIZE_CHUNK, len(rows_list))
+        await _emit_phase(
+            len(work),
+            f"Hardening authority evidence… {finalize_done}/{len(rows_list)} rows",
+        )
 
     remaining_count = await db.scalar(
         select(func.count())

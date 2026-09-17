@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,7 @@ async def build_items_for_run(
     ttl_path: Path,
     *,
     force_rebuild: bool = False,
+    on_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
 ) -> HmoItemBuildResult:
     """Build (or return the cached) resolved item set for one run.
 
@@ -99,7 +101,15 @@ async def build_items_for_run(
     when the RDF graph references a class/property the schema bootstrap
     hasn't created yet — callers should surface this as a 409 pointing
     the curator at the schema bootstrap, not swallow it.
+
+    ``on_progress(done, total, message)`` reports the 5 export stages so
+    the job UI is not silent for the whole export (W-113).
     """
+    async def _stage(done: int, message: str) -> None:
+        if on_progress is not None:
+            await on_progress(done, 5, message)
+
+    await _stage(1, "Hashing build inputs (fingerprint)…")
     fingerprint = await compute_hmo_build_fingerprint(db, ttl_path)
 
     if not force_rebuild:
@@ -109,6 +119,7 @@ async def build_items_for_run(
             )
         ).scalar_one_or_none()
         if cached is not None and cached.input_fingerprint == fingerprint:
+            await _stage(5, "Cache hit — serving the stored item build")
             return HmoItemBuildResult(
                 entities=[
                     ResolvedWikibaseEntity.from_dict(e) for e in cached.resolved_entities
@@ -121,15 +132,19 @@ async def build_items_for_run(
                 shacl_report=cached.shacl_report or {},
             )
 
+    await _stage(2, "Exporting Wikibase drafts from the RDF graph…")
     schema_mappings = await _load_schema_mappings(db)
     drafts = await run_in_threadpool(HmoWikibaseExporter().from_ttl, ttl_path)
     await run_in_threadpool(assert_export_quality, drafts)
+    await _stage(3, "Resolving entities against Wikibase mappings…")
     resolved = await run_in_threadpool(resolve_against_mappings, drafts, schema_mappings)
 
     deferred_count = sum(len(e.deferred_links) for e in resolved)
     skipped_count = sum(len(e.skipped_statements) for e in resolved)
     resolved_dicts = [e.to_dict() for e in resolved]
+    await _stage(4, "Validating items with SHACL…")
     shacl_report = await build_shacl_report_for_items(ttl_path, resolved_dicts)
+    await _stage(5, "Caching resolved items…")
     await _upsert_cache(
         db,
         run_id=run_id,

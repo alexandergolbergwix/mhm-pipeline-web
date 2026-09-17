@@ -219,7 +219,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-239** — "Build items" on an unchanged run short-circuits to the item cache (input-change check against `built_at`); a changed approval/NER row/override bypasses it
 - **W-240** — Long jobs must never hold a DB transaction across network/CPU phases: commit per unit of work and recycle the pooled connection (`db.close()`) before CPU stretches — `idle_in_transaction_session_timeout=120s` kills idle open transactions
 - **W-241** — Authority enrichment is per-entity resumable: `enriched_at` on each match row; a fresh entity (enriched after the latest upstream change) is skipped without a matcher call
-- **W-242** — Authority matching runs concurrently (ENRICH_CONCURRENCY, default 8, per-task sessions); never serially over the network; the apply session commits before the fan-out — no transaction may span the gather
+- **W-242** — Authority matching runs concurrently (ENRICH_CONCURRENCY, default 8, per-task sessions); never serially over the network; the apply session commits before the fan-out — no transaction may span the gather; the fan-out and finalize pass report per-completion/chunk progress so the silent gap after the fast sweep never reads as "stuck"
 - **W-243** — Modal dispatch accepts any 2xx with `ok:true` (the endpoint answers 200, never 202); every job-runner code change deploys `modal_jobs.py` in the same change, and the `mhm-jobs2` secret carries `AUTHORITY_MODE=postgres` — otherwise Heroku runs the job locally while a stale Modal container races it
 - **W-105** — Studio “Approve all visible” MUST run as a background job
 - **W-106** — All Studio / RDF builds MUST run as `run_jobs` with inline progress
