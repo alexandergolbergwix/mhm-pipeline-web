@@ -1,7 +1,9 @@
 """Shared authority re-enrich orchestration for POST and SSE endpoints."""
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 import time
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
@@ -132,6 +134,17 @@ async def re_enrich_run(
         message = f"{control_number}: {label}" if label else control_number
         await on_progress(processed, total, message)
 
+    # ── Phase A — concurrent matching (R34) ───────────────────────────
+    # matcher.match is network-bound (VIAF HTTP, KIMA/Mazal lookups);
+    # running 5k+ of them serially costs hours. Entities that need a
+    # match are dispatched with bounded concurrency, each with its OWN
+    # short DB session (the inference cache commits internally). The
+    # serial DB-apply phase below then never holds a transaction across
+    # network work (Rule W-240).
+    concurrency = int(os.getenv("ENRICH_CONCURRENCY", "8"))
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    pending: list[tuple[str, dict, dict, str, str, str]] = []
     for control_number, marc, entity in work:
         checked += 1
         clean_text = normalize_entity_text(entity.get("text", ""))
@@ -143,7 +156,7 @@ async def re_enrich_run(
         # Skip entities whose enrichment is still fresh (R33): nothing
         # upstream changed since their last match, so re-matching would
         # return the same answer at network-lookup cost. Their row gets
-        # its produced_keys entry right below (orphan purge still sees it).
+        # its produced_keys entry right above (orphan purge still sees it).
         matches = existing_idx.get(key, [])
         primary = matches[0] if matches else None
         if (
@@ -156,20 +169,39 @@ async def re_enrich_run(
             await _maybe_progress(checked, control_number, clean_text)
             continue
 
-        try:
-            candidates = await matcher.match(
-                entity, marc,
-                db_session=db,
-                user_id=user_id,
-                skip_cache=skip_cache,
-            )
-        except Exception:  # noqa: BLE001
-            logger.exception(
-                "re-enrich: authority match failed for %r", entity.get("text"),
-            )
-            candidates = []
-
+        pending.append((key, control_number, marc, entity, clean_text, clean_role, kind))
         await _maybe_progress(checked, control_number, clean_text)
+
+    async def _match_one(
+        item: tuple[str, dict, dict, str, str, str],
+    ) -> tuple[str, list]:
+        key, control_number, marc, entity, _ct, _cr, _k = item
+        async with sem:
+            from app.db import session_scope as _session_scope
+
+            try:
+                async with _session_scope() as task_db:
+                    candidates = await matcher.match(
+                        entity, marc,
+                        db_session=task_db,
+                        user_id=user_id,
+                        skip_cache=skip_cache,
+                    )
+                return key, candidates
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "re-enrich: authority match failed for %r", entity.get("text"),
+                )
+                return key, []
+
+    match_results: dict[str, list] = {}
+    if pending:
+        results = await asyncio.gather(*[_match_one(item) for item in pending])
+        match_results = {key: cands for key, cands in results}
+
+    # ── Phase B — serial DB apply, short per-entity transactions ──────
+    for key, control_number, marc, entity, clean_text, clean_role, kind in pending:
+        candidates = match_results.get(key) or []
 
         if not candidates:
             # Commit per entity: the transaction must never stay open
