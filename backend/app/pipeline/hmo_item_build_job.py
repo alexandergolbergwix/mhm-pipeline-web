@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
@@ -75,34 +76,57 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
         return await is_cancel_requested(job_id)
 
     try:
-        async with session_scope() as db:
-            job = await db.get(RunJob, job_id)
-            prev_checkpoint = (
-                job.progress.get("checkpoint")
-                if job is not None and isinstance(job.progress, dict) else None
-            ) or {}
-            rdf_resume: dict | None = None
-            if (
-                not force_rebuild
-                and prev_checkpoint.get("signature")
-                and int(prev_checkpoint.get("record_index") or 0) > 0
-            ):
-                rdf_resume = {
-                    k: prev_checkpoint[k] for k in ("record_index", "file_bytes", "manuscripts")
-                }
-                rdf_checkpoint.update(prev_checkpoint)
-            else:
-                rdf_checkpoint["signature"] = uuid.uuid4().hex[:16]
-            result = await execute_hmo_item_build(
-                db,
-                run_id,
-                force_rebuild=force_rebuild,
-                refresh_authority=refresh_authority,
-                on_progress=on_progress,
-                should_cancel=should_cancel,
-                rdf_resume=rdf_resume,
-                rdf_checkpoint=rdf_checkpoint,
-            )
+        # One connection-retry: a mid-step network blip can kill the pooled
+        # connection (Rule W-240 bounds the damage to one entity); the
+        # retry resumes via skip-fresh + the item checkpoint instead of
+        # failing a run that is 95 % done.
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            try:
+                async with session_scope() as db:
+                    job = await db.get(RunJob, job_id)
+                    prev_checkpoint = (
+                        job.progress.get("checkpoint")
+                        if job is not None and isinstance(job.progress, dict) else None
+                    ) or {}
+                    rdf_resume: dict | None = None
+                    if (
+                        not force_rebuild
+                        and prev_checkpoint.get("signature")
+                        and int(prev_checkpoint.get("record_index") or 0) > 0
+                    ):
+                        rdf_resume = {
+                            k: prev_checkpoint[k] for k in ("record_index", "file_bytes", "manuscripts")
+                        }
+                        rdf_checkpoint.update(prev_checkpoint)
+                    else:
+                        rdf_checkpoint["signature"] = uuid.uuid4().hex[:16]
+                    result = await execute_hmo_item_build(
+                        db,
+                        run_id,
+                        force_rebuild=force_rebuild,
+                        refresh_authority=refresh_authority,
+                        on_progress=on_progress,
+                        should_cancel=should_cancel,
+                        rdf_resume=rdf_resume,
+                        rdf_checkpoint=rdf_checkpoint,
+                    )
+                last_exc = None
+                break
+            except HmoItemBuildError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt == 0 and "connection is closed" in str(exc):
+                    logger.warning(
+                        "hmo item build %s lost its DB connection mid-run — retrying once "
+                        "(resume via enriched_at + checkpoints)", run_id,
+                    )
+                    await asyncio.sleep(5.0)
+                    continue
+                raise
+        if last_exc is not None:
+            raise last_exc
     except HmoItemBuildError as exc:
         if str(exc) == "cancelled" or await is_cancel_requested(job_id):
             await finish_job(job_id, status=JOB_STATUS_CANCELLED)

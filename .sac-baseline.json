@@ -37,6 +37,13 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:e8f48b494e052f2d4469d80d18551bac",
+      "path": "backend/app/pipeline/hmo_item_build_job.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "refresh_authority parameter name; no credential value",
+      "expires": "2027-03-15"
+    },
+    {
       "fingerprint": "sha256:aa7de8b9a8243879b3d21f70e10f03b6",
       "path": "backend/app/pipeline/hmo_item_build_job.py",
       "rule_id": "relation-linked-secret",
