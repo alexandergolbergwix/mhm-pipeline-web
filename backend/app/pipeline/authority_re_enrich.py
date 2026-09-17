@@ -41,6 +41,15 @@ def match_key(
     )
 
 
+class ReEnrichCancelled(Exception):
+    """Cancel flag observed mid-enrichment.
+
+    The caller (``execute_hmo_item_build``) maps this to the job runner's
+    ``cancelled`` path. Partial work stays committed (per-entity commits
+    + ``enriched_at`` skip-fresh make the next run resume instantly).
+    """
+
+
 async def re_enrich_run(
     db: AsyncSession,
     run: Run,
@@ -51,11 +60,16 @@ async def re_enrich_run(
     records: list[RunRecord],
     existing_rows: list[AuthorityMatch],
     on_progress: ProgressCb | None = None,
+    should_cancel: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, int]:
     """Re-match every entity; upsert by normalised key; purge orphan rows.
 
     ``on_progress(processed, total, message)`` is throttled (~1s) and reports
     per-entity work so long HMO rebuilds can show a sub-progress bar.
+    ``should_cancel`` is polled on every progress emit — the sweep and the
+    concurrent gather can otherwise run for an hour before the runner's
+    next phase-boundary cancel check (2026-09-17: Cancel stayed unresponsive
+    for 20+ min while the sweep crawled).
     """
     run_id = run.id
     user_id = run.created_by
@@ -145,6 +159,27 @@ async def re_enrich_run(
             return
         await on_progress(min(processed, total), total, message)
 
+    # Cancel polling is time-throttled (~1/s) and independent of
+    # on_progress: the runner's phase-boundary checks alone left Cancel
+    # unresponsive for the whole multi-minute sweep/gather (2026-09-17).
+    last_cancel_check = 0.0
+
+    async def _check_cancel() -> None:
+        nonlocal last_cancel_check
+        if should_cancel is None:
+            return
+        now = time.monotonic()
+        if now - last_cancel_check < 1.0:
+            return
+        last_cancel_check = now
+        if await should_cancel():
+            raise ReEnrichCancelled()
+
+    async def _emit_phase(processed: int, message: str) -> None:
+        if on_progress is None or total <= 0:
+            return
+        await on_progress(min(processed, total), total, message)
+
     # ── Phase A — concurrent matching (R34) ───────────────────────────
     # matcher.match is network-bound (VIAF HTTP, KIMA/Mazal lookups);
     # running 5k+ of them serially costs hours. Entities that need a
@@ -158,6 +193,7 @@ async def re_enrich_run(
     pending: list[tuple[str, dict, dict, str, str, str]] = []
     for control_number, marc, entity in work:
         checked += 1
+        await _check_cancel()
         clean_text = normalize_entity_text(entity.get("text", ""))
         clean_role = normalize_role(entity.get("role", ""))
         kind = entity.get("kind", "person")
@@ -238,6 +274,7 @@ async def re_enrich_run(
             key, candidates = await coro
             match_results[key] = candidates
             matched_done += 1
+            await _check_cancel()
             now = time.monotonic()
             if matched_done == len(pending) or now - last_match_emit >= 1.0:
                 await _emit_phase(

@@ -165,6 +165,7 @@ async def execute_hmo_item_build(
         if await cancelled():
             raise HmoItemBuildError("cancelled", conflict=False)
         from app.pipeline import authority as authority_pipeline  # noqa: PLC0415
+        from app.pipeline import authority_re_enrich  # noqa: PLC0415
         from app.pipeline.authority_re_enrich import re_enrich_run  # noqa: PLC0415
 
         records = (
@@ -186,20 +187,27 @@ async def execute_hmo_item_build(
                 sub_message=message,
             )
 
-        enrich_stats = await re_enrich_run(
-            db,
-            run,
-            authority_pipeline.get_default_matcher(),
-            # Cached lookups (shared Postgres inference cache) on the normal
-            # path: a Modal preemption restart replays cached entities in
-            # seconds instead of re-querying VIAF/KIMA 5k times. Fresh
-            # lookups only on the explicit Rebuild (skip cache).
-            skip_cache=force_rebuild,
-            skip_fresh_enriched=not force_rebuild,
-            records=list(records),
-            existing_rows=list(matches),
-            on_progress=authority_sub,
-        )
+        try:
+            enrich_stats = await re_enrich_run(
+                db,
+                run,
+                authority_pipeline.get_default_matcher(),
+                # Cached lookups (shared Postgres inference cache) on the normal
+                # path: a Modal preemption restart replays cached entities in
+                # seconds instead of re-querying VIAF/KIMA 5k times. Fresh
+                # lookups only on the explicit Rebuild (skip cache).
+                skip_cache=force_rebuild,
+                skip_fresh_enriched=not force_rebuild,
+                records=list(records),
+                existing_rows=list(matches),
+                on_progress=authority_sub,
+                should_cancel=cancelled,
+            )
+        except authority_re_enrich.ReEnrichCancelled:
+            # Cancel observed mid-sweep/gather (checked on every progress
+            # emit) — map to the runner's cancelled path. Partial work is
+            # already committed per entity and resumes via skip-fresh.
+            raise HmoItemBuildError("cancelled")
         await db.commit()
         # Recycle the pooled connection: the next phases are long CPU-bound
         # stretches during which an idle Postgres connection gets dropped

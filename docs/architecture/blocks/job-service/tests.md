@@ -12,6 +12,10 @@
   import error that would surface raw interpreter messages to curators
   (2026-09-16: `invalid syntax (rdf_build_job.py, line 49)` on the RDF page).
 
+- `backend/tests/unit/test_authority_re_enrich_progress.py` — the enrichment
+  sweep emits throttled per-entity progress (W-113) and stops with
+  `ReEnrichCancelled` as soon as the cancel flag is set (R28).
+
 - `backend/tests/unit/test_modal_job_client.py` — dispatch/lease/wait
   semantics for Modal execution, including `test_run_on_modal_accepts_200_ok_body`
   (Rule W-243): the endpoint's real 200 `{"ok":true,"spawned":true}` counts as
