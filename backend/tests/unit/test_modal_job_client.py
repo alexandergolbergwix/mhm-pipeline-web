@@ -160,6 +160,52 @@ async def test_run_on_modal_rejected_status_falls_back(db_session, sample_run, m
 
 
 @pytest.mark.asyncio
+async def test_run_on_modal_accepts_200_ok_body(db_session, sample_run, monkeypatch) -> None:
+    """The real Modal endpoint answers 200 {"ok": true, "spawned": true};
+    a 200 with ok=true must count as an accepted dispatch (2026-09-17:
+    the 202-only check rejected every real dispatch and double-ran the
+    job locally + on Modal)."""
+    _settings(monkeypatch)
+    _fast_safety_tick(monkeypatch)
+    job = await _add_running_job(db_session, sample_run)
+    dispatches = _install_client(monkeypatch)
+
+    class _Resp200:
+        status_code = 200
+        text = '{"ok":true,"spawned":true}'
+
+        def json(self):
+            return {"ok": True, "spawned": True}
+
+    class _Client200:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, *a, **kw):
+            _Client.dispatches.append({"url": kw.get("url", "")})
+            return _Resp200()
+
+    monkeypatch.setattr(modal_job_client.httpx, "AsyncClient", _Client200)
+
+    async def _finish():
+        await asyncio.sleep(0.05)
+        job.status = JOB_STATUS_SUCCEEDED
+        await db_session.commit()
+        modal_job_client.notify_modal_finished(job.id)
+
+    finisher = asyncio.create_task(_finish())
+    assert await run_on_modal(job.id, sample_run["run_id"], JOB_KIND_RDF_BUILD) is True
+    await finisher
+    assert len(dispatches) == 1
+
+
+@pytest.mark.asyncio
 async def test_run_on_modal_wakes_on_webhook_and_relays_progress(
     db_session, sample_run, monkeypatch,
 ) -> None:

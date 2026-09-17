@@ -78,7 +78,7 @@ def notify_modal_finished(job_id: uuid.UUID | str) -> None:
 
 
 async def _dispatch(job_id: str, kind: str, callback_url: str, token: str) -> bool:
-    """Spawn the detached Modal run. Returns True on 202."""
+    """Spawn the detached Modal run. Returns True on an accepted dispatch."""
     settings = get_settings()
     base = settings.modal_jobs_url.rstrip("/")
     async with httpx.AsyncClient(timeout=_DISPATCH_TIMEOUT_S) as client:
@@ -92,7 +92,17 @@ async def _dispatch(job_id: str, kind: str, callback_url: str, token: str) -> bo
                 "callback_url": callback_url,
             },
         )
+    # Modal's @modal.fastapi_endpoint answers 200 (not 202) with
+    # {"ok": true, "spawned": true} when the detached runner spawned.
+    # Treat any 2xx carrying ok=true (or the legacy 202) as accepted;
+    # anything else is a rejection and the caller runs the job locally.
     if resp.status_code == 202:
+        return True
+    try:
+        body = resp.json()
+    except Exception:  # noqa: BLE001 — non-JSON body is never an accept
+        body = None
+    if 200 <= resp.status_code < 300 and isinstance(body, dict) and body.get("ok"):
         return True
     logger.warning(
         "modal dispatch for %s job %s rejected: %s %s",

@@ -172,6 +172,18 @@ async def re_enrich_run(
         pending.append((key, control_number, marc, entity, clean_text, clean_role, kind))
         await _maybe_progress(checked, control_number, clean_text)
 
+    # ── Release the main session's transaction before the gather ──────
+    # Phase A only reads; commit so the connection never sits
+    # idle-in-transaction during the possibly hour-long concurrent
+    # matching phase. Postgres kills an idle-in-transaction connection
+    # after 120s and the first Phase B commit then dies with "the
+    # underlying connection is closed" (2026-09-17 incident, Rule
+    # W-240). This also persists the enriched_at stamps for pre-feature
+    # rows. expire_on_commit=False keeps the loaded rows usable for
+    # Phase B's per-entity apply; the session stays attached, so do NOT
+    # close() it here (Phase B mutates/deletes these in-memory rows).
+    await db.commit()
+
     async def _match_one(
         item: tuple[str, dict, dict, str, str, str],
     ) -> tuple[str, list]:

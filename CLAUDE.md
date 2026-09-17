@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-242)
+## Architectural rules (W-1…W-243)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -219,7 +219,8 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-239** — "Build items" on an unchanged run short-circuits to the item cache (input-change check against `built_at`); a changed approval/NER row/override bypasses it
 - **W-240** — Long jobs must never hold a DB transaction across network/CPU phases: commit per unit of work and recycle the pooled connection (`db.close()`) before CPU stretches — `idle_in_transaction_session_timeout=120s` kills idle open transactions
 - **W-241** — Authority enrichment is per-entity resumable: `enriched_at` on each match row; a fresh entity (enriched after the latest upstream change) is skipped without a matcher call
-- **W-242** — Authority matching runs concurrently (ENRICH_CONCURRENCY, default 8, per-task sessions); never serially over the network
+- **W-242** — Authority matching runs concurrently (ENRICH_CONCURRENCY, default 8, per-task sessions); never serially over the network; the apply session commits before the fan-out — no transaction may span the gather
+- **W-243** — Modal dispatch accepts any 2xx with `ok:true` (the endpoint answers 200, never 202); every job-runner code change deploys `modal_jobs.py` in the same change, and the `mhm-jobs2` secret carries `AUTHORITY_MODE=postgres` — otherwise Heroku runs the job locally while a stale Modal container races it
 - **W-105** — Studio “Approve all visible” MUST run as a background job
 - **W-106** — All Studio / RDF builds MUST run as `run_jobs` with inline progress
 - **W-107** — All Studio publish/upload paths MUST run as `run_jobs`

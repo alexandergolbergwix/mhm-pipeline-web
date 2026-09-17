@@ -7,7 +7,7 @@
 | `Procfile` | `release: bash scripts/release.sh` · `web: bash scripts/start.sh` · `worker: bash scripts/start_worker.sh` |
 | `scripts/start.sh` | Web entrypoint: exports `EVAL_AGENT_ROOT`/`EVAL_AGENT_STATE_DIR`, `cd backend`, `uvicorn app.main:app` with `--proxy-headers --forwarded-allow-ips='*'`, `$PORT`, `WEB_CONCURRENCY` workers |
 | `scripts/start_worker.sh` | Worker entrypoint (Rule W-235): same eval-agent env, `RUN_JOB_ROLE=worker`, `RUN_JOB_MAINTENANCE_INTERVAL=10`, `python -m app.jobs_worker` — executes heavy job kinds off the web dyno |
-| `modal/modal_jobs.py` | `mhm-jobs` Modal app (Rule W-237): body-token dispatch + detached containers running the Heroku job runners against Postgres; `MODAL_JOBS_TOKEN` + `DATABASE_URL` live in the `mhm-jobs` Modal secret |
+| `modal/modal_jobs.py` | `mhm-jobs` Modal app (Rule W-237): body-token dispatch + detached containers running the Heroku job runners against Postgres; `MODAL_JOBS_TOKEN` + `DATABASE_URL` + `AUTHORITY_MODE=postgres` live in the `mhm-jobs2` Modal secret. Redeploy it in the same change as any job-runner code edit (Rule W-243) |
 | `scripts/release.sh` | Release phase: fail-fast eval-agent bundle check (`locate_eval_agent()`), then `alembic upgrade head` |
 | `backend/alembic.ini` + `backend/app/migrations/` | Alembic config (`script_location = app/migrations`); versions `0001`…`0042_research_agent` |
 | `backend/app/settings.py` | Pydantic settings, canonical-first cohort/percentage rollout, and Heroku `postgres://` normalization |

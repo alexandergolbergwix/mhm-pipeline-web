@@ -11,3 +11,9 @@
   (dispatch is lazy inside `_execute_job`) can no longer ship a syntax or
   import error that would surface raw interpreter messages to curators
   (2026-09-16: `invalid syntax (rdf_build_job.py, line 49)` on the RDF page).
+
+- `backend/tests/unit/test_modal_job_client.py` — dispatch/lease/wait
+  semantics for Modal execution, including `test_run_on_modal_accepts_200_ok_body`
+  (Rule W-243): the endpoint's real 200 `{"ok":true,"spawned":true}` counts as
+  an accepted dispatch, a live executor lease blocks re-dispatch, and a stale
+  lease is taken over.
