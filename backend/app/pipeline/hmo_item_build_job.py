@@ -117,10 +117,14 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
                 raise
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                if attempt == 0 and "connection is closed" in str(exc):
+                # Any infrastructure failure (connection dropped mid-query,
+                # giant flush killed, …) retries once — the exec is fully
+                # resumable via enriched_at skip-fresh + the checkpoints.
+                if attempt == 0 and await is_cancel_requested(job_id) is False:
                     logger.warning(
-                        "hmo item build %s lost its DB connection mid-run — retrying once "
-                        "(resume via enriched_at + checkpoints)", run_id,
+                        "hmo item build %s failed mid-run (%s) — retrying once "
+                        "(resume via enriched_at skip-fresh + checkpoints)",
+                        run_id, str(exc)[:120],
                     )
                     await asyncio.sleep(5.0)
                     continue
@@ -131,11 +135,11 @@ async def run_hmo_item_build_job(job_id: uuid.UUID) -> None:
         if str(exc) == "cancelled" or await is_cancel_requested(job_id):
             await finish_job(job_id, status=JOB_STATUS_CANCELLED)
             return
-        await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
+        await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc)[:400])
         return
     except Exception as exc:  # noqa: BLE001
         logger.exception("hmo item build job failed for %s", run_id)
-        await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
+        await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc)[:400])
         return
 
     if await is_cancel_requested(job_id):

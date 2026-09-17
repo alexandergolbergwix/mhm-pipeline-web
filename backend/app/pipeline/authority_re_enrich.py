@@ -265,11 +265,20 @@ async def re_enrich_run(
     ).scalars().all()
     from app.pipeline.authority_post_enrich import finalize_authority_matches  # noqa: PLC0415
 
-    stats_extra = finalize_authority_matches(list(remaining_rows))
-    cross_linked = stats_extra["cross_linked"]
-    wd_crosschecked = stats_extra["wikidata_crosschecked"]
+    # Finalize hardens all remaining rows synchronously (blocking loop) and
+    # dirties a huge JSON payload per row — run it in chunks with a commit
+    # between each so neither the open transaction nor the flush grows past
+    # what one connection survives (Rule W-240).
+    cross_linked = 0
+    wd_crosschecked = 0
+    _FINALIZE_CHUNK = 400
+    rows_list = list(remaining_rows)
+    for i in range(0, len(rows_list), _FINALIZE_CHUNK):
+        chunk_stats = finalize_authority_matches(rows_list[i:i + _FINALIZE_CHUNK])
+        cross_linked += chunk_stats["cross_linked"]
+        wd_crosschecked += chunk_stats["wikidata_crosschecked"]
+        await db.commit()
 
-    await db.flush()
     remaining_count = await db.scalar(
         select(func.count())
         .select_from(AuthorityMatch)
