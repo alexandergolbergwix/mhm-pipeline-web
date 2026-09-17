@@ -127,12 +127,18 @@ async def re_enrich_run(
         now = time.monotonic()
         if processed not in (1, total) and (now - last_emit) < 1.0:
             return
-        last_emit = now
         label = (text or "").strip()
         if len(label) > 48:
             label = label[:45] + "…"
         message = f"{control_number}: {label}" if label else control_number
         await on_progress(processed, total, message)
+        # Reset AFTER the write completes. A slow emit (Modal→Postgres
+        # round trips exceed the 1 s window) must not pace the sweep at
+        # emit latency: with last_emit set before the await, the next
+        # iteration always passes the throttle and every entity pays the
+        # full write cost (2026-09-17: the sweep crawled at ~1 entity/s
+        # from the Modal container).
+        last_emit = time.monotonic()
 
     async def _emit_phase(processed: int, message: str) -> None:
         if on_progress is None or total <= 0:
@@ -234,11 +240,12 @@ async def re_enrich_run(
             matched_done += 1
             now = time.monotonic()
             if matched_done == len(pending) or now - last_match_emit >= 1.0:
-                last_match_emit = now
                 await _emit_phase(
                     sweep_done + matched_done,
                     f"Matching pending entities… {matched_done}/{len(pending)}",
                 )
+                # Same post-emit reset as _maybe_progress (see above).
+                last_match_emit = time.monotonic()
 
     # ── Phase B — serial DB apply, short per-entity transactions ──────
     for key, control_number, marc, entity, clean_text, clean_role, kind in pending:
