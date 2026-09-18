@@ -243,14 +243,14 @@ export function AgentFlowDiagram({
         </filter>
       </defs>
 
-      {/* Edges */}
+      {/* Edges — theme-aware via CSS (.flow-edge in index.css). */}
       {EDGES.map(([a, b, dashed], i) => {
         const A = byId[a], B = byId[b];
         return (
           <line key={`${a}-${b}-${i}`}
+                className="flow-edge"
                 x1={A.x + 60} y1={A.y}
                 x2={B.x - 60} y2={B.y}
-                stroke="rgba(255,255,255,0.18)"
                 strokeWidth={1.4}
                 strokeDasharray={dashed ? "4 4" : undefined} />
         );
@@ -261,8 +261,8 @@ export function AgentFlowDiagram({
           the animation. */}
       {pulseFromNode && pulseToNode && (
         <circle key={pulseKey}
+                className="flow-pulse"
                 r={5}
-                fill="rgba(127,196,255,0.95)"
                 filter="url(#agentGlow)">
           <animate attributeName="cx"
                    from={pulseFromNode.x + 60}
@@ -282,10 +282,11 @@ export function AgentFlowDiagram({
         </circle>
       )}
 
-      {/* Nodes */}
+      {/* Nodes — fill/stroke/text colours come from CSS so both themes
+          get readable contrast (the old hard-coded white-on-dark text
+          was illegible on the light glass panel). */}
       {NODES.map((n) => {
         const status = flow.nodeStatus[n.id] ?? "idle";
-        const palette = NODE_COLOURS[status];
         const badge = n.id === "cache" ? cacheLabel
                     : n.id === "judge" ? judgeLabel
                     : "";
@@ -293,27 +294,26 @@ export function AgentFlowDiagram({
           <g key={n.id}>
             <rect x={n.x - 60} y={n.y - 22}
                   width={120} height={44} rx={22}
-                  fill={palette.fill}
-                  stroke={palette.stroke}
+                  className={`flow-node flow-node-${status}`}
                   strokeWidth={status === "active" ? 2 : 1}
                   filter={status === "active" ? "url(#agentGlow)" : undefined} />
             <text x={n.x} y={n.y - 2}
                   fontSize="13" fontFamily="ui-sans-serif"
                   textAnchor="middle"
-                  fill="rgba(255,255,255,0.92)">
+                  className="flow-node-label">
               {n.label}
             </text>
             <text x={n.x} y={n.y + 14}
                   fontSize="9.5" fontFamily="ui-sans-serif"
                   textAnchor="middle"
-                  fill="rgba(255,255,255,0.55)">
+                  className="flow-node-hint">
               {hints[n.id] ?? n.hint}
             </text>
             {badge && (
               <text x={n.x} y={n.y + 36}
                     fontSize="10" fontFamily="ui-sans-serif"
                     textAnchor="middle"
-                    fill="rgba(127,196,255,0.85)">
+                    className="flow-node-badge">
                 {badge}
               </text>
             )}
@@ -323,14 +323,3 @@ export function AgentFlowDiagram({
     </svg>
   );
 }
-
-
-const NODE_COLOURS: Record<
-  "idle" | "active" | "done" | "error",
-  { fill: string; stroke: string }
-> = {
-  idle:   { fill: "rgba(20,30,40,0.55)", stroke: "rgba(255,255,255,0.22)" },
-  active: { fill: "rgba(40,80,140,0.75)", stroke: "rgba(127,196,255,0.95)" },
-  done:   { fill: "rgba(28,52,40,0.6)",   stroke: "rgba(120,200,140,0.7)" },
-  error:  { fill: "rgba(70,30,40,0.7)",   stroke: "rgba(240,120,120,0.95)" },
-};

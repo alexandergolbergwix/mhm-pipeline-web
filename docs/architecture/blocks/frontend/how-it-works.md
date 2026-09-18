@@ -117,7 +117,12 @@ the toggle lives in the global header (`Layout.tsx`) on every page. Raw
 hardcoded surfaces (`bg-slate-9*`, unremapped `bg-black/*`) are banned —
 use `<Glass>` or tokens (`surface-inset`, `link-accent`, `badge-*`);
 `index.css:316-384` remaps the legacy white/black opacity utilities for
-light mode.
+light mode. Every `LiquidGlassSurface` renders a `.liquid-glass-backdrop`
+layer with a theme-tinted surface gradient (`index.css`) — text must never
+float on a bare backdrop (the AI verify modal was unreadable without it,
+2026-09-18). The AI-verify `AgentFlowDiagram` reads its node/edge colours
+from theme-aware CSS classes (`flow-node-*`, `flow-edge` in `index.css`),
+never from hard-coded SVG fills.
 
 **Build tooling.** Vite 5 + `@vitejs/plugin-react`; `@` aliases `src/`;
 dev server proxies `/api` to the FastAPI backend on :8000 (production
