@@ -691,6 +691,9 @@ async def _open_verify_stream(
                     scope_state["phase"] = "loading MARC records"
                     scope_state["done"] = 0
                 marc_records = await _load_marc_records(db, run_id)
+                if scope_state is not None:
+                    scope_state["phase"] = "building MARC context"
+                    scope_state["done"] = 0
                 # Sync CPU over every item — must not block the loop
                 # (heartbeat + publisher live on it).
                 await asyncio.to_thread(attach_marc_context, items, marc_records)
