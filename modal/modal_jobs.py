@@ -67,6 +67,44 @@ def _authorize(authorization: str | None) -> bool:
     return hmac.compare_digest(supplied, expected)
 
 
+async def _heartbeat_claim(job_id: str, executor_id: str) -> None:
+    """Refresh the executor lease every minute (W-244).
+
+    The container must not depend on the dispatching process's poller for
+    liveness: the stale reap runs on the web dyno and marks a running row
+    failed when ``updated_at`` goes quiet. A long quiet CPU stretch (the
+    HMO item export's threadpool call takes minutes) then killed the job
+    mid-compute (2026-09-18). Guarded by ``claimed_by`` so a stolen lease
+    is never zombie-heartbeated.
+    """
+    from sqlalchemy import update
+
+    import asyncio  # noqa: PLC0415
+
+    from app.db import session_scope
+    from app.models.run_job import RunJob
+
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            async with session_scope() as db:
+                await db.execute(
+                    update(RunJob)
+                    .where(
+                        RunJob.id == job_id,
+                        RunJob.status == "running",
+                        RunJob.claimed_by == executor_id,
+                    )
+                    .values(updated_at=datetime.now(timezone.utc))
+                    .execution_options(synchronize_session=False),
+                )
+                await db.commit()
+        except Exception:  # noqa: BLE001 — heartbeat is best-effort
+            pass
+
+
 def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
     """Container entry: run the exact Heroku job runner for one claimed row."""
     import asyncio
@@ -123,16 +161,20 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
         if not acquired:
             return {"ok": False, "job_id": job_id, "error": "lease not acquired"}
 
-        if kind == "rdf_build":
-            from app.pipeline.rdf_build_job import run_rdf_build_job
+        heartbeat_task = asyncio.create_task(_heartbeat_claim(job_id, executor_id))
+        try:
+            if kind == "rdf_build":
+                from app.pipeline.rdf_build_job import run_rdf_build_job
 
-            await run_rdf_build_job(job_id)
-        elif kind == "hmo_item_build":
-            from app.pipeline.hmo_item_build_job import run_hmo_item_build_job
+                await run_rdf_build_job(job_id)
+            elif kind == "hmo_item_build":
+                from app.pipeline.hmo_item_build_job import run_hmo_item_build_job
 
-            await run_hmo_item_build_job(job_id)
-        else:
-            raise ValueError(f"kind {kind!r} has no Modal executor")
+                await run_hmo_item_build_job(job_id)
+            else:
+                raise ValueError(f"kind {kind!r} has no Modal executor")
+        finally:
+            heartbeat_task.cancel()
 
         # Completion webhook — wakes the Heroku poller instantly (it also
         # runs a slow row check as the safety net, so a missed webhook is

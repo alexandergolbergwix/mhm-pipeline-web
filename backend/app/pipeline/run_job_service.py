@@ -997,6 +997,12 @@ async def finish_job(
         job = await db.get(RunJob, job_id)
         if job is None:
             return
+        # Terminal rows are immutable to late writers (W-244): the stale
+        # reap may have marked a running row failed while its executor was
+        # still computing (a long quiet CPU stretch); a zombie container
+        # finishing afterwards must not resurrect it to succeeded.
+        if job.status in (JOB_STATUS_SUCCEEDED, JOB_STATUS_CANCELLED, JOB_STATUS_FAILED):
+            return
         job.status = status
         job.result = result
         job.error = error

@@ -9,8 +9,8 @@ from app.models.run_job import (
     JOB_KIND_RDF_BUILD,
     JOB_STATUS_QUEUED,
     JOB_STATUS_RUNNING,
-    RunJob,
     SUPPORTED_JOB_KINDS,
+    RunJob,
 )
 from app.pipeline.run_job_service import create_job, serialise_job
 
@@ -224,3 +224,33 @@ def test_serialise_job_omits_session_snapshot_by_default() -> None:
     detailed = serialise_job(job, include_session_snapshot=True)
     assert "session_snapshot" in (detailed["result"] or {})
     assert "session_snapshot" in (detailed["progress"] or {})
+
+
+@pytest.mark.asyncio
+async def test_finish_job_never_resurrects_terminal_row(db_session, sample_run) -> None:
+    """W-244: the stale reap may mark a running row failed while its
+    executor is still computing; a late writer finishing afterwards must
+    not overwrite the terminal state."""
+    from app.models.run_job import JOB_STATUS_FAILED, JOB_STATUS_SUCCEEDED
+    from app.pipeline.run_job_service import finish_job
+
+    job = RunJob(
+        project_id=sample_run["project_id"],
+        run_id=sample_run["run_id"],
+        kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_FAILED,
+        params={},
+        progress={},
+        claimed_by="modal-executor:dead",
+        created_by=sample_run["user_id"],
+        error="Job interrupted",
+    )
+    db_session.add(job)
+    await db_session.commit()
+    await db_session.refresh(job)
+
+    await finish_job(job.id, status=JOB_STATUS_SUCCEEDED, result={"ok": True})
+
+    await db_session.refresh(job)
+    assert job.status == JOB_STATUS_FAILED
+    assert job.error == "Job interrupted"
