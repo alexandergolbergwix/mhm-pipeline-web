@@ -279,6 +279,7 @@ def attach_marc_context(
     """
     marc_index = index_marc_records(marc_records)
     context_cache: dict[tuple, dict[str, str]] = {}
+    single_cache: dict[str, dict[str, str]] = {}
     for item in items:
         stored = item.get("control_numbers")
         if isinstance(stored, list) and stored:
@@ -294,11 +295,31 @@ def attach_marc_context(
         cached = context_cache.get(cache_key)
         if cached is None:
             merged_record: dict[str, Any] = {}
-            if in_run_key:
+            if len(in_run_key) == 1:
+                # Dominant case: one item ↔ one record. Render per RECORD
+                # and reuse across all items of that record — real MARC
+                # renders are the expensive part (W-246).
+                cn = in_run_key[0]
+                if primary_cn != cn:
+                    cached = project_marc_slice(
+                        merge_marc_records([marc_index[cn]]), HMO_ITEM_MARC_KEYS,
+                    )
+                else:
+                    single = single_cache.get(cn)
+                    if single is None:
+                        single = project_marc_slice(
+                            merge_marc_records([marc_index[cn]]), HMO_ITEM_MARC_KEYS,
+                        )
+                        single_cache[cn] = single
+                    cached = single
+            elif in_run_key:
                 recs = [marc_index[cn] for cn in in_run_key]
                 primary = marc_index.get(primary_cn) if primary_cn else None
-                merged_record = merge_marc_records(recs, primary=primary)
-            cached = project_marc_slice(merged_record, HMO_ITEM_MARC_KEYS)
+                cached = project_marc_slice(
+                    merge_marc_records(recs, primary=primary), HMO_ITEM_MARC_KEYS,
+                )
+            else:
+                cached = {}
             context_cache[cache_key] = cached
         item["_marc_context"] = dict(cached)
 
