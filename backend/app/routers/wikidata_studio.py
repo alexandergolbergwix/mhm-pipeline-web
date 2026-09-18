@@ -2585,6 +2585,10 @@ async def _load_marc_records_for_run(db: AsyncSession, run_id: uuid.UUID) -> lis
 # a hang — which is exactly how the 429 stall was first reported.
 VERIFY_SCOPE_PHASES: tuple[str, ...] = (
     "assembling Studio scope",
+    "loading item scope",
+    "loading MARC records",
+    "building MARC context",
+    "checking verdict cache",
     "loading MARC records",
     "checking Wikidata for duplicates",
     "building verification evidence",
