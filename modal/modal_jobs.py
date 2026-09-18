@@ -31,13 +31,16 @@ import os
 import modal
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
-_TIMEOUT_S = 14400  # 4 h — the 5.3k-entity authority pass needs headroom
+_TIMEOUT_S = 43200  # 12 h — verify of an 18k scope at 4-way parallel needs it
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install_from_pyproject(
         os.path.join(_ROOT, "backend", "pyproject.toml"),
     )
+    # eval-agent runtime (hmo_item_verify executor, W-247): tiny deps the
+    # backend image may not carry.
+    .pip_install("pyyaml>=6.0", "jsonschema>=4.20")
     .add_local_dir(
         os.path.join(_ROOT, "backend"),
         remote_path="/root/backend",
@@ -48,7 +51,15 @@ image = (
         remote_path="/root/ontology",
         copy=True,
     )
-    .env({"PYTHONPATH": "/root/backend"})
+    .add_local_dir(
+        os.path.join(_ROOT, "eval-agent"),
+        remote_path="/root/eval-agent",
+        copy=True,
+    )
+    .env({
+        "PYTHONPATH": "/root/backend",
+        "EVAL_AGENT_ROOT": "/root/eval-agent",
+    })
 )
 
 app = modal.App(
@@ -163,16 +174,22 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
 
         heartbeat_task = asyncio.create_task(_heartbeat_claim(job_id, executor_id))
         try:
-            if kind == "rdf_build":
-                from app.pipeline.rdf_build_job import run_rdf_build_job
+        if kind == "rdf_build":
+            from app.pipeline.rdf_build_job import run_rdf_build_job
 
-                await run_rdf_build_job(job_id)
-            elif kind == "hmo_item_build":
-                from app.pipeline.hmo_item_build_job import run_hmo_item_build_job
+            await run_rdf_build_job(job_id)
+        elif kind == "hmo_item_build":
+            from app.pipeline.hmo_item_build_job import run_hmo_item_build_job
 
-                await run_hmo_item_build_job(job_id)
-            else:
-                raise ValueError(f"kind {kind!r} has no Modal executor")
+            await run_hmo_item_build_job(job_id)
+        elif kind == "hmo_item_verify":
+            # W-247: the eval-agent subprocess + 18k-item scope need the
+            # container's 8 GB — the 512 MB web dyno thrashed (R14).
+            from app.pipeline.verify_job import run_verify_job
+
+            await run_verify_job(job_id)
+        else:
+            raise ValueError(f"kind {kind!r} has no Modal executor")
         finally:
             heartbeat_task.cancel()
 

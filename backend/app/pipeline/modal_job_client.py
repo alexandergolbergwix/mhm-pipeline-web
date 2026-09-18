@@ -44,7 +44,11 @@ logger = logging.getLogger(__name__)
 
 # Job kinds with a Modal executor. Everything else always runs locally
 # (wikidata builds / publication stay Heroku-side — curator decision).
-MODAL_JOB_KINDS = frozenset({"rdf_build", "hmo_item_build"})
+# Heavy kinds eligible for Modal execution. hmo_item_verify joined
+# (W-247): the 18k-item verify prep + eval-agent subprocess blew the
+# 512 MB web dyno's memory quota (R14 thrash) — the Modal container's
+# 8 GB runs it comfortably.
+MODAL_JOB_KINDS = frozenset({"rdf_build", "hmo_item_build", "hmo_item_verify"})
 
 # Modal web endpoint: dispatch must be quick (it only spawns).
 _DISPATCH_TIMEOUT_S = 20.0
