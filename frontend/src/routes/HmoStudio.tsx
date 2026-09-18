@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import {Layout} from "@/components/Layout";
 import {ApiError} from "@/api/client";
@@ -22,6 +22,7 @@ import {RdfGraphExplorer} from "@/components/rdf/RdfGraphExplorer";
 import {useProjectEvents} from "@/api/realtime";
 import {type RunJobSnapshot} from "@/api/runJobs";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {RunJobs} from "@/api/runJobs";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {
   HmoStudio,
@@ -48,6 +49,7 @@ const STUDIO_TABS: Array<{id: StudioTab; label: string}> = [
 
 export default function HmoStudioRoute() {
   const { runId } = useParams<{ runId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [status, setStatus] = useState<HmoStudioStatus | null>(null);
   const [coverage, setCoverage] = useState<HmoCoverageReport | null>(null);
@@ -65,6 +67,14 @@ export default function HmoStudioRoute() {
   const [showRecordPicker, setShowRecordPicker] = useState(false);
   const [itemBuildToken, setItemBuildToken] = useState(0);
   const [itemBuildPresent, setItemBuildPresent] = useState(false);
+  const [itemStatusPending, setItemStatusPending] = useState(true);
+  // Reopen the AI verification modal when the job tray's "View" lands here
+  // with ?job=<id> (Rule W-141): without this the navigation was a no-op.
+  const [reopenVerify, setReopenVerify] = useState<{
+    jobId: string;
+    actionId?: string;
+    itemIds?: string[];
+  } | null>(null);
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
   const [manifestJob, setManifestJob] = useState<RunJobSnapshot | null>(null);
   const [manifestUploadJob, setManifestUploadJob] = useState<RunJobSnapshot | null>(null);
@@ -131,16 +141,18 @@ export default function HmoStudioRoute() {
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
+    setItemStatusPending(true);
     const probe = () => HmoStudio.itemStatus(runId)
       .then((st) => {
         if (cancelled) return;
         setItemBuildPresent(st.build_present);
+        setItemStatusPending(false);
       });
     // Retry once after a delay: on a fresh dyno the item cache is cold in
     // memory and the probe used to time out (W-246) — a silent failure left
     // build_present=false forever and the panel showed "Build the RDF
     // graph first" even though 18k items were built.
-    probe().catch(() => new Promise((r) => setTimeout(r, 4000)).then(probe)).catch(() => { /* non-fatal */ });
+    probe().catch(() => new Promise((r) => setTimeout(r, 4000)).then(probe)).catch(() => { if (!cancelled) setItemStatusPending(false); });
     return () => { cancelled = true; };
   }, [runId, itemBuildToken]);
 
@@ -153,6 +165,30 @@ export default function HmoStudioRoute() {
       useRunJobs.getState().upsertJob(msg.job);
     }
   });
+
+  // Job tray "View" → ?job=<id>: reopen the surface that owns the job
+  // (Rule W-141). For hmo_item_verify that is the AI verification modal;
+  // useVerifyJob attaches to the still-running job from the store.
+  useEffect(() => {
+    const jobId = searchParams.get("job");
+    if (!jobId || !runId) return;
+    let cancelled = false;
+    RunJobs.get(runId, jobId)
+      .then((job) => {
+        if (cancelled) return;
+        if (job.kind === "hmo_item_verify" && isJobActive(job.status)) {
+          setReopenVerify({
+            jobId,
+            actionId: typeof job.params?.action_id === "string" ? job.params.action_id : undefined,
+            itemIds: Array.isArray(job.params?.item_ids) ? (job.params.item_ids as string[]) : undefined,
+          });
+        }
+        searchParams.delete("job");
+        setSearchParams(searchParams, {replace: true});
+      })
+      .catch(() => { /* non-fatal — the param simply stays */ });
+    return () => { cancelled = true; };
+  }, [runId, searchParams, setSearchParams]);
 
   // Load coverage when the coverage tab is opened (once per session unless Refresh).
   useEffect(() => {
@@ -371,6 +407,9 @@ export default function HmoStudioRoute() {
                 runId={runId}
                 projectId={projectId}
                 buildPresent={itemBuildPresent}
+                statusPending={itemStatusPending}
+                reopenVerify={reopenVerify}
+                onReopenVerifyHandled={() => setReopenVerify(null)}
                 refreshToken={itemBuildToken}
                 rdfPresent={!!status?.rdf_present}
                 wikibaseConfigured={wikibaseConfigured}

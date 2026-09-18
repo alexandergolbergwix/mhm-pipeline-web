@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import uuid
+from collections.abc import Callable  # noqa: I001
 from typing import Any
 
 from app.db import session_scope
@@ -258,6 +259,37 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     last_snapshot_at: list[float] = [0.0]
     last_write_at: list[float] = [0.0]
     scope_state: dict[str, Any] = {"phase": "", "done": 0, "total": 0}
+    # Cancel watchdog: Cancel used to be ignored until the judging stream
+    # emitted its first event — the minutes-long scope prep ran to
+    # completion with the tray stuck on RUNNING (2026-09-18, R28).
+    # The watchdog finalises the row as CANCELLED mid-prep; the terminal
+    # guard in finish_job makes every later writer a no-op.
+    cancel_flag: dict[str, bool] = {"cancelled": False}
+
+    async def _cancel_watchdog() -> None:
+        while True:
+            await asyncio.sleep(2.0)
+            if await is_cancel_requested(job_id):
+                cancel_flag["cancelled"] = True
+                await finish_job(
+                    job_id,
+                    status=JOB_STATUS_CANCELLED,
+                    error="Cancelled by user",
+                    progress={
+                        "phase": "cancelled",
+                        "processed": 0,
+                        "total": 0,
+                        "message": "Cancelled by user",
+                        "session_id": session_id,
+                    },
+                )
+                return
+
+    cancel_watch = asyncio.create_task(_cancel_watchdog())
+
+    def _prep_aborted() -> bool:
+        return cancel_flag["cancelled"]
+
     await update_job_progress(
         job_id, _scope_progress(scope_state, session_id),
     )
@@ -273,17 +305,24 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
             params=params,
             api_key=str(api_key),
             scope_state=scope_state,
+            should_abort=_prep_aborted,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("could not open verify job %s stream", job_id)
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
         return
     finally:
+        cancel_watch.cancel()
         publisher.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await publisher
-    if stream is None:
-        await finish_job(job_id, status=JOB_STATUS_FAILED, error="could not start verify stream")
+    if stream is None or cancel_flag["cancelled"]:
+        # The watchdog already finalised a cancelled row; finish_job's
+        # terminal guard keeps this second call a no-op for a genuine
+        # "could not start" failure.
+        await finish_job(
+            job_id, status=JOB_STATUS_FAILED, error="could not start verify stream",
+        )
         return
 
     await update_job_progress(job_id, {
@@ -520,6 +559,7 @@ async def _open_verify_stream(
     params: dict[str, Any],
     api_key: str,
     scope_state: dict[str, Any] | None = None,
+    should_abort: Callable[[], bool] | None = None,
 ):
     override_cache = bool(params.get("override_cache"))
     tier_model = params.get("tier_model")
@@ -678,7 +718,11 @@ async def _open_verify_stream(
             if scope_state is not None:
                 scope_state["phase"] = "loading item scope"
                 scope_state["done"] = 0
+            if should_abort is not None and should_abort():
+                return None
             items = await _fetch_verify_items(db, run_id, item_ids=params.get("item_ids"))
+            if should_abort is not None and should_abort():
+                return None
             items = await _prepare_verify_scope(action, items)
             if not items:
                 return None
@@ -687,16 +731,22 @@ async def _open_verify_stream(
             pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
             uncached: list[dict[str, Any]] = []
             if not override_cache:
+                if should_abort is not None and should_abort():
+                    return None
                 if scope_state is not None:
                     scope_state["phase"] = "loading MARC records"
                     scope_state["done"] = 0
                 marc_records = await _load_marc_records(db, run_id)
+                if should_abort is not None and should_abort():
+                    return None
                 if scope_state is not None:
                     scope_state["phase"] = "building MARC context"
                     scope_state["done"] = 0
                 # Sync CPU over every item — must not block the loop
                 # (heartbeat + publisher live on it).
                 await asyncio.to_thread(attach_marc_context, items, marc_records)
+                if should_abort is not None and should_abort():
+                    return None
                 if scope_state is not None:
                     scope_state["phase"] = "checking verdict cache"
                     scope_state["done"] = 0

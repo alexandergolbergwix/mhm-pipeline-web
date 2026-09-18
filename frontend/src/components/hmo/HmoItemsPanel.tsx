@@ -26,6 +26,11 @@ export interface HmoItemsPanelProps {
   runId: string;
   projectId?: string;
   buildPresent: boolean;
+  /** True until the page's item-status probe resolves — show a loader, not "Build the RDF graph first". */
+  statusPending?: boolean;
+  /** Job tray "View" landed with ?job=<verify job id> — reopen the modal (W-141). */
+  reopenVerify?: {jobId: string; actionId?: string; itemIds?: string[]} | null;
+  onReopenVerifyHandled?: () => void;
   refreshToken?: number;
   rdfPresent?: boolean;
   wikibaseConfigured?: boolean;
@@ -36,6 +41,9 @@ export function HmoItemsPanel({
   runId,
   projectId,
   buildPresent,
+  statusPending = false,
+  reopenVerify = null,
+  onReopenVerifyHandled,
   refreshToken,
   rdfPresent = false,
   wikibaseConfigured = false,
@@ -80,6 +88,15 @@ export function HmoItemsPanel({
     setVerifyActionId(actionId);
     setVerifyOpen(true);
   }, []);
+
+  // Job tray "View" → reopen the verification modal for a running job.
+  const handledReopenRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!reopenVerify || handledReopenRef.current === reopenVerify.jobId) return;
+    handledReopenRef.current = reopenVerify.jobId;
+    openVerify(reopenVerify.itemIds ?? [], reopenVerify.actionId);
+    onReopenVerifyHandled?.();
+  }, [onReopenVerifyHandled, openVerify, reopenVerify]);
 
   const load = useCallback(async (opts?: {silent?: boolean}) => {
     if (!buildPresent) {
@@ -199,9 +216,10 @@ export function HmoItemsPanel({
 
   const approveBusy = approvingVisible || (approveJob != null && isJobActive(approveJob.status));
   const showTable = buildPresent && (items.length > 0 || !loading);
-  // First load (or a load that cleared the table): show a loader instead of
-  // empty counts and a blank table (2026-09-18 curator feedback).
-  const firstLoad = buildPresent && loading && items.length === 0;
+  // First load (or a load that cleared the table) — or the item-status
+  // probe hasn't answered yet: show a loader instead of the misleading
+  // "0 resolved items / Build the RDF graph first" state (2026-09-18).
+  const firstLoad = statusPending || (buildPresent && loading && items.length === 0);
 
   return (
     <Glass as="section" className="p-6 space-y-4" data-testid="hmo-items-panel">
@@ -297,7 +315,7 @@ export function HmoItemsPanel({
         />
       )}
 
-      {!buildPresent && (
+      {!buildPresent && !statusPending && (
         <p className="muted text-sm">Build items above before the review table loads.</p>
       )}
       {error && <p className="text-danger text-sm">{error}</p>}
