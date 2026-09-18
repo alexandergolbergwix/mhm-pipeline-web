@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-245)
+## Architectural rules (W-1…W-246)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -223,6 +223,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-243** — Modal dispatch accepts any 2xx with `ok:true` (the endpoint answers 200, never 202); every job-runner code change deploys `modal_jobs.py` in the same change, and the `mhm-jobs2` secret carries `AUTHORITY_MODE=postgres` — otherwise Heroku runs the job locally while a stale Modal container races it
 - **W-244** — Modal containers heartbeat their own lease (60 s, `claimed_by`-guarded) so a long quiet CPU stretch never trips the stale reap, and `finish_job` never overwrites a terminal row
 - **W-245** — Verify scope preparation must yield the event loop and report phases: the 18k-item cache deserialise + MARC-context pass are pure CPU — without yields the heartbeat, publisher, and stale reap all freeze and the dyno wedges
+- **W-246** — Never load a multi-MB blob just to test existence or freshness: `ensure_ttl_on_disk` probes `md5(ttl_content)` server-side and transfers the TTL blob only on mismatch, and the merged Studio items view is fingerprint-keyed in-process so unchanged repeat loads skip the 18k-entity merge
 - **W-105** — Studio “Approve all visible” MUST run as a background job
 - **W-106** — All Studio / RDF builds MUST run as `run_jobs` with inline progress
 - **W-107** — All Studio publish/upload paths MUST run as `run_jobs`

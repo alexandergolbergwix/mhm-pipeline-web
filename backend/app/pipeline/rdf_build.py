@@ -18,18 +18,19 @@ differences from the desktop version:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import rdflib
-from rdflib import RDF, RDFS, Graph, Literal, URIRef
+from rdflib import Graph, Literal, URIRef
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -333,7 +334,6 @@ def _run_mapper_sync(
         add_philological_overlay=opts.add_philological_overlay,
     )
 
-    from converter.config.namespaces import bind_namespaces  # noqa: PLC0415
 
     # ── Streaming build (job-service R26) ─────────────────────────────
     # One record subgraph at a time: serialize it to a Turtle chunk,
@@ -536,7 +536,7 @@ async def build_rdf_graph(
     Returns a structured result so the router can report counts +
     timestamps without re-parsing the TTL.
     """
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     loop = asyncio.get_running_loop()
 
     def _sync_progress(processed: int, total: int, cn: str) -> None:
@@ -589,7 +589,7 @@ async def build_rdf_graph(
             len(errors),
             len(marc_records),
         )
-    finished = datetime.now(timezone.utc)
+    finished = datetime.now(UTC)
     return RdfBuildResult(
         triples_count=triples_count,
         manuscripts_count=manuscripts_count,
@@ -617,7 +617,6 @@ ONTOLOGY_PATH = _ONTOLOGY_DIR / "hebrew-manuscripts.ttl"
 def _run_shacl_sync(
     graph_path: Path, shapes_path: Path,
 ) -> tuple[bool, list[ShaclViolation]]:
-    from converter.config.namespaces import bind_namespaces  # noqa: PLC0415
     from converter.validation.shacl_validator import ShaclValidator  # noqa: PLC0415
 
     validator = ShaclValidator(shapes_path=shapes_path)
@@ -1040,10 +1039,41 @@ async def ensure_ttl_on_disk(
     :func:`rdf_output_path_for_run`) so callers that resolve the path
     through an overridable/patched reference keep working consistently.
     """
+    from sqlalchemy import func  # noqa: PLC0415
+
     from app.models.rdf_artifact import RdfArtifact  # noqa: PLC0415
 
+    # ── Efficient staleness probe (Rule W-246) ─────────────────────────
+    # The artifact is a ~100 MB text blob. The old path loaded the FULL
+    # blob on every call just to byte-compare — ~30 s on the studio
+    # status endpoint alone. On Postgres the checksum is computed
+    # server-side (md5 over the column) and only 32 bytes travel; the
+    # blob is transferred solely when the local copy is missing/stale.
+    # SQLite (tests) has no md5() — keep the legacy full-load path there
+    # (test artifacts are tiny).
     rid = run_id if isinstance(run_id, uuid.UUID) else uuid.UUID(str(run_id))
-    row = await db.get(RdfArtifact, rid)
+    dialect_name = db.get_bind().dialect.name
+    row = None
+    if dialect_name == "postgresql":
+        meta = (
+            await db.execute(
+                select(
+                    func.length(RdfArtifact.ttl_content),
+                    func.md5(RdfArtifact.ttl_content),
+                ).where(RdfArtifact.run_id == rid)
+            )
+        ).first()
+        if meta is None:
+            return
+        db_length, db_md5 = int(meta[0] or 0), str(meta[1] or "")
+        if ttl_path.exists():
+            local_bytes = ttl_path.read_bytes()
+            if len(local_bytes) == db_length and hashlib.md5(local_bytes).hexdigest() == db_md5:
+                # Exact match without ever transferring the blob.
+                return
+        row = await db.get(RdfArtifact, rid)
+    else:
+        row = await db.get(RdfArtifact, rid)
     if row is None:
         return
 
@@ -1093,5 +1123,5 @@ async def build_rdf_from_hmo_canonical_cache(db: AsyncSession, run_id: uuid.UUID
     graph = graph_from_canonical_entities(entities)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     graph.serialize(destination=str(output_path), format='turtle')
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return RdfBuildResult(triples_count=len(graph), manuscripts_count=0, output_path=output_path, started_at=now, finished_at=now)

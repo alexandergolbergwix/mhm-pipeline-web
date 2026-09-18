@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from datetime import UTC
 from pathlib import Path
 from typing import Any, Literal
 
@@ -45,31 +46,30 @@ from app.models.event import (
     ProjectEvent,
 )
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
-from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.models.run_job import (
     JOB_KIND_HMO_ITEM_BUILD,
     JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_HMO_MANIFEST_BUILD,
     JOB_KIND_HMO_MANIFEST_UPLOAD,
 )
+from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.pipeline import hmo_studio as hmo_pipeline
 from app.pipeline.hmo_authority_conflict_resolve import (
     load_run_authority_matches,
     resolve_authority_conflicts,
 )
 from app.pipeline.hmo_authority_gate import build_authority_conflict_report
-from app.pipeline.run_job_params import prepare_job_params
-from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
 from app.pipeline.rdf_build import (
     ensure_ttl_on_disk,
     rdf_output_path_for_run,
 )
+from app.pipeline.run_job_params import prepare_job_params
+from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
 from app.routers.runs import (
     _apply_approval,
     _lookup_run_with_access,
     _record_match_event,
 )
-from app.services.wikibase_audit import WikibaseAuditContext
 from app.settings import get_settings
 from app.versioning import apply_event
 
@@ -821,11 +821,21 @@ async def studio_status(
         # A failed materialization must not brick the Build items button:
         # the durable artifact + the build exec handle a missing local TTL.
         logger.exception("TTL materialization failed for run %s", run_id)
+    from sqlalchemy import exists as sa_exists  # noqa: PLC0415
+
     from app.models.rdf_artifact import RdfArtifact  # noqa: PLC0415
 
-    rdf_artifact_exists = (
-        await db.get(RdfArtifact, run_id)
-    ) is not None
+    # Existence probe must NOT load the ~100 MB ttl_content blob — a full
+    # db.get() here cost ~30 s on every page load (2026-09-18, W-246).
+    rdf_artifact_exists = bool(
+        
+            await db.scalar(
+                select(
+                    sa_exists().where(RdfArtifact.run_id == run_id),
+                )
+            )
+        
+    )
     manifest_dir = hmo_pipeline.manifest_dir_for_run(str(run_id))
     coverage_cache = hmo_pipeline.coverage_path_for_run(str(run_id))
     upload_report = hmo_pipeline.upload_report_path_for_run(str(run_id))
@@ -973,7 +983,7 @@ async def _audit_manifest_upload_intent(
 
 def _iso_mtime(path: Path) -> str:
     """Filesystem-mtime as an ISO 8601 string (UTC)."""
-    from datetime import datetime, timezone  # noqa: PLC0415
+    from datetime import datetime  # noqa: PLC0415
 
     ts = path.stat().st_mtime
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(ts, tz=UTC).isoformat()
