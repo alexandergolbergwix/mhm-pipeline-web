@@ -247,7 +247,9 @@ def marc_context_for_item(
     if isinstance(stored, list) and stored:
         control_numbers = sorted({canonical_control_number(x) for x in stored if x})
     else:
-        cn = canonical_control_number(item.get("_control_number") or item.get("control_number") or "")
+        cn = canonical_control_number(
+            item.get("_control_number") or item.get("control_number") or ""
+        )
         control_numbers = [cn] if cn else []
     if not control_numbers:
         return {}
@@ -267,10 +269,38 @@ def attach_marc_context(
     items: list[dict[str, Any]],
     marc_records: list[dict[str, Any]],
 ) -> None:
-    """Stamp ``_marc_context`` on each item for cache-key construction."""
+    """Stamp ``_marc_context`` on each item for cache-key construction.
+
+    Memoised per distinct (control-number set, primary CN) tuple (W-246):
+    18k items share ~900 distinct records, and the record render
+    (merge + raw-tag projection) dominates — recomputing it per item cost
+    hours in the verify scope prep (2026-09-18: stuck 4 h on
+    "building MARC context" on the Modal container).
+    """
     marc_index = index_marc_records(marc_records)
+    context_cache: dict[tuple, dict[str, str]] = {}
     for item in items:
-        item["_marc_context"] = marc_context_for_item(item, marc_index)
+        stored = item.get("control_numbers")
+        if isinstance(stored, list) and stored:
+            key_cns = tuple(sorted({canonical_control_number(x) for x in stored if x}))
+        else:
+            cn = canonical_control_number(
+                item.get("_control_number") or item.get("control_number") or ""
+            )
+            key_cns = (cn,) if cn else ()
+        in_run_key = tuple(cn for cn in key_cns if cn in marc_index)
+        primary_cn = _primary_control_number(item, list(in_run_key)) if in_run_key else ""
+        cache_key = (in_run_key, primary_cn)
+        cached = context_cache.get(cache_key)
+        if cached is None:
+            merged_record: dict[str, Any] = {}
+            if in_run_key:
+                recs = [marc_index[cn] for cn in in_run_key]
+                primary = marc_index.get(primary_cn) if primary_cn else None
+                merged_record = merge_marc_records(recs, primary=primary)
+            cached = project_marc_slice(merged_record, HMO_ITEM_MARC_KEYS)
+            context_cache[cache_key] = cached
+        item["_marc_context"] = dict(cached)
 
 
 async def load_run_control_numbers(

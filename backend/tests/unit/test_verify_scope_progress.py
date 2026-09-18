@@ -16,7 +16,7 @@ class TestScopeProgressShape:
         progress = _scope_progress(state, "sess-1")
         assert progress["step"] == 1
         assert progress["step_total"] == len(VERIFY_SCOPE_PHASES)
-        assert progress["message"] == f"Step 1 of 4: {VERIFY_SCOPE_PHASES[0]}"
+        assert progress["message"] == f"Step 1 of {len(VERIFY_SCOPE_PHASES)}: {VERIFY_SCOPE_PHASES[0]}"
 
     def test_the_duplicate_step_reports_nested_lookup_counts(self) -> None:
         state = {"phase": VERIFY_SCOPE_PHASES[2], "done": 12, "total": 40}

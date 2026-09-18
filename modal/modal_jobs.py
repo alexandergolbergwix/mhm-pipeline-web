@@ -174,22 +174,22 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
 
         heartbeat_task = asyncio.create_task(_heartbeat_claim(job_id, executor_id))
         try:
-        if kind == "rdf_build":
-            from app.pipeline.rdf_build_job import run_rdf_build_job
+            if kind == "rdf_build":
+                from app.pipeline.rdf_build_job import run_rdf_build_job
 
-            await run_rdf_build_job(job_id)
-        elif kind == "hmo_item_build":
-            from app.pipeline.hmo_item_build_job import run_hmo_item_build_job
+                await run_rdf_build_job(job_id)
+            elif kind == "hmo_item_build":
+                from app.pipeline.hmo_item_build_job import run_hmo_item_build_job
 
-            await run_hmo_item_build_job(job_id)
-        elif kind == "hmo_item_verify":
-            # W-247: the eval-agent subprocess + 18k-item scope need the
-            # container's 8 GB — the 512 MB web dyno thrashed (R14).
-            from app.pipeline.verify_job import run_verify_job
+                await run_hmo_item_build_job(job_id)
+            elif kind == "hmo_item_verify":
+                # W-247: the eval-agent subprocess + 18k-item scope need the
+                # container's 8 GB — the 512 MB web dyno thrashed (R14).
+                from app.pipeline.verify_job import run_verify_job
 
-            await run_verify_job(job_id)
-        else:
-            raise ValueError(f"kind {kind!r} has no Modal executor")
+                await run_verify_job(job_id)
+            else:
+                raise ValueError(f"kind {kind!r} has no Modal executor")
         finally:
             heartbeat_task.cancel()
 
@@ -254,7 +254,7 @@ def run(request_body: dict) -> dict:
 
     job_id = str(request_body.get("job_id") or "")
     kind = str(request_body.get("kind") or "")
-    if not job_id or kind not in ("rdf_build", "hmo_item_build"):
+    if not job_id or kind not in ("rdf_build", "hmo_item_build", "hmo_item_verify"):
         raise HTTPException(status_code=422, detail="job_id and kind required")
 
     # Row must be running AND hold the dispatch lease (the Heroku client
