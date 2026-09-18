@@ -11,8 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.hmo_studio_item_override import HmoStudioItemOverride
-from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD, TARGET_ITEM
-from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+from app.models.wikibase_cloud_write import (
+    CHANNEL_ITEM_UPLOAD,
+    TARGET_ITEM,
+    WikibaseCloudWrite,
+)
+from app.models.wikibase_entity_mapping import (
+    ENTITY_KIND_INSTANCE,
+    WikibaseEntityMapping,
+)
 from app.pipeline.ai_verdict_cache_common import normalise_public_verdict
 from app.pipeline.hmo_item_merge import apply_hmo_item_override, override_row_to_dict
 from app.pipeline.hmo_item_shacl import item_has_blocking_shacl
@@ -28,6 +35,85 @@ from app.services.wikibase_audit import fetch_latest_wikibase_writes
 class ItemBuildMissingError(RuntimeError):
     def __init__(self, run_id: uuid.UUID) -> None:
         super().__init__(f"No item build exists for run {run_id}. Call build-items first.")
+
+
+async def hmo_items_fingerprint(db: AsyncSession, run_id: uuid.UUID) -> str:
+    """Cheap staleness fingerprint for the merged items read model.
+
+    The merged view changes only when the item cache, an override, an
+    item-upload write, or an instance mapping changes — each is a cheap
+    indexed max()/count() against a small table, versus the 50-100 MB
+    JSONB deserialise + merge that :func:`fetch_merged_hmo_items` pays.
+    The fingerprint keys a scoped cache entry, so a change always produces
+    a new key (self-invalidating — no invalidation wiring, Rule W-239
+    pattern) and an unchanged run serves the cached serialisation.
+    """
+    from sqlalchemy import func  # noqa: PLC0415
+
+    built_at = await db.scalar(
+        select(HmoStudioItemCache.built_at).where(
+            HmoStudioItemCache.run_id == run_id,
+        )
+    )
+    override_latest = await db.scalar(
+        select(func.max(HmoStudioItemOverride.updated_at)).where(
+            HmoStudioItemOverride.run_id == run_id,
+        )
+    )
+    write_latest = await db.scalar(
+        select(func.max(WikibaseCloudWrite.created_at)).where(
+            WikibaseCloudWrite.run_id == run_id,
+            WikibaseCloudWrite.channel == CHANNEL_ITEM_UPLOAD,
+            WikibaseCloudWrite.target_kind == TARGET_ITEM,
+        )
+    )
+    mapping_latest = await db.scalar(
+        select(func.max(WikibaseEntityMapping.created_at)).where(
+            WikibaseEntityMapping.run_id == run_id,
+            WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
+        )
+    )
+    return "|".join(
+        (x.isoformat() if x else "-")
+        for x in (built_at, override_latest, write_latest, mapping_latest)
+    )
+
+
+async def fetch_merged_hmo_items_cached(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+) -> list[dict[str, Any]]:
+    """``fetch_merged_hmo_items`` behind a fingerprint-keyed memory cache.
+
+    Deliberately in-process, NOT the Redis scoped cache: the merged item
+    list is a 50-100 MB payload, and pushing that to Redis on every
+    override/build would evict other tenants' keys. WEB_CONCURRENCY is 1
+    in production, so one process holds the entry.
+
+    A repeat load of an unchanged run returns in milliseconds instead of
+    re-merging 18k entities for ~30 s (2026-09-18 curator feedback: the
+    review table took half a minute on every load).
+    """
+    fingerprint = await hmo_items_fingerprint(db, run_id)
+    hit = _ITEMS_CACHE.get(run_id)
+    if hit is not None and hit[0] == fingerprint:
+        return hit[1]
+    items = await fetch_merged_hmo_items(db, run_id)
+    _ITEMS_CACHE.clear()  # one run at a time — the payload is huge
+    _ITEMS_CACHE[run_id] = (fingerprint, items)
+    return items
+
+
+# {run_id: (fingerprint, items)} — single-entry working set (see docstring).
+_ITEMS_CACHE: dict[uuid.UUID, tuple[str, list[dict[str, Any]]]] = {}
+
+
+def invalidate_hmo_items_cache(run_id: uuid.UUID | None = None) -> None:
+    """Drop the merged-items memory cache (tests / explicit invalidation)."""
+    if run_id is None:
+        _ITEMS_CACHE.clear()
+    else:
+        _ITEMS_CACHE.pop(run_id, None)
 
 
 async def fetch_merged_hmo_items(

@@ -111,10 +111,15 @@ async def test_open_verify_stream_wires_hmo_action_end_to_end(db_session) -> Non
 async def test_open_verify_stream_uses_inference_cache_when_not_overridden(db_session) -> None:
     """When override_cache is False, an inference-cache hit must route
     the item into pre_cached (skipping a fresh Gemini call) rather than
-    uncached_items."""
+    uncached_items. The batch reader (W-245) is what the stream calls."""
     run_id = uuid.uuid4()
     items = [{"local_id": "QDraft_A", "source_uri": "http://x#A"}]
     cached_verdict = {"overall": "pass", "reasoning": "looks fine"}
+
+    async def _batch_read(db, *, kind, query_summaries):
+        assert kind == "ai_verdict"
+        assert len(query_summaries) == len(items)
+        return {"hit-hash": cached_verdict}
 
     with (
         patch(
@@ -130,8 +135,12 @@ async def test_open_verify_stream_uses_inference_cache_when_not_overridden(db_se
             AsyncMock(return_value=[]),
         ),
         patch(
-            "app.pipeline.inference_cache.read_from_inference_cache",
-            AsyncMock(return_value=cached_verdict),
+            "app.pipeline.inference_cache.canonical_hash",
+            side_effect=lambda summary: "hit-hash",
+        ),
+        patch(
+            "app.pipeline.inference_cache.read_many_from_inference_cache",
+            AsyncMock(side_effect=_batch_read),
         ),
         patch(
             "app.pipeline.hmo_item_verify.hmo_item_verify_event_stream",

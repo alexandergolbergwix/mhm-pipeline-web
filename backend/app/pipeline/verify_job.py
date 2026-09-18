@@ -657,7 +657,10 @@ async def _open_verify_stream(
                 hmo_item_verdict_query_summary,  # noqa: PLC0415
             )
             from app.pipeline.hmo_item_verify import hmo_item_verify_event_stream  # noqa: PLC0415
-            from app.pipeline.inference_cache import read_from_inference_cache  # noqa: PLC0415
+            from app.pipeline.inference_cache import (  # noqa: PLC0415
+                canonical_hash,
+                read_many_from_inference_cache,
+            )
             from app.pipeline.marc_verify_context import attach_marc_context  # noqa: PLC0415
             from app.routers.hmo_studio_items import (  # noqa: PLC0415
                 _fetch_verify_items,
@@ -684,26 +687,35 @@ async def _open_verify_stream(
             pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
             uncached: list[dict[str, Any]] = []
             if not override_cache:
+                if scope_state is not None:
+                    scope_state["phase"] = "loading MARC records"
+                    scope_state["done"] = 0
                 marc_records = await _load_marc_records(db, run_id)
                 # Sync CPU over every item — must not block the loop
                 # (heartbeat + publisher live on it).
                 await asyncio.to_thread(attach_marc_context, items, marc_records)
-                for i, item in enumerate(items):
-                    hit = await read_from_inference_cache(
-                        db,
-                        kind="ai_verdict",
-                        query_summary=hmo_item_verdict_query_summary(
-                            item, judge_model, evaluator=evaluator_id,
-                        ),
+                if scope_state is not None:
+                    scope_state["phase"] = "checking verdict cache"
+                    scope_state["done"] = 0
+                # ONE batched round trip for all 18k keys (W-245): the
+                # per-item reader costs a SELECT + commit each — 18k of
+                # those is many minutes before the first verdict.
+                summaries = [
+                    hmo_item_verdict_query_summary(
+                        item, judge_model, evaluator=evaluator_id,
                     )
-                    if i % 200 == 0:
-                        # Yield + surface progress through the publisher.
-                        if scope_state is not None:
-                            scope_state["phase"] = "checking verdict cache"
-                            scope_state["done"] = i
-                        await asyncio.sleep(0)
-                    if hit is not None:
-                        pre_cached.append((item, hit))
+                    for item in items
+                ]
+                hits = await read_many_from_inference_cache(
+                    db, kind="ai_verdict", query_summaries=summaries,
+                )
+                if scope_state is not None:
+                    scope_state["phase"] = "checking verdict cache"
+                    scope_state["done"] = len(items)
+                for item, summary in zip(items, summaries, strict=True):
+                    cached = hits.get(canonical_hash(summary))
+                    if cached is not None:
+                        pre_cached.append((item, cached))
                     else:
                         uncached.append(item)
             else:

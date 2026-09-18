@@ -50,7 +50,7 @@ from app.pipeline.hmo_item_verify import (
 from app.pipeline.marc_verify_context import attach_marc_context, load_run_marc_records
 from app.pipeline.hmo_item_views import (
     ItemBuildMissingError,
-    fetch_merged_hmo_items,
+    fetch_merged_hmo_items_cached,
     fetch_validation_error_items,
     item_label,
 )
@@ -122,7 +122,7 @@ async def list_hmo_items(
 ) -> HmoItemsListResponse:
     await _lookup_run_with_access(db, run_id, auth)
     try:
-        items = await fetch_merged_hmo_items(db, run_id)
+        items = await fetch_merged_hmo_items_cached(db, run_id)
     except ItemBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return HmoItemsListResponse(run_id=run_id, items=items)
@@ -141,13 +141,13 @@ async def patch_hmo_item_override(
 ) -> HmoItemOverrideResponse:
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
     try:
-        await fetch_merged_hmo_items(db, run_id)
+        await fetch_merged_hmo_items_cached(db, run_id)
     except ItemBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
     known_ids = {
         str(i.get("local_id") or "")
-        for i in (await fetch_merged_hmo_items(db, run_id))
+        for i in (await fetch_merged_hmo_items_cached(db, run_id))
     }
     if local_id not in known_ids:
         raise HTTPException(status_code=404, detail=f"unknown local_id {local_id!r}")
@@ -257,7 +257,7 @@ async def reconcile_hmo_item(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
-    items = await fetch_merged_hmo_items(db, run_id)
+    items = await fetch_merged_hmo_items_cached(db, run_id)
     item = next((i for i in items if i.get("local_id") == local_id), None)
     if item is None:
         raise HTTPException(status_code=404, detail=f"unknown local_id {local_id!r}")
@@ -356,7 +356,7 @@ async def push_hmo_item(
     """
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
     try:
-        items = await fetch_merged_hmo_items(db, run_id)
+        items = await fetch_merged_hmo_items_cached(db, run_id)
     except ItemBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
@@ -415,7 +415,7 @@ async def export_hmo_items(
 ) -> StreamingResponse:
     await _lookup_run_with_access(db, run_id, auth)
     try:
-        items = await fetch_merged_hmo_items(db, run_id)
+        items = await fetch_merged_hmo_items_cached(db, run_id)
     except ItemBuildMissingError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
@@ -473,7 +473,7 @@ async def import_hmo_items(
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
     known = {
         str(i.get("local_id") or "")
-        for i in await fetch_merged_hmo_items(db, run_id)
+        for i in await fetch_merged_hmo_items_cached(db, run_id)
     }
     imported = skipped = 0
     errors: list[str] = []
@@ -566,7 +566,7 @@ async def get_cached_hmo_item_verdicts(
     from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
 
     judge_model = tier_model or GEMINI_MODEL
-    items = await fetch_merged_hmo_items(db, run_id)
+    items = await fetch_merged_hmo_items_cached(db, run_id)
     marc_records = await load_run_marc_records(db, run_id)
     attach_marc_context(items, marc_records)
     out: dict[str, dict[str, Any]] = {}
@@ -705,7 +705,7 @@ async def _fetch_verify_items(
     *,
     item_ids: list[str] | None,
 ) -> list[dict[str, Any]]:
-    items = await fetch_merged_hmo_items(db, run_id)
+    items = await fetch_merged_hmo_items_cached(db, run_id)
     wanted = set(item_ids or [])
     out: list[dict[str, Any]] = []
     for raw in items:
