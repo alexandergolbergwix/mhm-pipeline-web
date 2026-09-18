@@ -478,6 +478,13 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:39c372800e85aad9513660131fe90417",
+      "path": "frontend/src/components/hmo/HmoItemsPanel.tsx",
+      "rule_id": "generic-assigned-secret",
+      "reason": "JSX prop passing the panel's refresh-counter (refreshToken state, a number) to ItemBuildPanel — not a credential",
+      "expires": "2026-12-31"
+    },
+    {
       "fingerprint": "sha256:5caad6463c7bf4b49ec7e73c1db75a18",
       "path": "frontend/src/components/wikidata/WikidataItemsPanel.tsx",
       "rule_id": "generic-assigned-secret",

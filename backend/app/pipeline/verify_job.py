@@ -25,12 +25,12 @@ from app.pipeline.run_job_service import (
     is_cancel_requested,
     update_job_progress,
 )
+from app.pipeline.verify_resume import resumable_verify_result
 from app.pipeline.verify_session_store import (
     VERIFY_JOB_CHANNELS,
     slim_job_session_snapshot,
     snapshot_from_collected_events,
 )
-from app.pipeline.verify_resume import resumable_verify_result
 
 logger = logging.getLogger(__name__)
 
@@ -668,6 +668,13 @@ async def _open_verify_stream(
             action = hmo_item_actions.get_action(str(params["action_id"]))
             if action is None:
                 return None
+            # Scope progress (W-113): the 18k-item prep takes minutes of
+            # CPU; without phases the job sat on a frozen "Loading Studio
+            # scope…" and the whole dyno looked wedged (2026-09-18,
+            # Rule W-245). scope_state is flushed by the publisher task.
+            if scope_state is not None:
+                scope_state["phase"] = "loading item scope"
+                scope_state["done"] = 0
             items = await _fetch_verify_items(db, run_id, item_ids=params.get("item_ids"))
             items = await _prepare_verify_scope(action, items)
             if not items:
@@ -677,8 +684,11 @@ async def _open_verify_stream(
             pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
             uncached: list[dict[str, Any]] = []
             if not override_cache:
-                attach_marc_context(items, await _load_marc_records(db, run_id))
-                for item in items:
+                marc_records = await _load_marc_records(db, run_id)
+                # Sync CPU over every item — must not block the loop
+                # (heartbeat + publisher live on it).
+                await asyncio.to_thread(attach_marc_context, items, marc_records)
+                for i, item in enumerate(items):
                     hit = await read_from_inference_cache(
                         db,
                         kind="ai_verdict",
@@ -686,6 +696,12 @@ async def _open_verify_stream(
                             item, judge_model, evaluator=evaluator_id,
                         ),
                     )
+                    if i % 200 == 0:
+                        # Yield + surface progress through the publisher.
+                        if scope_state is not None:
+                            scope_state["phase"] = "checking verdict cache"
+                            scope_state["done"] = i
+                        await asyncio.sleep(0)
                     if hit is not None:
                         pre_cached.append((item, hit))
                     else:

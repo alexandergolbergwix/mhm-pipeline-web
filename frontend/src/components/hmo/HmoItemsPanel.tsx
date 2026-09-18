@@ -43,7 +43,9 @@ export function HmoItemsPanel({
 }: HmoItemsPanelProps) {
   const [items, setItems] = useState<HmoStudioItem[]>([]);
   const [filteredIds, setFilteredIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Start in the loading state so the first paint shows the loader instead
+  // of a flashed empty table (the 18k-item list request takes a while).
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openItem, setOpenItem] = useState<HmoStudioItem | null>(null);
   const [verifyOpen, setVerifyOpen] = useState(false);
@@ -80,7 +82,10 @@ export function HmoItemsPanel({
   }, []);
 
   const load = useCallback(async (opts?: {silent?: boolean}) => {
-    if (!buildPresent) return;
+    if (!buildPresent) {
+      setLoading(false);
+      return;
+    }
     const silent = Boolean(opts?.silent);
     if (!silent) setLoading(true);
     setError(null);
@@ -194,13 +199,18 @@ export function HmoItemsPanel({
 
   const approveBusy = approvingVisible || (approveJob != null && isJobActive(approveJob.status));
   const showTable = buildPresent && (items.length > 0 || !loading);
+  // First load (or a load that cleared the table): show a loader instead of
+  // empty counts and a blank table (2026-09-18 curator feedback).
+  const firstLoad = buildPresent && loading && items.length === 0;
 
   return (
     <Glass as="section" className="p-6 space-y-4" data-testid="hmo-items-panel">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <div className="kicker">Wikibase Items</div>
-          <h3 className="text-lg font-medium">{items.length} resolved item{items.length === 1 ? "" : "s"}</h3>
+          <h3 className="text-lg font-medium" data-testid="hmo-items-heading">
+            {firstLoad ? "Loading resolved items…" : `${items.length} resolved item${items.length === 1 ? "" : "s"}`}
+          </h3>
           <p className="muted text-sm mt-1">
             Review table for this run&apos;s item build. <b>Data status</b> shows whether each row is
             new, already on the wiki and due for a reupload, or was updated in the last push.
@@ -217,33 +227,35 @@ export function HmoItemsPanel({
           <button
             type="button"
             className="button-ghost text-xs"
-            disabled={!filteredIds.length}
+            disabled={firstLoad || !filteredIds.length}
             data-testid="hmo-items-verify-ai"
             onClick={() => openVerify(filteredIds, "audit_hmo_wikibase_item")}
           >
-            Verify with AI ({filteredIds.length})
+            Verify with AI {firstLoad ? "…" : `(${filteredIds.length})`}
           </button>
           <button
             type="button"
             className="button-ghost text-xs"
-            disabled={!autofixItemIds.length}
+            disabled={firstLoad || !autofixItemIds.length}
             title="Compare each item's live Wikibase entity against the build and propose fixes you can apply per row (requires a QID)."
             data-testid="hmo-items-autofix-ai"
             onClick={() => openVerify(autofixItemIds, "autofix_hmo_wikibase_item")}
           >
-            Autofix with AI ({autofixItemIds.length})
+            Autofix with AI {firstLoad ? "…" : `(${autofixItemIds.length})`}
           </button>
           <button
             type="button"
             className="button-primary text-xs"
-            disabled={!pendingVisibleIds.length || approveBusy}
+            disabled={firstLoad || !pendingVisibleIds.length || approveBusy}
             title="Approve every currently filtered row that is not already approved (runs as a background job)."
             data-testid="hmo-items-approve-visible"
             onClick={() => void approveAllVisible()}
           >
             {approveBusy
               ? "Approving…"
-              : `Approve all visible (${pendingVisibleIds.length})`}
+              : firstLoad
+                ? "Approve all visible…"
+                : `Approve all visible (${pendingVisibleIds.length})`}
           </button>
         </div>
       </div>
@@ -297,7 +309,20 @@ export function HmoItemsPanel({
           onToggleApproved={(item, next) => void handleToggleApproved(item, next)}
         />
       )}
-      {loading && items.length === 0 && <p className="muted text-sm">Loading items…</p>}
+      {firstLoad && (
+        <div
+          className="flex items-center justify-center gap-3 py-10"
+          data-testid="hmo-items-loading"
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className="animate-spin inline-block w-5 h-5 border-2 border-current border-t-transparent rounded-full text-biu-sky"
+            aria-hidden="true"
+          />
+          <span className="muted text-sm">Loading resolved items…</span>
+        </div>
+      )}
 
       {openItem && (
         <HmoItemDetailDrawer

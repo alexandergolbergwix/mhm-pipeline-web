@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import Any
 
@@ -73,7 +74,15 @@ async def fetch_merged_hmo_items(
         marc_records = await load_run_marc_records(db, run_id)
         marc_index = index_marc_records(marc_records)
 
-    for raw in cache_row.resolved_entities or []:
+    raw_entities = cache_row.resolved_entities or []
+    for i, raw in enumerate(raw_entities):
+        # Yield between entities: the 18k-entity merge is pure CPU on a
+        # 50-100 MB JSONB payload — without a periodic yield the event
+        # loop blocks, the job heartbeat dies, and the stale reap (which
+        # lives on the same loop) can never fire (2026-09-18: the verify
+        # wedged the whole dyno at "Loading Studio scope…", Rule W-245).
+        if i % 500 == 0:
+            await asyncio.sleep(0)
         entity = dict(raw)
         local_id = str(entity.get("local_id") or "")
         ov_row = overrides_by_id.get(local_id)
