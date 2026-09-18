@@ -492,6 +492,13 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:3cfa335ff78c13c39675a965a3d5076b",
+      "path": "frontend/src/routes/HmoStudio.tsx",
+      "rule_id": "generic-assigned-secret",
+      "reason": "JSX prop itemBuildPresent={itemBuildPresent} — boolean React state, not a credential; scanner false positive on identifier prefix",
+      "expires": "2026-12-31"
+    },
+    {
       "fingerprint": "sha256:39c90b82bd857f67b781a96cae50f0af",
       "path": "modal/modal_jobs.py",
       "rule_id": "generic-assigned-secret",

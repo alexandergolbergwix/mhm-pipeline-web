@@ -34,7 +34,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
@@ -779,11 +779,20 @@ async def item_status(
     """Build-cache presence + upload counts for this run's items."""
     await _lookup_run_with_access(db, run_id, auth)
 
-    cache_row = (
+    # Scalar columns ONLY — selecting the ORM row deserialises the ~100 MB
+    # resolved_entities JSONB, blew past Heroku's 30 s router timeout, and
+    # the frontend's non-fatal catch left build_present=false forever — the
+    # studio page then sat on "Build the RDF graph first" (2026-09-18,
+    # Rule W-246).
+    cache_meta = (
         await db.execute(
-            select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id)
+            select(
+                HmoStudioItemCache.entity_count,
+                HmoStudioItemCache.deferred_link_count,
+                HmoStudioItemCache.built_at,
+            ).where(HmoStudioItemCache.run_id == run_id)
         )
-    ).scalar_one_or_none()
+    ).first()
     uploaded_count = (
         await db.execute(
             select(func.count(WikibaseEntityMapping.id)).where(
@@ -794,11 +803,11 @@ async def item_status(
     ).scalar_one()
 
     return HmoItemStatusResponse(
-        build_present=cache_row is not None,
-        entity_count=cache_row.entity_count if cache_row else 0,
-        deferred_link_count=cache_row.deferred_link_count if cache_row else 0,
+        build_present=cache_meta is not None,
+        entity_count=cache_meta.entity_count if cache_meta else 0,
+        deferred_link_count=cache_meta.deferred_link_count if cache_meta else 0,
         uploaded_count=uploaded_count,
-        built_at=cache_row.built_at.isoformat() if cache_row else None,
+        built_at=cache_meta.built_at.isoformat() if cache_meta else None,
     )
 
 
@@ -872,10 +881,29 @@ async def studio_status(
     else:
         state = "idle"
 
-    wikibase_configured = get_settings().wikibase_cloud_configured
-    cache_row = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
-    canonical_live_count = sum(1 for item in (cache_row.resolved_entities if cache_row else []) if item.get("canonical_live"))
-    canonical_ready = bool(cache_row and cache_row.resolved_entities and canonical_live_count == len(cache_row.resolved_entities))
+        wikibase_configured = get_settings().wikibase_cloud_configured
+    # Count canonical_live server-side (W-246): loading resolved_entities
+    # here deserialises the ~100 MB JSONB per status call. On Postgres the
+    # count runs inside the DB; SQLite (tests) keeps the ORM fallback.
+    if db.get_bind().dialect.name == "postgresql":
+        counts = (
+            await db.execute(
+                text("""
+                    SELECT COUNT(*) AS total,
+                           COUNT(*) FILTER (WHERE el->>'canonical_live' = 'true') AS live
+                    FROM hmo_studio_item_cache c
+                    CROSS JOIN LATERAL jsonb_array_elements(c.resolved_entities) AS el
+                    WHERE c.run_id = :rid
+                """),
+                {"rid": str(run_id)},
+            )
+        ).one()
+        entity_total, canonical_live_count = int(counts.total), int(counts.live)
+        canonical_ready = entity_total > 0 and canonical_live_count == entity_total
+    else:
+        cache_row = (await db.execute(select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))).scalar_one_or_none()
+        canonical_live_count = sum(1 for item in (cache_row.resolved_entities if cache_row else []) if item.get("canonical_live"))
+        canonical_ready = bool(cache_row and cache_row.resolved_entities and canonical_live_count == len(cache_row.resolved_entities))
 
     return HmoStatus(
         state=state,

@@ -131,12 +131,16 @@ export default function HmoStudioRoute() {
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
-    HmoStudio.itemStatus(runId)
+    const probe = () => HmoStudio.itemStatus(runId)
       .then((st) => {
         if (cancelled) return;
         setItemBuildPresent(st.build_present);
-      })
-      .catch(() => { /* non-fatal */ });
+      });
+    // Retry once after a delay: on a fresh dyno the item cache is cold in
+    // memory and the probe used to time out (W-246) — a silent failure left
+    // build_present=false forever and the panel showed "Build the RDF
+    // graph first" even though 18k items were built.
+    probe().catch(() => new Promise((r) => setTimeout(r, 4000)).then(probe)).catch(() => { /* non-fatal */ });
     return () => { cancelled = true; };
   }, [runId, itemBuildToken]);
 
