@@ -27,6 +27,28 @@ STATE_SEVERITY: dict[str, int] = {
 
 RULE_VERDICT_SCHEMA = "rule_verdict_v1"
 
+# Rules that make an item safe to upload when they pass — the default
+# blocking set for certification and bulk approval. A curator who saved
+# settings overrides this entirely (empty saved set = everything advisory,
+# their explicit choice). Covers: structure, upload-blocking SHACL, label
+# sanity, within-run duplicates, MARC grounding, and the live checks.
+DEFAULT_BLOCKING_RULES: frozenset[str] = frozenset({
+    "hmo.shacl.blocking",
+    "hmo.source_uri.present",
+    "hmo.class.present",
+    "hmo.claims.datatype",
+    "hmo.statements.resolved",
+    "hmo.marc.linked",
+    "hmo.duplicate.in_run",
+    "hmo.quality.blank_node_exported",
+    "hmo.quality.missing_label",
+    "hmo.quality.latin_label_in_he",
+    "hmo.quality.hebrew_label_in_en_slot",
+    "hmo.live.alive",
+    "hmo.live.label_drift",
+    "hmo.wikidata.qids_alive",
+})
+
 
 @dataclass(frozen=True)
 class RuleResult:

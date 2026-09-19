@@ -37,12 +37,15 @@ def build_rule_verdict(
     *,
     job_id: str | None = None,
     checked_at: str | None = None,
+    label: str = "",
+    class_qid: str = "",
 ) -> dict[str, Any]:
     """The JSONB stored on the override row — compact, per-rule, per-item.
 
     Pass results store only ``rule_id`` + ``state``; failures and errors
-    carry field, message, and evidence. This keeps a 30-rule verdict at a
-    few KB for 18k items.
+    carry field, message, and evidence. ``label``/``class_qid`` snapshots
+    let the results endpoints filter, search, and paginate purely in SQL
+    — no merged-view deserialise on the request path.
     """
     states = [r.state for r in results if r.state in RULE_STATES]
     return {
@@ -52,6 +55,8 @@ def build_rule_verdict(
         "fail_count": sum(1 for s in states if s == "fail"),
         "checked_at": checked_at or datetime.now(UTC).isoformat(),
         "job_id": job_id,
+        "label": label,
+        "class_qid": class_qid,
         "results": [
             {
                 "rule_id": r.rule_id,
@@ -71,12 +76,18 @@ async def persist_rule_verdicts(
     run_id: Any,
     results_by_local_id: dict[str, list[RuleResult]],
     job_id: str | None = None,
+    items_by_id: dict[str, dict[str, Any]] | None = None,
     on_batch: Any = None,
 ) -> int:
-    """Write ``rule_verdict`` for every local_id with results. Returns count."""
+    """Write ``rule_verdict`` for every local_id with results. Returns count.
+
+    ``items_by_id`` supplies the label/class_qid snapshots stored beside
+    the results so the results endpoints filter and paginate in SQL.
+    """
     local_ids = [lid for lid in results_by_local_id if lid]
     if not local_ids:
         return 0
+    items_by_id = items_by_id or {}
     written = 0
     for start in range(0, len(local_ids), _BATCH_COMMIT):
         chunk = local_ids[start : start + _BATCH_COMMIT]
@@ -91,12 +102,16 @@ async def persist_rule_verdicts(
         by_id = {r.local_id: r for r in rows}
         now = datetime.now(UTC)
         for local_id in chunk:
+            item = items_by_id.get(local_id) or {}
             row = by_id.get(local_id)
             if row is None:
                 row = HmoStudioItemOverride(run_id=run_id, local_id=local_id)
                 db.add(row)
             row.rule_verdict = build_rule_verdict(
-                results_by_local_id[local_id], job_id=job_id,
+                results_by_local_id[local_id],
+                job_id=job_id,
+                label=str(item.get("label") or item.get("_label") or "")[:300],
+                class_qid=str(item.get("class_qid") or ""),
             )
             row.rule_verdict_at = now
             written += 1

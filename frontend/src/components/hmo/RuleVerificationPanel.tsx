@@ -4,8 +4,8 @@ import {ApiError} from "@/api/client";
 import {
   RuleVerify,
   type RuleMeta,
-  type RuleVerifyEntityRow,
-  type RuleVerifyResults,
+  type RuleState,
+  type RuleVerifyEntityPage,
   type RuleVerifySettings,
 } from "@/api/ruleVerify";
 import type {RunJobSnapshot} from "@/api/runJobs";
@@ -23,10 +23,6 @@ export interface RuleVerificationPanelProps {
 
 type ViewMode = "summary" | "entities";
 
-const STATE_SEVERITY: Record<string, number> = {
-  fail: 3, error: 2, pass: 1, not_relevant: 0, unchecked: 0,
-};
-
 const STATE_BADGE: Record<string, string> = {
   pass: "text-emerald-700 bg-emerald-500/10 border-emerald-500/30",
   fail: "text-danger bg-red-500/10 border-red-500/30",
@@ -34,6 +30,8 @@ const STATE_BADGE: Record<string, string> = {
   not_relevant: "muted bg-white/5 border-white/10",
   unchecked: "muted bg-white/5 border-white/10",
 };
+
+const ENTITY_PAGE_SIZE = 50;
 
 function StateBadge({state}: {state: string}) {
   return (
@@ -47,13 +45,20 @@ function StateBadge({state}: {state: string}) {
 
 export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerificationPanelProps) {
   const [catalog, setCatalog] = useState<RuleMeta[]>([]);
-  const [results, setResults] = useState<RuleVerifyResults | null>(null);
+  const [summary, setSummary] = useState<{
+    overall_counts: Record<string, number>;
+    per_rule: Record<string, Record<RuleState, number>>;
+  } | null>(null);
   const [settings, setSettings] = useState<RuleVerifySettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("summary");
   const [ruleFilter, setRuleFilter] = useState<string[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  const [entityPage, setEntityPage] = useState(1);
+  const [entityData, setEntityData] = useState<RuleVerifyEntityPage | null>(null);
+  const [entitiesLoading, setEntitiesLoading] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [togglingRule, setTogglingRule] = useState<string | null>(null);
   const [approveBusy, setApproveBusy] = useState(false);
@@ -61,8 +66,13 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
   const [verifyJob, setVerifyJob] = useState<RunJobSnapshot | null>(null);
   const upsertJob = useRunJobs((s) => s.upsertJob);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+  // Debounce the search box into the server query.
+  useEffect(() => {
+    const t = window.setTimeout(() => setSearch(searchInput), 350);
+    return () => window.clearTimeout(t);
+  }, [searchInput]);
+
+  const loadSummary = useCallback(async () => {
     setError(null);
     try {
       const [cat, res, set] = await Promise.all([
@@ -71,23 +81,23 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
         RuleVerify.settings(),
       ]);
       setCatalog(cat);
-      setResults(res);
+      setSummary(res);
       setSettings(set);
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   }, [runId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadSummary(); }, [loadSummary]);
 
   const {setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,
     "hmo_rule_verify",
     (job) => {
       setVerifyJob(job);
-      if (job.status === "succeeded") void load(true);
+      if (job.status === "succeeded") void loadSummary();
       if (job.status === "failed" || job.status === "cancelled") {
         setError(job.error ?? "Rule check failed.");
       }
@@ -108,6 +118,25 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [ensureJobPolling, runId, setTrackedJobId, upsertJob]);
+
+  // Server-paginated entity fetch — one page per request, filters in SQL.
+  const entityState = view === "entities" ? stateFilterForServer(ruleFilter) : "fail";
+  useEffect(() => {
+    if (view !== "entities") return;
+    let cancelled = false;
+    setEntitiesLoading(true);
+    RuleVerify.entityPage(runId, {
+      page: entityPage,
+      page_size: ENTITY_PAGE_SIZE,
+      state: entityState,
+      rules: ruleFilter,
+      q: search,
+    })
+      .then((data) => { if (!cancelled) setEntityData(data); })
+      .catch((e) => { if (!cancelled) setError(e instanceof ApiError ? e.detail : String(e)); })
+      .finally(() => { if (!cancelled) setEntitiesLoading(false); });
+    return () => { cancelled = true; };
+  }, [runId, view, entityPage, entityState, ruleFilter, search]);
 
   const blockedRules = useMemo(
     () => new Set(
@@ -142,64 +171,43 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
     return map;
   }, [catalog]);
 
-  const entityRows = useMemo(() => {
-    if (!results) return [];
-    let rows = results.items;
-    if (ruleFilter.length) {
-      rows = rows.filter((r) =>
-        r.results.some(
-          (res) => ruleFilter.includes(res.rule_id) && res.state === "fail",
-        ),
-      );
-      rows = rows.map((r) => ({
-        ...r,
-        results: r.results.filter(
-          (res) => ruleFilter.includes(res.rule_id) || res.state === "fail",
-        ),
-      }));
-    }
-    const q = search.trim().toLowerCase();
-    if (q) {
-      rows = rows.filter(
-        (r) => (r.label ?? "").toLowerCase().includes(q)
-          || r.local_id.toLowerCase().includes(q),
-      );
-    }
-    return [...rows].sort(
-      (a, b) => (STATE_SEVERITY[b.overall] ?? 0) - (STATE_SEVERITY[a.overall] ?? 0)
-        || a.local_id.localeCompare(b.local_id),
-    );
-  }, [results, ruleFilter, search]);
+  const perRuleRows = useMemo(() => {
+    if (!summary) return [];
+    return catalog
+      .map((meta) => ({
+        meta,
+        tally: summary.per_rule[meta.id] ?? {pass: 0, fail: 0, not_relevant: 0, error: 0},
+      }))
+      .sort((a, b) => b.tally.fail - a.tally.fail || a.meta.id.localeCompare(b.meta.id));
+  }, [catalog, summary]);
 
-  const approvableIds = useMemo(
-    () => entityRows
-      .filter((r) => r.overall === "pass")
-      .map((r) => r.local_id),
-    [entityRows],
-  );
+  const failingRuleIds = useMemo(() => {
+    if (!summary) return [];
+    return Object.entries(summary.per_rule)
+      .filter(([, t]) => t.fail > 0)
+      .sort((a, b) => b[1].fail - a[1].fail)
+      .map(([rid]) => rid);
+  }, [summary]);
 
-  const approveFiltered = useCallback(async () => {
-    if (!approvableIds.length) return;
+  const approveScope = useCallback(async () => {
     setApproveBusy(true);
     setApproveFeedback(null);
+    const blocked = [...blockedRules];
+    const scope = {filters: {state: entityState, rules: ruleFilter, q: search}};
     try {
-      const blocked = [...blockedRules];
-      const preview = await RuleVerify.bulkApprovePreview(
-        runId, approvableIds, blocked.length ? blocked : undefined,
-      );
-      const excludedCount = preview.excluded.length;
+      const preview = await RuleVerify.bulkApprovePreview(runId, scope, blocked.length ? blocked : undefined);
       const ok = window.confirm(
         `Approve ${preview.eligible.length} of ${preview.total} items?`
-        + (excludedCount ? ` ${excludedCount} excluded by your blocking rules.` : ""),
+        + (preview.excluded.length ? ` ${preview.excluded.length} excluded by your blocking rules.` : ""),
       );
       if (!ok) {
         setApproveBusy(false);
         return;
       }
-      await RuleVerify.bulkApprove(runId, preview.eligible, blocked.length ? blocked : undefined);
+      await RuleVerify.bulkApprove(runId, scope, blocked.length ? blocked : undefined);
       setApproveFeedback(
         `Approve job started for ${preview.eligible.length} items`
-        + (excludedCount ? ` (${excludedCount} excluded by blocking rules)` : "") + ".",
+        + (preview.excluded.length ? ` (${preview.excluded.length} excluded by blocking rules)` : "") + ".",
       );
       onApproved?.();
     } catch (e) {
@@ -207,47 +215,33 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
     } finally {
       setApproveBusy(false);
     }
-  }, [approvableIds, blockedRules, onApproved, runId]);
+  }, [blockedRules, entityState, onApproved, ruleFilter, runId, search]);
 
-  const perRuleRows = useMemo(() => {
-    if (!results) return [];
-    return catalog
-      .map((meta) => ({
-        meta,
-        tally: results.per_rule[meta.id] ?? {pass: 0, fail: 0, not_relevant: 0, error: 0},
-      }))
-      .sort((a, b) => b.tally.fail - a.tally.fail || a.meta.id.localeCompare(b.meta.id));
-  }, [catalog, results]);
-
-  const failingRuleIds = useMemo(() => {
-    if (!results) return [];
-    return Object.entries(results.per_rule)
-      .filter(([, t]) => t.fail > 0)
-      .sort((a, b) => b[1].fail - a[1].fail)
-      .map(([rid]) => rid);
-  }, [results]);
+  const entityPageCount = entityData
+    ? Math.max(1, Math.ceil(entityData.total / entityData.page_size))
+    : 1;
 
   return (
     <Glass as="section" className="p-6 space-y-4" data-testid="rule-verification-panel">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
-          <div className="kicker">Rule-Based Verification</div>
+          <div className="kicker">Rules Based Verification</div>
           <h3 className="text-lg font-medium" data-testid="rule-verify-heading">
-            Deterministic checks — no AI
+            Rules based verification — deterministic checks, no AI
           </h3>
           <p className="muted text-sm mt-1">
-            Every rule runs on every item. Advisory by default: pick the rules that
-            block approval in the summary view, then approve from the filter.
+            Every rule runs on every item. Pass your blocking rules and the item is
+            ready to upload to Wikibase and Wikidata.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="button-ghost text-xs" disabled={loading} onClick={() => void load(true)}>
+          <button type="button" className="button-ghost text-xs" onClick={() => void loadSummary()}>
             Refresh
           </button>
           <button
             type="button"
             className="button-ghost text-xs"
-            disabled={loading || running}
+            disabled={running}
             data-testid="rule-verify-run"
             onClick={() => void runVerify()}
           >
@@ -272,16 +266,15 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
       )}
       {approveFeedback && <p className="text-sm text-biu-sky" role="status">{approveFeedback}</p>}
 
-
-      {results && !loading && (
+      {summary && !loading && (
         <>
           <div className="flex flex-wrap items-center gap-2" data-testid="rule-verify-filters">
             <input
               type="search"
               className="input text-xs w-48"
               placeholder="Search label or id…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
             <div className="flex gap-1 ml-auto">
               <button
@@ -296,8 +289,14 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
                 className={`button-ghost text-xs ${view === "entities" ? "font-semibold underline" : ""}`}
                 onClick={() => setView("entities")}
               >
-                Per entity ({entityRows.length})
+                Per entity
               </button>
+              <a className="button-ghost text-xs" href={RuleVerify.exportUrl(runId, "csv")} data-testid="rule-verify-export-csv">
+                Export CSV
+              </a>
+              <a className="button-ghost text-xs" href={RuleVerify.exportUrl(runId, "json")} data-testid="rule-verify-export-json">
+                Export JSON
+              </a>
             </div>
           </div>
 
@@ -356,23 +355,23 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
             <div className="space-y-2" data-testid="rule-verify-entities">
               {failingRuleIds.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <span className="muted">Filter by failing rule:</span>
+                  <span className="muted">Failing-rule filter:</span>
                   {failingRuleIds.map((rid) => (
                     <button
                       key={rid}
                       type="button"
                       className={`button-ghost text-xs ${ruleFilter.includes(rid) ? "underline font-semibold" : ""}`}
-                      onClick={() => setRuleFilter(
+                      onClick={() => { setRuleFilter(
                         ruleFilter.includes(rid)
                           ? ruleFilter.filter((x) => x !== rid)
                           : [...ruleFilter, rid],
-                      )}
+                      ); setEntityPage(1); }}
                     >
                       {catalogById.get(rid)?.title ?? rid}
                     </button>
                   ))}
                   {ruleFilter.length > 0 && (
-                    <button type="button" className="button-ghost text-xs" onClick={() => setRuleFilter([])}>
+                    <button type="button" className="button-ghost text-xs" onClick={() => { setRuleFilter([]); setEntityPage(1); }}>
                       Clear
                     </button>
                   )}
@@ -384,10 +383,14 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
                     <th className="py-2 pr-3">Item</th>
                     <th className="py-2 pr-3">Overall</th>
                     <th className="py-2 pr-3">Failing rules</th>
+                    <th className="py-2 pr-3">Ready to upload</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {entityRows.map((row) => (
+                  {entitiesLoading && (
+                    <tr><td colSpan={4} className="py-4 muted text-sm" role="status">Loading…</td></tr>
+                  )}
+                  {!entitiesLoading && (entityData?.items ?? []).map((row) => (
                     <RuleEntityRow
                       key={row.local_id}
                       row={row}
@@ -396,19 +399,44 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
                       catalogById={catalogById}
                     />
                   ))}
+                  {!entitiesLoading && (entityData?.items ?? []).length === 0 && (
+                    <tr><td colSpan={4} className="py-4 muted text-sm">No entries match.</td></tr>
+                  )}
                 </tbody>
               </table>
+              <div className="flex items-center justify-between text-xs muted pt-2">
+                <span>{entityData?.total ?? 0} item{(entityData?.total ?? 0) === 1 ? "" : "s"}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="button-ghost text-xs"
+                    disabled={entityPage <= 1 || entitiesLoading}
+                    onClick={() => setEntityPage((p) => p - 1)}
+                  >
+                    Prev
+                  </button>
+                  <span>{entityPage} / {entityPageCount}</span>
+                  <button
+                    type="button"
+                    className="button-ghost text-xs"
+                    disabled={entityPage >= entityPageCount || entitiesLoading}
+                    onClick={() => setEntityPage((p) => p + 1)}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
-          {view === "summary" && (
+          {view === "entities" && (
             <button
               type="button"
               className="button-primary text-xs"
-              disabled={approveBusy || approvableIds.length === 0}
+              disabled={approveBusy || (entityData?.total ?? 0) === 0}
               data-testid="rule-verify-approve-filtered"
-              onClick={() => void approveFiltered()}
-              title="Approve the items matching the current filter. Items failing your blocking rules are excluded after a preview."
+              onClick={() => void approveScope()}
+              title="Approve every item matching the current filter. Items failing your blocking rules are excluded after a preview."
             >
               {approveBusy ? "Starting…" : "Approve by filter…"}
             </button>
@@ -419,8 +447,25 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
   );
 }
 
+/** The server state filter for the entity view: the picked chip, or fails under a rule drill-down. */
+function stateFilterForServer(ruleFilter: string[]): string {
+  return ruleFilter.length > 0 ? "all" : "fail";
+}
+
 interface RuleEntityRowProps {
-  row: RuleVerifyEntityRow;
+  row: {
+    local_id: string;
+    label: string | null;
+    overall: string;
+    pass_count: number;
+    upload_ready?: boolean;
+    results: Array<{
+      rule_id: string;
+      state: RuleState;
+      field?: string;
+      message?: string;
+    }>;
+  };
   expanded: boolean;
   onToggle: () => void;
   catalogById: Map<string, RuleMeta>;
@@ -433,9 +478,16 @@ function RuleEntityRow({row, expanded, onToggle, catalogById}: RuleEntityRowProp
       <tr className="border-t border-white/5 cursor-pointer" onClick={onToggle}>
         <td className="py-2 pr-3">
           <div className="font-medium">{row.label ?? row.local_id}</div>
-          <div className="muted text-xs">{row.local_id}{row.wikibase_id ? ` · ${row.wikibase_id}` : ""}</div>
+          <div className="muted text-xs">{row.local_id}</div>
         </td>
-        <td className="py-2 pr-3"><StateBadge state={row.overall} /></td>
+        <td className="py-2 pr-3">
+          <StateBadge state={row.overall} />
+          {row.upload_ready && (
+            <span className="ml-2 inline-block rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-700">
+              ready
+            </span>
+          )}
+        </td>
         <td className="py-2 pr-3">
           {failing.length === 0
             ? <span className="muted text-xs">none</span>
@@ -453,10 +505,15 @@ function RuleEntityRow({row, expanded, onToggle, catalogById}: RuleEntityRowProp
               </div>
             )}
         </td>
+        <td className="py-2 pr-3">
+          {row.upload_ready
+            ? <span className="text-emerald-700 text-xs">yes</span>
+            : <span className="muted text-xs">no</span>}
+        </td>
       </tr>
       {expanded && (
         <tr className="border-t border-white/5 bg-white/[0.02]">
-          <td colSpan={3} className="py-3 px-3">
+          <td colSpan={4} className="py-3 px-3">
             <div className="space-y-1 text-xs" data-testid={`rule-verify-detail-${row.local_id}`}>
               {row.results.length === 0 && (row.pass_count ?? 0) === 0 && (
                 <span className="muted">No rule results recorded.</span>

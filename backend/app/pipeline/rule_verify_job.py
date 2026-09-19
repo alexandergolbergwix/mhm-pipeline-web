@@ -102,7 +102,13 @@ async def _run_and_persist(
     """Engine over ``items`` + persistence. Shared by job and shard paths."""
     from app.pipeline.rule_verify.api_fetcher import production_fetcher
 
-    wikibase_endpoint = os.getenv("WIKIBASE_CLOUD_API", "").strip()
+    wikibase_endpoint = ""
+    try:
+        from app.settings import get_settings  # noqa: PLC0415
+
+        wikibase_endpoint = get_settings().wikibase_cloud_base_url
+    except Exception:  # noqa: BLE001 — settings missing → API rules abstain
+        pass
     ctx = build_context(
         run_id=str(run_id),
         items=items,
@@ -114,14 +120,21 @@ async def _run_and_persist(
     engine = RuleEngine(build_hmo_rules(), ctx)
 
     results: dict[str, list[RuleResult]] = {}
+    items_by_id = {
+        str(i.get("_local_id") or i.get("local_id") or ""): i for i in items
+    }
     total = len(items)
     for start in range(0, total, CHUNK):
         chunk = items[start : start + CHUNK]
         part = await _engine_chunk(engine, chunk, with_api)
         results.update(part)
+        chunk_by_id = {
+            lid: items_by_id[lid] for lid in part if lid in items_by_id
+        }
         async with db_factory() as db:
             await persist_rule_verdicts(
                 db, run_id=run_id, results_by_local_id=part, job_id=job_id,
+                items_by_id=chunk_by_id,
             )
     return summary_from_results(results)
 

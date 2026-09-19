@@ -68,6 +68,54 @@ export const HmoStudioItems = {
     return api.get(`/runs/${runId}/hmo-studio/items`);
   },
 
+  page(
+    runId: string,
+    query: {
+      page: number;
+      pageSize?: number;
+      q?: string;
+      sort?: "label" | "local_id";
+      dir?: "asc" | "desc";
+      filters?: Record<string, string[]>;
+    },
+  ): Promise<{
+    run_id: string;
+    page: number;
+    page_size: number;
+    total: number;
+    facets: Record<string, Record<string, number>>;
+    items: HmoStudioItem[];
+  }> {
+    const params = new URLSearchParams({
+      page: String(query.page),
+      page_size: String(query.pageSize ?? 25),
+      sort: query.sort ?? "label",
+      dir: query.dir ?? "asc",
+    });
+    if (query.q?.trim()) params.set("q", query.q.trim());
+    for (const [col, values] of Object.entries(query.filters ?? {})) {
+      for (const value of values) params.append("filter", `${col}:${value}`);
+    }
+    return api.get(`/runs/${runId}/hmo-studio/items/page?${params}`);
+  },
+
+  filteredIds(
+    runId: string,
+    query: {q?: string; filters?: Record<string, string[]>},
+  ): Promise<{
+    run_id: string;
+    total: number;
+    entries: Array<{local_id: string; wikibase_id: string | null; approved: boolean | null}>;
+  }> {
+    const params = new URLSearchParams();
+    if (query.q?.trim()) params.set("q", query.q.trim());
+    params.set("ids_only", "true");
+    for (const [col, values] of Object.entries(query.filters ?? {})) {
+      for (const value of values) params.append("filter", `${col}:${value}`);
+    }
+    return api.get(`/runs/${runId}/hmo-studio/items/page?${params}`);
+  },
+
   patchOverride(
     runId: string,
     localId: string,

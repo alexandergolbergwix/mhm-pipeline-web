@@ -8,7 +8,7 @@ import {SectionImportButton} from "@/components/import/SectionImportButton";
 import {Glass} from "@/components/glass";
 import {HmoAuthorityConflictPanel} from "@/components/hmo/HmoAuthorityConflictPanel";
 import {HmoItemDetailDrawer} from "@/components/hmo/HmoItemDetailDrawer";
-import {HmoItemTable} from "@/components/hmo/HmoItemTable";
+import {HmoItemTable, type HmoItemTableQuery} from "@/components/hmo/HmoItemTable";
 import {HmoItemVerificationModal} from "@/components/hmo/HmoItemVerificationModal";
 import {RuleVerificationPanel} from "@/components/hmo/RuleVerificationPanel";
 import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
@@ -51,7 +51,15 @@ export function HmoItemsPanel({
   onLifecycleChange,
 }: HmoItemsPanelProps) {
   const [items, setItems] = useState<HmoStudioItem[]>([]);
-  const [filteredIds, setFilteredIds] = useState<string[]>([]);
+  const [tableTotal, setTableTotal] = useState(0);
+  const [tableFacets, setTableFacets] = useState<Record<string, Record<string, number>>>({});
+  const [tablePage, setTablePage] = useState(1);
+  const [tableQuery, setTableQuery] = useState<HmoItemTableQuery>({
+    search: "",
+    sortKey: "label",
+    sortDir: "asc",
+    colFilters: {},
+  });
   // Start in the loading state so the first paint shows the loader instead
   // of a flashed empty table (the 18k-item list request takes a while).
   const [loading, setLoading] = useState(true);
@@ -66,19 +74,24 @@ export function HmoItemsPanel({
   const [approveJob, setApproveJob] = useState<RunJobSnapshot | null>(null);
   const upsertJob = useRunJobs((s) => s.upsertJob);
 
-  const autofixItemIds = useMemo(() => {
-    const visible = new Set(filteredIds);
-    return items
-      .filter((item) => visible.has(item.local_id) && Boolean(item.wikibase_id?.trim()))
-      .map((item) => item.local_id);
-  }, [filteredIds, items]);
+  // Server-driven table state: one page of rows + a light id set for the
+  // bulk actions. The browser never holds the full corpus.
+  const [idEntries, setIdEntries] = useState<Array<{local_id: string; wikibase_id: string | null; approved: boolean | null}>>([]);
 
-  const pendingVisibleIds = useMemo(() => {
-    const visible = new Set(filteredIds);
-    return items
-      .filter((item) => visible.has(item.local_id) && item.approved !== true)
-      .map((item) => item.local_id);
-  }, [filteredIds, items]);
+  const filteredIds = useMemo(
+    () => idEntries.map((e) => e.local_id),
+    [idEntries],
+  );
+
+  const autofixItemIds = useMemo(
+    () => idEntries.filter((e) => Boolean(e.wikibase_id?.trim())).map((e) => e.local_id),
+    [idEntries],
+  );
+
+  const pendingVisibleIds = useMemo(
+    () => idEntries.filter((e) => e.approved !== true).map((e) => e.local_id),
+    [idEntries],
+  );
 
   const failedLocalIds = useMemo(
     () => items.filter((i) => i.upload_outcome === "failed").map((i) => i.local_id),
@@ -109,8 +122,17 @@ export function HmoItemsPanel({
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const res = await HmoStudioItems.list(runId);
+      const res = await HmoStudioItems.page(runId, {
+        page: tablePage,
+        pageSize: 25,
+        q: tableQuery.search,
+        sort: tableQuery.sortKey,
+        dir: tableQuery.sortDir,
+        filters: tableQuery.colFilters as Record<string, string[]>,
+      });
       setItems(res.items);
+      setTableTotal(res.total);
+      setTableFacets(res.facets);
       setOpenItem((prev) => {
         if (!prev) return prev;
         return res.items.find((i) => i.local_id === prev.local_id) ?? prev;
@@ -120,7 +142,21 @@ export function HmoItemsPanel({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [buildPresent, runId]);
+  }, [buildPresent, runId, tablePage, tableQuery]);
+
+  // Light id-set refresh (bulk actions + verify scope) — debounced.
+  useEffect(() => {
+    if (!buildPresent) return;
+    const t = window.setTimeout(() => {
+      HmoStudioItems.filteredIds(runId, {
+        q: tableQuery.search,
+        filters: tableQuery.colFilters as Record<string, string[]>,
+      })
+        .then((res) => setIdEntries(res.entries))
+        .catch(() => { /* transient — the page fetch surfaces errors */ });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [buildPresent, runId, tableQuery]);
 
   useEffect(() => {
     void load();
@@ -260,9 +296,8 @@ export function HmoItemsPanel({
             data-testid="hmo-items-verify-rules"
             onClick={() => setRulePanelOpen((v) => !v)}
           >
-            {rulePanelOpen ? "Hide rule check" : `Verify with rules ${firstLoad ? "…" : `(${filteredIds.length})`}`}
-          </button>
-          <button
+            {rulePanelOpen ? "Hide rules check" : `Rules based verification ${firstLoad ? "…" : `(${filteredIds.length})`}`}
+          </button>          <button
             type="button"
             className="button-ghost text-xs"
             disabled={firstLoad || !autofixItemIds.length}
@@ -340,7 +375,13 @@ export function HmoItemsPanel({
       {showTable && (
         <HmoItemTable
           items={items}
-          onFilteredChange={setFilteredIds}
+          total={tableTotal}
+          page={tablePage}
+          pageCount={Math.max(1, Math.ceil(tableTotal / 25))}
+          facets={tableFacets}
+          query={tableQuery}
+          onQueryChange={(q) => { setTablePage(1); setTableQuery(q); }}
+          onPageChange={setTablePage}
           onOpenItem={setOpenItem}
           onToggleApproved={(item, next) => void handleToggleApproved(item, next)}
         />

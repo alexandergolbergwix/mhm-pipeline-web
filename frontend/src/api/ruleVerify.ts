@@ -43,8 +43,6 @@ export interface RuleVerifyEntityRow {
   local_id: string;
   label: string | null;
   class_qid: string | null;
-  wikibase_id: string | null;
-  status: string | null;
   approved: boolean | null;
   overall: RuleOverall;
   checked_at?: string | null;
@@ -52,13 +50,39 @@ export interface RuleVerifyEntityRow {
   pass_count: number;
   /** Non-pass entries only: fail / error / not_relevant. */
   results: RuleResultEntry[];
+  /** Failing or erroring rules in the curator's blocking set. */
+  blocked_by?: string[];
+  /** True when no blocking-rule failure or error — ok to upload. */
+  upload_ready?: boolean;
 }
 
 export interface RuleVerifyResults {
   run_id: string;
   overall_counts: Record<string, number>;
   per_rule: Record<string, Record<RuleState, number>>;
+}
+
+export interface RuleVerifyEntityPage {
+  run_id: string;
+  page: number;
+  page_size: number;
+  total: number;
+  blocking_rules: string[];
   items: RuleVerifyEntityRow[];
+}
+
+export interface RuleVerifyEntityQuery {
+  page: number;
+  page_size?: number;
+  state: string;
+  rules?: string[];
+  q?: string;
+}
+
+export interface RuleVerifyFilterSpec {
+  state: string;
+  rules?: string[];
+  q?: string;
 }
 
 export interface RuleVerifySettings {
@@ -78,8 +102,28 @@ export const RuleVerify = {
     return api.get(`/runs/${runId}/hmo-studio/items/rule-verify/catalog`);
   },
 
+  exportUrl(runId: string, format: "json" | "csv", scope: "failures" | "all" = "failures"): string {
+    return `/api/runs/${runId}/hmo-studio/items/rule-verify/export?format=${format}&scope=${scope}`;
+  },
+
   results(runId: string): Promise<RuleVerifyResults> {
     return api.get(`/runs/${runId}/hmo-studio/items/rule-verify/results`);
+  },
+
+  entityPage(
+    runId: string,
+    query: RuleVerifyEntityQuery,
+  ): Promise<RuleVerifyEntityPage> {
+    const params = new URLSearchParams({
+      page: String(query.page),
+      page_size: String(query.page_size ?? 50),
+      state: query.state,
+    });
+    if (query.rules?.length) params.set("rules", query.rules.join(","));
+    if (query.q?.trim()) params.set("q", query.q.trim());
+    return api.get(
+      `/runs/${runId}/hmo-studio/items/rule-verify/results/entities?${params}`,
+    );
   },
 
   settings(): Promise<RuleVerifySettings> {
@@ -92,27 +136,24 @@ export const RuleVerify = {
 
   bulkApprovePreview(
     runId: string,
-    localIds: string[],
+    scope: {localIds?: string[]; filters?: RuleVerifyFilterSpec},
     blockingRules?: string[],
-  ): Promise<{
-    total: number;
-    eligible: string[];
-    excluded: Array<{local_id: string; blocked_by: Array<{rule_id: string; message: string}>}>;
-    not_checked: string[];
-  }> {
+  ): Promise<BulkApprovePreview> {
     return api.post(`/runs/${runId}/hmo-studio/items/rule-verify/bulk-approve/preview`, {
-      local_ids: localIds,
+      ...(scope.localIds ? {local_ids: scope.localIds} : {}),
+      ...(scope.filters ? {filters: scope.filters} : {}),
       ...(blockingRules ? {blocking_rules: blockingRules} : {}),
     });
   },
 
   bulkApprove(
     runId: string,
-    localIds: string[],
+    scope: {localIds?: string[]; filters?: RuleVerifyFilterSpec},
     blockingRules?: string[],
   ): Promise<{started: boolean; eligible: number; job_id: string}> {
     return api.post(`/runs/${runId}/hmo-studio/items/rule-verify/bulk-approve`, {
-      local_ids: localIds,
+      ...(scope.localIds ? {local_ids: scope.localIds} : {}),
+      ...(scope.filters ? {filters: scope.filters} : {}),
       ...(blockingRules ? {blocking_rules: blockingRules} : {}),
     });
   },
