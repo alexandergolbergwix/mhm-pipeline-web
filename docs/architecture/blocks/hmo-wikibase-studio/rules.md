@@ -339,3 +339,10 @@ the whole download, so DB work uses short-lived `session_scope` windows.
 built the full payload — including `json_stream`'s whole-document
 `json.dumps` — before the first byte, and Heroku's router killed the
 request at 30 s (H12); the 50–100 MB string also R14'd the dyno.
+
+Cold-cache follow-up (2026-09-19): the header streamed, but the single
+slow merged-items await then stalled past the 55 s rolling idle window
+(H15, download truncated at 83 B). The export generators therefore run
+the load as a task raced against a 10 s keepalive emitting byte-valid
+filler — JSON whitespace inside the array, blank lines between CSV rows
+(Rule W-247).

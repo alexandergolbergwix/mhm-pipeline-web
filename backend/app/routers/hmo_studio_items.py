@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -20,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session, session_scope
-from app.export.formatters import json_array_stream, json_stream
+from app.export.formatters import json_default, json_stream
 from app.models.event import (
     ENTITY_TYPE_HMO_ITEM_OVERRIDE,
     OP_CREATE,
@@ -67,6 +68,11 @@ from app.versioning import apply_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["hmo-studio-items"])
+
+# Cold-cache merged-items loads (18k entities, ~45 MB JSONB) can exceed
+# Heroku's rolling 55 s idle window mid-stream (H15) — the export
+# generators emit a keepalive chunk this often while the load runs.
+EXPORT_KEEPALIVE_S = 10.0
 
 
 class HmoItemOverridePayload(BaseModel):
@@ -1770,9 +1776,7 @@ async def export_rule_verify_results(
         if isinstance(verdict, dict) and verdict.get("results")
     }
 
-    async def _entity_rows() -> AsyncIterator[dict[str, Any]]:
-        async with session_scope() as db:
-            items = await fetch_merged_hmo_items_cached(db, run_id)
+    async def _entity_rows(items: list[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
         for item in items:
             local_id = str(item.get("local_id") or "")
             verdict = verdicts.get(local_id)
@@ -1809,13 +1813,52 @@ async def export_rule_verify_results(
             }
 
     filename = f"run-{run_id}-rule-verify-{scope}.{format}"
+
+    async def _fetch_items() -> list[dict[str, Any]]:
+        async with session_scope() as db:
+            return await fetch_merged_hmo_items_cached(db, run_id)
+
+    async def _load_items(keepalive: bytes) -> AsyncIterator[bytes | list[dict[str, Any]]]:
+        """Yield keepalive bytes while the merged-items load runs, then the items.
+
+        On a cold in-process cache the 18k-entity merge can exceed Heroku's
+        rolling 55 s idle window (H15) — the first bytes were already sent
+        (the header), and one slow await mid-stream kills the download.
+        The keepalive filler is byte-valid for the target format: JSON
+        whitespace between array elements, blank lines between CSV rows.
+        """
+        merge = asyncio.create_task(_fetch_items())
+        try:
+            while True:
+                done, _ = await asyncio.wait({merge}, timeout=EXPORT_KEEPALIVE_S)
+                if done:
+                    yield merge.result()
+                    return
+                yield keepalive
+        except BaseException:
+            if not merge.done():
+                merge.cancel()
+            raise
+
     if format == "json":
+        async def _json_stream() -> AsyncIterator[bytes]:
+            prefix = json.dumps({"run_id": str(run_id), "scope": scope}, ensure_ascii=False)
+            yield f'{prefix[:-1]},"entities":['.encode()
+            async for chunk in _load_items(b"\n"):
+                if isinstance(chunk, bytes):
+                    yield chunk
+                    continue
+                first = True
+                async for row in _entity_rows(chunk):
+                    encoded = json.dumps(
+                        row, default=json_default, ensure_ascii=False,
+                    ).encode("utf-8")
+                    yield (b"" if first else b",") + encoded
+                    first = False
+            yield b"]}"
+
         return StreamingResponse(
-            json_array_stream(
-                {"run_id": str(run_id), "scope": scope},
-                "entities",
-                _entity_rows(),
-            ),
+            _json_stream(),
             media_type="application/json",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
@@ -1829,24 +1872,31 @@ async def export_rule_verify_results(
         ]
         writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
-        async for row in _entity_rows():
-            skip = ("rule_id", "state", "field", "message")
-            base = {k: row.get(k) for k in fields if k not in skip}
-            if not row["results"]:
-                writer.writerow({
-                    **base, "rule_id": "", "state": "pass", "field": "", "message": "",
-                })
-            for res in row["results"]:
-                writer.writerow({
-                    **base,
-                    "rule_id": res.get("rule_id"),
-                    "state": res.get("state"),
-                    "field": res.get("field") or "",
-                    "message": str(res.get("message") or "")[:300],
-                })
-            yield buf.getvalue()
-            buf.seek(0)
-            buf.truncate(0)
+        yield buf.getvalue().encode("utf-8")
+        buf.seek(0)
+        buf.truncate(0)
+        async for chunk in _load_items(b"\r\n"):
+            if isinstance(chunk, bytes):
+                yield chunk
+                continue
+            async for row in _entity_rows(chunk):
+                skip = ("rule_id", "state", "field", "message")
+                base = {k: row.get(k) for k in fields if k not in skip}
+                if not row["results"]:
+                    writer.writerow({
+                        **base, "rule_id": "", "state": "pass", "field": "", "message": "",
+                    })
+                for res in row["results"]:
+                    writer.writerow({
+                        **base,
+                        "rule_id": res.get("rule_id"),
+                        "state": res.get("state"),
+                        "field": res.get("field") or "",
+                        "message": str(res.get("message") or "")[:300],
+                    })
+                yield buf.getvalue()
+                buf.seek(0)
+                buf.truncate(0)
 
     return StreamingResponse(
         _csv_stream(),

@@ -85,10 +85,13 @@ added the columns (also on `wikidata_item_overrides` for phase 3).
 row per entity with the full entity data (labels, claims, authority
 evidence) attached. Two invariants (block R58, Rule W-247):
 
-- The JSON document is produced by `export/formatters.py:json_array_stream`
-  — header prefix first, then one serialised entity per yield — so the
-  first bytes go out before the ~30 s merged-items load and the payload
-  never buffers in memory.
+- The JSON document streams with the same conventions as
+  `export/formatters.py:json_array_stream` — header prefix first, then
+  one serialised entity per yield — so the first bytes go out before the
+  merged-items load and the payload never buffers in memory. A cold-cache
+  merge runs as a task raced against a 10 s keepalive (JSON whitespace /
+  CSV blank lines) so the stream never sits silent for Heroku's 55 s
+  idle window (H15).
 - The no-build case answers 409 via a cheap pre-check; the heavy
   `fetch_merged_hmo_items_cached` call runs inside the generator. The
   endpoint takes no `Depends(get_session)` — DB work uses short-lived

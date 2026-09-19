@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
+import json
 import uuid
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
@@ -153,3 +155,78 @@ async def test_export_unknown_run_forbidden(auth_user) -> None:
         f"/api/runs/{uuid.uuid4()}/hmo-studio/items/rule-verify/export"
     )
     assert response.status_code in (403, 404)
+
+
+async def test_export_json_keepalive_during_slow_merge(
+    sample_run, db_session, monkeypatch
+) -> None:
+    """A cold-cache merge must stream keepalive bytes, never go silent (H15)."""
+    from app.routers import hmo_studio_items as rmod
+
+    run_id = sample_run["run_id"]
+    entity = ResolvedWikibaseEntity(
+        local_id="QDraft_MS1",
+        labels={"en": "Test MS"},
+        descriptions={"en": "a manuscript"},
+        class_qid="Q1",
+        source_uri="http://example.org#MS1",
+    )
+    await _seed(db_session, run_id, [entity.to_dict()])
+
+    async def slow_merge(db, rid):
+        await asyncio.sleep(0.3)
+        return [{
+            "local_id": "QDraft_MS1",
+            "labels": {"en": "Test MS"},
+            "class_qid": "Q1",
+        }]
+
+    monkeypatch.setattr(rmod, "EXPORT_KEEPALIVE_S", 0.05)
+    monkeypatch.setattr(rmod, "fetch_merged_hmo_items_cached", slow_merge)
+
+    response = await sample_run["client"].get(
+        f"/api/runs/{run_id}/hmo-studio/items/rule-verify/export?format=json"
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    assert json.loads(body)["entities"][0]["local_id"] == "QDraft_MS1"
+    # The keepalive newline lands inside the array, before the first entity.
+    assert body.index("\n") < body.index("QDraft_MS1")
+
+
+async def test_export_csv_keepalive_during_slow_merge(
+    sample_run, db_session, monkeypatch
+) -> None:
+    from app.routers import hmo_studio_items as rmod
+
+    run_id = sample_run["run_id"]
+    entity = ResolvedWikibaseEntity(
+        local_id="QDraft_MS1",
+        labels={"en": "Test MS"},
+        descriptions={"en": "a manuscript"},
+        class_qid="Q1",
+        source_uri="http://example.org#MS1",
+    )
+    await _seed(db_session, run_id, [entity.to_dict()])
+
+    async def slow_merge(db, rid):
+        await asyncio.sleep(0.3)
+        return [{
+            "local_id": "QDraft_MS1",
+            "labels": {"en": "Test MS"},
+            "class_qid": "Q1",
+        }]
+
+    monkeypatch.setattr(rmod, "EXPORT_KEEPALIVE_S", 0.05)
+    monkeypatch.setattr(rmod, "fetch_merged_hmo_items_cached", slow_merge)
+
+    response = await sample_run["client"].get(
+        f"/api/runs/{run_id}/hmo-studio/items/rule-verify/export?format=csv"
+    )
+
+    assert response.status_code == 200
+    body = response.text
+    # Blank-line keepalives between the header and the data rows.
+    assert "\r\n\r\n" in body
+    assert "QDraft_MS1" in body

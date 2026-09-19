@@ -22,7 +22,8 @@ from typing import Any
 # ── JSON ─────────────────────────────────────────────────────────────
 
 
-def _json_default(value: Any) -> Any:
+def json_default(value: Any) -> Any:
+    """JSON encoder fallback shared by the streaming serialisers."""
     if isinstance(value, uuid.UUID):
         return str(value)
     if isinstance(value, (datetime, date)):
@@ -30,6 +31,10 @@ def _json_default(value: Any) -> Any:
     if isinstance(value, bytes):
         return value.hex()
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serialisable")
+
+
+# Backwards-compatible private alias (older call sites).
+_json_default = json_default
 
 
 async def json_stream(payload: dict[str, Any] | list[Any]) -> AsyncIterator[bytes]:

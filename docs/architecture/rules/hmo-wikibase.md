@@ -626,7 +626,14 @@ Invariant:
 3. CSV exports write one row per generator step (`io.StringIO` reset
    between rows), never a row list.
 4. Emit a chunk at least every ~55 s (Heroku's rolling idle window H15/H28);
-   never set a guessed `Content-Length` on a streamed response.
+   never set a guessed `Content-Length` on a streamed response. A single
+   slow await mid-stream (the cold-cache merged-items load) must run as a
+   task raced against a ~10 s keepalive that emits **byte-valid filler**:
+   JSON whitespace inside the array (`b"\n"`), blank lines between CSV
+   rows (`b"\r\n"`). First bytes alone do not help — an H12 avoided at
+   the 30 s window becomes an H15 mid-download otherwise (2026-09-19:
+   export delivered its 83-byte header, then stalled past 55 s on the
+   cold post-deploy cache and the router killed the stream).
 5. Do NOT take `db: AsyncSession = Depends(get_session)` on a streamed
    endpoint: the request-scoped session stays open until the response has
    fully streamed, and a 100 MB download can hold it for minutes — pool
