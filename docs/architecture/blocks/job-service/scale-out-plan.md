@@ -13,11 +13,18 @@ trigger-deployed-functions), memory-snapshot guide.*
   in the `mhm-jobs2` secret) and write results straight back. Big
   payloads never transit Heroku.
 
-## Current state (2026-09-18)
+## Current state (2026-09-19)
 
 - `rdf_build`, `hmo_item_build`, `hmo_item_verify` (W-247) execute in ONE
   detached Modal container (`modal_jobs.py`), 2 CPU / 8 GB, lease
   heartbeat every 60 s, webhook completion.
+- `rdf_build` additionally fans out to shard containers (Phase 3
+  implemented 2026-09-19, rdf-graph R23/R24): the claimed container
+  slices control numbers (`plan_rdf_shards`), parallel
+  `run_rdf_build_shard` containers map CN slices and return Turtle
+  chunks, and the orchestrator appends them in CN order under the same
+  byte-offset checkpoints the sequential path uses. Sequential/local is
+  still the fallback (W-15).
 - Verify prep yields + reports phases (W-245); verdict cache is batched
   (one round trip); merged items are fingerprint-cached in-process.
 
@@ -52,10 +59,12 @@ reuse `finish_job`'s guard).
 
 ## Phase 3 — breadth for other heavy kinds
 
-The same fan-out pattern applies to `rdf_build`'s per-record mapping and
-any future bulk export. Keep `spawn_map` + external-result-store as the
-default shape for every new heavy job kind; single-container execution
-is the fallback, not the target.
+Implemented for `rdf_build` (2026-09-19): per-record mapping fans out to
+shard containers with `starmap`, ordered chunk merge, checkpoint-compatible
+resume (rdf-graph R23/R24). The same fan-out pattern applies to any future
+bulk export. Keep `spawn_map` + external-result-store as the default shape
+for every new heavy job kind; single-container execution is the fallback,
+not the target.
 
 ## Non-goals
 

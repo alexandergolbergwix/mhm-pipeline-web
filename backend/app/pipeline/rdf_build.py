@@ -23,7 +23,7 @@ import json
 import logging
 import re
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -125,6 +125,27 @@ class RdfBuildOptions:
     add_epistemological_status: bool = True
     add_cataloging_view: bool = True
     add_philological_overlay: bool = True
+
+
+def rdf_build_signature(
+    run_id: uuid.UUID | str,
+    total: int,
+    first_cn: str | None,
+    last_cn: str | None,
+    opts: RdfBuildOptions,
+) -> str:
+    """Stable corpus + options fingerprint for resume checkpoints (R26).
+
+    Shared by the sequential job and the distributed shard orchestrator
+    so a fallback between the two paths resumes instead of restarting.
+    """
+    return hashlib.sha256(json.dumps({
+        "run_id": str(run_id),
+        "total": total,
+        "first": first_cn,
+        "last": last_cn,
+        "opts": asdict(opts),
+    }, sort_keys=True).encode()).hexdigest()[:16]
 
 
 @dataclass
@@ -281,67 +302,46 @@ def _run_coverage_reports_subprocess(output_path: Path) -> tuple[
     )
 
 
-def _run_mapper_sync(
-    marc_records: list[dict],
-    authority_matches: list[dict],
-    output_path: Path,
-    entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
-    overrides: list[dict] | None = None,
-    kima_places_by_cn: dict[str, dict[str, str]] | None = None,
-    build_options: RdfBuildOptions | None = None,
-    on_record_done: Callable[[int, int, str], None] | None = None,
-    resume: dict[str, Any] | None = None,
-    checkpoint: dict[str, Any] | None = None,
-) -> tuple[
-    int,
-    int,
-    list[str],
-    Path | None,
-    int | None,
-    Path | None,
-    int | None,
-    int | None,
-    list[str],
-]:
-    """Synchronous core — runs in a thread."""
-    from app.pipeline.rdf_enrichment import (  # noqa: PLC0415
-        apply_genre_classifier_fallback,
-        merge_approved_authority,
-        merge_approved_ner,
-        merge_kima_places_dict,
-        merge_ml_genres,
-    )
-    from converter.rdf.graph_builder import GraphBuilder
-    from converter.transformer.field_handlers import ExtractedData
-    from converter.transformer.mapper import MarcToRdfMapper
+@dataclass
+class RdfBuildBatch:
+    """One keyset page of build inputs (batch-build R23).
 
-    opts = build_options or RdfBuildOptions()
-    matches_by_cn: dict[str, list[dict]] = {}
-    for m in authority_matches:
-        cn = str(m.get("control_number", ""))
-        if not cn:
-            continue
-        matches_by_cn.setdefault(cn, []).append(m)
+    The loader (``rdf_build_batches.iter_rdf_build_batches``) pages
+    ``run_records`` by ``(run_id, control_number)`` and fetches each
+    page's approved authority + NER rows with one ``IN`` query per
+    table, so the process holds at most one page of inputs.
+    """
 
-    ents_by_cn: dict[str, list[dict[str, Any]]] = entities_by_cn or {}
-    kima_by_cn = kima_places_by_cn or {}
-
-    mapper = MarcToRdfMapper()
-    mapper.graph_builder = GraphBuilder(
-        mapper.uri_generator,
-        add_epistemological_status=opts.add_epistemological_status,
-        add_cataloging_view=opts.add_cataloging_view,
-        add_philological_overlay=opts.add_philological_overlay,
-    )
+    marc_records: list[dict]
+    authority_matches: list[dict] = field(default_factory=list)
+    entities_by_cn: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    kima_places_by_cn: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
-    # ── Streaming build (job-service R26) ─────────────────────────────
-    # One record subgraph at a time: serialize it to a Turtle chunk,
-    # append to the artifact, then free it. The old path accumulated
-    # every triple in one ``combined`` Graph, which is what R14/R15-killed
-    # the 512 MB dyno on ~900-record runs. The graph index and coverage
-    # reports re-parse the finished artifact in a subprocess, so the
-    # parent never holds more than one record graph.
+@dataclass
+class _MapperState:
+    """Mutable build state spanning keyset batches (batch-build R23)."""
+
+    output_path: Path
+    chunk_path: Path
+    graph_builder: Any
+    overrides: list[dict]
+    total_records: int
+    resume_from: int
+    on_record_done: Callable[[int, int, str], None] | None
+    checkpoint: dict[str, Any] | None
+    processed: int = 0
+    triples_count: int = 0
+    manuscripts: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+def _prepare_artifact_file(output_path: Path, resume: dict[str, Any] | None) -> int:
+    """Truncate to the resume byte offset (valid) or start fresh.
+
+    Returns the record index to resume from — 0 when the artifact is
+    missing or wiped (dyno /tmp), so the caller maps from scratch.
+    """
     resume_from = int((resume or {}).get("record_index") or 0)
     resume_offset = int((resume or {}).get("file_bytes") or 0)
 
@@ -356,23 +356,91 @@ def _run_mapper_sync(
         # A wiped artifact (dyno /tmp) falls back to a fresh build.
         with open(output_path, "r+b") as fh:
             fh.truncate(resume_offset)
-        mode = "ab"
-    else:
-        resume_from = 0
-        mode = "wb"
+        return resume_from
+    output_path.write_bytes(b"")
+    return 0
 
-    chunk_path = output_path.with_name(output_path.name + ".chunk")
-    triples_count = 0
-    # Records before the checkpoint already counted toward the resumed
-    # run's totals — start from the checkpoint's manuscript count.
-    manuscripts = int((resume or {}).get("manuscripts") or 0)
-    errors: list[str] = []
-    total_records = len(marc_records)
-    with open(output_path, mode) as out_fh:
-        for idx, raw_rec in enumerate(marc_records):
-            if idx < resume_from:
-                if on_record_done is not None:
-                    on_record_done(idx + 1, total_records, str(raw_rec.get("_control_number") or ""))
+
+def _init_mapper_state(
+    build_options: RdfBuildOptions | None,
+    output_path: Path,
+    overrides: list[dict],
+    total_records: int,
+    on_record_done: Callable[[int, int, str], None] | None,
+    resume: dict[str, Any] | None,
+    checkpoint: dict[str, Any] | None,
+) -> _MapperState:
+    """Build the shared GraphBuilder and prepare the artifact file.
+
+    Streaming build (job-service R26): one record subgraph at a time —
+    serialize it to a Turtle chunk, append to the artifact, then free
+    it. The old path accumulated every triple in one ``combined``
+    Graph, which is what R14/R15-killed the 512 MB dyno on ~900-record
+    runs. The graph index and coverage reports re-parse the finished
+    artifact in a subprocess, so the parent never holds more than one
+    record graph.
+    """
+    from converter.rdf.graph_builder import GraphBuilder  # noqa: PLC0415
+    from converter.transformer.mapper import MarcToRdfMapper  # noqa: PLC0415
+
+    opts = build_options or RdfBuildOptions()
+    mapper = MarcToRdfMapper()
+    graph_builder = GraphBuilder(
+        mapper.uri_generator,
+        add_epistemological_status=opts.add_epistemological_status,
+        add_cataloging_view=opts.add_cataloging_view,
+        add_philological_overlay=opts.add_philological_overlay,
+    )
+
+    resume_from = _prepare_artifact_file(output_path, resume)
+
+    return _MapperState(
+        output_path=output_path,
+        chunk_path=output_path.with_name(output_path.name + ".chunk"),
+        graph_builder=graph_builder,
+        overrides=list(overrides or []),
+        total_records=total_records,
+        resume_from=resume_from,
+        on_record_done=on_record_done,
+        checkpoint=checkpoint,
+        # Records before the checkpoint already counted toward the resumed
+        # run's totals — start from the checkpoint's manuscript count.
+        manuscripts=int((resume or {}).get("manuscripts") or 0),
+    )
+
+
+def _map_batch_sync(state: _MapperState, batch: RdfBuildBatch) -> None:
+    """Map one keyset page of records onto the artifact (appends)."""
+    from app.pipeline.rdf_enrichment import (  # noqa: PLC0415
+        apply_genre_classifier_fallback,
+        merge_approved_authority,
+        merge_approved_ner,
+        merge_kima_places_dict,
+        merge_ml_genres,
+    )
+    from converter.transformer.field_handlers import ExtractedData  # noqa: PLC0415
+
+    matches_by_cn: dict[str, list[dict]] = {}
+    for m in batch.authority_matches:
+        cn = str(m.get("control_number", ""))
+        if not cn:
+            continue
+        matches_by_cn.setdefault(cn, []).append(m)
+
+    ents_by_cn: dict[str, list[dict[str, Any]]] = batch.entities_by_cn or {}
+    kima_by_cn = batch.kima_places_by_cn or {}
+    total_records = state.total_records
+
+    with open(state.output_path, "ab") as out_fh:
+        for raw_rec in batch.marc_records:
+            idx = state.processed
+            state.processed = idx + 1
+            if idx < state.resume_from:
+                if state.on_record_done is not None:
+                    state.on_record_done(
+                        idx + 1, total_records,
+                        str(raw_rec.get("_control_number") or ""),
+                    )
                 continue
             rec = _prepare_record_for_rdf(raw_rec)
             cn = str(
@@ -421,21 +489,21 @@ def _run_mapper_sync(
                 if rec.get("marc_authority_matches"):
                     extracted.marc_authority_matches = rec["marc_authority_matches"]
 
-                graph = mapper.graph_builder.build_graph(extracted, cn_uri)
+                graph = state.graph_builder.build_graph(extracted, cn_uri)
             except Exception as exc:  # noqa: BLE001
-                errors.append(f"record {cn}: {exc}")
+                state.errors.append(f"record {cn}: {exc}")
                 logger.warning("RDF mapping failed for %s: %s", cn, exc)
-                if on_record_done is not None:
-                    on_record_done(idx + 1, total_records, cn)
-                if checkpoint is not None:
-                    checkpoint["record_index"] = idx + 1
+                if state.on_record_done is not None:
+                    state.on_record_done(idx + 1, total_records, cn)
+                if state.checkpoint is not None:
+                    state.checkpoint["record_index"] = idx + 1
                 continue
 
             # Overrides are subject-scoped: record URIs embed the CN, so an
             # override can only touch triples of the record whose subgraph
             # contains its subject. Applying them here (instead of over the
             # whole corpus graph) preserves the old semantics while streaming.
-            for ov in (overrides or []):
+            for ov in state.overrides:
                 subj = URIRef(ov["subject_uri"])
                 pred = URIRef(ov["predicate_uri"])
                 if (subj, pred, None) not in graph:
@@ -451,27 +519,46 @@ def _run_mapper_sync(
                 else:
                     graph.add((subj, pred, Literal(ov["new_value"])))
 
-            triples_count += len(graph)
+            state.triples_count += len(graph)
 
             # Serialize this record's subgraph as a complete Turtle document
             # and append it. Repeated @prefix directives across chunks are
             # legal Turtle, so the concatenated file parses as one graph.
-            graph.serialize(destination=str(chunk_path), format="turtle")
-            with open(chunk_path, "rb") as chunk_fh:
+            graph.serialize(destination=str(state.chunk_path), format="turtle")
+            with open(state.chunk_path, "rb") as chunk_fh:
                 out_fh.write(chunk_fh.read())
-            manuscripts += 1
+            state.manuscripts += 1
 
             # Free the subgraph before the next record.
             del graph
-            if checkpoint is not None and ((idx + 1) % CHECKPOINT_EVERY_RECORDS == 0 or idx + 1 == total_records):
-                checkpoint["record_index"] = idx + 1
-                checkpoint["file_bytes"] = out_fh.tell()
-                checkpoint["manuscripts"] = manuscripts
-                checkpoint["triples_count"] = triples_count
-            if on_record_done is not None:
-                on_record_done(idx + 1, total_records, cn)
-    chunk_path.unlink(missing_ok=True)
+            checkpoint_hit = (
+                state.checkpoint is not None
+                and ((idx + 1) % CHECKPOINT_EVERY_RECORDS == 0 or idx + 1 == total_records)
+            )
+            if checkpoint_hit:
+                state.checkpoint["record_index"] = idx + 1
+                state.checkpoint["file_bytes"] = out_fh.tell()
+                state.checkpoint["manuscripts"] = state.manuscripts
+                state.checkpoint["triples_count"] = state.triples_count
+            if state.on_record_done is not None:
+                state.on_record_done(idx + 1, total_records, cn)
 
+
+def _finish_mapper_sync(state: _MapperState) -> tuple[
+    int,
+    int,
+    list[str],
+    Path | None,
+    int | None,
+    Path | None,
+    int | None,
+    int | None,
+    list[str],
+]:
+    """Free the chunk file and run the coverage subprocess."""
+    state.chunk_path.unlink(missing_ok=True)
+
+    triples_count = state.triples_count
     coverage_path: Path | None = None
     unknown_count: int | None = None
     ontology_coverage_path: Path | None = None
@@ -486,7 +573,7 @@ def _run_mapper_sync(
         # artifact is a set of triples, so per-record chunk counts can
         # double-count statements shared across records.
         coverage_path, unknown_count, ontology_coverage_path, ontology_class_count, ontology_property_count, ontology_missing_terms, artifact_triples = _run_coverage_reports_subprocess(
-            output_path,
+            state.output_path,
         )
         triples_count = artifact_triples if artifact_triples is not None else triples_count
     except Exception as exc:  # noqa: BLE001
@@ -494,8 +581,8 @@ def _run_mapper_sync(
 
     return (
         triples_count,
-        manuscripts,
-        errors,
+        state.manuscripts,
+        state.errors,
         coverage_path,
         unknown_count,
         ontology_coverage_path,
@@ -505,8 +592,7 @@ def _run_mapper_sync(
     )
 
 
-async def build_rdf_graph(
-    *,
+def _run_mapper_sync(
     marc_records: list[dict],
     authority_matches: list[dict],
     output_path: Path,
@@ -514,9 +600,59 @@ async def build_rdf_graph(
     overrides: list[dict] | None = None,
     kima_places_by_cn: dict[str, dict[str, str]] | None = None,
     build_options: RdfBuildOptions | None = None,
+    on_record_done: Callable[[int, int, str], None] | None = None,
+    resume: dict[str, Any] | None = None,
+    checkpoint: dict[str, Any] | None = None,
+) -> tuple[
+    int,
+    int,
+    list[str],
+    Path | None,
+    int | None,
+    Path | None,
+    int | None,
+    int | None,
+    list[str],
+]:
+    """Synchronous core for a single in-memory corpus — runs in a thread.
+
+    Batch-build (R23) callers pass a ``batch_source`` to
+    ``build_rdf_graph`` instead; this wrapper maps the whole corpus as
+    one batch and keeps the pre-existing signature for the maintenance
+    scripts and tests.
+    """
+    state = _init_mapper_state(
+        build_options,
+        output_path,
+        overrides or [],
+        len(marc_records),
+        on_record_done,
+        resume,
+        checkpoint,
+    )
+    _map_batch_sync(state, RdfBuildBatch(
+        marc_records=marc_records,
+        authority_matches=authority_matches,
+        entities_by_cn=entities_by_cn or {},
+        kima_places_by_cn=kima_places_by_cn or {},
+    ))
+    return _finish_mapper_sync(state)
+
+
+async def build_rdf_graph(
+    *,
+    output_path: Path,
+    marc_records: list[dict] | None = None,
+    authority_matches: list[dict] | None = None,
+    entities_by_cn: dict[str, list[dict[str, Any]]] | None = None,
+    overrides: list[dict] | None = None,
+    kima_places_by_cn: dict[str, dict[str, str]] | None = None,
+    build_options: RdfBuildOptions | None = None,
     on_progress: Callable[[dict[str, Any]], Any] | None = None,
     resume: dict[str, Any] | None = None,
     checkpoint: dict[str, Any] | None = None,
+    batch_source: AsyncIterator[RdfBuildBatch] | None = None,
+    total_records: int | None = None,
 ) -> RdfBuildResult:
     """Run ``MarcToRdfMapper`` over MARC + authority data, write Turtle.
 
@@ -525,6 +661,13 @@ async def build_rdf_graph(
     work-titles are merged into each MARC record's field lists before
     ``ExtractedData`` is built, so they appear in the RDF graph alongside
     the authority-enriched data.
+
+    Batch-build (R23): pass ``batch_source`` (an async iterator of
+    ``RdfBuildBatch`` keyset pages — see ``rdf_build_batches``) instead
+    of the full in-memory corpus; only one page of inputs is resident at
+    a time. ``total_records`` is then required for progress +
+    checkpoints. The legacy single-corpus arguments remain for the
+    maintenance scripts and tests.
 
     Streaming + resume (job-service R26): records are mapped and
     serialized one subgraph at a time. ``checkpoint`` is a caller-owned
@@ -536,6 +679,27 @@ async def build_rdf_graph(
     Returns a structured result so the router can report counts +
     timestamps without re-parsing the TTL.
     """
+    started = datetime.now(UTC)
+    loop = asyncio.get_running_loop()
+
+    if batch_source is None:
+        records = marc_records or []
+        total = total_records if total_records is not None else len(records)
+
+        async def _single_batch() -> AsyncIterator[RdfBuildBatch]:
+            yield RdfBuildBatch(
+                marc_records=records,
+                authority_matches=authority_matches or [],
+                entities_by_cn=entities_by_cn or {},
+                kima_places_by_cn=kima_places_by_cn or {},
+            )
+
+        source: AsyncIterator[RdfBuildBatch] = _single_batch()
+    else:
+        if total_records is None:
+            raise ValueError("total_records is required with batch_source")
+        total = total_records
+        source = batch_source
     started = datetime.now(UTC)
     loop = asyncio.get_running_loop()
 
@@ -570,24 +734,32 @@ async def build_rdf_graph(
         if asyncio.iscoroutine(result):
             await result
 
-    triples_count, manuscripts_count, errors, coverage_path, unknown_count, ontology_coverage_path, ontology_class_count, ontology_property_count, ontology_missing_terms = await asyncio.to_thread(
-        _run_mapper_sync,
-        marc_records,
-        authority_matches,
-        output_path,
-        entities_by_cn or {},
-        overrides,
-        kima_places_by_cn or {},
+    state = await asyncio.to_thread(
+        _init_mapper_state,
         build_options,
+        output_path,
+        overrides or [],
+        total,
         _sync_progress if on_progress else None,
         resume,
         checkpoint,
+    )
+    try:
+        async for batch in source:
+            await asyncio.to_thread(_map_batch_sync, state, batch)
+    finally:
+        # Close the source deterministically — a caller-provided async
+        # generator may hold a DB session.
+        await source.aclose()
+    triples_count, manuscripts_count, errors, coverage_path, unknown_count, ontology_coverage_path, ontology_class_count, ontology_property_count, ontology_missing_terms = await asyncio.to_thread(
+        _finish_mapper_sync,
+        state,
     )
     if errors:
         logger.warning(
             "RDF build completed with %d mapping error(s) out of %d record(s)",
             len(errors),
-            len(marc_records),
+            total,
         )
     finished = datetime.now(UTC)
     return RdfBuildResult(

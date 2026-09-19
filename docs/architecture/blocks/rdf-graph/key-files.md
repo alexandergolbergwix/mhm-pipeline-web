@@ -4,8 +4,10 @@
 
 | File | Purpose |
 |---|---|
-| `backend/app/pipeline/rdf_build.py` | Async wrapper around the mapper: `build_rdf_graph`, `RdfBuildOptions`, SHACL validation, Cytoscape JSON, `rdf_output_path_for_run`, `ensure_ttl_on_disk`, `upsert_rdf_artifact`, `normalise_matches` |
-| `backend/app/pipeline/rdf_build_job.py` | Background job (`kind="rdf_build"`, dispatched by `run_job_service.py:340`): loads approved rows, builds, write-throughs `RdfArtifact`, busts caches |
+| `backend/app/pipeline/rdf_build.py` | Async wrapper around the mapper: `build_rdf_graph` (batch-source capable), `RdfBuildBatch`/`_MapperState` streaming core, `RdfBuildOptions`, `rdf_build_signature`, SHACL validation, Cytoscape JSON, `rdf_output_path_for_run`, `ensure_ttl_on_disk`, `upsert_rdf_artifact`, `normalise_matches` |
+| `backend/app/pipeline/rdf_build_batches.py` | Keyset-paginated build loader (R23): `iter_rdf_build_batches`, `load_record_slice`, `run_record_bounds`, `count_run_records`, `load_rdf_triple_overrides` |
+| `backend/app/pipeline/rdf_build_shard.py` | Distributed build (R24): `run_rdf_build_shard` (CN slice → Turtle chunk), `load_rdf_shard_plan`/`plan_rdf_shards`, `consume_rdf_shard_results` (ordered append + checkpoints), shared `persist_rdf_artifact_and_bust_caches` |
+| `backend/app/pipeline/rdf_build_job.py` | Background job (`kind="rdf_build"`, dispatched by `run_job_service.py:340`): keyset-paged loads, builds, write-throughs `RdfArtifact`, busts caches |
 | `backend/app/pipeline/rdf_enrichment.py` | Merges approved authority + NER + ML genres + KIMA places into flat MARC dicts before mapping |
 | `backend/app/pipeline/graph_index.py` | Graph catalog + SQLite index + viewport payloads for scalable visualization |
 | `backend/converter/rdf/rdf_helpers.py` | `clean_marc_label`, gershayim-safe MARC quote normalization, and `parse_contents_entry` (505 split — Rules W-50/W-72) |
@@ -14,7 +16,7 @@
 | `backend/converter/wikidata/projection_coverage.py` | `rdf_projection_coverage.json` writer (which RDF classes project to Wikidata) |
 | `backend/ontology/hebrew-manuscripts.ttl` | Canonical HMO ontology (copied from desktop at sync time) |
 | `backend/ontology/shacl-shapes.ttl` | SHACL shapes used by `POST /rdf/validate` |
-| `backend/app/routers/rdf.py` | All `/runs/{run_id}/rdf/*` endpoints (build, coverage, ontology-coverage, catalog, viewport, ego, graph, node, ontology-usage, download.ttl, validate, triple overrides, status) |
+| `backend/app/routers/rdf.py` | All `/runs/{run_id}/rdf/*` endpoints (build, nodes, coverage, ontology-coverage, catalog, viewport, ego, graph, node, ontology-usage, download.ttl, validate, triple overrides, status) |
 | `frontend/src/components/rdf/RdfGraphExplorer.tsx` | Embeddable viewport + GraphFilters + Cytoscape/list (HMO Studio RDF tab; no build chrome) |
 | `frontend/src/components/rdf/GraphFilters.tsx` | Chip-row type/predicate/search filters for the graph explorer |
 | `backend/app/routers/linked_data_explorer.py` | Project-level SPARQL over the merged run graphs (`/projects/{id}/research/sparql[...]`); restores missing TTLs before querying |

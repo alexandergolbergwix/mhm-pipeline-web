@@ -2,19 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import uuid
-from dataclasses import asdict
 from typing import Any
 
-from sqlalchemy import select
-
 from app.db import session_scope
-from app.models.run import AuthorityMatch, RdfTripleOverride, RunRecord
-from app.models.rdf_artifact import RdfArtifact
-from app.models.extraction_approval import ExtractionApproval
 from app.models.run_job import (
     JOB_STATUS_CANCELLED,
     JOB_STATUS_FAILED,
@@ -22,10 +14,18 @@ from app.models.run_job import (
     RunJob,
 )
 from app.pipeline.rdf_build import (
-    RdfBuildOptions,
     build_rdf_graph,
-    normalise_matches,
+    rdf_build_signature,
     rdf_output_path_for_run,
+)
+from app.pipeline.rdf_build_batches import (
+    iter_rdf_build_batches,
+    load_rdf_triple_overrides,
+    run_record_bounds,
+)
+from app.pipeline.rdf_build_shard import (
+    persist_rdf_artifact_and_bust_caches,
+    rdf_build_options_from_params,
 )
 from app.pipeline.run_job_service import (
     finish_job,
@@ -47,84 +47,22 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
 
         run_id = job.run_id
         params = job.params or {}
-        records = (
-            await db.execute(
-                select(RunRecord)
-                .where(RunRecord.run_id == run_id)
-                .order_by(RunRecord.control_number.asc())
-            )
-        ).scalars().all()
-        if not records:
+        # Batch-build (R23): the corpus is never materialised — the loader
+        # pages it by the (run_id, control_number) keyset while the mapper
+        # streams record subgraphs. Here we only need the shape of the
+        # corpus (one server-side aggregate) + the small override set.
+        total, first_cn, last_cn = await run_record_bounds(db, run_id)
+        if total == 0:
             await finish_job(job_id, status=JOB_STATUS_FAILED, error="run has no records")
             return
 
-        matches = (
-            await db.execute(
-                select(AuthorityMatch)
-                .where(AuthorityMatch.run_id == run_id)
-                .where(AuthorityMatch.approved.is_(True))
-            )
-        ).scalars().all()
-        ner_rows = (
-            await db.execute(
-                select(ExtractionApproval)
-                .where(ExtractionApproval.run_id == run_id)
-                .where(ExtractionApproval.approved.is_(True))
-            )
-        ).scalars().all()
-        overrides_rows = (
-            await db.execute(
-                select(RdfTripleOverride).where(RdfTripleOverride.run_id == run_id)
-            )
-        ).scalars().all()
-
-        marc_records = [dict(r.marc) for r in records]
-        authority_matches = normalise_matches(matches)
-        entities_by_cn: dict[str, list[dict[str, Any]]] = {}
-        for r in ner_rows:
-            entities_by_cn.setdefault(r.control_number, []).append({
-                "text":             r.override_text or r.text,
-                "type":             (r.override_type or r.type or "").upper(),
-                "role":             (r.override_role or r.role or "").upper(),
-                "source":           r.source,
-                "start":            int(r.start or 0),
-                "end":              int(r.end or 0),
-                "confidence":       r.confidence,
-                "model_confidence": r.model_confidence,
-            })
-        kima_places_by_cn: dict[str, dict[str, str]] = {}
-        for rec in marc_records:
-            cn = str(rec.get("_control_number") or rec.get("control_number") or "")
-            kp = rec.get("kima_places")
-            if cn and isinstance(kp, dict) and kp:
-                kima_places_by_cn[cn.strip("\"'")] = kp
-        overrides = [
-            {
-                "subject_uri": r.subject_uri,
-                "predicate_uri": r.predicate_uri,
-                "new_value": r.new_value,
-                "new_datatype": r.new_datatype,
-                "new_lang": r.new_lang,
-            }
-            for r in overrides_rows
-        ]
-        opts = RdfBuildOptions(
-            add_epistemological_status=bool(params.get("add_epistemological_status", True)),
-            add_cataloging_view=bool(params.get("add_cataloging_view", True)),
-            add_philological_overlay=bool(params.get("add_philological_overlay", True)),
-        )
-        total = len(marc_records)
+        overrides = await load_rdf_triple_overrides(db, run_id)
+        opts = rdf_build_options_from_params(params)
 
         # Streaming resume (job-service R26): a crashed run's checkpoint in
         # job.progress lets the retry skip already-mapped records. The
         # signature pins the corpus + options; any change starts fresh.
-        signature = hashlib.sha256(json.dumps({
-            "run_id": str(run_id),
-            "total": total,
-            "first": marc_records[0].get("_control_number") if marc_records else None,
-            "last": marc_records[-1].get("_control_number") if marc_records else None,
-            "opts": asdict(opts),
-        }, sort_keys=True).encode()).hexdigest()[:16]
+        signature = rdf_build_signature(run_id, total, first_cn, last_cn, opts)
         prev_checkpoint = (
             job.progress.get("checkpoint")
             if isinstance(job.progress, dict) else None
@@ -163,13 +101,11 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
             })
 
         result = await build_rdf_graph(
-            marc_records=marc_records,
-            authority_matches=authority_matches,
-            entities_by_cn=entities_by_cn,
             output_path=out_path,
+            batch_source=iter_rdf_build_batches(run_id),
             overrides=overrides,
-            kima_places_by_cn=kima_places_by_cn,
             build_options=opts,
+            total_records=total,
             on_progress=_report_progress,
             resume=resume,
             checkpoint=checkpoint,
@@ -183,37 +119,7 @@ async def run_rdf_build_job(job_id: uuid.UUID) -> None:
         await finish_job(job_id, status=JOB_STATUS_CANCELLED)
         return
 
-    async with session_scope() as db:
-        ttl_text = out_path.read_text(encoding="utf-8")
-        existing = await db.get(RdfArtifact, run_id)
-        if existing:
-            existing.ttl_content = ttl_text
-            existing.triples_count = result.triples_count
-            existing.manuscripts_count = result.manuscripts_count
-        else:
-            db.add(RdfArtifact(
-                run_id=run_id,
-                ttl_content=ttl_text,
-                triples_count=result.triples_count,
-                manuscripts_count=result.manuscripts_count,
-            ))
-        await db.commit()
-
-    for cache_file in out_path.parent.glob("graph_*.json"):
-        try:
-            cache_file.unlink(missing_ok=True)
-        except OSError:
-            pass
-    for cache_file in out_path.parent.glob("graph_viewport_*.json"):
-        try:
-            cache_file.unlink(missing_ok=True)
-        except OSError:
-            pass
-    try:
-        from app.pipeline.research_graph import invalidate_cache as _inval  # noqa: PLC0415
-        _inval(str(run_id))
-    except Exception:  # noqa: BLE001
-        pass
+    await persist_rdf_artifact_and_bust_caches(run_id, out_path, result)
 
     await finish_job(
         job_id,

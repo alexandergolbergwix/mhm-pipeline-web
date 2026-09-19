@@ -15,8 +15,8 @@ from ``AuthorityMatch`` rows.
 
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import uuid
 from typing import Any, Literal
 
@@ -29,9 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.admin import require_admin
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
-from app.models.extraction_approval import ExtractionApproval
 from app.models.rdf_artifact import RdfArtifact
-from app.models.run import AuthorityMatch, RdfTripleOverride, Run, RunRecord
+from app.models.run import RdfTripleOverride
 from app.pipeline.rdf_build import (
     LAYOUT_KINDS,
     RdfBuildOptions,
@@ -43,10 +42,14 @@ from app.pipeline.rdf_build import (
     graph_to_cytoscape_json,
     load_graph,
     node_detail,
-    normalise_matches,
     ontology_usage,
     rdf_output_path_for_run,
     validate_with_shacl,
+)
+from app.pipeline.rdf_build_batches import (
+    count_run_records,
+    iter_rdf_build_batches,
+    load_rdf_triple_overrides,
 )
 from app.routers.runs import _lookup_run_with_access
 from app.settings import get_settings
@@ -142,6 +145,18 @@ class GraphCatalogResponse(BaseModel):
     edge_predicates: dict[str, int]
     manuscript_count: int
     f4_singleton_count: int | None = None
+
+
+class GraphNodePageResponse(BaseModel):
+    """Keyset page over the graph index (batch-build R23).
+
+    ``next_cursor`` is the last node ``id``; pass it back as ``cursor``
+    to fetch the next page. ``None`` means the listing is exhausted.
+    """
+
+    items: list[dict[str, Any]]
+    next_cursor: str | None = None
+    total_nodes: int
 
 
 class NodeTypeRef(BaseModel):
@@ -277,62 +292,16 @@ async def build(
         await db.commit()
         return RdfBuildResponse(**result.to_dict())
 
-    records = (
-        await db.execute(
-            select(RunRecord)
-            .where(RunRecord.run_id == run_id)
-            .order_by(RunRecord.control_number.asc())
-        )
-    ).scalars().all()
-    if not records:
+    # Batch-build (R23): the corpus is never materialised in the request —
+    # the loader pages it by the (run_id, control_number) keyset while the
+    # mapper streams record subgraphs in a worker thread.
+    total = await count_run_records(db, run_id)
+    if total == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Run has no MARC records — ingest before building RDF.",
         )
-
-    # Only approved authority matches flow into the RDF graph so that
-    # unvetted candidates never produce sameAs / external-ID triples.
-    matches = (
-        await db.execute(
-            select(AuthorityMatch)
-            .where(AuthorityMatch.run_id == run_id)
-            .where(AuthorityMatch.approved.is_(True))
-        )
-    ).scalars().all()
-
-    # Only approved NER entities feed the graph — same "ship this in the
-    # final output" semantics as Authority Enrichment (ExtractionApproval
-    # docstring).  Curator overrides (override_type / override_role) take
-    # precedence over the model's prediction, mirroring the Wikidata
-    # Studio path.
-    ner_rows = (
-        await db.execute(
-            select(ExtractionApproval)
-            .where(ExtractionApproval.run_id == run_id)
-            .where(ExtractionApproval.approved.is_(True))
-        )
-    ).scalars().all()
-    entities_by_cn: dict[str, list[dict[str, Any]]] = {}
-    for r in ner_rows:
-        entities_by_cn.setdefault(r.control_number, []).append({
-            "text":             r.override_text or r.text,
-            "type":             (r.override_type or r.type or "").upper(),
-            "role":             (r.override_role or r.role or "").upper(),
-            "source":           r.source,
-            "start":            int(r.start or 0),
-            "end":              int(r.end or 0),
-            "confidence":       r.confidence,
-            "model_confidence": r.model_confidence,
-        })
-
-    marc_records = [dict(r.marc) for r in records]
-    authority_matches = normalise_matches(matches)
-    kima_places_by_cn: dict[str, dict[str, str]] = {}
-    for rec in marc_records:
-        cn = str(rec.get("_control_number") or rec.get("control_number") or "")
-        kp = rec.get("kima_places")
-        if cn and isinstance(kp, dict) and kp:
-            kima_places_by_cn[cn.strip("\"'")] = kp
+    overrides = await load_rdf_triple_overrides(db, run_id)
 
     opts = RdfBuildOptions(
         add_epistemological_status=(body or RdfBuildRequest()).add_epistemological_status,
@@ -340,32 +309,14 @@ async def build(
         add_philological_overlay=(body or RdfBuildRequest()).add_philological_overlay,
     )
 
-    overrides_rows = (
-        await db.execute(
-            select(RdfTripleOverride).where(RdfTripleOverride.run_id == run_id)
-        )
-    ).scalars().all()
-    overrides = [
-        {
-            "subject_uri": r.subject_uri,
-            "predicate_uri": r.predicate_uri,
-            "new_value": r.new_value,
-            "new_datatype": r.new_datatype,
-            "new_lang": r.new_lang,
-        }
-        for r in overrides_rows
-    ]
-
     out_path = rdf_output_path_for_run(str(run_id))
     try:
         result: RdfBuildResult = await build_rdf_graph(
-            marc_records=marc_records,
-            authority_matches=authority_matches,
-            entities_by_cn=entities_by_cn,
             output_path=out_path,
+            batch_source=iter_rdf_build_batches(run_id, db=db),
             overrides=overrides,
-            kima_places_by_cn=kima_places_by_cn,
             build_options=opts,
+            total_records=total,
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("RDF build failed for run %s", run_id)
@@ -489,6 +440,7 @@ async def graph_catalog(
         )
 
     import asyncio  # noqa: PLC0415
+
     from app.pipeline.graph_index import ensure_index  # noqa: PLC0415
 
     catalog = await asyncio.to_thread(ensure_index, ttl, ttl.parent)
@@ -499,6 +451,52 @@ async def graph_catalog(
         edge_predicates=catalog.edge_predicates,
         manuscript_count=catalog.manuscript_count,
         f4_singleton_count=catalog.f4_singleton_count,
+    )
+
+
+@router.get("/{run_id}/rdf/nodes", response_model=GraphNodePageResponse)
+async def list_graph_nodes(
+    run_id: uuid.UUID,
+    cursor: str = "",
+    limit: int = Query(default=200, ge=1, le=1000),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> GraphNodePageResponse:
+    """Keyset-paginated node listing from the SQLite graph index.
+
+    Scales to ultra-big graphs where the budget-capped ``/viewport``
+    cannot show every node: page through ALL nodes by ``id`` with
+    ``cursor``/``limit`` — the first page builds (then caches) the index
+    if it is missing or stale, and every page after that is a cheap
+    SQLite keyset scan.
+    """
+    await _lookup_run_with_access(db, run_id, auth)
+    ttl = rdf_output_path_for_run(str(run_id))
+    await ensure_ttl_on_disk(ttl, run_id, db)
+    if not ttl.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No RDF graph yet for this run — POST /rdf/build first.",
+        )
+
+    import asyncio  # noqa: PLC0415
+
+    from app.pipeline.graph_index import (  # noqa: PLC0415
+        GraphIndexStore,
+        ensure_index,
+        load_catalog,
+    )
+
+    await asyncio.to_thread(ensure_index, ttl, ttl.parent)
+    catalog = await asyncio.to_thread(load_catalog, ttl.parent)
+    store = GraphIndexStore(ttl.parent / "graph_index.sqlite")
+    items, next_cursor = await asyncio.to_thread(
+        store.list_nodes_page, cursor or None, limit,
+    )
+    return GraphNodePageResponse(
+        items=items,
+        next_cursor=next_cursor,
+        total_nodes=catalog.total_nodes if catalog else len(items),
     )
 
 
@@ -531,6 +529,7 @@ async def _viewport_response(
 
     import asyncio  # noqa: PLC0415
     import json  # noqa: PLC0415
+
     from app.pipeline.graph_index import (  # noqa: PLC0415
         ViewportParams,
         build_viewport_payload,

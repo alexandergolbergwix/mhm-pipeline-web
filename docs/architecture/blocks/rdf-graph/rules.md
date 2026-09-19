@@ -147,3 +147,28 @@
     Studio and must fail before canonical migration.
 
 22. **R22 — TTL materialization MUST probe before transferring the blob (W-246).** The durable `rdf_artifacts.ttl_content` is a ~100 MB text blob on a dyno whose `/tmp` dies on every deploy. `ensure_ttl_on_disk` used to `db.get()` the FULL blob on every status call just to byte-compare — ~30 s before the studio page even learned the graph existed, paid twice on the same request. Now: Postgres computes `md5(ttl_content)` server-side (32 bytes travel) and the blob transfers only when the local copy is missing or the checksum differs; the existence check in `studio_status` uses a SQL `exists()` probe, never `db.get()`; `/item-status` selects scalar columns only (never the ORM row), and the `canonical_live` count runs as a server-side `jsonb_array_elements` aggregate on Postgres — selecting the ORM row deserialised the ~100 MB JSONB, blew the 30 s router timeout, and the frontend's silent catch left `build_present=false` forever (the panel showed 'Build the RDF graph first' with 18k items built). SQLite keeps the legacy full-load path (tests, tiny artifacts). *Why:* the studio page sat on "Build the RDF graph first" for half a minute on every load (2026-09-18). Companion: the merged Studio items view is cached in-process keyed by `hmo_items_fingerprint` (cache/override/write/mapping max timestamps) so unchanged repeat loads skip the 18k-entity merge entirely.
+
+23. **R23 — The build MUST stream keyset pages, never materialise the corpus
+    (batch-build).** Job, router, and shard paths load build inputs only
+    through `rdf_build_batches`: `run_records` pages by the
+    `(run_id, control_number)` keyset (`control_number > cursor ORDER BY
+    control_number LIMIT N`, never OFFSET), each page's approved
+    `AuthorityMatch`/`ExtractionApproval` rows load with one `IN` query per
+    table (approved-only — R1 holds per page), and each page maps before the
+    next is fetched. No `.all()` over `run_records.marc`/JSONB payloads
+    anywhere in the build path; the job computes the corpus shape (count +
+    min/max CN) from one server-side aggregate. *Why:* four unbounded
+    `.all()` queries doubled every MARC JSONB in memory before mapping —
+    the OOM on ultra-big runs.
+
+24. **R24 — Shard chunks append in `control_number` order; checkpoints stay
+    byte-offset compatible across execution modes.** The distributed build
+    (Heroku/claimed container orchestrates, Modal shard containers compute —
+    Rule W-237) maps one CN slice per shard with the same streaming mapper,
+    returns the serialized Turtle chunk, and the orchestrator appends chunks
+    in CN order while updating the same `{record_index, file_bytes,
+    manuscripts}` checkpoints the sequential path writes. Shards never write
+    the job row. A sequential checkpoint may fall mid-shard: that shard runs
+    only its unmapped suffix (record chunks are self-contained). *Why:* a
+    Modal outage mid-build falls back to the sequential runner and must
+    resume at the same record index, not restart (Rule W-15).

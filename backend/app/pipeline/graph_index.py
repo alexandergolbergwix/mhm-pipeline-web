@@ -435,6 +435,28 @@ class GraphIndexStore:
         finally:
             conn.close()
 
+    def list_nodes_page(
+        self, after_id: str | None, limit: int,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """Keyset page of nodes ordered by ``id`` (batch-build R23).
+
+        Keyset pagination (``id > cursor``) against the PK — not OFFSET —
+        so deep pages of an ultra-big graph stay cheap and stable. Fetches
+        ``limit + 1`` rows to detect the next page without a count query.
+        """
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM nodes WHERE id > ? ORDER BY id LIMIT ?",
+                (after_id or "", limit + 1),
+            ).fetchall()
+            has_more = len(rows) > limit
+            rows = rows[:limit]
+            next_cursor = rows[-1]["id"] if has_more and rows else None
+            return [self._row_to_node(r) for r in rows], next_cursor
+        finally:
+            conn.close()
+
     def all_edges(self) -> list[dict[str, Any]]:
         conn = self._connect()
         try:

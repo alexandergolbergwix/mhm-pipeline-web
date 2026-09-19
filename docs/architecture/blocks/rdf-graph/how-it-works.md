@@ -5,7 +5,14 @@
 1. **Trigger** — the curator UI always enqueues the background `rdf_build`
    run-job (`rdf_build_job.py::run_rdf_build_job`, claimed/heartbeated per
    Rule W-38) and shows `JobProgressInline` (Rule W-106). `POST /runs/{run_id}/rdf/build`
-   remains as a compatibility enqueue path. Both load identical inputs:
+   remains as a compatibility enqueue path. Both never materialise the
+   corpus (R23): the job computes the run's shape (count + min/max CN) from
+   one server-side aggregate and loads the small `RdfTripleOverride` set;
+   `rdf_build_batches.iter_rdf_build_batches` then pages build inputs by the
+   `(run_id, control_number)` keyset — `RunRecord.marc` + that page's
+   approved-only `AuthorityMatch`/`ExtractionApproval` rows (one `IN` query
+   per table), short sessions per page (no idle-in-transaction across the
+   mapping thread work):
    - `RunRecord.marc` rows (all records for the run),
    - `AuthorityMatch` rows **where `approved IS TRUE`** only,
    - `ExtractionApproval` rows **where `approved IS TRUE`** only, with curator
@@ -61,6 +68,31 @@
    the desktop repo. Before a full sync, reconcile the documented W-43/W-68
    web-side exceptions upstream and run both suites; never let the sync delete
    a focused projection module or reintroduce an incident bug.
+
+### Batched + distributed build (R23/R24)
+
+`build_rdf_graph` consumes a `batch_source` (an async iterator of
+`RdfBuildBatch` keyset pages) instead of full lists; the legacy
+single-corpus arguments remain for maintenance scripts. On Modal
+(Rule W-237) the claimed container orchestrates a shard fan-out
+(`modal_jobs.run_rdf_build_sharded`): `rdf_build_shard.load_rdf_shard_plan`
+slices the run's control numbers (`plan_rdf_shards`, shard-size
+`_RDF_BUILD_SHARD_SIZE`), parallel `run_rdf_build_shard` containers map
+their slice with the same streaming mapper and return the serialized
+Turtle chunk, and `consume_rdf_shard_results` appends them in CN order to
+the single artifact, updating the same byte-offset checkpoints as the
+sequential path (R24) — a Modal outage falls back to the sequential
+runner at the same record index. Shard results stream through Modal's
+`starmap` on a thread; the orchestrator checks cancel between chunks and
+owns the single claimed job row.
+
+### Cursor-paginated reads (R23)
+
+`GET /runs/{run_id}/rdf/nodes` pages ALL nodes from the SQLite graph
+index by keyset (`id > cursor ORDER BY id LIMIT n`, 1..1000 per page) —
+the scalable full-graph listing for ultra-big runs where the
+budget-capped `/viewport` cannot show every node. The index builds (and
+caches) on the first page request.
 
 ### Canonical HMO projection
 

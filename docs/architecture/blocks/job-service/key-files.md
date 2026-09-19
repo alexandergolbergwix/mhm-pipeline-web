@@ -16,10 +16,12 @@
 | `backend/app/pipeline/extraction_job.py` | `extraction` worker |
 | `backend/app/pipeline/authority_re_enrich_job.py` | Legacy `authority_re_enrich` worker retained for rollback only; new jobs are rejected by default |
 | `backend/app/pipeline/verify_job.py` | `ner_verify` / `wikidata_verify` / `hmo_item_verify` worker (shared); `authority_verify` is retired compatibility code |
-| `backend/app/pipeline/rdf_build_job.py` | `rdf_build` worker |
-| `backend/app/pipeline/rdf_build.py` | Streaming graph build (W-234): per-record subgraph → Turtle chunk append, checkpoints, subprocess post-processing |
+| `backend/app/pipeline/rdf_build_job.py` | `rdf_build` worker (keyset-paged loads, R23) |
+| `backend/app/pipeline/rdf_build.py` | Streaming graph build (W-234): per-record subgraph → Turtle chunk append, checkpoints, subprocess post-processing; `build_rdf_graph` consumes a `batch_source` |
+| `backend/app/pipeline/rdf_build_batches.py` | Keyset-paginated build inputs (R23): `iter_rdf_build_batches`, `load_record_slice`, `run_record_bounds` |
+| `backend/app/pipeline/rdf_build_shard.py` | `rdf_build` shard runner + orchestrator consumer (R24); shared `persist_rdf_artifact_and_bust_caches` |
 | `backend/app/pipeline/rdf_coverage_reports.py` | Child-process graph index + coverage reports (`python -m app.pipeline.rdf_coverage_reports`) |
-| `backend/app/pipeline/modal_job_client.py` + `modal/modal_jobs.py` | Optional Modal execution for `rdf_build` / `hmo_item_build` (W-237): dispatch + poll, local fallback always kept |
+| `backend/app/pipeline/modal_job_client.py` + `modal/modal_jobs.py` | Optional Modal execution for `rdf_build` / `hmo_item_build` (W-237): dispatch + poll, local fallback always kept; `rdf_build` fans out shard containers (`run_rdf_build_shard` + `_run_rdf_build_sharded`) |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | `wikidata_studio_build` worker |
 | `backend/app/pipeline/wikidata_upload_job.py` | `wikidata_upload` worker; two-pass deferred links; `steps` / `eta_seconds` for tray View modal (W-141 / W-192); dry-run/test/live all render `WikidataUploadSteps` |
 | `backend/app/pipeline/wikidata_publication_prepare_job.py` | Builds a sealed Publication Release as a build-class job; job parameters contain only source selection and actor ID |

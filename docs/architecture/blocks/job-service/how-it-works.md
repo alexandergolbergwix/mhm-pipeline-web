@@ -71,7 +71,12 @@ every 25 records into `job.progress.checkpoint`, and rebuilds the graph
 index + coverage reports in a subprocess (`rdf_coverage_reports`) that
 also yields the authoritative distinct-triple count. A restarted build
 truncates the artifact to the checkpoint byte offset and skips
-already-mapped records.
+already-mapped records. Since batch-build (R23, rdf-graph block) the job
+never materialises the corpus: `rdf_build_batches.iter_rdf_build_batches`
+pages `run_records` by the `(run_id, control_number)` keyset and the
+resume signature comes from one server-side count/min/max aggregate. On
+Modal the build fans out to shard containers (rdf-graph R24) that append
+CN-ordered chunks under the same checkpoints.
 
 **Interrupted verify resume (Rule W-130).** Stale/failed verify jobs carry
 `result.resumable` + judged/total. Wikidata/HMO streams write each verdict to
@@ -84,7 +89,7 @@ already-judged items.
 | `extraction` | `extraction_job.py` | Streams `extract_entities_stream` over run records; persists entities from the results JSON at the end |
 | `authority_re_enrich` | retired | Compatibility rows fail closed with HTTP 410 / terminal error; HMO Studio owns enrichment |
 | `ner_verify` / `wikidata_verify` / `hmo_item_verify` | `verify_job.py` | Opens the corresponding eval-agent event stream, tracks unique candidate IDs (never aggregate stats or replayed events), mid-run **counters-only** progress (Rule W-128) and slim `session_snapshot` in `result` |
-| `rdf_build` | `rdf_build_job.py` | Builds the TTL, write-throughs `RdfArtifact`, invalidates on-disk graph caches |
+| `rdf_build` | `rdf_build_job.py` | Builds the TTL from keyset-paged loads (R23), write-throughs `RdfArtifact`, invalidates on-disk graph caches; on Modal, shard fan-out (R24) |
 | `wikidata_studio_build` | `wikidata_studio_build_job.py` | Delegates to `execute_studio_build` (fingerprint cache per Rule W-26) |
 | `wikidata_upload` | `wikidata_upload_job.py` | Two-pass dry-run/test/live upload through `wikidata_upload.upload_items` (W-30 / W-192); same two-step `steps` payload for every `upload_target` |
 | `wikidata_publication_prepare` | `wikidata_publication_prepare_job.py` | Streams the Studio source into a sealed immutable Release; the payload has request metadata and an actor ID but no credential secret |

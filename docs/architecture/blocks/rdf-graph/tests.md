@@ -3,6 +3,8 @@
 > Up: [RDF / HMO-Ontology Graph Build](README.md)
 
 - `backend/tests/unit/test_rdf_build.py` — build core + evidence-backed MARC 505 work restoration
+- `backend/tests/unit/test_rdf_build_streaming.py` — streaming/resume build core (`_run_mapper_sync`)
+- `backend/tests/unit/test_rdf_build_batches.py` — batch-build (R23): keyset loader pages + approved-only loads, batched-vs-single-shot equivalence, batched resume, `plan_rdf_shards`, shard runner, sharded orchestration end-to-end, keyset `/rdf/nodes` store pages
 - `backend/tests/unit/test_notes_work_extraction.py` — anchored MARC 500 parsing and stale-derived cleanup (Rule W-68)
 - `backend/tests/unit/test_rdf_enrichment.py`, `test_rdf_enrichment_topics.py`,
   `test_rdf_enrichment_work_corporate.py` — approved-row merge semantics

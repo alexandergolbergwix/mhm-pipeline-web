@@ -233,9 +233,10 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
         heartbeat_task = asyncio.create_task(_heartbeat_claim(job_id, executor_id))
         try:
             if kind == "rdf_build":
-                from app.pipeline.rdf_build_job import run_rdf_build_job
-
-                await run_rdf_build_job(job_id)
+                # Batch-build (R23): fan the corpus out to parallel shard
+                # containers; the claimed container orchestrates progress +
+                # terminal state on the single claimed job row.
+                await _run_rdf_build_sharded(job_id)
             elif kind == "hmo_item_build":
                 from app.pipeline.hmo_item_build_job import run_hmo_item_build_job
 
@@ -521,6 +522,101 @@ async def _run_rule_verify_sharded(job_id: str) -> None:
     await _finalise_rule_verify(
         job_id, merge_summaries(summaries), total, cancelled,
     )
+
+
+# ── rdf_build shard fan-out (batch-build R23) ────────────────────────────
+# The RDF corpus fans out to parallel shard containers: each maps its
+# control_number slice with the same streaming mapper and returns the
+# serialized Turtle chunk. The claimed container orchestrates: it appends
+# chunks to the artifact in control_number order, keeps byte-offset
+# checkpoints identical to the sequential path (a local fallback resumes
+# at the same record index), and owns progress + terminal state.
+
+_RDF_BUILD_SHARD_SIZE = 1000
+
+
+@app.function(
+    image=image,
+    cpu=1,
+    memory=4096,
+    timeout=7200,
+    secrets=[modal.Secret.from_name("mhm-jobs2")],
+)
+def run_rdf_build_shard(job_id: str, run_id: str, control_numbers: list[str]) -> dict:
+    import asyncio  # noqa: PLC0415
+    import uuid as _uuid  # noqa: PLC0415
+
+    from app.pipeline.rdf_build_shard import run_rdf_build_shard as run_shard
+
+    async def _run() -> dict:
+        # Warm containers run this function once per shard invocation;
+        # each asyncio.run makes a fresh loop, so the engine pool from a
+        # previous invocation carries stale-loop futures. Reset first.
+        from app import db as app_db
+
+        await app_db.reset_engine()
+        return await run_shard(_uuid.UUID(job_id), _uuid.UUID(run_id), control_numbers)
+
+    return asyncio.run(_run())
+
+
+async def _rdf_shard_results(job_id: str, run_id: str, slices: list[list[str]]):
+    """Ordered async stream over the shard ``starmap`` (input order).
+
+    Modal's starmap iterator is synchronous — blocking the event loop
+    would starve the heartbeat task (W-244 stale reap). Collect results
+    on a thread; the loop consumes with a timeout so the cancel flag
+    stays responsive.
+    """
+    import asyncio as _asyncio
+    import queue as _queue
+    import threading as _threading
+
+    results_q: _queue.Queue = _queue.Queue()
+
+    def _consume() -> None:
+        try:
+            for res in run_rdf_build_shard.starmap(
+                [(job_id, run_id, cns) for cns in slices],
+            ):
+                results_q.put(res)
+        except Exception as exc:  # noqa: BLE001 — surfaced by the consumer
+            results_q.put({"__error__": str(exc)})
+        results_q.put(None)
+
+    _threading.Thread(target=_consume, daemon=True).start()
+
+    while True:
+        try:
+            item = await _asyncio.to_thread(results_q.get, True, 10)
+        except _queue.Empty:
+            if await _is_cancel_requested(job_id):
+                yield {"__cancelled__": True}
+                return
+            continue
+        if item is None:
+            return
+        yield item
+
+
+async def _run_rdf_build_sharded(job_id: str) -> None:
+    """Orchestrate the RDF build shard fan-out from the claimed container."""
+    import uuid as _uuid
+
+    from app.pipeline.rdf_build_shard import consume_rdf_shard_results, load_rdf_shard_plan
+
+    plan = await load_rdf_shard_plan(_uuid.UUID(job_id), _RDF_BUILD_SHARD_SIZE)
+    if plan is None:
+        return
+    job_uuid = _uuid.UUID(job_id)
+
+    async def _results():
+        async for item in _rdf_shard_results(
+            job_id, str(plan.run_id), [cns for _start, cns in plan.slices],
+        ):
+            yield item
+
+    await consume_rdf_shard_results(job_uuid, plan, _results())
 
 
 @app.function(
