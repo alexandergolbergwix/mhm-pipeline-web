@@ -29,6 +29,16 @@ export interface RuleVerdict {
   results: RuleResultEntry[];
 }
 
+/** Compact rollup shipped in the merged items list — no per-rule bodies. */
+export interface RuleVerdictSummary {
+  overall: RuleOverall;
+  fail_count: number;
+  error_count: number;
+  failing_rules: string[];
+  pass_count: number;
+  checked_at?: string;
+}
+
 export interface RuleVerifyEntityRow {
   local_id: string;
   label: string | null;
@@ -38,6 +48,9 @@ export interface RuleVerifyEntityRow {
   approved: boolean | null;
   overall: RuleOverall;
   checked_at?: string | null;
+  /** Pass entries are counted, not listed (payload size at 18k items). */
+  pass_count: number;
+  /** Non-pass entries only: fail / error / not_relevant. */
   results: RuleResultEntry[];
 }
 

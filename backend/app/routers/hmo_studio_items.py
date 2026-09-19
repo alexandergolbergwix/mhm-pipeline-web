@@ -796,7 +796,13 @@ async def get_rule_verify_results(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Per-rule summary + per-entity verdicts for this run's items."""
+    """Per-rule summary + per-entity verdicts for this run's items.
+
+    Full verdict bodies come from the override rows (one SQL pass); the
+    merged view supplies only label/status. Per-entity ``results`` lists
+    the non-pass entries — pass entries are counted in ``pass_count``
+    (shipping 30 rules x 18k items R14'd the web dyno, 2026-09-19).
+    """
     await _lookup_run_with_access(db, run_id, auth, write=False)
     try:
         items = await fetch_merged_hmo_items_cached(db, run_id)
@@ -805,41 +811,72 @@ async def get_rule_verify_results(
 
     from app.pipeline.rule_verify.base import RULE_STATES
 
+    verdict_rows = (
+        await db.execute(
+            select(
+                HmoStudioItemOverride.local_id,
+                HmoStudioItemOverride.rule_verdict,
+                HmoStudioItemOverride.rule_verdict_at,
+            ).where(HmoStudioItemOverride.run_id == run_id)
+        )
+    ).all()
+    verdicts = {
+        str(local_id): (verdict or {}, at)
+        for local_id, verdict, at in verdict_rows
+        if isinstance(verdict, dict) and verdict.get("results")
+    }
+
     per_rule: dict[str, dict[str, int]] = {}
     entities: list[dict[str, Any]] = []
     overall_counts: dict[str, int] = {s: 0 for s in RULE_STATES}
     overall_counts["unchecked"] = 0
     for item in items:
-        verdict = item.get("rule_verdict") if isinstance(item.get("rule_verdict"), dict) else None
-        results = (verdict or {}).get("results") or []
-        entity_row: dict[str, Any] = {
-            "local_id": item.get("local_id"),
+        local_id = str(item.get("local_id") or "")
+        verdict, checked_at = verdicts.get(local_id, ({}, None))
+        if not verdict:
+            overall_counts["unchecked"] += 1
+            entities.append({
+                "local_id": local_id,
+                "label": item_label(item),
+                "class_qid": item.get("class_qid"),
+                "wikibase_id": item.get("wikibase_id"),
+                "status": item.get("status"),
+                "approved": item.get("approved"),
+                "overall": "unchecked",
+                "checked_at": None,
+                "pass_count": 0,
+                "results": [],
+            })
+            continue
+        results = [r for r in verdict["results"] if isinstance(r, dict)]
+        pass_count = sum(1 for r in results if r.get("state") == "pass")
+        non_pass = [r for r in results if r.get("state") != "pass"]
+        overall_counts[str(verdict.get("overall"))] = (
+            overall_counts.get(str(verdict.get("overall")), 0) + 1
+        )
+        for res in results:
+            tally = per_rule.setdefault(
+                str(res.get("rule_id")),
+                {s: 0 for s in RULE_STATES},
+            )
+            state = str(res.get("state"))
+            if state in tally:
+                tally[state] += 1
+        entities.append({
+            "local_id": local_id,
             "label": item_label(item),
             "class_qid": item.get("class_qid"),
             "wikibase_id": item.get("wikibase_id"),
             "status": item.get("status"),
             "approved": item.get("approved"),
-            "overall": (verdict or {}).get("overall") or "unchecked",
-            "checked_at": (verdict or {}).get("checked_at"),
-            "results": results,
-        }
-        if verdict is None:
-            overall_counts["unchecked"] += 1
-        else:
-            overall_counts[str(verdict.get("overall"))] = (
-                overall_counts.get(str(verdict.get("overall")), 0) + 1
-            )
-            for res in results:
-                if not isinstance(res, dict):
-                    continue
-                tally = per_rule.setdefault(
-                    str(res.get("rule_id")),
-                    {s: 0 for s in RULE_STATES},
-                )
-                state = str(res.get("state"))
-                if state in tally:
-                    tally[state] += 1
-        entities.append(entity_row)
+            "overall": str(verdict.get("overall") or "unchecked"),
+            "checked_at": (
+                checked_at.isoformat()
+                if checked_at is not None else verdict.get("checked_at")
+            ),
+            "pass_count": pass_count,
+            "results": non_pass,
+        })
     return {
         "run_id": str(run_id),
         "overall_counts": overall_counts,

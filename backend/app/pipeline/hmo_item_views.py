@@ -29,6 +29,7 @@ from app.pipeline.marc_verify_context import (
     load_run_marc_records,
     marc_context_for_item,
 )
+from app.pipeline.rule_verify.persist import compact_rule_verdict
 from app.services.wikibase_audit import fetch_latest_wikibase_writes
 
 
@@ -186,8 +187,10 @@ async def fetch_merged_hmo_items(
             if ov_row and isinstance(ov_row.ai_verdict, dict)
             else None
         )
-        rule_verdict = (
-            ov_row.rule_verdict if ov_row and isinstance(ov_row.rule_verdict, dict) else None
+        # Compact rollup only — the full 30-rule verdict bodies stay on the
+        # override rows; shipping them here R14'd the web dyno (2026-09-19).
+        rule_verdict = compact_rule_verdict(
+            ov_row.rule_verdict if ov_row else None
         )
         shacl_issues = shacl_report.get(local_id) or []
         row = {

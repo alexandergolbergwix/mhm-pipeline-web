@@ -9,21 +9,17 @@ const BADGE: Record<string, string> = {
 
 export function HmoItemRuleBadge({item}: {item: HmoStudioItem}) {
   const verdict = item.rule_verdict;
-  if (!verdict || !Array.isArray(verdict.results)) {
+  if (!verdict) {
     return <span className="muted text-xs" title="Run Verify with rules on this run">not checked</span>;
   }
-  const failCount = verdict.results.filter((r) => r.state === "fail").length;
-  const errCount = verdict.results.filter((r) => r.state === "error").length;
+  const failCount = Number(verdict.fail_count ?? 0);
+  const errCount = Number(verdict.error_count ?? 0);
   const state = failCount > 0 ? "fail" : errCount > 0 ? "error" : "pass";
-  const titles = verdict.results
-    .filter((r) => r.state === "fail")
-    .map((r) => r.rule_id)
-    .slice(0, 5)
-    .join(", ");
+  const titles = (verdict.failing_rules ?? []).slice(0, 5).join(", ");
   return (
     <span
       className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-medium ${BADGE[state]}`}
-      title={failCount > 0 ? `Failing: ${titles}` : `${verdict.results.length} rules checked`}
+      title={failCount > 0 ? `Failing: ${titles}` : `${verdict.pass_count ?? 0} rules passed`}
       data-testid={`hmo-item-rule-${item.local_id}`}
     >
       {failCount > 0 ? `${state} (${failCount})` : errCount > 0 ? `${state} (${errCount})` : state}

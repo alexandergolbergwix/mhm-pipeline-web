@@ -60,6 +60,8 @@ def apply_hmo_item_override(entity: dict[str, Any], ov: dict[str, Any]) -> dict[
 
 
 def override_row_to_dict(row: Any) -> dict[str, Any]:
+    from app.pipeline.rule_verify.persist import compact_rule_verdict
+
     return {
         "labels": dict(row.labels or {}),
         "descriptions": dict(row.descriptions or {}),
@@ -70,7 +72,9 @@ def override_row_to_dict(row: Any) -> dict[str, Any]:
         "approved": row.approved,
         "ai_verdict": row.ai_verdict,
         "ai_verdict_at": row.ai_verdict_at.isoformat() if row.ai_verdict_at else None,
-        "rule_verdict": getattr(row, "rule_verdict", None),
+        # Compact rollup: the full 30-rule bodies would bloat every
+        # versioning event (bulk approve emits one per item).
+        "rule_verdict": compact_rule_verdict(getattr(row, "rule_verdict", None)),
         "rule_verdict_at": (
             row.rule_verdict_at.isoformat()
             if getattr(row, "rule_verdict_at", None) else None

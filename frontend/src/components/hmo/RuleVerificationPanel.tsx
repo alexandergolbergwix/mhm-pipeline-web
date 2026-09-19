@@ -458,7 +458,9 @@ function RuleEntityRow({row, expanded, onToggle, catalogById}: RuleEntityRowProp
         <tr className="border-t border-white/5 bg-white/[0.02]">
           <td colSpan={3} className="py-3 px-3">
             <div className="space-y-1 text-xs" data-testid={`rule-verify-detail-${row.local_id}`}>
-              {row.results.length === 0 && <span className="muted">No rule results recorded.</span>}
+              {row.results.length === 0 && (row.pass_count ?? 0) === 0 && (
+                <span className="muted">No rule results recorded.</span>
+              )}
               {row.results.map((res) => (
                 <div key={res.rule_id} className="flex items-start gap-2">
                   <StateBadge state={res.state} />
@@ -467,6 +469,9 @@ function RuleEntityRow({row, expanded, onToggle, catalogById}: RuleEntityRowProp
                   {res.message && <span className="muted">{res.message}</span>}
                 </div>
               ))}
+              {(row.pass_count ?? 0) > 0 && (
+                <div className="muted pt-1">+ {row.pass_count} more rule(s) passed</div>
+              )}
             </div>
           </td>
         </tr>

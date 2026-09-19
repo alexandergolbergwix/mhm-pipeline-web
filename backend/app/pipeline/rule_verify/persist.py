@@ -106,6 +106,32 @@ async def persist_rule_verdicts(
     return written
 
 
+def compact_rule_verdict(verdict: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The list-response shape: rollup + failing rule ids, no per-rule bodies.
+
+    The full verdict (all 30 rules per item) lives on the override row and
+    the rule-verify results endpoint. Shipping it in the merged items view
+    added ~2 KB x 18k items and R14'd the 512 MB web dyno (2026-09-19).
+    """
+    if not isinstance(verdict, dict) or not verdict.get("results"):
+        return None
+    results = [r for r in verdict["results"] if isinstance(r, dict)]
+    return {
+        "overall": verdict.get("overall"),
+        "fail_count": verdict.get("fail_count") or sum(
+            1 for r in results if r.get("state") == "fail"
+        ),
+        "error_count": verdict.get("error_count") or sum(
+            1 for r in results if r.get("state") == "error"
+        ),
+        "failing_rules": [
+            str(r.get("rule_id")) for r in results if r.get("state") == "fail"
+        ],
+        "pass_count": sum(1 for r in results if r.get("state") == "pass"),
+        "checked_at": verdict.get("checked_at"),
+    }
+
+
 def summary_from_results(
     results_by_local_id: dict[str, list[RuleResult]],
 ) -> dict[str, Any]:

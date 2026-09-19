@@ -58,10 +58,8 @@ function cellFilterValues(item: HmoStudioItem, col: ColKey): string[] {
   if (col === "rule_verdict") {
     const v = item.rule_verdict;
     if (!v) return ["not checked"];
-    const failCount = (v.results ?? []).filter((r) => r.state === "fail").length;
-    const errCount = (v.results ?? []).filter((r) => r.state === "error").length;
-    if (failCount > 0) return ["fail"];
-    if (errCount > 0) return ["error"];
+    if (Number(v.fail_count ?? 0) > 0) return ["fail"];
+    if (Number(v.error_count ?? 0) > 0) return ["error"];
     return [v.overall ?? "pass"];
   }
   if (col === "data_status") return [resolveHmoItemDataStatus(item)];
