@@ -57,7 +57,11 @@ image = (
         copy=True,
     )
     .env({
-        "PYTHONPATH": "/root/backend",
+        # /root/eval-agent must be importable: agent_runner spawns the
+        # eval-agent subprocess which imports the `eval_agent` package
+        # (2026-09-18: missing path → ModuleNotFoundError → the verify
+        # container died without finalising the job row → zombie).
+        "PYTHONPATH": "/root/backend:/root/eval-agent",
         "EVAL_AGENT_ROOT": "/root/eval-agent",
     })
 )
@@ -190,6 +194,35 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                 await run_verify_job(job_id)
             else:
                 raise ValueError(f"kind {kind!r} has no Modal executor")
+        except Exception as exc:  # noqa: BLE001
+            # A dead runner must never leave a zombie: fail the row HERE so
+            # the web-side waiter sees a terminal state (2026-09-18: the
+            # verify container died on an eval-agent ImportError and the
+            # row ran "forever" on web-side heartbeats, Rule W-247).
+            try:
+                from app.db import session_scope as _ss
+                from app.models.run_job import (
+                    JOB_STATUS_FAILED,
+                    RunJob as _RunJob,
+                )
+                from sqlalchemy import update as _update
+
+                async with _ss() as _db:
+                    await _db.execute(
+                        _update(_RunJob)
+                        .where(
+                            _RunJob.id == job_id,
+                            _RunJob.status == "running",
+                        )
+                        .values(
+                            status=JOB_STATUS_FAILED,
+                            error=f"Modal runner crashed: {type(exc).__name__}: {exc}"[:400],
+                        )
+                    )
+                    await _db.commit()
+            except Exception:  # noqa: BLE001 — best-effort finalisation
+                pass
+            raise
         finally:
             heartbeat_task.cancel()
 
