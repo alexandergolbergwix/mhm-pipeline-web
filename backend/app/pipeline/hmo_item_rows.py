@@ -61,22 +61,37 @@ async def replace_run_rows(
     entities: list[dict[str, Any]],
     shacl_report: dict[str, list[dict[str, Any]]] | None,
 ) -> int:
-    """Rewrite every row for the run (build path + backfill path)."""
+    """Rewrite every row for the run (build path + backfill path).
+
+    The build cache blob can carry duplicate local_ids (observed in the
+    2026-09-19 run) — dedupe by local_id, last occurrence wins, so the
+    unique constraint holds and the review table shows one row per item.
+    """
     from sqlalchemy import delete
 
     await db.execute(delete(HmoStudioItemRow).where(HmoStudioItemRow.run_id == run_id))
     report = shacl_report or {}
+
+    # Dedupe by local_id, preserving order; later entries win.
+    ordered: dict[str, dict[str, Any]] = {}
+    ord_counter = 0
+    for entity in entities:
+        local_id = str(entity.get("local_id") or "")
+        if not local_id:
+            continue
+        if local_id in ordered:
+            ord_counter -= 1  # replacing an earlier entry: keep count honest
+        ordered[local_id] = row_values_from_entity(
+            entity, ord_=ord_counter, shacl_issues=report.get(local_id) or [],
+        )
+        ord_counter += 1
+
+    values = list(ordered.values())
     written = 0
-    for start in range(0, len(entities), INSERT_CHUNK):
-        chunk = entities[start : start + INSERT_CHUNK]
-        for offset, entity in enumerate(chunk):
-            local_id = str(entity.get("local_id") or "")
-            db.add(HmoStudioItemRow(
-                run_id=run_id,
-                **row_values_from_entity(
-                    entity, ord_=start + offset, shacl_issues=report.get(local_id) or [],
-                ),
-            ))
+    for start in range(0, len(values), INSERT_CHUNK):
+        chunk = values[start : start + INSERT_CHUNK]
+        for row_values in chunk:
+            db.add(HmoStudioItemRow(run_id=run_id, **row_values))
         await db.commit()
         written += len(chunk)
     return written
