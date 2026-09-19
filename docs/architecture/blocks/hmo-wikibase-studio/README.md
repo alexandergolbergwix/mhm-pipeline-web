@@ -57,6 +57,9 @@ Pipeline stages, in order:
 - [Upload outcomes + verify](upload-outcomes-and-verify.md) — durable
   create/adopt/update/failed outcomes on the review table, single-item push,
   opt-in pre/post-upload AI verification.
+- [Rule-based verification](rule-verify.md) — the deterministic (non-AI)
+  rule engine: per-rule pass/fail/not-relevant/error results, blocking-rule
+  settings, approve-by-filter, Modal shard fan-out.
 - [Rules](rules.md) — the invariants (R1–R35) this block enforces.
 - [Skills](skills.md) — operator playbooks: bootstrap, upload, debug coverage,
   rotate credentials, adopt existing items.

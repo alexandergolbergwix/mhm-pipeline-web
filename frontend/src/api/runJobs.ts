@@ -26,7 +26,8 @@ export type RunJobKind =
   | "hmo_item_build"
   | "hmo_manifest_build"
   | "hmo_manifest_upload"
-  | "wikidata_item_bulk_approve";
+  | "wikidata_item_bulk_approve"
+  | "hmo_rule_verify";
 
 export interface RunJobProgress {
   phase?: string;

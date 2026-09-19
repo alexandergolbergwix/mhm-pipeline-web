@@ -144,7 +144,13 @@ The toolbar also exposes **Verify with AI** (pre-upload audit) and
 QID), each with an optional **Tier-1 judge** picker when enabled. After
 autofix, open a row for **Apply AI fix** / **Apply fix & push**.
 The table's **Data status** column shows `new (not uploaded)`, `will update
-existing`, or `updated` per row. Deep dive:
+existing`, or `updated` per row. The toolbar also exposes **Verify with
+rules** — the deterministic (non-AI) rule engine: per-rule
+pass/fail/not-relevant/error summary, per-entity deep dive, smart filters,
+per-user blocking rules, and approve-by-filter (job kind `hmo_rule_verify`,
+sharded on Modal). Deep dive:
+[docs/architecture/blocks/hmo-wikibase-studio/rule-verify.md](docs/architecture/blocks/hmo-wikibase-studio/rule-verify.md);
+surface overview:
 [docs/architecture/blocks/hmo-wikibase-studio/](docs/architecture/blocks/hmo-wikibase-studio/README.md).
 
 ## Wikidata Studio — curator surface

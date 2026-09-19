@@ -42,7 +42,7 @@ open clients see updates without waiting for the next poll tick.
 - [extraction](../extraction/README.md) — `extraction` + `ner_verify` job surfaces
 - [authority](../authority/README.md) — canonical HMO enrichment; legacy Authority jobs are retired fail-closed
 - [rdf-graph](../rdf-graph/README.md) — `rdf_build` and the `RdfArtifact` write-through
-- [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — `hmo_coverage`, `hmo_schema_bootstrap`, `hmo_item_upload`, `hmo_item_verify`, `hmo_item_bulk_approve`
+- [hmo-wikibase-studio](../hmo-wikibase-studio/README.md) — `hmo_coverage`, `hmo_schema_bootstrap`, `hmo_item_upload`, `hmo_item_verify`, `hmo_item_bulk_approve`, `hmo_rule_verify`
 - [wikidata-studio](../wikidata-studio/README.md) — `wikidata_studio_build`, `wikidata_upload`, `wikidata_verify`, `wikidata_item_bulk_approve`
 - [caching](../caching/README.md) — durable Postgres counterparts for job outputs (Rules W-26/W-39)
 - [frontend](../frontend/README.md) — `runJobs` store, attachment hooks, render-stability rules

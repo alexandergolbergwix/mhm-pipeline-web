@@ -44,6 +44,13 @@ class HmoStudioItemOverride(Base):
         DateTime(timezone=True), nullable=True,
     )
 
+    # Deterministic (non-AI) rule verdict — see app.pipeline.rule_verify.
+    # Advisory like ai_verdict; never gates upload by itself.
+    rule_verdict: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True, default=None)
+    rule_verdict_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

@@ -81,6 +81,7 @@ from app.models.run_job import RunJob
 from app.models.saved_query import SavedQuery
 from app.models.session import Session
 from app.models.user import ROLE_ADMIN, ROLE_EDITOR, User
+from app.models.user_rule_settings import UserRuleSettings
 from app.models.wikibase_cloud_write import WikibaseCloudWrite
 from app.models.wikibase_entity_mapping import (
     ENTITY_KIND_CLASS,
@@ -167,6 +168,7 @@ __all__ = [
     "STATUS_PENDING_EMAIL_CONFIRM",
     "Session",
     "User",
+    "UserRuleSettings",
     "WikibaseEntityMapping",
     "WikibaseCloudWrite",
 ]

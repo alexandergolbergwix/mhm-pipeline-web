@@ -9,6 +9,20 @@
       "expires": "2027-09-14"
     },
     {
+      "fingerprint": "sha256:7da756ade78739fb92d9e25146afecf4",
+      "path": "backend/app/models/run_job.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "JOB_KIND_AUTHORITY_* constant name substring 'auth'; job-kind identifier, not a credential",
+      "expires": "2026-12-31"
+    },
+    {
+      "fingerprint": "sha256:cea4f2e1882b80534f37cc55200629cf",
+      "path": "backend/app/models/run_job.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "JOB_KIND_* constant name substring; job-kind identifier, not a credential",
+      "expires": "2026-12-31"
+    },
+    {
       "fingerprint": "sha256:7bb9db47dc9944ace2bb3cc79fd3610e",
       "path": "backend/app/pipeline/agent_runner.py",
       "rule_id": "generic-assigned-secret",

@@ -74,6 +74,12 @@ class WikidataItemOverride(Base):
         DateTime(timezone=True), nullable=True,
     )
 
+    # Deterministic (non-AI) rule verdict — phase-3 Wikidata Studio surface.
+    rule_verdict: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    rule_verdict_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
     updated_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),

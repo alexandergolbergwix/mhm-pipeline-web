@@ -27,6 +27,7 @@ Set on Heroku:
       MODAL_JOBS_TOKEN=<same value as the Modal secret>
 """
 import os
+from datetime import datetime, timezone
 
 import modal
 
@@ -192,6 +193,10 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                 from app.pipeline.verify_job import run_verify_job
 
                 await run_verify_job(job_id)
+            elif kind == "hmo_rule_verify":
+                # Sharded fan-out: parallel rule-check containers; the
+                # claimed container orchestrates progress + terminal state.
+                await _run_rule_verify_sharded(job_id)
             else:
                 raise ValueError(f"kind {kind!r} has no Modal executor")
         except Exception as exc:  # noqa: BLE001
@@ -260,6 +265,201 @@ def run_modal_job_detached(job_id: str, kind: str, callback_url: str = "") -> di
     return _run_job_detached(job_id, kind, callback_url)
 
 
+# ── rule-verify shard fan-out ────────────────────────────────────────────
+# The 18k-item rule check fans out to parallel shard containers: each
+# loads the merged scope slice, runs the deterministic engine, persists
+# its slice's rule_verdicts, and returns a partial summary. The
+# orchestrator (below, inside the claimed container) merges summaries and
+# owns progress + terminal state on the single claimed job row.
+
+_RULE_VERIFY_SHARD_SIZE = 1500
+
+
+@app.function(
+    image=image,
+    cpu=1,
+    memory=4096,
+    timeout=7200,
+    secrets=[modal.Secret.from_name("mhm-jobs2")],
+)
+def run_rule_verify_shard(job_id: str, run_id: str, local_ids: list[str]) -> dict:
+    import uuid as _uuid
+
+    from app.pipeline.rule_verify_job import run_rule_verify_shard as run_shard
+
+    return asyncio.run(run_shard(job_id, _uuid.UUID(run_id), local_ids))
+
+
+async def _load_rule_verify_plan(job_id: str) -> tuple[str, list[str], dict] | None:
+    import uuid as _uuid
+
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.models.run_job import RunJob
+    from app.pipeline.rule_verify.scope import (
+        ItemBuildMissingError,
+        load_rule_verify_scope,
+    )
+
+    async with session_scope() as db:
+        job = (
+            await db.execute(select(RunJob).where(RunJob.id == job_id))
+        ).scalar_one_or_none()
+        if job is None or job.status != "running":
+            return None
+        run_id = str(job.run_id)
+        params = dict(job.params or {})
+    item_ids = [str(x) for x in (params.get("item_ids") or [])] or None
+    try:
+        async with session_scope() as db:
+            items = await load_rule_verify_scope(db, _uuid.UUID(run_id), item_ids=item_ids)
+    except ItemBuildMissingError:
+        raise ValueError(f"no item build for run {run_id}") from None
+    local_ids = [str(i.get("local_id") or "") for i in items if i.get("local_id")]
+    return run_id, local_ids, params
+
+
+def _shards(local_ids: list[str], size: int) -> list[list[str]]:
+    return [local_ids[i : i + size] for i in range(0, len(local_ids), size)] or [[]]
+
+
+async def _is_cancel_requested(job_id: str) -> bool:
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.models.run_job import RunJob
+
+    async with session_scope() as db:
+        row = (
+            await db.execute(select(RunJob).where(RunJob.id == job_id))
+        ).scalar_one_or_none()
+    return bool(row is not None and row.cancel_requested_at is not None)
+
+
+async def _update_rule_verify_progress(job_id: str, done: int, total: int) -> None:
+    from sqlalchemy import update
+
+    from app.db import session_scope
+    from app.models.run_job import RunJob
+
+    async with session_scope() as db:
+        await db.execute(
+            update(RunJob)
+            .where(RunJob.id == job_id)
+            .values(
+                progress={
+                    "phase": "running", "processed": done, "total": total,
+                    "message": f"Checked {done} of {total} items…",
+                },
+                updated_at=datetime.now(timezone.utc),
+            )
+            .execution_options(synchronize_session=False),
+        )
+        await db.commit()
+
+
+async def _finalise_rule_verify(job_id: str, summary: dict, total: int, cancelled: bool) -> None:
+    from sqlalchemy import update
+
+    from app.db import session_scope
+    from app.models.run_job import (
+        JOB_STATUS_CANCELLED,
+        JOB_STATUS_SUCCEEDED,
+        RunJob,
+    )
+
+    status = JOB_STATUS_CANCELLED if cancelled else JOB_STATUS_SUCCEEDED
+    async with session_scope() as db:
+        await db.execute(
+            update(RunJob)
+            .where(RunJob.id == job_id, RunJob.status == "running")
+            .values(
+                status=status,
+                error="Cancelled by user" if cancelled else None,
+                result=summary,
+                finished_at=datetime.now(timezone.utc),
+                progress={
+                    "phase": "cancelled" if cancelled else "done",
+                    "processed": summary.get("scope", 0),
+                    "total": total,
+                    "message": (
+                        "Cancelled by user"
+                        if cancelled else f"Rule check complete: {total} items"
+                    ),
+                },
+                updated_at=datetime.now(timezone.utc),
+            )
+            .execution_options(synchronize_session=False),
+        )
+        await db.commit()
+
+
+async def _run_rule_verify_sharded(job_id: str) -> None:
+    """Orchestrate the shard fan-out from inside the claimed container."""
+    import asyncio as _asyncio
+    import queue as _queue
+    import threading as _threading
+
+    plan = await _load_rule_verify_plan(job_id)
+    if plan is None:
+        return
+    run_id, local_ids, _params = plan
+    total = len(local_ids)
+    if not total:
+        await _finalise_rule_verify(
+            job_id,
+            {"scope": 0, "overall_counts": {}, "per_rule": {}}, 0, False,
+        )
+        return
+    shards = _shards(local_ids, _RULE_VERIFY_SHARD_SIZE)
+
+    # modal's starmap iterator is synchronous — blocking the event loop
+    # here would starve the heartbeat task (W-244 stale reap). Collect
+    # shard results on a thread; the loop consumes with a timeout so the
+    # cancel flag stays responsive.
+    results_q: _queue.Queue = _queue.Queue()
+
+    def _consume() -> None:
+        try:
+            for res in run_rule_verify_shard.starmap(
+                [(job_id, run_id, shard) for shard in shards],
+            ):
+                results_q.put(res)
+        except Exception as exc:  # noqa: BLE001 — surfaced below
+            results_q.put({"__error__": str(exc)})
+        results_q.put(None)
+
+    _threading.Thread(target=_consume, daemon=True).start()
+
+    summaries: list[dict] = []
+    done = 0
+    cancelled = False
+    while True:
+        try:
+            item = await _asyncio.to_thread(results_q.get, True, 10)
+        except _queue.Empty:
+            if await _is_cancel_requested(job_id):
+                cancelled = True
+                break
+            continue
+        if item is None:
+            break
+        if isinstance(item, dict) and item.get("__error__"):
+            raise RuntimeError(f"rule-verify shard failed: {item['__error__']}")
+        summaries.append(item or {})
+        done += _RULE_VERIFY_SHARD_SIZE
+        await _update_rule_verify_progress(job_id, min(done, total), total)
+        if await _is_cancel_requested(job_id):
+            cancelled = True
+            break
+    from app.pipeline.rule_verify_job import merge_summaries
+
+    await _finalise_rule_verify(
+        job_id, merge_summaries(summaries), total, cancelled,
+    )
+
+
 @app.function(
     image=image,
     cpu=1,
@@ -287,7 +487,9 @@ def run(request_body: dict) -> dict:
 
     job_id = str(request_body.get("job_id") or "")
     kind = str(request_body.get("kind") or "")
-    if not job_id or kind not in ("rdf_build", "hmo_item_build", "hmo_item_verify"):
+    if not job_id or kind not in (
+        "rdf_build", "hmo_item_build", "hmo_item_verify", "hmo_rule_verify",
+    ):
         raise HTTPException(status_code=422, detail="job_id and kind required")
 
     # Row must be running AND hold the dispatch lease (the Heroku client

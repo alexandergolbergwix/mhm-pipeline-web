@@ -29,7 +29,7 @@ from app.routers import (
     judge_models,
     linked_data_explorer, onboarding, projects, publication, rdf, research, research_agent, research_evidence,
     research_entity, research_export, research_pathfinding, research_provenance,
-    run_jobs, runs, saved_queries, section_export, section_import, wikibase_writes,
+    run_jobs, runs, rule_verify_settings, saved_queries, section_export, section_import, wikibase_writes,
     wikidata_labels, wikidata_studio, ws,
 )
 from app.settings import get_settings
@@ -131,6 +131,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_verify.router, prefix="/api")
     app.include_router(extraction_verify.router, prefix="/api")
     app.include_router(judge_models.router, prefix="/api")
+    app.include_router(rule_verify_settings.router, prefix="/api")
     app.include_router(access_request.router, prefix="/api")
     app.include_router(section_export.router, prefix="/api")
     app.include_router(section_import.router, prefix="/api")

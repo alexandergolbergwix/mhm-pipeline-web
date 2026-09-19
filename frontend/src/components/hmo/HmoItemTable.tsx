@@ -4,6 +4,7 @@ import type {HmoStudioItem} from "@/api/hmoStudioItems";
 import {ColumnFilterPopup} from "@/components/extraction/ColumnFilterPopup";
 import {HmoItemAiVerdictBadge} from "@/components/hmo/HmoItemAiVerdictBadge";
 import {HmoItemDataStatusBadge} from "@/components/hmo/HmoItemDataStatusBadge";
+import {HmoItemRuleBadge} from "@/components/hmo/HmoItemRuleBadge";
 import {HmoItemShaclBadge} from "@/components/hmo/HmoItemShaclBadge";
 import {HmoItemUploadOutcomeBadge} from "@/components/hmo/HmoItemUploadOutcomeBadge";
 import {CuratorTableScroll} from "@/components/CuratorTableScroll";
@@ -14,7 +15,7 @@ import {resolveHmoItemDataStatus} from "@/utils/hmoItemDataStatus";
 const PAGE_SIZE = 25;
 const HMO_WIKIBASE_BASE_URL = "https://mhm-hmo.wikibase.cloud";
 
-type ColKey = "type" | "data_status" | "upload_outcome" | "validation" | "ai_verdict" | "approved" | "class_qid" | "source_uri" | "wikibase_id" | "authority";
+type ColKey = "type" | "data_status" | "upload_outcome" | "validation" | "ai_verdict" | "rule_verdict" | "approved" | "class_qid" | "source_uri" | "wikibase_id" | "authority";
 
 function itemLabel(item: HmoStudioItem): string {
   return item.labels?.en || item.labels?.he || item.local_id;
@@ -54,6 +55,15 @@ function cellFilterValues(item: HmoStudioItem, col: ColKey): string[] {
     return [n === 0 ? "ok" : (item.shacl_issues.some((i) => i.severity === "Violation" || i.severity === "Error") ? "error" : "warn")];
   }
   if (col === "ai_verdict") return [item.ai_verdict?.overall ?? "not verified"];
+  if (col === "rule_verdict") {
+    const v = item.rule_verdict;
+    if (!v) return ["not checked"];
+    const failCount = (v.results ?? []).filter((r) => r.state === "fail").length;
+    const errCount = (v.results ?? []).filter((r) => r.state === "error").length;
+    if (failCount > 0) return ["fail"];
+    if (errCount > 0) return ["error"];
+    return [v.overall ?? "pass"];
+  }
   if (col === "data_status") return [resolveHmoItemDataStatus(item)];
   if (col === "upload_outcome") return [item.upload_outcome ?? "never"];
   if (col === "approved") {
@@ -189,14 +199,14 @@ export function HmoItemTable({
 
       <div className="flex flex-wrap items-center gap-2" aria-label="Table filters">
         <span className="text-xs muted">Filters:</span>
-        {(["approved", "validation", "data_status", "ai_verdict"] as ColKey[]).map((col) => (
+        {(["approved", "validation", "data_status", "ai_verdict", "rule_verdict"] as ColKey[]).map((col) => (
           <button
             key={col}
             type="button"
             className="button-ghost text-xs"
             onClick={(e) => setPopup({col, x: e.clientX, y: e.clientY})}
           >
-            {col === "approved" ? "Review status" : col === "validation" ? "Data quality" : col === "data_status" ? "Publication status" : "AI review"}
+            {col === "approved" ? "Review status" : col === "validation" ? "Data quality" : col === "data_status" ? "Publication status" : col === "ai_verdict" ? "AI review" : "Rule check"}
           </button>
         ))}
         {activeFilters.map(({col, value}) => (
@@ -223,6 +233,7 @@ export function HmoItemTable({
                 ["validation", "Data quality", false],
                 ["data_status", "Publication status", false],
                 ["ai_verdict", "AI review", false],
+                ["rule_verdict", "Rule check", false],
                 ...(showTechnical ? [
                   ["local_id", "Record ID", true],
                   ["class_qid", "Technical class", false],
@@ -270,6 +281,7 @@ export function HmoItemTable({
                 </td>
                 <td className="px-3 py-2"><HmoItemDataStatusBadge item={item} /></td>
                 <td className="px-3 py-2"><HmoItemAiVerdictBadge verdict={item.ai_verdict} localId={item.local_id} /></td>
+                <td className="px-3 py-2"><HmoItemRuleBadge item={item} /></td>
                 {showTechnical && <td className="px-3 py-2 font-mono text-xs">{item.local_id}</td>}
                 {showTechnical && <td className="px-3 py-2 font-mono text-xs">{item.class_qid}</td>}
                 {showTechnical && <td className="px-3 py-2 text-xs truncate max-w-[200px]" title={item.source_uri}>
@@ -327,7 +339,7 @@ export function HmoItemTable({
             ))}
             {pageItems.length === 0 && (
               <tr>
-                <td colSpan={showTechnical ? 14 : 8} className="px-3 py-6 text-center muted">No entries match.</td>
+                <td colSpan={showTechnical ? 15 : 9} className="px-3 py-6 text-center muted">No entries match.</td>
               </tr>
             )}
           </tbody>

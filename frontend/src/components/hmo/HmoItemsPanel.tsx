@@ -10,6 +10,7 @@ import {HmoAuthorityConflictPanel} from "@/components/hmo/HmoAuthorityConflictPa
 import {HmoItemDetailDrawer} from "@/components/hmo/HmoItemDetailDrawer";
 import {HmoItemTable} from "@/components/hmo/HmoItemTable";
 import {HmoItemVerificationModal} from "@/components/hmo/HmoItemVerificationModal";
+import {RuleVerificationPanel} from "@/components/hmo/RuleVerificationPanel";
 import {ItemBuildPanel} from "@/components/hmo/ItemBuildPanel";
 import {ItemUploadPanel} from "@/components/hmo/ItemUploadPanel";
 import {JobProgressInline} from "@/components/jobs/JobProgressInline";
@@ -59,6 +60,7 @@ export function HmoItemsPanel({
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [verifyIds, setVerifyIds] = useState<string[] | undefined>(undefined);
   const [verifyActionId, setVerifyActionId] = useState<string | undefined>(undefined);
+  const [rulePanelOpen, setRulePanelOpen] = useState(false);
   const [decisionFeedback, setDecisionFeedback] = useState<string | null>(null);
   const [approvingVisible, setApprovingVisible] = useState(false);
   const [approveJob, setApproveJob] = useState<RunJobSnapshot | null>(null);
@@ -254,6 +256,15 @@ export function HmoItemsPanel({
           <button
             type="button"
             className="button-ghost text-xs"
+            disabled={firstLoad || !filteredIds.length}
+            data-testid="hmo-items-verify-rules"
+            onClick={() => setRulePanelOpen((v) => !v)}
+          >
+            {rulePanelOpen ? "Hide rule check" : `Verify with rules ${firstLoad ? "…" : `(${filteredIds.length})`}`}
+          </button>
+          <button
+            type="button"
+            className="button-ghost text-xs"
             disabled={firstLoad || !autofixItemIds.length}
             title="Compare each item's live Wikibase entity against the build and propose fixes you can apply per row (requires a QID)."
             data-testid="hmo-items-autofix-ai"
@@ -303,6 +314,13 @@ export function HmoItemsPanel({
       </div>
 
       {decisionFeedback && <p className="text-sm text-biu-sky" role="status">{decisionFeedback}</p>}
+      {rulePanelOpen && buildPresent && (
+        <RuleVerificationPanel
+          runId={runId}
+          onClose={() => setRulePanelOpen(false)}
+          onApproved={() => void load({silent: true})}
+        />
+      )}
       {approveJob && (
         <JobProgressInline
           job={approveJob}

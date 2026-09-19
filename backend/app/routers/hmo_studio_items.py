@@ -56,6 +56,8 @@ from app.pipeline.hmo_item_views import (
 )
 from app.pipeline.hmo_wikibase_live_enrich import enrich_hmo_items_with_wikibase_live
 from app.pipeline.inference_cache import read_from_inference_cache
+from app.pipeline.rule_verify.base import STATE_FAIL
+from app.pipeline.rule_verify.rules.hmo import build_hmo_rules
 from app.pipeline.wikidata_autofix_apply import merge_ai_fixes
 from app.routers.runs import _lookup_run_with_access
 from app.versioning import apply_event
@@ -745,3 +747,234 @@ async def _resolve_gemini_key(db: AsyncSession, auth: AuthContext) -> str | None
     except Exception as exc:  # noqa: BLE001
         logger.warning("could not unwrap stored Gemini key: %s", exc)
     return os.environ.get("GEMINI_API_KEY")
+
+
+# ── Rule-based verification (deterministic, non-AI) ─────────────────────
+# Advisory only: rules never block upload, and bulk approval treats a
+# rule as blocking only when the curator opted in (see /me settings).
+
+
+class RuleVerifyBulkApproveRequest(BaseModel):
+    local_ids: list[str] = Field(default_factory=list)
+    blocking_rules: list[str] | None = Field(
+        default=None,
+        description="Rule ids that must not be failing. Defaults to the "
+        "curator's saved blocking set.",
+    )
+    blocking_rules_from_settings: bool = True
+
+
+class RuleVerifyBulkApprovePreview(BaseModel):
+    total: int
+    eligible: list[str]
+    excluded: list[dict[str, Any]]
+    not_checked: list[str]
+
+
+@router.get("/{run_id}/hmo-studio/items/rule-verify/catalog")
+async def get_rule_verify_catalog(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "description": r.description,
+            "channel": r.channel,
+            "uses_api": r.uses_api,
+        }
+        for r in build_hmo_rules()
+    ]
+
+
+@router.get("/{run_id}/hmo-studio/items/rule-verify/results")
+async def get_rule_verify_results(
+    run_id: uuid.UUID,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Per-rule summary + per-entity verdicts for this run's items."""
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    try:
+        items = await fetch_merged_hmo_items_cached(db, run_id)
+    except ItemBuildMissingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    from app.pipeline.rule_verify.base import RULE_STATES
+
+    per_rule: dict[str, dict[str, int]] = {}
+    entities: list[dict[str, Any]] = []
+    overall_counts: dict[str, int] = {s: 0 for s in RULE_STATES}
+    overall_counts["unchecked"] = 0
+    for item in items:
+        verdict = item.get("rule_verdict") if isinstance(item.get("rule_verdict"), dict) else None
+        results = (verdict or {}).get("results") or []
+        entity_row: dict[str, Any] = {
+            "local_id": item.get("local_id"),
+            "label": item_label(item),
+            "class_qid": item.get("class_qid"),
+            "wikibase_id": item.get("wikibase_id"),
+            "status": item.get("status"),
+            "approved": item.get("approved"),
+            "overall": (verdict or {}).get("overall") or "unchecked",
+            "checked_at": (verdict or {}).get("checked_at"),
+            "results": results,
+        }
+        if verdict is None:
+            overall_counts["unchecked"] += 1
+        else:
+            overall_counts[str(verdict.get("overall"))] = (
+                overall_counts.get(str(verdict.get("overall")), 0) + 1
+            )
+            for res in results:
+                if not isinstance(res, dict):
+                    continue
+                tally = per_rule.setdefault(
+                    str(res.get("rule_id")),
+                    {s: 0 for s in RULE_STATES},
+                )
+                state = str(res.get("state"))
+                if state in tally:
+                    tally[state] += 1
+        entities.append(entity_row)
+    return {
+        "run_id": str(run_id),
+        "overall_counts": overall_counts,
+        "per_rule": per_rule,
+        "items": entities,
+    }
+
+
+def _blocking_rule_ids(
+    payload: RuleVerifyBulkApproveRequest,
+    user_settings: dict[str, Any] | None,
+) -> set[str]:
+    if payload.blocking_rules is not None:
+        return {str(x) for x in payload.blocking_rules}
+    blocked = (user_settings or {}).get("blocked_rules") or {}
+    return {str(k) for k, v in blocked.items() if v}
+
+
+async def _split_by_blocking_rules(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    local_ids: list[str],
+    blocking: set[str],
+) -> tuple[list[str], list[dict[str, Any]], list[str]]:
+    """Partition ids into eligible vs excluded by the persisted rule verdicts."""
+    rows = (
+        await db.execute(
+            select(HmoStudioItemOverride).where(
+                HmoStudioItemOverride.run_id == run_id,
+                HmoStudioItemOverride.local_id.in_(local_ids),
+            )
+        )
+    ).scalars().all()
+    verdicts = {r.local_id: (r.rule_verdict or {}) for r in rows}
+    eligible: list[str] = []
+    excluded: list[dict[str, Any]] = []
+    not_checked: list[str] = []
+    for local_id in local_ids:
+        verdict = verdicts.get(local_id)
+        if not verdict:
+            not_checked.append(local_id)
+            eligible.append(local_id)
+            continue
+        hits = [
+            {
+                "rule_id": str(r.get("rule_id")),
+                "message": str(r.get("message") or "")[:200],
+            }
+            for r in (verdict.get("results") or [])
+            if isinstance(r, dict)
+            and r.get("state") == STATE_FAIL
+            and str(r.get("rule_id")) in blocking
+        ]
+        if hits:
+            excluded.append({"local_id": local_id, "blocked_by": hits})
+        else:
+            eligible.append(local_id)
+    return eligible, excluded, not_checked
+
+
+@router.post(
+    "/{run_id}/hmo-studio/items/rule-verify/bulk-approve/preview",
+    response_model=RuleVerifyBulkApprovePreview,
+)
+async def preview_rule_verify_bulk_approve(
+    run_id: uuid.UUID,
+    payload: RuleVerifyBulkApproveRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> RuleVerifyBulkApprovePreview:
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    blocking = await _blocking_rules_for(db, payload, auth)
+    eligible, excluded, not_checked = await _split_by_blocking_rules(
+        db, run_id, [str(x) for x in payload.local_ids], blocking,
+    )
+    return RuleVerifyBulkApprovePreview(
+        total=len(payload.local_ids),
+        eligible=eligible,
+        excluded=excluded[:100],
+        not_checked=not_checked[:100],
+    )
+
+
+@router.post("/{run_id}/hmo-studio/items/rule-verify/bulk-approve")
+async def rule_verify_bulk_approve(
+    run_id: uuid.UUID,
+    payload: RuleVerifyBulkApproveRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Bulk approve through the blocking-rule filter, as a background job.
+
+    Delegates to the existing ``hmo_item_bulk_approve`` job so the UI flow
+    (job tray, progress, throttled refresh) is identical to bulk approve.
+    """
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    blocking = await _blocking_rules_for(db, payload, auth)
+    eligible, _excluded, _not_checked = await _split_by_blocking_rules(
+        db, run_id, [str(x) for x in payload.local_ids], blocking,
+    )
+    if not eligible:
+        return {
+            "started": False, "job": None,
+            "eligible": 0,
+            "excluded": len(payload.local_ids),
+            "message": "every item in scope is excluded by a blocking rule",
+        }
+    from app.pipeline.run_job_service import ActiveJobError, create_job
+    from app.pipeline.run_job_params import prepare_job_params
+
+    params = await prepare_job_params(
+        db, auth, run_id=run_id, kind="hmo_item_bulk_approve",
+        params={"local_ids": eligible, "approved": True},
+    )
+    try:
+        job = await create_job(
+            db, project_id=run.project_id, run_id=run_id,
+            kind="hmo_item_bulk_approve", params=params, created_by=auth.user.id,
+        )
+    except ActiveJobError as exc:
+        raise HTTPException(status_code=409, detail=f"active job already exists: {exc.job_id}") from exc
+    return {"started": True, "eligible": len(eligible), "job_id": str(job.id)}
+
+
+async def _blocking_rules_for(
+    db: AsyncSession,
+    payload: RuleVerifyBulkApproveRequest,
+    auth: AuthContext,
+) -> set[str]:
+    from app.models.user_rule_settings import UserRuleSettings
+
+    if payload.blocking_rules is not None:
+        return {str(x) for x in payload.blocking_rules}
+    if not payload.blocking_rules_from_settings:
+        return set()
+    row = await db.get(UserRuleSettings, auth.user.id)
+    blocked = (row.blocked_rules if row else None) or {}
+    return {str(k) for k, v in blocked.items() if v}

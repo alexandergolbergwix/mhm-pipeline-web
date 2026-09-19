@@ -203,6 +203,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-102** — Four HMO pillars: Wikibase root, Wikidata map, ontology mirror, multi-source richness
 - **W-109** — HMO Studio MUST resolve AuthorityMatch ID collisions in-place
 - **W-111** — All HMO URL claims MUST strip MARC quote wrappers
+- **Rule-based verification** — deterministic (non-AI) per-rule verdicts on HMO items: advisory by default, curator-picked blocking rules, fail-closed API rules, Modal shard fan-out. Deep dive: [hmo-wikibase-studio/rule-verify.md](docs/architecture/blocks/hmo-wikibase-studio/rule-verify.md) + block rules R55–R57.
 
 ### [jobs-and-progress.md](docs/architecture/rules/jobs-and-progress.md) — Run jobs (claim, admission, progress, publish)
 

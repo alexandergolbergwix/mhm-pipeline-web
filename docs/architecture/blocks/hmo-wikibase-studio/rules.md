@@ -297,3 +297,31 @@ Canonical entity fingerprints also remove nested transport metadata such as
 `fetched_at` and `updated_at`. They retain semantic date values in claims.
 This keeps a read-back fingerprint stable when only fetch metadata changes
 (Rule W-208).
+
+55. **R55 — Rule-based verification is advisory; only the curator makes a
+rule blocking.** `hmo_rule_verify` results (`rule_verdict` JSONB) never gate
+upload and never auto-approve. Bulk approval treats a rule as blocking only
+when the curator opted in (`user_rule_settings.blocked_rules`), and the
+approve-by-filter flow must go through the preview endpoint first. *Why:*
+the AI verify advisory contract (eval-agent R13) exists because an
+automatic gate on a heuristic re-introduces silent data loss; the user
+explicitly chose "nothing blocking automatically".
+
+56. **R56 — API-backed rules fail closed as `error`, and stay one throttle
+domain.** A rule that needs external evidence (live Wikibase, Wikidata
+Action API) reports `error` ("did not execute") when no fetcher is
+configured or the budget is out — never `pass`, never `fail`. All Wikidata
+probes reuse the duplicate-probe client's throttled fetcher (Rule W-139)
+and shared budgets (`RULE_VERIFY_WD_PROBE_MAX`, `RULE_VERIFY_WD_QID_MAX`);
+sharded Modal runs keep one throttle domain by design (CPU rules shard,
+API rules run once per shard against the shared probe cache). *Why:* an
+unavailable check read as "no finding" is how duplicates were let through
+before (W-30/W-144).
+
+57. **R57 — Modal shard fan-out must not block the heartbeat loop.**
+`run_rule_verify_shard.starmap()` is consumed on a thread with a queue;
+the orchestrator's event loop stays free for the lease heartbeat and
+cancel checks (W-244). Shard results merge into per-rule tallies only —
+the job result never carries per-entity payloads (R14). *Why:* a sync
+starmap iteration on the event loop starves the heartbeat and the stale
+reap kills the job mid-compute (2026-09-18 incident class).

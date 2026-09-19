@@ -186,6 +186,9 @@ async def fetch_merged_hmo_items(
             if ov_row and isinstance(ov_row.ai_verdict, dict)
             else None
         )
+        rule_verdict = (
+            ov_row.rule_verdict if ov_row and isinstance(ov_row.rule_verdict, dict) else None
+        )
         shacl_issues = shacl_report.get(local_id) or []
         row = {
             **merged,
@@ -199,6 +202,11 @@ async def fetch_merged_hmo_items(
             "ai_verdict_at": (
                 ov_row.ai_verdict_at.isoformat()
                 if ov_row and ov_row.ai_verdict_at else None
+            ),
+            "rule_verdict": rule_verdict,
+            "rule_verdict_at": (
+                ov_row.rule_verdict_at.isoformat()
+                if ov_row and ov_row.rule_verdict_at else None
             ),
             "override_present": ov_row is not None,
             "override_id": str(ov_row.id) if ov_row else None,

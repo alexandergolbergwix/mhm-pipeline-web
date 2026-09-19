@@ -70,4 +70,9 @@ def override_row_to_dict(row: Any) -> dict[str, Any]:
         "approved": row.approved,
         "ai_verdict": row.ai_verdict,
         "ai_verdict_at": row.ai_verdict_at.isoformat() if row.ai_verdict_at else None,
+        "rule_verdict": getattr(row, "rule_verdict", None),
+        "rule_verdict_at": (
+            row.rule_verdict_at.isoformat()
+            if getattr(row, "rule_verdict_at", None) else None
+        ),
     }

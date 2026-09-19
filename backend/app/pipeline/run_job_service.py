@@ -29,6 +29,7 @@ from app.models.run_job import (
     JOB_KIND_HMO_ITEM_VERIFY,
     JOB_KIND_HMO_MANIFEST_BUILD,
     JOB_KIND_HMO_MANIFEST_UPLOAD,
+    JOB_KIND_HMO_RULE_VERIFY,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE,
     JOB_KIND_NER_VERIFY,
@@ -966,6 +967,10 @@ async def _execute_job(job_id: uuid.UUID) -> None:
                 run_studio_item_bulk_approve_job,
             )
             await run_studio_item_bulk_approve_job(job_id)
+        elif kind == JOB_KIND_HMO_RULE_VERIFY:
+            from app.pipeline.rule_verify_job import run_rule_verify_job  # noqa: PLC0415
+
+            await run_rule_verify_job(job_id)
         else:
             await _fail_job(job_id, f"unknown job kind {kind!r}")
     except Exception as exc:  # noqa: BLE001

@@ -97,6 +97,7 @@ already-judged items.
 | `hmo_manifest_build` | `hmo_manifest_build_job.py` | IIIF manifests from the run TTL (Rule W-106) |
 | `hmo_manifest_upload` | `hmo_manifest_upload_job.py` | IIIF manifest dry-run / live upload (Rule W-107) |
 | `hmo_item_upload` | `hmo_item_upload_job.py` | HMO item dry-run **and** live upload (Rule W-107) |
+| `hmo_rule_verify` | `rule_verify_job.py` | Deterministic (non-AI) rule checks over HMO items; per-item `rule_verdict` on override rows, per-rule tallies in `result`; Modal shard fan-out via `modal_jobs.py` (hmo-wikibase-studio R55–R57) |
 
 Dispatch is the `if/elif` chain in `run_job_service.py::_execute_job`;
 kinds are declared in `models/run_job.py` (`SUPPORTED_JOB_KINDS`).

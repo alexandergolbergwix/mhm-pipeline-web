@@ -1,5 +1,6 @@
 import {api} from "@/api/client";
 import type {AiVerdict} from "@/api/extractionApprovals";
+import type {RuleVerdict} from "@/api/ruleVerify";
 
 export interface HmoResolvedClaim {
   property_id: string;
@@ -32,6 +33,8 @@ export interface HmoStudioItem {
   has_blocking_shacl?: boolean;
   ai_verdict: AiVerdict | null;
   ai_verdict_at?: string | null;
+  rule_verdict?: RuleVerdict | null;
+  rule_verdict_at?: string | null;
   override_present: boolean;
   override_id?: string | null;
   /** Latest wikibase_cloud_writes outcome for this item's source_uri, if any upload was attempted. */
