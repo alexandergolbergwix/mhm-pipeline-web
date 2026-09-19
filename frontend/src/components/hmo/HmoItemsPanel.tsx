@@ -275,7 +275,9 @@ export function HmoItemsPanel({
         <div>
           <div className="kicker">Wikibase Items</div>
           <h3 className="text-lg font-medium" data-testid="hmo-items-heading">
-            {firstLoad ? "Loading resolved items…" : `${items.length} resolved item${items.length === 1 ? "" : "s"}`}
+            {firstLoad
+              ? "Loading resolved items…"
+              : `${tableTotal || items.length} resolved item${(tableTotal || items.length) === 1 ? "" : "s"}`}
           </h3>
           <p className="muted text-sm mt-1">
             Review table for this run&apos;s item build. <b>Data status</b> shows whether each row is

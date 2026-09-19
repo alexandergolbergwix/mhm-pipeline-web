@@ -35,7 +35,7 @@
 | `backend/app/pipeline/hmo_studio.py` | IIIF manifest build/upload, coverage report, on-disk + durable Postgres coverage cache |
 | `backend/app/pipeline/hmo_coverage_job.py` | Background coverage build (9–14 min: parses TTL twice via rdflib) |
 | `backend/app/routers/hmo_studio.py` | `/runs/{id}/hmo-studio/*`: build/upload manifests, coverage, build-items (authority refresh → RDF rebuild → item export), upload-items, status |
-| `backend/app/routers/hmo_studio_items.py` | Per-item review API: list, override PATCH, reconcile, export/import, AI verify, AI-fix apply, single-item live `POST .../{local_id}/push` |
+| `backend/app/routers/hmo_studio_items.py` | Per-item review API: cursor-paginated `/items/page` (SQL keyset over `hmo_studio_item_rows`), override PATCH, reconcile, export/import, AI verify, AI-fix apply, single-item live `POST .../{local_id}/push` |
 | `backend/app/routers/hmo_wikibase_schema.py` | Global `/hmo-wikibase-schema/*`: status, mirror-report, verify, bootstrap, last-report, schema AI verify |
 | `backend/app/routers/wikibase_writes.py` | Read APIs for the audit log (project editor + admin views) |
 | `backend/converter/wikibase/cloud_client.py` | `WikibaseCloudClient` (read-only) + `WikibaseCloudWriter` (OAuth2/bot; wikibaseintegrator entity writes; retry/backoff) |
@@ -53,13 +53,15 @@
 | `backend/app/services/wikibase_credentials.py` | Server-held OAuth config → verified `WikibaseCloudWriter` (checks the session is the expected write user) |
 | `backend/app/services/wikibase_audit.py` | `record_wikibase_write` — one `wikibase_cloud_writes` row per outcome, never raises; `fetch_latest_wikibase_writes` — portable "latest row per target" query powering the review table's upload-outcome fields |
 | `backend/app/services/wikibase_user_access.py` | Best-effort per-curator wiki provision on login/invite only (5 s cap; failed is no-retry — Rule W-123) |
+| `backend/app/models/hmo_studio_item_row.py` | Per-item review read-model row (`hmo_studio_item_rows`, migration 0046) — powers the SQL-paginated review table |
+| `backend/app/pipeline/hmo_item_rows.py` | Writes rows at build time; lazily backfills them from the build cache for existing runs |
 | `backend/app/models/hmo_studio_item_cache.py` | Per-run build cache (unique on `run_id`, fingerprinted) |
 | `backend/app/models/hmo_coverage_cache.py` | Durable Postgres coverage cache (Rule W-39) |
 | `backend/app/models/hmo_studio_item_override.py` | Curator override rows (labels/descriptions/aliases/statement edits/approved/ai_verdict) |
 | `frontend/src/routes/HmoStudio.tsx` | HMO Studio page: Items-default sub-tabs (coverage / RDF / Manifests), workflow + item review, advanced schema/config |
 | `frontend/src/components/hmo/HmoItemDataStatusBadge.tsx` | Data status pill: new / will update existing / updated |
 | `frontend/src/utils/hmoItemDataStatus.ts` | `resolveHmoItemDataStatus` — derives data status from mapping + last push |
-| `frontend/src/components/hmo/HmoItemsPanel.tsx` | Review panel: authority-conflict resolver + lifecycle bar + `HmoItemTable`; **Approve all visible** → `hmo_item_bulk_approve` job |
+| `frontend/src/components/hmo/HmoItemsPanel.tsx` | Review panel: authority-conflict resolver + lifecycle bar + `HmoItemTable`; server-paginated (heading + footer show the server `total`, toolbar counts use the filtered id-set); **Approve all visible** → `hmo_item_bulk_approve` job |
 | `frontend/src/components/hmo/HmoAuthorityConflictPanel.tsx` | Keep-one / unapprove-rest UI for shared Mazal/Wikidata/VIAF IDs (Rule W-109) |
 | `frontend/src/components/hmo/SchemaBootstrapPanel.tsx` | Schema class/property mapping status, dry-run/live bootstrap controls, report results, and schema AI verification |
 | `frontend/src/components/rdf/RdfGraphExplorer.tsx` | Embeddable RDF viewport + GraphFilters + canvas/list (no build chrome) |

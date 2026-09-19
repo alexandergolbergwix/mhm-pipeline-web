@@ -69,11 +69,16 @@ The HMO Studio lifecycle bar displays the same readiness counters, so curators c
 
 The status endpoint also reports `canonical_live_count` and `canonical_ready`; readiness is true only when every built entity has a persisted live Wikibase read-back, preventing downstream projections from treating a dry-run preview as canonical.
 
-**Review.** `fetch_merged_hmo_items` (`hmo_item_views.py:22`) merges the cached
-build with `HmoStudioItemOverride` rows (label/description/alias edits,
-`statement_edits`, `remove_statements`, `add_statements`, `approved`), joins
-`wikibase_entity_mappings` for live QIDs (`status = created | would_create`),
-and attaches per-item SHACL issues and AI verdicts. On the frontend,
+**Review.** The review table reads per-item SQL rows
+(`hmo_studio_item_rows`, migration 0046) through
+`GET …/hmo-studio/items/page` (`hmo_studio_items.py:174`) — keyset
+pagination on `(label_sort, local_id)` with joins for override, QID
+mapping, and the latest upload write; SQL column filters + facets. The
+browser never touches the 50–100 MB build blob, so first paint is fast at
+18k+ items. The heading count comes from the endpoint's `total`, not the
+page rows. `fetch_merged_hmo_items` (`hmo_item_views.py:22`) still merges
+the cached build with `HmoStudioItemOverride` rows for the non-paginated
+endpoints (export/import, full-list, validation errors). On the frontend,
 `HmoStudio.tsx` places `ItemBuildPanel` + `ItemUploadPanel` in a compact
 lifecycle bar directly above `HmoItemsPanel` (always visible). The review
 table's **Data status** column shows `new (not uploaded)`, `will update
