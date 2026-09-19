@@ -278,8 +278,30 @@ def attach_marc_context(
     "building MARC context" on the Modal container).
     """
     marc_index = index_marc_records(marc_records)
-    context_cache: dict[tuple, dict[str, str]] = {}
+    # Merge at the SLICE level (W-246): rendering a record's slice is
+    # cheap and done once per record; merging slices is string ops on
+    # small dicts. The old path merged whole records per distinct CN
+    # set — `item not in existing` deep-compares large dict lists, and
+    # 1,194 such merges wedged the verify prep for hours (py-spy:
+    # merge_marc_records line 124).
     single_cache: dict[str, dict[str, str]] = {}
+    set_cache: dict[tuple, dict[str, str]] = {}
+
+    def _merge_slices(slices: list[dict[str, str]]) -> dict[str, str]:
+        out: dict[str, str] = {}
+        seen: dict[str, set[str]] = {}
+        for sl in slices:
+            for key, value in sl.items():
+                if key not in out:
+                    out[key] = value
+                    seen[key] = {value} if value else set()
+                    continue
+                if not value or value in seen[key]:
+                    continue
+                seen[key].add(value)
+                out[key] = f"{out[key]} | {value}"
+        return out
+
     for item in items:
         stored = item.get("control_numbers")
         if isinstance(stored, list) and stored:
@@ -291,37 +313,39 @@ def attach_marc_context(
             key_cns = (cn,) if cn else ()
         in_run_key = tuple(cn for cn in key_cns if cn in marc_index)
         primary_cn = _primary_control_number(item, list(in_run_key)) if in_run_key else ""
-        cache_key = (in_run_key, primary_cn)
-        cached = context_cache.get(cache_key)
-        if cached is None:
-            merged_record: dict[str, Any] = {}
-            if len(in_run_key) == 1:
-                # Dominant case: one item ↔ one record. Render per RECORD
-                # and reuse across all items of that record — real MARC
-                # renders are the expensive part (W-246).
-                cn = in_run_key[0]
-                if primary_cn != cn:
-                    cached = project_marc_slice(
-                        merge_marc_records([marc_index[cn]]), HMO_ITEM_MARC_KEYS,
-                    )
-                else:
-                    single = single_cache.get(cn)
-                    if single is None:
-                        single = project_marc_slice(
-                            merge_marc_records([marc_index[cn]]), HMO_ITEM_MARC_KEYS,
-                        )
-                        single_cache[cn] = single
-                    cached = single
-            elif in_run_key:
-                recs = [marc_index[cn] for cn in in_run_key]
-                primary = marc_index.get(primary_cn) if primary_cn else None
-                cached = project_marc_slice(
-                    merge_marc_records(recs, primary=primary), HMO_ITEM_MARC_KEYS,
-                )
+        set_key = (in_run_key, primary_cn)
+        merged_slice = set_cache.get(set_key)
+        if merged_slice is None:
+            if not in_run_key:
+                merged_slice = {}
             else:
-                cached = {}
-            context_cache[cache_key] = cached
-        item["_marc_context"] = dict(cached)
+                primary_slice: dict[str, str] | None = None
+                if primary_cn:
+                    got = single_cache.get(primary_cn)
+                    if got is None:
+                        got = project_marc_slice(
+                            merge_marc_records([marc_index[primary_cn]]),
+                            HMO_ITEM_MARC_KEYS,
+                        )
+                        single_cache[primary_cn] = got
+                    primary_slice = got
+                parts: list[dict[str, str]] = []
+                if primary_slice is not None:
+                    parts.append(primary_slice)
+                for cn in in_run_key:
+                    if cn == primary_cn:
+                        continue
+                    got = single_cache.get(cn)
+                    if got is None:
+                        got = project_marc_slice(
+                            merge_marc_records([marc_index[cn]]),
+                            HMO_ITEM_MARC_KEYS,
+                        )
+                        single_cache[cn] = got
+                    parts.append(got)
+                merged_slice = parts[0] if len(parts) == 1 else _merge_slices(parts)
+            set_cache[set_key] = merged_slice
+        item["_marc_context"] = dict(merged_slice)
 
 
 async def load_run_control_numbers(
