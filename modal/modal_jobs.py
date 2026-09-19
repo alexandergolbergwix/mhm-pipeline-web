@@ -283,6 +283,7 @@ _RULE_VERIFY_SHARD_SIZE = 1500
     secrets=[modal.Secret.from_name("mhm-jobs2")],
 )
 def run_rule_verify_shard(job_id: str, run_id: str, local_ids: list[str]) -> dict:
+    import asyncio  # noqa: PLC0415
     import uuid as _uuid
 
     from app.pipeline.rule_verify_job import run_rule_verify_shard as run_shard
