@@ -32,11 +32,12 @@ import logging
 import os
 import shutil
 import sys
+from collections.abc import AsyncIterator, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, AsyncIterator, Iterable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +306,18 @@ async def spawn_eval_agent_run(
             del stderr_tail[:-8192]
 
     stderr_task = asyncio.create_task(_drain_stderr())
+
+    # Heartbeat-log the stderr tail: a silently hung subprocess (judge API
+    # stall, huge fixture load) used to leave the 0-verdict path with no
+    # failure reason (2026-09-19, Modal verify incident).
+    async def _stderr_probe() -> None:
+        while True:
+            await asyncio.sleep(30)
+            tail = bytes(stderr_tail[-500:]).decode(errors="replace").strip()
+            if tail:
+                logger.warning("eval-agent stderr tail: %s", tail)
+
+    stderr_probe = asyncio.create_task(_stderr_probe())
     exit_emitted = False
 
     async def _kill_child() -> None:
@@ -313,7 +326,7 @@ async def spawn_eval_agent_run(
         try:
             proc.terminate()
             await asyncio.wait_for(proc.wait(), timeout=2.0)
-        except (asyncio.TimeoutError, ProcessLookupError):
+        except (TimeoutError, ProcessLookupError):
             if proc.returncode is None:
                 try:
                     proc.kill()
@@ -358,7 +371,10 @@ async def spawn_eval_agent_run(
         rc = await proc.wait()
         try:
             await asyncio.wait_for(asyncio.shield(stderr_task), timeout=5.0)
-        except (asyncio.TimeoutError, asyncio.CancelledError):
+        except TimeoutError:
+            pass
+        finally:
+            stderr_probe.cancel()
             if not stderr_task.done():
                 stderr_task.cancel()
         if rc != 0:
@@ -577,7 +593,7 @@ async def session_sandbox(
 
 
 def new_session_id() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
 
 
 def ensure_verify_session_dir(
@@ -653,7 +669,7 @@ def persist_session_event(session_dir: Path, ev: AgentEvent) -> None:
     """Append one event to the session's trace.jsonl (the audit log)."""
     session_dir.mkdir(parents=True, exist_ok=True)
     line = json.dumps(
-        {"ts": datetime.now(timezone.utc).isoformat(),
+        {"ts": datetime.now(UTC).isoformat(),
          "type": ev.type, **ev.payload},
         ensure_ascii=False,
     )
