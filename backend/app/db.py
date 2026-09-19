@@ -77,6 +77,25 @@ engine = _make_engine()
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
 
 
+async def reset_engine() -> None:
+    """Dispose and rebuild the module-level engine + sessionmaker.
+
+    Modal reuses warm containers across function invocations; each
+    ``asyncio.run()`` creates a fresh event loop, and asyncpg connections
+    pooled by a previous loop raise "got Future attached to a different
+    loop" on the next call. Disposing drops those connections so new ones
+    bind to the current loop. Call once at the start of a fresh loop,
+    never while a transaction is open.
+    """
+    global engine  # noqa: PLW0603
+    try:
+        await engine.dispose()
+    except Exception:  # noqa: BLE001 — a dead pool is exactly what we replace
+        pass
+    engine = _make_engine()
+    SessionLocal.configure(bind=engine)
+
+
 async def get_session() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency yielding an :class:`AsyncSession`."""
     async with SessionLocal() as session:

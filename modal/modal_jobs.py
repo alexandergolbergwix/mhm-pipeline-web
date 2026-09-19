@@ -131,8 +131,14 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
 
         from sqlalchemy import select, update
 
+        from app import db as app_db
         from app.db import session_scope
         from app.models.run_job import RunJob
+
+        # Warm-container reuse across job invocations gives each
+        # asyncio.run() a fresh loop; the engine pool from a previous
+        # invocation carries stale-loop futures. Reset before any query.
+        await app_db.reset_engine()
 
         executor_id = f"modal-executor:{_uuid.uuid4().hex[:8]}"
         now = datetime.now(timezone.utc)
@@ -288,7 +294,16 @@ def run_rule_verify_shard(job_id: str, run_id: str, local_ids: list[str]) -> dic
 
     from app.pipeline.rule_verify_job import run_rule_verify_shard as run_shard
 
-    return asyncio.run(run_shard(job_id, _uuid.UUID(run_id), local_ids))
+    async def _run() -> dict:
+        # Warm containers run this function once per shard invocation;
+        # each asyncio.run makes a fresh loop, so the engine pool from a
+        # previous invocation carries stale-loop futures. Reset first.
+        from app import db as app_db
+
+        await app_db.reset_engine()
+        return await run_shard(job_id, _uuid.UUID(run_id), local_ids)
+
+    return asyncio.run(_run())
 
 
 async def _load_rule_verify_plan(job_id: str) -> tuple[str, list[str], dict] | None:
@@ -501,8 +516,12 @@ def run(request_body: dict) -> dict:
     async def _check() -> tuple[str | None, str | None]:
         from sqlalchemy import select
 
+        from app import db as app_db
         from app.db import session_scope
         from app.models.run_job import RunJob
+
+        # Same warm-container loop hazard as the runners (see _execute).
+        await app_db.reset_engine()
 
         async with session_scope() as db:
             job = (
