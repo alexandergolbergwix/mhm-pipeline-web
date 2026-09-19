@@ -15,10 +15,24 @@ no eval-agent subprocess.
 - Job runner: `backend/app/pipeline/rule_verify_job.py` (kind
   `hmo_rule_verify`); Modal shard fan-out in `modal/modal_jobs.py`.
 - Endpoints: `backend/app/routers/hmo_studio_items.py`
-  (`/rule-verify/catalog|results|bulk-approve*`) and
+  (`/rule-verify/catalog|results|bulk-approve*`,
+  `/rule-verify/results/entities` for the paginated drill-down,
+  `/rule-verify/results/entities/{local_id}` for one entity's non-pass
+  results — the item detail drawer's Rule check card) and
   `backend/app/routers/rule_verify_settings.py` (`/me/rule-verify-settings`).
 - Frontend: `frontend/src/components/hmo/RuleVerificationPanel.tsx`,
-  `HmoItemRuleBadge.tsx`, API module `frontend/src/api/ruleVerify.ts`.
+  `HmoItemRuleBadge.tsx`, `HmoItemRuleVerdictCard.tsx` (drawer card),
+  API module `frontend/src/api/ruleVerify.ts`.
+
+### Drill-down + drawer gotchas
+
+- The summary's per-rule fail/error counts are tallied over ALL verdict
+  rows, but the entity table is server-paginated (50/page, offset). The
+  panel resets `entityPage` whenever the view, rule filter, or debounced
+  search changes — a stale page fetches an out-of-range offset and shows
+  "No entries match." next to a non-zero total footer.
+- The search box is a server-side `q` filter (verdict label snapshot or
+  `local_id`, `ilike`), not a client-side filter over the loaded page.
 
 ## Result contract
 

@@ -1725,6 +1725,49 @@ async def get_rule_verify_entity_page(
     }
 
 
+@router.get("/{run_id}/hmo-studio/items/rule-verify/results/entities/{local_id}")
+async def get_rule_verify_entity(
+    run_id: uuid.UUID,
+    local_id: str,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """One entity's rule results for the item detail drawer.
+
+    Same row shape as ``/results/entities`` (non-pass results listed,
+    passes counted) so the drawer can render the failing rules without
+    loading the merged item view.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=False)
+    row = (
+        await db.execute(
+            select(HmoStudioItemOverride).where(
+                HmoStudioItemOverride.run_id == run_id,
+                HmoStudioItemOverride.local_id == local_id,
+            )
+        )
+    ).scalar_one_or_none()
+    verdict = row.rule_verdict if row is not None and isinstance(row.rule_verdict, dict) else {}
+    results = [r for r in verdict.get("results") or [] if isinstance(r, dict)]
+    non_pass = [r for r in results if r.get("state") != "pass"]
+    blocking = await _blocking_rules_for(db, None, auth)
+    blocked_by = [
+        str(r.get("rule_id"))
+        for r in non_pass
+        if r.get("state") in ("fail", "error") and str(r.get("rule_id")) in blocking
+    ]
+    return {
+        "local_id": local_id,
+        "label": verdict.get("label") or local_id,
+        "overall": verdict.get("overall") or "unchecked",
+        "checked_at": verdict.get("checked_at"),
+        "pass_count": sum(1 for r in results if r.get("state") == "pass"),
+        "results": non_pass,
+        "blocked_by": blocked_by,
+        "upload_ready": not blocked_by,
+    }
+
+
 @router.get("/{run_id}/hmo-studio/items/rule-verify/export")
 async def export_rule_verify_results(
     run_id: uuid.UUID,

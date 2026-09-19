@@ -79,6 +79,9 @@ export interface RuleVerifyEntityQuery {
   q?: string;
 }
 
+/** Single-entity shape served to the item detail drawer. */
+export type RuleVerifyEntity = RuleVerifyEntityRow;
+
 export interface RuleVerifyFilterSpec {
   state: string;
   rules?: string[];
@@ -123,6 +126,12 @@ export const RuleVerify = {
     if (query.q?.trim()) params.set("q", query.q.trim());
     return api.get(
       `/runs/${runId}/hmo-studio/items/rule-verify/results/entities?${params}`,
+    );
+  },
+
+  entity(runId: string, localId: string): Promise<RuleVerifyEntity> {
+    return api.get(
+      `/runs/${runId}/hmo-studio/items/rule-verify/results/entities/${encodeURIComponent(localId)}`,
     );
   },
 

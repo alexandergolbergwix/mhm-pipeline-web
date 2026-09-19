@@ -254,3 +254,39 @@ async def test_rule_verify_endpoints(sample_run, db_session) -> None:
     )
     assert settings_put.status_code == 200
     assert settings_put.json()["blocked_rules"] == {"hmo.shacl.blocking": True}
+
+
+@pytest.mark.asyncio
+async def test_rule_verify_single_entity_endpoint(sample_run, db_session) -> None:
+    """The drawer endpoint returns one entity's non-pass results, passes counted."""
+    from app.pipeline.rule_verify.persist import persist_rule_verdicts
+
+    run_id = sample_run["run_id"]
+    client = sample_run["client"]
+
+    await persist_rule_verdicts(
+        db_session,
+        run_id=run_id,
+        results_by_local_id={
+            "QDraft_MS1": [fail("r1", "labels", "bad"), RuleResult("r2", "pass")],
+        },
+    )
+
+    res = await client.get(
+        f"/api/runs/{run_id}/hmo-studio/items/rule-verify/results/entities/QDraft_MS1"
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["local_id"] == "QDraft_MS1"
+    assert body["overall"] == "fail"
+    assert body["pass_count"] == 1
+    assert [(r["rule_id"], r["state"]) for r in body["results"]] == [("r1", "fail")]
+    assert body["results"][0]["field"] == "labels"
+    assert body["results"][0]["message"] == "bad"
+
+    missing = await client.get(
+        f"/api/runs/{run_id}/hmo-studio/items/rule-verify/results/entities/QDraft_MISSING"
+    )
+    assert missing.status_code == 200
+    assert missing.json()["overall"] == "unchecked"
+    assert missing.json()["results"] == []

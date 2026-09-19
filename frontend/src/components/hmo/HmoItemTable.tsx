@@ -166,7 +166,17 @@ export function HmoItemTable({
                 <td className="px-3 py-2">{itemLabel(item)}</td>
                 <td className="px-3 py-2">{item.class_qid}</td>
                 <td className="px-3 py-2">
-                  {item.approved === null ? "Pending review" : item.approved ? "Approved" : "Rejected"}
+                  <select
+                    value={item.approved === null ? "pending" : item.approved ? "approved" : "rejected"}
+                    onChange={(e) => onToggleApproved?.(item, e.target.value === "pending" ? null : e.target.value === "approved")}
+                    aria-label={`Review status for ${itemLabel(item)}`}
+                    data-testid={`hmo-item-approved-${item.local_id}`}
+                    className="input-glass text-xs"
+                  >
+                    <option value="pending">Pending review</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
                 </td>
                 <td className="px-3 py-2">
                   <HmoItemShaclBadge issues={item.shacl_issues ?? []} localId={item.local_id} />
@@ -206,19 +216,6 @@ export function HmoItemTable({
                   />
                 </td>}
                 <td className="px-3 py-2">
-                  <select
-                    value={item.approved === null ? "pending" : item.approved ? "approved" : "rejected"}
-                    onChange={(e) => onToggleApproved?.(item, e.target.value === "pending" ? null : e.target.value === "approved")}
-                    aria-label={`Review status for ${itemLabel(item)}`}
-                    data-testid={`hmo-item-approved-${item.local_id}`}
-                    className="input-glass text-xs"
-                  >
-                    <option value="pending">Pending review</option>
-                    <option value="approved">Approved</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
-                </td>
-                <td className="px-3 py-2">
                   <button type="button" className="button-ghost text-xs" onClick={() => onOpenItem(item)}>
                     Review entry
                   </button>
@@ -227,7 +224,7 @@ export function HmoItemTable({
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={showTechnical ? 15 : 9} className="px-3 py-6 text-center muted">No entries match.</td>
+                <td colSpan={showTechnical ? 14 : 8} className="px-3 py-6 text-center muted">No entries match.</td>
               </tr>
             )}
           </tbody>

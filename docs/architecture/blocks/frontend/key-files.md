@@ -40,7 +40,7 @@
 | `frontend/src/api/publication.ts` | Typed Publication commands and cursor reads; a prepare response can contain a queued job before it contains a Release |
 | `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | Owns the default test/live target choice, polls the prepare job, then exposes Release review and bounded Publication cursor pages; enables compatibility controls only after API unavailability |
 | `frontend/src/components/hmo/HmoPublishConfirmationDialog.tsx` | Shared accessible confirmation gate before a single HMO entry is published or updated |
-| `frontend/src/components/hmo/RuleVerificationPanel.tsx` + `HmoItemRuleBadge.tsx` + `frontend/src/api/ruleVerify.ts` | Rule-based verification surface: summary/per-entity views, smart filters, per-user blocking rules, approve-by-filter (hmo-wikibase-studio rule-verify.md) |
+| `frontend/src/components/hmo/RuleVerificationPanel.tsx` + `HmoItemRuleBadge.tsx` + `HmoItemRuleVerdictCard.tsx` + `frontend/src/api/ruleVerify.ts` | Rule-based verification surface: summary/per-entity views (server-paginated drill-down; page resets on filter change), per-user blocking rules, approve-by-filter, drawer card via `results/entities/{local_id}` (hmo-wikibase-studio rule-verify.md) |
 | `frontend/e2e/fixtures/*.ts` | Deterministic `page.route()` backend mocks per feature |
 | `frontend/vite.config.ts` | `@` → `src/` alias; dev proxy `/api` → `localhost:8000` |
 | `frontend/vitest.config.ts` | jsdom env, `tests/setup.ts` shims, excludes `e2e/**` |

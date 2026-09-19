@@ -72,7 +72,7 @@
 | `frontend/src/components/hmo/HmoPublishConfirmationDialog.tsx` | Accessible confirmation gate for single-entry publication and updates |
 | `frontend/src/api/hmoWikibaseSchema.ts` | Typed schema status/bootstrap/report client, including live bootstrap job detection |
 | `frontend/src/api/hmoStudio.ts` | Typed item build, upload, status, and upload-job result helpers |
-| `frontend/src/components/hmo/*` | Review UI: `HmoItemTable`, `HmoItemDetailDrawer`, `HmoAuthorityEvidence` (persisted Mazal/KIMA/VIAF/Wikidata claims), `HmoItemAiVerdictBadge` (click pill → full reasoning popover), `HmoItemVerificationModal` (`useVerifyJob`), `ItemUploadPanel` (pre/post-upload AI verify), schema panels |
+| `frontend/src/components/hmo/*` | Review UI: `HmoItemTable`, `HmoItemDetailDrawer` (+ `HmoItemRuleVerdictCard`: per-item failing-rule card fed by `GET …/rule-verify/results/entities/{local_id}`), `HmoAuthorityEvidence` (persisted Mazal/KIMA/VIAF/Wikidata claims), `HmoItemAiVerdictBadge` (click pill → full reasoning popover), `HmoItemVerificationModal` (`useVerifyJob`), `ItemUploadPanel` (pre/post-upload AI verify), schema panels |
 | `dev-docs/hmo-wikibase-studio-plan.md` | The 8-phase buildout plan + status |
 
 | `backend/app/models/hmo_canonical_entity.py` | Durable canonical HMO entity contract and projection source |

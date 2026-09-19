@@ -72,6 +72,13 @@ export function RuleVerificationPanel({runId, onClose, onApproved}: RuleVerifica
     return () => window.clearTimeout(t);
   }, [searchInput]);
 
+  // A stale page (or a search typed in the summary view) makes the drill-down
+  // fetch an out-of-range page and show "No entries match." despite a non-zero
+  // total — reset the page whenever the query changes.
+  useEffect(() => {
+    setEntityPage(1);
+  }, [view, ruleFilter, search]);
+
   const loadSummary = useCallback(async () => {
     setError(null);
     try {
