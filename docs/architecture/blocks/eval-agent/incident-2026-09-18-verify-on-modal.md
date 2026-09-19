@@ -84,3 +84,24 @@ Note: the "no results.jsonl" warnings also appear at RE-READ time
 (`read_run_verdicts`) because the session dir is container-local —
 expected on Modal; the DB-embedded `session_snapshot` is the fallback
 path (see `verify_session_store.py`).
+
+## Update (2026-09-19): instrumentation deployed — leading hypothesis refined
+
+- `agent_runner.spawn_eval_agent_run` now heartbeats the subprocess
+  stderr tail every 30 s (logger.warning "eval-agent stderr tail").
+- Restarted verify (job `2a323bb0`) completed in ~1 min total with the
+  SAME 0-verdict outcome and **zero stderr-tail lines** in the container
+  logs → the subprocess printed nothing and exited almost immediately.
+- New leading hypothesis: **the pipeline-output fixture is empty or
+  unwritten on the container.** The verify stream writes the 18k-item
+  fixture to a tmp dir before spawn; a failed/empty fixture makes
+  eval-agent exit 0 with no session.start — matching every observation
+  (fast completion, empty stderr, no events, scope_size never known).
+- Next instrumentation (exact): in the HMO verify stream, log the
+  fixture path + byte size + item count right after writing
+  (`logger.warning("verify fixture %s bytes items=%s", ...)`); log the
+  subprocess exit code on exit. If bytes==0, the fixture writer is the
+  bug (likely the same event-loop/dyno assumption as W-245).
+- Interim workaround while unfixed: run verify from the UI on a small
+  filtered scope (works — the fixture is small), or accept full-corpus
+  runs only after the fixture check lands.
