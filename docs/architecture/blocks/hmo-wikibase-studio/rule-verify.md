@@ -101,11 +101,11 @@ evidence) attached. Two invariants (block R58, Rule W-247):
 
 - The JSON document streams with the same conventions as
   `export/formatters.py:json_array_stream` — header prefix first, then
-  one serialised entity per yield — so the first bytes go out before the
-  merged-items load and the payload never buffers in memory. A cold-cache
-  merge runs as a task raced against a 10 s keepalive (JSON whitespace /
-  CSV blank lines) so the stream never sits silent for Heroku's 55 s
-  idle window (H15).
+  one serialised entity per yield. The data source is
+  `hmo_item_views.iter_rule_verify_export_rows`: verdicts stripped +
+  scope-filtered in SQL, entities streamed off a `jsonb_array_elements`
+  server-side cursor — O(chunk) memory, no >55 s silent gap between
+  bytes (the full merged view measured ~1.1 GB RSS and R15'd the dyno).
 - The no-build case answers 409 via a cheap pre-check; the heavy
   `fetch_merged_hmo_items_cached` call runs inside the generator. The
   endpoint takes no `Depends(get_session)` — DB work uses short-lived

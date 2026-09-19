@@ -326,23 +326,18 @@ the job result never carries per-entity payloads (R14). *Why:* a sync
 starmap iteration on the event loop starves the heartbeat and the stale
 reap kills the job mid-compute (2026-09-18 incident class).
 
-58. **R58 — Large exports stream per item (Rule W-247).**
-`GET .../rule-verify/export` wraps a true per-entity generator in
-`StreamingResponse`: JSON via `export/formatters.py:json_array_stream`
-(header prefix first, one item per yield, closing bracket), CSV one row
-per step. The merged-items load runs inside the generator after the first
-bytes are out; the no-build 409 is pre-checked with a cheap indexed
-lookup before the stream starts. The endpoint takes no
-`Depends(get_session)` — a streamed response pins the request session for
-the whole download, so DB work uses short-lived `session_scope` windows.
-*Why:* on the 18k-entity run the export
-built the full payload — including `json_stream`'s whole-document
-`json.dumps` — before the first byte, and Heroku's router killed the
-request at 30 s (H12); the 50–100 MB string also R14'd the dyno.
-
-Cold-cache follow-up (2026-09-19): the header streamed, but the single
-slow merged-items await then stalled past the 55 s rolling idle window
-(H15, download truncated at 83 B). The export generators therefore run
-the load as a task raced against a 10 s keepalive emitting byte-valid
-filler — JSON whitespace inside the array, blank lines between CSV rows
-(Rule W-247).
+58. **R58 — Large exports stream per item and stay memory-flat (Rule
+W-247).** `GET .../rule-verify/export` wraps a per-entity generator in
+`StreamingResponse` (JSON via `export/formatters.py:json_array_stream`,
+CSV one row per step). The no-build 409 is pre-checked before the stream
+starts; the endpoint takes no `Depends(get_session)` — the stream owns a
+short-lived `session_scope`. The data source is `hmo_item_views.
+iter_rule_verify_export_rows`: verdicts stripped + scope-filtered in SQL
+(2218 rows for scope=failures vs 18464), entities streamed off a
+`jsonb_array_elements` server-side cursor with the per-entity override /
+mapping merge applied — O(chunk) memory, no >55 s silent gap.
+*Why:* on the 18k-entity run the export first H12'd (whole payload built
+before the first byte, `json_stream` buffering a 50–100 MB `json.dumps`),
+then H15/H18'd (83-byte header, then a >55 s cold-cache stall), then the
+full verdict + merged load measured ~1.1 GB RSS and R15'd the 512 MB dyno
+mid-download (2026-09-19).

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import csv
 import io
 import json
@@ -21,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session, session_scope
-from app.export.formatters import json_default, json_stream
+from app.export.formatters import json_array_stream, json_stream
 from app.models.event import (
     ENTITY_TYPE_HMO_ITEM_OVERRIDE,
     OP_CREATE,
@@ -55,6 +54,7 @@ from app.pipeline.hmo_item_views import (
     fetch_merged_hmo_items_cached,
     fetch_validation_error_items,
     item_label,
+    iter_rule_verify_export_rows,
 )
 from app.pipeline.hmo_wikibase_live_enrich import enrich_hmo_items_with_wikibase_live
 from app.pipeline.inference_cache import read_from_inference_cache
@@ -68,11 +68,6 @@ from app.versioning import apply_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["hmo-studio-items"])
-
-# Cold-cache merged-items loads (18k entities, ~45 MB JSONB) can exceed
-# Heroku's rolling 55 s idle window mid-stream (H15) — the export
-# generators emit a keepalive chunk this often while the load runs.
-EXPORT_KEEPALIVE_S = 10.0
 
 
 class HmoItemOverridePayload(BaseModel):
@@ -1782,20 +1777,18 @@ async def export_rule_verify_results(
     non-pass rule result; JSON attaches labels, descriptions, claims and
     authority evidence per entity.
 
-    Streams per entity (Rule W-247). Deliberately does NOT take
+    Streams per entity, SQL-side (Rule W-247). Deliberately does NOT take
     ``db: AsyncSession = Depends(get_session)``: a request-scoped session
     stays open for the whole streamed response (ai_verify.py note), and a
-    100 MB download can hold it for minutes — long enough to exhaust the
-    pool (2026-07-04 outage). All DB work uses short-lived
-    :func:`session_scope` windows instead.
+    large download can hold it for minutes — long enough to exhaust the
+    pool (2026-07-04 outage). The stream owns a short-lived
+    :func:`session_scope` window instead.
     """
     async with session_scope() as db:
         await _lookup_run_with_access(db, run_id, auth, write=False)
-        # The heavy merged-items load runs inside the streaming generator so the
-        # first bytes go out well inside Heroku's 30 s initial-response window
-        # (H12) and the payload never buffers in memory (R14). A missing build
-        # must still answer 409 — impossible once the body has started — so the
-        # build row is pre-checked with this cheap indexed lookup.
+        # A missing build must still answer 409 — impossible once the body
+        # has started — so the build row is pre-checked with this cheap
+        # indexed lookup before the stream begins.
         built_at = await db.scalar(
             select(HmoStudioItemCache.built_at).where(HmoStudioItemCache.run_id == run_id)
         )
@@ -1805,103 +1798,19 @@ async def export_rule_verify_results(
                 detail=f"No item build exists for run {run_id}. Call build-items first.",
             )
 
-        verdict_rows = (
-            await db.execute(
-                select(
-                    HmoStudioItemOverride.local_id,
-                    HmoStudioItemOverride.rule_verdict,
-                ).where(HmoStudioItemOverride.run_id == run_id)
-            )
-        ).all()
-    verdicts = {
-        str(local_id): verdict
-        for local_id, verdict in verdict_rows
-        if isinstance(verdict, dict) and verdict.get("results")
-    }
-
-    async def _entity_rows(items: list[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
-        for item in items:
-            local_id = str(item.get("local_id") or "")
-            verdict = verdicts.get(local_id)
-            if verdict is None:
-                continue
-            results = [r for r in verdict["results"] if isinstance(r, dict)]
-            non_pass = [r for r in results if r.get("state") != "pass"]
-            if scope == "failures" and not any(
-                r.get("state") == "fail" for r in results
-            ):
-                continue
-            yield {
-                "local_id": local_id,
-                "label": item_label(item),
-                "class_qid": item.get("class_qid"),
-                "entity_type": item.get("entity_type"),
-                "source_uri": item.get("source_uri"),
-                "wikibase_id": item.get("wikibase_id"),
-                "status": item.get("status"),
-                "approved": item.get("approved"),
-                "overall": verdict.get("overall"),
-                "pass_count": sum(1 for r in results if r.get("state") == "pass"),
-                "results": non_pass,
-                "entity": {
-                    "labels": item.get("labels") or {},
-                    "descriptions": item.get("descriptions") or {},
-                    "aliases": item.get("aliases") or {},
-                    "claims": item.get("claims") or [],
-                    "control_numbers": item.get("control_numbers") or [],
-                    "authority_evidence": item.get("authority_evidence") or [],
-                    "skipped_statements": item.get("skipped_statements") or [],
-                    "shacl_issues": item.get("shacl_issues") or [],
-                },
-            }
+    async def _entity_rows() -> AsyncIterator[dict[str, Any]]:
+        async with session_scope() as db:
+            async for row in iter_rule_verify_export_rows(db, run_id, scope):
+                yield row
 
     filename = f"run-{run_id}-rule-verify-{scope}.{format}"
-
-    async def _fetch_items() -> list[dict[str, Any]]:
-        async with session_scope() as db:
-            return await fetch_merged_hmo_items_cached(db, run_id)
-
-    async def _load_items(keepalive: bytes) -> AsyncIterator[bytes | list[dict[str, Any]]]:
-        """Yield keepalive bytes while the merged-items load runs, then the items.
-
-        On a cold in-process cache the 18k-entity merge can exceed Heroku's
-        rolling 55 s idle window (H15) — the first bytes were already sent
-        (the header), and one slow await mid-stream kills the download.
-        The keepalive filler is byte-valid for the target format: JSON
-        whitespace between array elements, blank lines between CSV rows.
-        """
-        merge = asyncio.create_task(_fetch_items())
-        try:
-            while True:
-                done, _ = await asyncio.wait({merge}, timeout=EXPORT_KEEPALIVE_S)
-                if done:
-                    yield merge.result()
-                    return
-                yield keepalive
-        except BaseException:
-            if not merge.done():
-                merge.cancel()
-            raise
-
     if format == "json":
-        async def _json_stream() -> AsyncIterator[bytes]:
-            prefix = json.dumps({"run_id": str(run_id), "scope": scope}, ensure_ascii=False)
-            yield f'{prefix[:-1]},"entities":['.encode()
-            async for chunk in _load_items(b"\n"):
-                if isinstance(chunk, bytes):
-                    yield chunk
-                    continue
-                first = True
-                async for row in _entity_rows(chunk):
-                    encoded = json.dumps(
-                        row, default=json_default, ensure_ascii=False,
-                    ).encode("utf-8")
-                    yield (b"" if first else b",") + encoded
-                    first = False
-            yield b"]}"
-
         return StreamingResponse(
-            _json_stream(),
+            json_array_stream(
+                {"run_id": str(run_id), "scope": scope},
+                "entities",
+                _entity_rows(),
+            ),
             media_type="application/json",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
@@ -1918,28 +1827,24 @@ async def export_rule_verify_results(
         yield buf.getvalue().encode("utf-8")
         buf.seek(0)
         buf.truncate(0)
-        async for chunk in _load_items(b"\r\n"):
-            if isinstance(chunk, bytes):
-                yield chunk
-                continue
-            async for row in _entity_rows(chunk):
-                skip = ("rule_id", "state", "field", "message")
-                base = {k: row.get(k) for k in fields if k not in skip}
-                if not row["results"]:
-                    writer.writerow({
-                        **base, "rule_id": "", "state": "pass", "field": "", "message": "",
-                    })
-                for res in row["results"]:
-                    writer.writerow({
-                        **base,
-                        "rule_id": res.get("rule_id"),
-                        "state": res.get("state"),
-                        "field": res.get("field") or "",
-                        "message": str(res.get("message") or "")[:300],
-                    })
-                yield buf.getvalue()
-                buf.seek(0)
-                buf.truncate(0)
+        async for row in _entity_rows():
+            skip = ("rule_id", "state", "field", "message")
+            base = {k: row.get(k) for k in fields if k not in skip}
+            if not row["results"]:
+                writer.writerow({
+                    **base, "rule_id": "", "state": "pass", "field": "", "message": "",
+                })
+            for res in row["results"]:
+                writer.writerow({
+                    **base,
+                    "rule_id": res.get("rule_id"),
+                    "state": res.get("state"),
+                    "field": res.get("field") or "",
+                    "message": str(res.get("message") or "")[:300],
+                })
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate(0)
 
     return StreamingResponse(
         _csv_stream(),

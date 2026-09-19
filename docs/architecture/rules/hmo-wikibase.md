@@ -596,18 +596,19 @@ Tests: `test_graph_builder_codicological_labels.py`
 ### Rule W-247 — Large exports MUST stream per item; never serialise the whole payload (added 2026-09-19)
 
 The rule-verify panel's **Export CSV / Export JSON** on an 18k-entity run
-silently failed in production. Two defects, both invisible on small runs:
+silently failed in production. Three defects, all invisible on small runs:
 
 1. The endpoint loaded the merged items view (~30 s on a cold cache) and
-builds the full entity-row list **before** the response started. Heroku's
-router kills a request that sends no data within 30 s (H12), so the
-download died before the first byte. The endpoint also took the
-request-scoped `Depends(get_session)` session, which a streamed response
-pins for the whole download (pool-exhaustion class, 2026-07-04).
+   built the full entity-row list **before** the response started. Heroku's
+   router kills a request that sends no data within 30 s (H12), so the
+   download died before the first byte.
 2. `export.formatters.json_stream` calls `json.dumps` on the **whole**
    payload and then chunk-yields the encoded string. That is streaming in
    name only: a 50–100 MB document (plus Python-object overhead, often 3–5×
    the JSON size) still materialises in memory — R14 territory.
+3. The endpoint took the request-scoped `Depends(get_session)` session,
+   which a streamed response pins for the whole download
+   (pool-exhaustion class, 2026-07-04).
 
 Invariant:
 
@@ -618,23 +619,31 @@ Invariant:
    prefix first, then one serialised item per yield, then the closing
    bracket. The document is byte-compatible with a `json.dumps` of the
    full payload, so consumers cannot tell the difference.
-2. The heavy load (`fetch_merged_hmo_items_cached`) runs **inside** the
-   generator, after the first bytes are out. Preconditions that need an
-   HTTP error status (409 no-build, 404 no-run) are pre-checked with cheap
-   indexed lookups **before** the stream starts — the status cannot change
-   once the body has begun.
+2. The heavy per-item source runs **inside** the generator, after the
+   first bytes are out — and no single await between streamed bytes may
+   cost more than the idle window (see 4). Preconditions that need an
+   HTTP error status (409 no-build, 404 no-run) are pre-checked with
+   cheap indexed lookups **before** the stream starts — the status
+   cannot change once the body has begun.
 3. CSV exports write one row per generator step (`io.StringIO` reset
    between rows), never a row list.
 4. Emit a chunk at least every ~55 s (Heroku's rolling idle window H15/H28);
-   never set a guessed `Content-Length` on a streamed response. A single
-   slow await mid-stream (the cold-cache merged-items load) must run as a
-   task raced against a ~10 s keepalive that emits **byte-valid filler**:
-   JSON whitespace inside the array (`b"\n"`), blank lines between CSV
-   rows (`b"\r\n"`). First bytes alone do not help — an H12 avoided at
-   the 30 s window becomes an H15 mid-download otherwise (2026-09-19:
-   export delivered its 83-byte header, then stalled past 55 s on the
-   cold post-deploy cache and the router killed the stream).
-5. Do NOT take `db: AsyncSession = Depends(get_session)` on a streamed
+   never set a guessed `Content-Length` on a streamed response. Never leave
+   one slow await between streamed bytes: on the cold post-deploy cache the
+   export sent its 83-byte header, then stalled past 55 s in the merged
+   items load and the router killed the stream (H15/H18, 2026-09-19).
+5. The streamed endpoint must also be **memory-flat**: loading all 18k
+   full rule verdicts is ~318 MB and the merged items view pushes the
+   process to ~1.1 GB RSS — a Basic 512 MB dyno R14/R15s mid-export and
+   the download truncates. `iter_rule_verify_export_rows`
+   (`hmo_item_views.py`) keeps the export O(chunk): verdicts are stripped
+   (pass results dropped) and scope-filtered **in SQL** (2218 rows for
+   scope=failures on run 3494ebf5 vs 18464), entity dicts stream off a
+   server-side cursor (`jsonb_array_elements` + `yield_per`), and the
+   per-entity override/mapping merge is unchanged. SQLite (tests) keeps
+   the in-memory fallback — the JSONB SQL is Postgres-only, same pattern
+   as the `canonical_live` count in `hmo_studio.py`.
+6. Do NOT take `db: AsyncSession = Depends(get_session)` on a streamed
    endpoint: the request-scoped session stays open until the response has
    fully streamed, and a 100 MB download can hold it for minutes — pool
    exhaustion territory (2026-07-04 outage). Use short-lived
