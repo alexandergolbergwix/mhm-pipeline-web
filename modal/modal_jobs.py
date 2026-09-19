@@ -60,40 +60,59 @@ def _materialize_committed_tree() -> str:
     return tmp
 
 
-_HEAD = _materialize_committed_tree()
+_HEAD = _materialize_committed_tree() if modal.is_local() else "/root"
+# modal.is_local(): the git-archive extraction must happen ONLY at deploy
+# time (client side has git). Inside a container the module is re-imported
+# on every cold start (2026-09-19: `git` is absent from debian_slim →
+# FileNotFoundError at import → the app crash-looped and every dispatched
+# job sat "Waiting for capacity…"). The image already carries the committed
+# backend at /root/backend, so /root is the in-container _HEAD.
 
-image = (
+_BASE_IMAGE = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install_from_pyproject(
         os.path.join(_HEAD, "backend", "pyproject.toml"),
     )
-    # eval-agent runtime (hmo_item_verify executor, W-247): tiny deps the
-    # backend image may not carry.
     .pip_install("pyyaml>=6.0", "jsonschema>=4.20")
-    .add_local_dir(
-        os.path.join(_HEAD, "backend"),
-        remote_path="/root/backend",
-        copy=True,
+)
+
+if modal.is_local():
+    image = (
+        _BASE_IMAGE
+        # eval-agent runtime (hmo_item_verify executor, W-247): tiny deps the
+        # backend image may not carry.
+        .add_local_dir(
+            os.path.join(_HEAD, "backend"),
+            remote_path="/root/backend",
+            copy=True,
+        )
+        .add_local_dir(
+            os.path.join(_HEAD, "backend", "ontology"),
+            remote_path="/root/ontology",
+            copy=True,
+        )
+        .add_local_dir(
+            os.path.join(_HEAD, "eval-agent"),
+            remote_path="/root/eval-agent",
+            copy=True,
+        )
+        .env({
+            # /root/eval-agent must be importable: agent_runner spawns the
+            # eval-agent subprocess which imports the `eval_agent` package
+            # (2026-09-18: missing path → ModuleNotFoundError → the verify
+            # container died without finalising the job row → zombie).
+            "PYTHONPATH": "/root/backend:/root/eval-agent",
+            "EVAL_AGENT_ROOT": "/root/eval-agent",
+        })
     )
-    .add_local_dir(
-        os.path.join(_HEAD, "backend", "ontology"),
-        remote_path="/root/ontology",
-        copy=True,
-    )
-    .add_local_dir(
-        os.path.join(_HEAD, "eval-agent"),
-        remote_path="/root/eval-agent",
-        copy=True,
-    )
-    .env({
-        # /root/eval-agent must be importable: agent_runner spawns the
-        # eval-agent subprocess which imports the `eval_agent` package
-        # (2026-09-18: missing path → ModuleNotFoundError → the verify
-        # container died without finalising the job row → zombie).
+else:
+    # In-container import: the image is already materialized (paths baked
+    # in above at deploy time). Rebuild only a metadata shell for the
+    # decorators; never touch add_local_dir inside a container.
+    image = _BASE_IMAGE.env({
         "PYTHONPATH": "/root/backend:/root/eval-agent",
         "EVAL_AGENT_ROOT": "/root/eval-agent",
     })
-)
 
 app = modal.App(
     "mhm-jobs",
