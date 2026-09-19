@@ -100,6 +100,20 @@
       "expires": "2027-09-13"
     },
     {
+      "fingerprint": "sha256:4fc27f109f9ef6340a56eb05fd28572b",
+      "path": "backend/app/pipeline/run_job_params.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "wikidata_secret_key_for_target returns a secret NAME string (settings key), not a credential value",
+      "expires": "2026-12-31"
+    },
+    {
+      "fingerprint": "sha256:21f3aaead1f3c795d7ef94aaa701214b",
+      "path": "backend/app/pipeline/run_job_params.py",
+      "rule_id": "relation-linked-secret",
+      "reason": "AuthContext type annotation on pre-existing parameter; 'auth' identifier, not a credential",
+      "expires": "2026-12-31"
+    },
+    {
       "fingerprint": "sha256:01c018cf888aae21ba62a3c4481e63b4",
       "path": "backend/app/pipeline/verify_job.py",
       "rule_id": "generic-assigned-secret",
@@ -294,6 +308,13 @@
       "rule_id": "relation-linked-secret",
       "reason": "Parses the runtime Authorization header into a local variable; not a stored secret",
       "expires": "2027-09-14"
+    },
+    {
+      "fingerprint": "sha256:9d2deac7bff7c77a20d089c11bc5bc51",
+      "path": "backend/app/routers/rule_verify_settings.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "FastAPI Depends(current_auth) parameter — dependency-injection wire, not a credential",
+      "expires": "2026-12-31"
     },
     {
       "fingerprint": "sha256:9288a8a9295587e27b9f2d984fa2fd62",
@@ -496,13 +517,6 @@
       "path": "frontend/src/routes/HmoStudio.tsx",
       "rule_id": "generic-assigned-secret",
       "reason": "JSX prop itemBuildPresent={itemBuildPresent} — boolean React state, not a credential; scanner false positive on identifier prefix",
-      "expires": "2026-12-31"
-    },
-    {
-      "fingerprint": "sha256:0a8f3995f910732e032c20854706f196",
-      "path": "modal/diag_eval_agent.py",
-      "rule_id": "generic-assigned-secret",
-      "reason": "diag probe building the eval-agent --help command list; mhm-jobs2 secret name string, not a credential",
       "expires": "2026-12-31"
     },
     {

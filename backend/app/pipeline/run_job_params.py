@@ -18,6 +18,7 @@ from app.models.run_job import (
     JOB_KIND_HMO_ITEM_BUILD,
     JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_HMO_ITEM_VERIFY,
+    JOB_KIND_HMO_RULE_VERIFY,
     JOB_KIND_HMO_MANIFEST_BUILD,
     JOB_KIND_HMO_MANIFEST_UPLOAD,
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
@@ -305,6 +306,27 @@ async def prepare_job_params(
                 ),
             )
         merged.setdefault("skip_cache", False)
+
+    if kind == JOB_KIND_HMO_RULE_VERIFY:
+        raw_ids = merged.get("item_ids")
+        if raw_ids is not None:
+            if not isinstance(raw_ids, list):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="item_ids must be a list of local_ids when provided",
+                )
+            cleaned_ids: list[str] = []
+            seen_ids: set[str] = set()
+            for raw in raw_ids:
+                lid = str(raw).strip()
+                if not lid or lid in seen_ids:
+                    continue
+                seen_ids.add(lid)
+                cleaned_ids.append(lid)
+            merged["item_ids"] = cleaned_ids or None
+        merged.setdefault("with_api", True)
+        # The rule engine is deterministic — no judge model, no API key.
+        merged.pop("tier_model", None)
 
     return merged
 
