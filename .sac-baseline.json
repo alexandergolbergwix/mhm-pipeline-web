@@ -233,6 +233,13 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:5a88a5e069e430b95b3d498eb840aa74",
+      "path": "backend/app/routers/hmo_studio_items.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "kwarg name 'authority_expr' matches the 'author' relation heuristic; a rule-function reference, not a credential",
+      "expires": "2026-12-31"
+    },
+    {
       "fingerprint": "sha256:e9f16e50f34080c6fe6855a5340f6281",
       "path": "backend/app/routers/hmo_studio_items.py",
       "rule_id": "generic-assigned-secret",
@@ -534,6 +541,13 @@
       "expires": "2026-12-31"
     },
     {
+      "fingerprint": "sha256:0a8f3995f910732e032c20854706f196",
+      "path": "modal/diag_eval_agent.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "diag probe building the eval-agent --help command list; mhm-jobs2 secret name string, not a credential",
+      "expires": "2026-12-31"
+    },
+    {
       "fingerprint": "sha256:39c90b82bd857f67b781a96cae50f0af",
       "path": "modal/modal_jobs.py",
       "rule_id": "generic-assigned-secret",
@@ -581,13 +595,6 @@
       "rule_id": "relation-linked-secret",
       "reason": "modal.Secret.from_name references a secret by name; the value stays in the Modal secret store",
       "expires": "2027-09-14"
-    },
-    {
-      "fingerprint": "sha256:0a8f3995f910732e032c20854706f196",
-      "path": "modal/diag_eval_agent.py",
-      "rule_id": "generic-assigned-secret",
-      "reason": "diag probe building the eval-agent --help command list; mhm-jobs2 secret name string, not a credential",
-      "expires": "2026-12-31"
     }
   ]
 }

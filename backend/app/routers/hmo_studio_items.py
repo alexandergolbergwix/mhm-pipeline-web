@@ -368,9 +368,7 @@ async def _page_from_rows(
         else (sort_col.asc(), HmoStudioItemRow.local_id.asc())
     page_rows = (
         await db.execute(
-            base.with_only_columns(*base.selected_columns)
-            .order_by(*order)
-            .limit(limit + 1)
+            base.order_by(*order).limit(limit + 1)
         )
     ).all()
 
