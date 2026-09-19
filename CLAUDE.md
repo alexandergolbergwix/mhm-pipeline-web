@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-249)
+## Architectural rules (W-1…W-250)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -225,9 +225,10 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-244** — Modal containers heartbeat their own lease (60 s, `claimed_by`-guarded) so a long quiet CPU stretch never trips the stale reap, and `finish_job` never overwrites a terminal row
 - **W-245** — Verify scope preparation must yield the event loop and report phases: the 18k-item cache deserialise + MARC-context pass are pure CPU — without yields the heartbeat, publisher, and stale reap all freeze and the dyno wedges
 - **W-246** — Never load a multi-MB blob just to test existence or freshness: `ensure_ttl_on_disk` probes `md5(ttl_content)` server-side and transfers the TTL blob only on mismatch, and the merged Studio items view is fingerprint-keyed in-process so unchanged repeat loads skip the 18k-entity merge
-- **W-247** — Large exports stream per item AND stay memory-flat: heavy loads run inside the `StreamingResponse` generator after the first bytes go out (Heroku H12 = 30 s initial window, H15 = 55 s idle between chunks), no single await between streamed bytes may exceed the idle window, DB work uses short-lived `session_scope` windows (a request-scoped session stays pinned for the whole stream), JSON uses `export/formatters.py:json_array_stream` (never `json_stream`, which buffers the whole document), and the data source must be O(chunk) — the rule-verify export strips + scope-filters verdicts in SQL and streams entities off a `jsonb_array_elements` cursor because the full merged view is ~1.1 GB RSS on an 18k run (R15 on a 512 MB dyno)
-- **W-248** — Module-level code in `modal/*.py` MUST run only behind `modal.is_local()`: Modal re-imports the module inside every container on cold start, so module-level shell-outs (e.g. the `git archive` HEAD materialisation) crash-loop the whole app — every dispatched job sat "Waiting for capacity…" while containers died at import (2026-09-19)
-- **W-249** — A crashed Modal job runner MUST fail the job row in-container (no zombie "running forever" rows); see [eval-agent incident 2026-09-18](docs/architecture/blocks/eval-agent/incident-2026-09-18-verify-on-modal.md)
+ - **W-247** — Large exports stream per item AND stay memory-flat: heavy loads run inside the `StreamingResponse` generator after the first bytes go out (Heroku H12 = 30 s initial window, H15 = 55 s idle between chunks), no single await between streamed bytes may exceed the idle window, DB work uses short-lived `session_scope` windows (a request-scoped session stays pinned for the whole stream), JSON uses `export/formatters.py:json_array_stream` (never `json_stream`, which buffers the whole document), and the data source must be O(chunk) — the rule-verify export strips + scope-filters verdicts in SQL and streams entities off a `jsonb_array_elements` cursor because the full merged view is ~1.1 GB RSS on an 18k run (R15 on a 512 MB dyno)
+ - **W-248** — Module-level code in `modal/*.py` MUST run only behind `modal.is_local()`: Modal re-imports the module inside every container on cold start, so module-level shell-outs (e.g. the `git archive` HEAD materialisation) crash-loop the whole app — every dispatched job sat "Waiting for capacity…" while containers died at import (2026-09-19)
+ - **W-249** — A crashed Modal job runner MUST fail the job row in-container (no zombie "running forever" rows); see [eval-agent incident 2026-09-18](docs/architecture/blocks/eval-agent/incident-2026-09-18-verify-on-modal.md)
+ - **W-250** — JSONB containment binds carry the Python object, never `json.dumps` output: asyncpg JSON-encodes JSONB bind values itself, so a pre-dumped string double-encodes into a jsonb scalar that matches nothing (rule-verify drill-down `results @>` filter and the review-table External authority column filters both matched 0 rows while the Python-side summary still counted the fails) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
 - **W-105** — Studio “Approve all visible” MUST run as a background job
 - **W-106** — All Studio / RDF builds MUST run as `run_jobs` with inline progress
 - **W-107** — All Studio publish/upload paths MUST run as `run_jobs`

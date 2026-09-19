@@ -499,17 +499,17 @@ def _row_filter_conditions(col_filters: dict[str, set[str]], mapping_sq, latest_
         }
         needle = url_by_kind.get(kind, kind.lower())
         entity = HmoStudioItemRow.entity
+        # Python objects, not json.dumps strings — asyncpg encodes JSONB
+        # binds itself (a pre-dumped string double-encodes and never matches).
         return or_(
             entity["authority_evidence"].op("@>")(cast(
-                json.dumps([{"kind": kind}]), _JSONB,
+                [{"kind": kind}], _JSONB,
+            )),
+            entity["authority_evidence"].op("@>")(cast(
+                [{"source": needle}], _JSONB,
             )),
             entity["claims"].op("@>")(cast(
-                json.dumps([{"value": f"%{needle}%"}]), _JSONB,
-            )) if False else entity["authority_evidence"].op("@>")(cast(
-                json.dumps([{"source": needle}]), _JSONB,
-            )),
-            entity["claims"].op("@>")(cast(
-                json.dumps([{"value": f"https://www.{needle}/"}]), _JSONB,
+                [{"value": f"https://www.{needle}/"}], _JSONB,
             )),
         )
 
@@ -1607,10 +1607,10 @@ def _verdict_filter_conditions(
     if state and state != "all":
         conditions.append(verdict_col["overall"].astext == state)
     for rule_id in rules:
-        contains = cast(
-            json.dumps([{"rule_id": rule_id, "state": "fail"}]),
-            _JSONB,
-        )
+        # Pass the Python object, not json.dumps(...) — asyncpg JSON-encodes
+        # JSONB bind values itself, so a pre-dumped string double-encodes
+        # into a jsonb scalar that matches nothing.
+        contains = cast([{"rule_id": rule_id, "state": "fail"}], _JSONB)
         conditions.append(verdict_col["results"].op("@>")(contains))
     if q.strip():
         pattern = f"%{q.strip()}%"

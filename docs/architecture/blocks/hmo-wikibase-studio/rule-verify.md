@@ -33,6 +33,10 @@ no eval-agent subprocess.
   "No entries match." next to a non-zero total footer.
 - The search box is a server-side `q` filter (verdict label snapshot or
   `local_id`, `ilike`), not a client-side filter over the loaded page.
+- The SQL rule filter binds its JSONB containment RHS as the Python
+  object — a `json.dumps` string double-encodes under asyncpg and
+  matched nothing (Rule W-250; 2026-09-19: every drill-down returned
+  `total: 0` while the summary counted the fails).
 
 ## Result contract
 

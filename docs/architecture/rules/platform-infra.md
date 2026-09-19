@@ -303,3 +303,35 @@ MUST:
 
 Tests: `frontend/tests/unit/canvasState.spec.ts`.
 
+
+### Rule W-250 — JSONB containment binds carry the Python object, never `json.dumps` output
+
+Incident (2026-09-19): every rule-verify drill-down (`GET
+…/rule-verify/results/entities?rules=…`) returned `total: 0` and
+"No entries match." while the summary endpoint (same rows, tallied in
+Python) still counted the fails — e.g. 1 170 fails for
+`hmo.description.language` on run 3494ebf5. `_verdict_filter_conditions`
+built the containment right-hand side with
+`cast(json.dumps([...]), JSONB)`. Under the asyncpg driver a JSONB bind
+value is JSON-encoded by the driver itself, so the pre-dumped string
+double-encoded into a jsonb **scalar string**; `jsonb_array @> '"…"'`
+matches nothing. The same anti-pattern also disabled the review-table
+External authority column filters (`authority_expr`).
+
+MUST:
+
+1. Pass the Python object (`[{"rule_id": rid, "state": "fail"}]`)
+   directly to `cast(..., JSONB)` in any SQLAlchemy WHERE clause. Never
+   wrap bind values in `json.dumps` — that is only valid for the psql
+   CLI.
+2. JSONB indexing (`col["key"]`) is safe for key access and `.astext`
+   comparisons (the key binds as text); the rule is about containment
+   and other value-carrying binds.
+3. Distinguish summary-vs-drilldown disagreements by running the
+   generated SQL in prod psql first: if raw SQL matches but the app
+   returns 0, suspect bind encoding before suspecting the data.
+4. Postgres-only operators (`@>` containment) cannot be integration
+   tested on the SQLite test DB — pin driver-sensitive bind shapes with
+   a unit test on the compiled expression's `BindParameter` values.
+
+Tests: `backend/tests/test_rule_verify.py::test_verdict_rule_filter_binds_python_object`.

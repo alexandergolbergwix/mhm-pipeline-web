@@ -290,3 +290,35 @@ async def test_rule_verify_single_entity_endpoint(sample_run, db_session) -> Non
     assert missing.status_code == 200
     assert missing.json()["overall"] == "unchecked"
     assert missing.json()["results"] == []
+
+
+def test_verdict_rule_filter_binds_python_object() -> None:
+    """The drill-down containment RHS must be a Python object, not a JSON string.
+
+    Regression: the RHS was built with ``json.dumps(...)``, but asyncpg
+    JSON-encodes JSONB bind values itself — the pre-dumped string
+    double-encoded into a jsonb scalar, the filter matched nothing, and
+    every drill-down showed "No entries match." while the summary
+    (computed in Python) still counted the fails. The containment itself
+    is Postgres-only, so this pins the bind value type instead.
+    """
+    from sqlalchemy.dialects.postgresql import JSONB
+    from sqlalchemy.sql.elements import BindParameter
+
+    from app.routers.hmo_studio_items import _verdict_filter_conditions
+
+    conds = _verdict_filter_conditions(state="all", rules=["r1"], q="")
+    stack, params = [conds[-1]], []
+    while stack:
+        node = stack.pop()
+        if isinstance(node, BindParameter):
+            params.append(node)
+            continue
+        stack.extend(node.get_children())
+    assert params, "no bind parameter in the containment expression"
+    # A pre-dumped JSON string would double-encode under asyncpg — the JSONB
+    # bind must carry the Python object itself. (The subscript key param is
+    # a plain str on purpose; string keys bind correctly.)
+    jsonb_params = [p for p in params if isinstance(p.type, JSONB)]
+    assert len(jsonb_params) == 1
+    assert jsonb_params[0].value == [{"rule_id": "r1", "state": "fail"}]
