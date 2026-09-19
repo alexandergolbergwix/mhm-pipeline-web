@@ -27,7 +27,7 @@ evidence-verified; the single open issue is at the end.
 - Modal `mhm-jobs` = executor: one detached container per
   `rdf_build` / `hmo_item_build` / `hmo_item_verify` (2 CPU / 8 GB /
   12 h timeout), lease heartbeat, crash-safe finalisation (a dead
-  runner now fails the row instead of leaving a zombie — W-247).
+  runner now fails the row instead of leaving a zombie — W-249).
 - eval-agent bundled into the image (`EVAL_AGENT_ROOT=/root/eval-agent`,
   `PYTHONPATH=/root/backend:/root/eval-agent`), `QUBRID_API_KEY` in the
   `mhm-jobs2` secret.

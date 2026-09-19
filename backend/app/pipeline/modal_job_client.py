@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # Job kinds with a Modal executor. Everything else always runs locally
 # (wikidata builds / publication stay Heroku-side — curator decision).
 # Heavy kinds eligible for Modal execution. hmo_item_verify joined
-# (W-247): the 18k-item verify prep + eval-agent subprocess blew the
+# (W-249): the 18k-item verify prep + eval-agent subprocess blew the
 # 512 MB web dyno's memory quota (R14 thrash) — the Modal container's
 # 8 GB runs it comfortably. hmo_rule_verify fans out to shard containers
 # (parallel rule checks; the orchestrator is still one claimed job row).

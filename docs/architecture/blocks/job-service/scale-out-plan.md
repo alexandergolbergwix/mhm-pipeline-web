@@ -15,7 +15,7 @@ trigger-deployed-functions), memory-snapshot guide.*
 
 ## Current state (2026-09-19)
 
-- `rdf_build`, `hmo_item_build`, `hmo_item_verify` (W-247) execute in ONE
+- `rdf_build`, `hmo_item_build`, `hmo_item_verify` (W-249) execute in ONE
   detached Modal container (`modal_jobs.py`), 2 CPU / 8 GB, lease
   heartbeat every 60 s, webhook completion.
 - `rdf_build` additionally fans out to shard containers (Phase 3

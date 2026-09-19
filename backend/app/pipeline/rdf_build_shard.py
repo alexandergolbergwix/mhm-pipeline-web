@@ -175,7 +175,7 @@ async def load_rdf_shard_plan(
 ) -> RdfShardPlan | None:
     """Load the fan-out plan for one claimed ``rdf_build`` job row.
 
-    Raises on an empty run so the W-247 in-container handler fails the
+    Raises on an empty run so the W-249 in-container handler fails the
     row instead of leaving it "running" forever.
     """
     async with session_scope() as db:

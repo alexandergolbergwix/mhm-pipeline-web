@@ -79,7 +79,7 @@ _BASE_IMAGE = (
 if modal.is_local():
     image = (
         _BASE_IMAGE
-        # eval-agent runtime (hmo_item_verify executor, W-247): tiny deps the
+        # eval-agent runtime (hmo_item_verify executor, W-249): tiny deps the
         # backend image may not carry.
         .add_local_dir(
             os.path.join(_HEAD, "backend"),
@@ -242,7 +242,7 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
 
                 await run_hmo_item_build_job(job_id)
             elif kind == "hmo_item_verify":
-                # W-247: the eval-agent subprocess + 18k-item scope need the
+                # W-249: the eval-agent subprocess + 18k-item scope need the
                 # container's 8 GB — the 512 MB web dyno thrashed (R14).
                 from app.pipeline.verify_job import run_verify_job
 
@@ -257,7 +257,7 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
             # A dead runner must never leave a zombie: fail the row HERE so
             # the web-side waiter sees a terminal state (2026-09-18: the
             # verify container died on an eval-agent ImportError and the
-            # row ran "forever" on web-side heartbeats, Rule W-247).
+            # row ran "forever" on web-side heartbeats, Rule W-249).
             try:
                 from app.db import session_scope as _ss
                 from app.models.run_job import (
