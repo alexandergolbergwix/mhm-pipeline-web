@@ -499,6 +499,13 @@
       "expires": "2026-12-31"
     },
     {
+      "fingerprint": "sha256:0a8f3995f910732e032c20854706f196",
+      "path": "modal/diag_eval_agent.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "diag probe building the eval-agent --help command list; mhm-jobs2 secret name string, not a credential",
+      "expires": "2026-12-31"
+    },
+    {
       "fingerprint": "sha256:39c90b82bd857f67b781a96cae50f0af",
       "path": "modal/modal_jobs.py",
       "rule_id": "generic-assigned-secret",

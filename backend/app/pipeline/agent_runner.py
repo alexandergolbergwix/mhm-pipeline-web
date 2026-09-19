@@ -209,6 +209,7 @@ async def spawn_eval_agent_run(
     override_cache: bool = False,
     rpm: int = 60,
     threshold: float | None = None,
+    candidate_count: int | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """Run ``eval-agent run`` and yield each parsed event.
 
@@ -336,7 +337,22 @@ async def spawn_eval_agent_run(
 
     try:
         try:
-            async for ev in _read_subprocess_stream(proc.stdout):
+            async for ev in _read_subprocess_stream(
+                proc.stdout,
+                # The ingest phase (loading a ~100 MB 18k-item fixture and
+                # building candidates) is silent longer than the fixed
+                # 180 s idle timeout — scale it with scope size so a big
+                # real run is not killed as "hung" before the first
+                # [STEP] line (2026-09-19, Modal verify incident).
+                idle_timeout_s=(
+                    max(
+                        _SUBPROCESS_IDLE_TIMEOUT_S,
+                        60.0 + 0.2 * float(candidate_count or 0),
+                    )
+                    if candidate_count
+                    else None
+                ),
+            ):
                 yield ev
         except TimeoutError:
             # The subprocess produced no output at all for
@@ -427,10 +443,14 @@ _SUBPROCESS_IDLE_TIMEOUT_S = 180.0
 _MAX_AGENT_LINE_BYTES = 8 * 1024 * 1024
 
 
-async def _read_agent_lines(stdout: asyncio.StreamReader) -> AsyncIterator[bytes]:
+async def _read_agent_lines(
+    stdout: asyncio.StreamReader,
+    *,
+    idle_timeout_s: float,
+) -> AsyncIterator[bytes]:
     buffer = bytearray()
     while True:
-        chunk = await asyncio.wait_for(stdout.read(16384), timeout=_SUBPROCESS_IDLE_TIMEOUT_S)
+        chunk = await asyncio.wait_for(stdout.read(16384), timeout=idle_timeout_s)
         if not chunk:
             if buffer:
                 yield bytes(buffer)
@@ -449,13 +469,16 @@ async def _read_agent_lines(stdout: asyncio.StreamReader) -> AsyncIterator[bytes
 
 async def _read_subprocess_stream(
     stdout: asyncio.StreamReader,
+    *,
+    idle_timeout_s: float | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """Translate the eval-agent's three line conventions into events.
 
     Raises ``TimeoutError`` if the subprocess goes fully silent for
-    ``_SUBPROCESS_IDLE_TIMEOUT_S`` — see the caller's handling of that.
+    ``idle_timeout_s`` (default ``_SUBPROCESS_IDLE_TIMEOUT_S``).
     """
-    async for line_bytes in _read_agent_lines(stdout):
+    timeout = float(idle_timeout_s or _SUBPROCESS_IDLE_TIMEOUT_S)
+    async for line_bytes in _read_agent_lines(stdout, idle_timeout_s=timeout):
         line = line_bytes.decode("utf-8", errors="replace").rstrip("\n")
         if not line:
             continue

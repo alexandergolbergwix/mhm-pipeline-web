@@ -259,6 +259,7 @@ async def hmo_item_verify_event_stream(
                 tier_model=tier_model,
                 override_cache=override_cache,
                 rpm=action.rate_limit_rpm,
+                candidate_count=len(uncached_items),
             ):
                 from app.pipeline.agent_runner import emit_session_event  # noqa: PLC0415
 
