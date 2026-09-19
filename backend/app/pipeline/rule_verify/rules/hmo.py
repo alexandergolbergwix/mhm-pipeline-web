@@ -267,16 +267,27 @@ def _normalise_label(text: str) -> str:
     return " ".join(str(text or "").split()).casefold()
 
 
-def in_run_dup_index(items: list[dict[str, Any]]) -> dict[tuple[str, str], list[str]]:
-    """(class, normalised label) → local_ids, for the within-run twin rule."""
-    index: dict[tuple[str, str], list[str]] = {}
+def in_run_dup_index(items: list[dict[str, Any]]) -> dict[tuple[str, str, str], list[str]]:
+    """(class, normalised label, primary control number) → local_ids.
+
+    Control numbers enter the key because a shared generic title is normal
+    across distinct manuscripts ("מגלת אסתר" names many scrolls) — only
+    same-record twins (same class + label + MARC record) are duplicates
+    (Rule W-48 propagates CNs to derived nodes, so they compare correctly).
+    """
+    index: dict[tuple[str, str, str], list[str]] = {}
     for item in items:
         cls = str(item.get("class_qid") or "")
         lid = str(item.get("local_id") or "")
         if not lid:
             continue
+        cn = ""
+        for value in item.get("control_numbers") or []:
+            if value:
+                cn = str(value)
+                break
         for label in _labels(item).values():
-            index.setdefault((cls, _normalise_label(label)), []).append(lid)
+            index.setdefault((cls, _normalise_label(label), cn), []).append(lid)
     return {k: v for k, v in index.items() if len(v) > 1}
 
 
@@ -286,19 +297,20 @@ def _run_in_run_duplicate(entity: dict[str, Any], ctx: RuleContext) -> RuleResul
         return warn_as_pass("hmo.duplicate.in_run", "no within-run label twins in scope")
     labels = _labels(entity)
     cls = str(entity.get("class_qid") or "")
+    cn = str((entity.get("control_numbers") or [""])[0] or "")
     seen = {str(entity.get("local_id") or "")}
     twins: list[dict[str, str]] = []
     for label in labels.values():
-        for other_id in index.get((cls, _normalise_label(label)), []):
+        for other_id in index.get((cls, _normalise_label(label), cn), []):
             if other_id in seen:
                 continue
             seen.add(other_id)
             twins.append({"local_id": other_id, "matched_label": label[:80]})
     if not twins:
-        return warn_as_pass("hmo.duplicate.in_run", "no same-class label twin in this run")
+        return warn_as_pass("hmo.duplicate.in_run", "no same-record label twin in this run")
     return fail(
         "hmo.duplicate.in_run", "labels",
-        f"{len(twins)} other item(s) in this run carry the same label and class",
+        f"{len(twins)} other item(s) share label, class AND MARC record",
         {"duplicates": twins[:5]},
     )
 
@@ -306,6 +318,15 @@ def _run_in_run_duplicate(entity: dict[str, Any], ctx: RuleContext) -> RuleResul
 # ── language hygiene (rubric-derived) ────────────────────────────────────
 
 def _run_description_language(entity: dict[str, Any], ctx: Any) -> RuleResult:
+    # Structural/production descriptions legitimately quote the Hebrew
+    # title and scribe ("Production of MS X ('סדור…', shelfmark F 22258)") —
+    # the honest-negative carve-out from the AI rubric (Rule W-53). The
+    # script rule applies to primary scholarly entities only.
+    if str(entity.get("entity_type") or "") in {"E12_Production", "E52_Time-Span", "CU"}:
+        return not_relevant(
+            "hmo.description.language",
+            "structural entity — production/time-span descriptions may quote Hebrew",
+        )
     en = _descriptions(entity).get("en")
     if not en:
         return not_relevant("hmo.description.language", "no English description")

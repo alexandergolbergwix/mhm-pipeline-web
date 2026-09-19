@@ -39,9 +39,9 @@ class RuleContext:
     # Per-job counters shared across rules (probe budgets, progress ticks).
     counters: dict[str, int] = field(default_factory=dict)
     on_progress: Any = None
-    # (class_qid, normalised label) → local_ids with >1 member — precomputed
-    # per scope for the within-run duplicate rule.
-    in_run_dup_index: dict[tuple[str, str], list[str]] = field(default_factory=dict)
+    # (class_qid, normalised label, control number) → local_ids with >1
+    # member — precomputed per scope for the within-run duplicate rule.
+    in_run_dup_index: dict[tuple[str, str, str], list[str]] = field(default_factory=dict)
 
 
 def context_for_item(ctx: RuleContext, item: dict[str, Any]) -> RuleContext:
