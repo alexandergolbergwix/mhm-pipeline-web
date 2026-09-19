@@ -233,9 +233,16 @@ async def test_rule_verify_endpoints(sample_run, db_session) -> None:
     ids = [row["id"] for row in catalog.json()]
     assert "hmo.shacl.blocking" in ids
 
-    # No item build yet → 409 like every other Studio surface.
+    # Summary reads override rows only — no build required, all unchecked.
     results = await client.get(f"/api/runs/{run_id}/hmo-studio/items/rule-verify/results")
-    assert results.status_code == 409
+    assert results.status_code == 200
+    body = results.json()
+    assert set(body["overall_counts"]) >= {"pass", "fail", "not_relevant", "error", "unchecked"}
+    # The paginated entity endpoint 400s for the unsupported unchecked state.
+    entities = await client.get(
+        f"/api/runs/{run_id}/hmo-studio/items/rule-verify/results/entities?state=unchecked"
+    )
+    assert entities.status_code == 400
 
     settings_get = await client.get("/api/me/rule-verify-settings")
     assert settings_get.status_code == 200

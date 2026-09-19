@@ -161,6 +161,13 @@ async def build_items_for_run(
         skipped_count=skipped_count,
         shacl_report=shacl_report,
     )
+    # SQL review read-model: per-item rows for cursor-paginated table reads
+    # (the blob above stays for build-staleness + AI-verify scope prep).
+    from app.pipeline.hmo_item_rows import replace_run_rows
+
+    await replace_run_rows(
+        db, run_id=run_id, entities=resolved_dicts, shacl_report=shacl_report,
+    )
 
     return HmoItemBuildResult(
         entities=resolved,

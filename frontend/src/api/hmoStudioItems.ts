@@ -71,28 +71,33 @@ export const HmoStudioItems = {
   page(
     runId: string,
     query: {
-      page: number;
-      pageSize?: number;
+      cursor?: string | null;
+      prev?: boolean;
+      limit?: number;
       q?: string;
       sort?: "label" | "local_id";
       dir?: "asc" | "desc";
       filters?: Record<string, string[]>;
+      includeTotal?: boolean;
     },
   ): Promise<{
     run_id: string;
-    page: number;
-    page_size: number;
-    total: number;
+    limit: number;
+    has_more: boolean;
+    next_cursor: string | null;
+    total: number | null;
     facets: Record<string, Record<string, number>>;
     items: HmoStudioItem[];
   }> {
     const params = new URLSearchParams({
-      page: String(query.page),
-      page_size: String(query.pageSize ?? 25),
+      limit: String(query.limit ?? 25),
       sort: query.sort ?? "label",
       dir: query.dir ?? "asc",
     });
+    if (query.cursor) params.set("cursor", query.cursor);
+    if (query.prev) params.set("prev", "true");
     if (query.q?.trim()) params.set("q", query.q.trim());
+    if (query.includeTotal === false) params.set("include_total", "false");
     for (const [col, values] of Object.entries(query.filters ?? {})) {
       for (const value of values) params.append("filter", `${col}:${value}`);
     }

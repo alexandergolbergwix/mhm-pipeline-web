@@ -27,33 +27,61 @@ Set on Heroku:
       MODAL_JOBS_TOKEN=<same value as the Modal secret>
 """
 import os
+import subprocess
+import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 import modal
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
 _TIMEOUT_S = 43200  # 12 h — verify of an 18k scope at 4-way parallel needs it
 
+
+def _materialize_committed_tree() -> str:
+    """Extract HEAD into a temp dir — deploy the COMMITTED backend, not the
+    dirty working tree (2026-09-19: a parallel session's half-finished
+    edits made containers die at import while the row kept running).
+    Modal builds images at deploy time, so this runs locally where git
+    exists. Copying the whole tree once keeps relative paths intact.
+    """
+    import tarfile
+
+    tmp = tempfile.mkdtemp(prefix="mhm-modal-head-")
+    with tempfile.NamedTemporaryFile(suffix=".tar", delete=False) as tf:
+        tar_path = tf.name
+    subprocess.run(
+        ["git", "archive", "HEAD", "--output", tar_path],
+        cwd=_ROOT, check=True,
+    )
+    with tarfile.open(tar_path) as archive:
+        archive.extractall(tmp)
+    os.unlink(tar_path)
+    return tmp
+
+
+_HEAD = _materialize_committed_tree()
+
 image = (
     modal.Image.debian_slim(python_version="3.12")
     .pip_install_from_pyproject(
-        os.path.join(_ROOT, "backend", "pyproject.toml"),
+        os.path.join(_HEAD, "backend", "pyproject.toml"),
     )
     # eval-agent runtime (hmo_item_verify executor, W-247): tiny deps the
     # backend image may not carry.
     .pip_install("pyyaml>=6.0", "jsonschema>=4.20")
     .add_local_dir(
-        os.path.join(_ROOT, "backend"),
+        os.path.join(_HEAD, "backend"),
         remote_path="/root/backend",
         copy=True,
     )
     .add_local_dir(
-        os.path.join(_ROOT, "backend", "ontology"),
+        os.path.join(_HEAD, "backend", "ontology"),
         remote_path="/root/ontology",
         copy=True,
     )
     .add_local_dir(
-        os.path.join(_ROOT, "eval-agent"),
+        os.path.join(_HEAD, "eval-agent"),
         remote_path="/root/eval-agent",
         copy=True,
     )

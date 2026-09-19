@@ -62,3 +62,25 @@ is the fallback, not the target.
 - Streaming judge calls through Heroku (R14 again).
 - Heroku-side batch workers (R27 worker dyno) — Modal is strictly
   cheaper and wider; Heroku stays admission-only.
+
+## Batched + cursor-based data access (mandatory for heavy paths)
+
+Approved as policy (2026-09-19): heavy consumers MUST NOT materialise
+the whole 18k-item scope in one step. Every heavy path uses:
+
+1. **Cursor pagination** — keyset queries on `(local_id)` ordered
+   ascending (`WHERE local_id > :cursor ORDER BY local_id LIMIT N`),
+   never OFFSET. Each page is processed and freed before the next is
+   fetched, so peak memory is one page.
+2. **Batches** — write paths (verdict persistence, fixture writes,
+   exports) flush per batch of ~500; read paths fetch pages of ~500.
+3. **No whole-corpus JSONB deserialise** — `resolved_entities` reads
+   become per-item or per-page; the merged view is served from the
+   fingerprint cache or paginated endpoints (W-246).
+4. **Resumable cursors** — the job `progress.checkpoint.cursor` stores
+   the last processed `local_id` so a restarted job continues from the
+   page boundary instead of the beginning.
+
+Applies to: verify scope prep, fixture writing, verdict persistence,
+merged-items endpoints, and any new bulk job.Violating this pattern needs a
+written justification in the owning block's rules.

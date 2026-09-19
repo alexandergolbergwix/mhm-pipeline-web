@@ -13,7 +13,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import cast, select
+from sqlalchemy import Integer as _SQL_INT, cast, func, select
 from sqlalchemy.dialects.postgresql import JSONB as _JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,9 +53,9 @@ from app.pipeline.hmo_item_views import (
     fetch_validation_error_items,
     item_label,
 )
-from app.pipeline.marc_verify_context import attach_marc_context, load_run_marc_records
 from app.pipeline.hmo_wikibase_live_enrich import enrich_hmo_items_with_wikibase_live
 from app.pipeline.inference_cache import read_from_inference_cache
+from app.pipeline.marc_verify_context import attach_marc_context, load_run_marc_records
 from app.pipeline.rule_verify.base import DEFAULT_BLOCKING_RULES, STATE_FAIL
 from app.pipeline.rule_verify.rules.hmo import build_hmo_rules
 from app.pipeline.studio_item_bulk_approve import MAX_BULK_APPROVE_IDS
@@ -131,11 +131,49 @@ async def list_hmo_items(
     return HmoItemsListResponse(run_id=run_id, items=items)
 
 
+async def _lookup_build_exists(db: AsyncSession, run_id: uuid.UUID) -> None:
+    from app.pipeline.hmo_item_views import (
+        ItemBuildMissingError,
+        hmo_items_fingerprint,
+    )
+
+    await hmo_items_fingerprint(db, run_id)
+    from sqlalchemy import select
+
+    from app.models.hmo_studio_item_cache import HmoStudioItemCache
+
+    exists = (
+        await db.execute(
+            select(HmoStudioItemCache.run_id).where(HmoStudioItemCache.run_id == run_id)
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        raise ItemBuildMissingError(run_id)
+
+
+async def _require_items_rows(db: AsyncSession, run_id: uuid.UUID) -> None:
+    """409 ``hmo_items_backfill`` while per-item rows are built (once)."""
+    from app.pipeline.hmo_item_rows import ensure_rows_backfilled
+
+    try:
+        if await ensure_rows_backfilled(db, run_id):
+            return
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=json.dumps({
+            "code": "hmo_items_backfill",
+            "message": "Preparing the item review table…",
+        }),
+    )
+
+
 @router.get("/{run_id}/hmo-studio/items/page")
 async def list_hmo_items_page(
     run_id: uuid.UUID,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=25, ge=1, le=200),
+    cursor: str = Query(default="", description="Opaque keyset cursor"),
+    limit: int = Query(default=25, ge=1, le=200),
     q: str = Query(default=""),
     sort: Literal["label", "local_id"] = Query(default="label"),
     dir: Literal["asc", "desc"] = Query(default="asc"),
@@ -144,104 +182,580 @@ async def list_hmo_items_page(
         default=False,
         description="Return the full filtered local_id list (no rows)",
     ),
+    include_total: bool = Query(default=True),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """One page of the review table, filtered and sorted server-side.
+    """Cursor-paginated review table, entirely in SQL over per-item rows.
 
-    Reads the in-process cached merged list (the 50-100 MB deserialise
-    happens once per run, W-239) and returns PAGE_SIZE rows — the browser
-    never receives the full corpus, so any entity count is safe.
-    ``ids_only=true`` returns every matching local_id (bulk actions).
+    Keyset pagination on ``(sort_value, local_id)`` — no offsets, stable
+    under concurrent edits, and the payload never scales with the corpus
+    (18k or 1M items cost the same).
     """
     await _lookup_run_with_access(db, run_id, auth)
+    await _require_items_rows(db, run_id)
+    return await _page_from_rows(
+        db, run_id,
+        cursor=cursor, limit=limit, q=q, sort=sort, dir=dir,
+        filters=filter, ids_only=ids_only, include_total=include_total,
+    )
+
+
+def _decode_cursor(cursor: str) -> tuple[str, str]:
+    if not cursor:
+        return "", ""
+    import base64  # noqa: PLC0415
+
     try:
-        items = await fetch_merged_hmo_items_cached(db, run_id)
-    except ItemBuildMissingError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raw = base64.urlsafe_b64decode(cursor.encode()).decode("utf-8")
+        sort_val, _, local_id = raw.partition("\x1f")
+        return sort_val, local_id
+    except Exception:  # noqa: BLE001 — bad cursor = start from the top
+        return "", ""
 
-    col_filters: dict[str, set[str]] = {}
-    for raw in filter:
-        col, _, value = str(raw).partition(":")
-        if col and value:
-            col_filters.setdefault(col, set()).add(value)
 
-    def matches_query(item: dict[str, Any], needle: str) -> bool:
-        labels = item.get("labels") or {}
-        haystack_parts = [
-            *[str(v) for v in labels.values() if v],
-            str(item.get("local_id") or ""),
-            str(item.get("class_qid") or ""),
-            str(item.get("source_uri") or ""),
-            *[str(v) for v in (item.get("descriptions") or {}).values() if v],
-            *[str(cn) for cn in item.get("control_numbers") or []],
-            *[
-                str(c.get("value"))
-                for c in item.get("claims") or []
-                if isinstance(c, dict) and isinstance(c.get("value"), str)
-            ],
-        ]
-        return any(needle in part.lower() for part in haystack_parts)
+def _encode_cursor(sort_val: str, local_id: str) -> str:
+    import base64  # noqa: PLC0415
 
+    return base64.urlsafe_b64encode(f"{sort_val}\x1f{local_id}".encode()).decode("ascii")
+
+
+async def _page_from_rows(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    *,
+    cursor: str,
+    limit: int,
+    q: str,
+    sort: str,
+    dir: str,
+    filters: list[str],
+    ids_only: bool,
+    include_total: bool,
+) -> dict[str, Any]:
+    from sqlalchemy import func, or_, select
+
+    from app.models.hmo_studio_item_override import HmoStudioItemOverride
+    from app.models.hmo_studio_item_row import HmoStudioItemRow
+    from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD, TARGET_ITEM, WikibaseCloudWrite
+    from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+
+    sort_col = (
+        HmoStudioItemRow.local_id if sort == "local_id" else HmoStudioItemRow.label_sort
+    )
+    descending = dir == "desc"
+    col_filters = _parse_col_filters(filters)
+
+    mapping_sq = (
+        select(
+            WikibaseEntityMapping.ontology_uri,
+            WikibaseEntityMapping.wikibase_id,
+        ).where(
+            WikibaseEntityMapping.run_id == run_id,
+            WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
+        ).subquery()
+    )
+    latest_write_sq = (
+        select(
+            WikibaseCloudWrite.source_uri,
+            WikibaseCloudWrite.operation,
+            WikibaseCloudWrite.outcome_message,
+            WikibaseCloudWrite.created_at,
+            func.row_number()
+            .over(
+                partition_by=WikibaseCloudWrite.source_uri,
+                order_by=WikibaseCloudWrite.created_at.desc(),
+            )
+            .label("rn"),
+        ).where(
+            WikibaseCloudWrite.run_id == run_id,
+            WikibaseCloudWrite.channel == CHANNEL_ITEM_UPLOAD,
+            WikibaseCloudWrite.target_kind == TARGET_ITEM,
+        ).subquery()
+    )
+    latest_write_sq = select(
+        latest_write_sq.c.source_uri,
+        latest_write_sq.c.operation,
+        latest_write_sq.c.outcome_message,
+        latest_write_sq.c.created_at,
+    ).where(latest_write_sq.c.rn == 1).subquery()
+
+    conditions = [HmoStudioItemRow.run_id == run_id]
+    conditions.extend(
+        _row_filter_conditions(col_filters, mapping_sq, latest_write_sq)
+    )
     needle = q.strip().lower()
     if needle:
-        items = [i for i in items if matches_query(i, needle)]
-    for col, wanted in col_filters.items():
-        items = [
-            i for i in items
-            if bool(set(_item_cell_values(i, col)) & wanted)
-        ]
+        like = f"%{needle}%"
+        conditions.append(or_(
+            HmoStudioItemRow.label_sort.ilike(like),
+            HmoStudioItemRow.local_id.ilike(like),
+            HmoStudioItemRow.source_uri.ilike(like),
+            HmoStudioItemRow.control_number.ilike(like),
+        ))
+
+    cursor_sort, cursor_local = _decode_cursor(cursor)
+    if cursor_sort or cursor_local:
+        if descending:
+            conditions.append(
+                or_(
+                    sort_col < cursor_sort,
+                    (sort_col == cursor_sort) & (HmoStudioItemRow.local_id < cursor_local),
+                )
+            )
+        else:
+            conditions.append(
+                or_(
+                    sort_col > cursor_sort,
+                    (sort_col == cursor_sort) & (HmoStudioItemRow.local_id > cursor_local),
+                )
+            )
+
+    base = (
+        select(
+            HmoStudioItemRow,
+            mapping_sq.c.wikibase_id,
+            latest_write_sq.c.operation,
+            latest_write_sq.c.outcome_message,
+            latest_write_sq.c.created_at,
+            HmoStudioItemOverride.approved,
+            HmoStudioItemOverride.ai_verdict,
+            HmoStudioItemOverride.rule_verdict,
+        )
+        .join(
+            mapping_sq,
+            mapping_sq.c.ontology_uri == HmoStudioItemRow.source_uri,
+            isouter=True,
+        )
+        .join(
+            latest_write_sq,
+            latest_write_sq.c.source_uri == HmoStudioItemRow.source_uri,
+            isouter=True,
+        )
+        .join(
+            HmoStudioItemOverride,
+            (HmoStudioItemOverride.run_id == HmoStudioItemRow.run_id)
+            & (HmoStudioItemOverride.local_id == HmoStudioItemRow.local_id),
+            isouter=True,
+        )
+        .where(*conditions)
+    )
 
     if ids_only:
+        rows = (
+            await db.execute(
+                base.with_only_columns(
+                    HmoStudioItemRow.local_id,
+                    mapping_sq.c.wikibase_id,
+                    HmoStudioItemOverride.approved,
+                ).order_by(sort_col.asc(), HmoStudioItemRow.local_id.asc())
+            )
+        ).all()
         return {
             "run_id": str(run_id),
-            "total": len(items),
+            "total": len(rows),
             "entries": [
                 {
-                    "local_id": str(i.get("local_id") or ""),
-                    "wikibase_id": i.get("wikibase_id"),
-                    "approved": i.get("approved"),
+                    "local_id": str(r[0]),
+                    "wikibase_id": r[1],
+                    "approved": r[2],
                 }
-                for i in items
+                for r in rows
             ],
         }
 
-    reverse = dir == "desc"
-    if sort == "local_id":
-        items = sorted(items, key=lambda i: str(i.get("local_id") or ""), reverse=reverse)
-    else:
-        items = sorted(
-            items,
-            key=lambda i: _item_label(i).lower(),
-            reverse=reverse,
+    order = (sort_col.desc(), HmoStudioItemRow.local_id.desc()) if descending \
+        else (sort_col.asc(), HmoStudioItemRow.local_id.asc())
+    page_rows = (
+        await db.execute(
+            base.with_only_columns(*base.selected_columns)
+            .order_by(*order)
+            .limit(limit + 1)
         )
+    ).all()
 
-    total = len(items)
-    start = (page - 1) * page_size
-    page_items = items[start : start + page_size]
+    has_more = len(page_rows) > limit
+    page_rows = page_rows[:limit]
+    items = []
+    last_sort = ""
+    last_local = ""
+    for row, wikibase_id, operation, outcome_message, write_at, approved, ai_verdict, rule_verdict in page_rows:  # noqa: E501
+        status = "created" if wikibase_id else "would_create"
+        compact = _compact_verdict(rule_verdict)
+        items.append(_page_item_dict(
+            row=row,
+            status=status,
+            wikibase_id=wikibase_id,
+            approved=approved,
+            ai_verdict=ai_verdict if isinstance(ai_verdict, dict) else None,
+            rule_verdict=compact,
+            upload_outcome=operation,
+            upload_message=outcome_message,
+            upload_at=write_at,
+        ))
+        last_sort = str(getattr(row, "label_sort" if sort == "label" else "local_id", "") or "")
+        last_local = str(row.local_id)
 
-    facets: dict[str, dict[str, int]] = {}
-    for col in _FACET_COLUMNS:
-        counts: dict[str, int] = {}
-        for item in items:
-            for value in _item_cell_values(item, col):
-                counts[value] = counts.get(value, 0) + 1
-        facets[col] = dict(sorted(counts.items(), key=lambda kv: -kv[1]))
-
+    next_cursor = _encode_cursor(last_sort, last_local) if has_more else None
+    total = None
+    if include_total:
+        total = int(await db.scalar(
+            select(func.count()).select_from(
+                base.with_only_columns(HmoStudioItemRow.id).order_by(None).subquery()
+            )
+        ) or 0)
     return {
         "run_id": str(run_id),
-        "page": page,
-        "page_size": page_size,
+        "limit": limit,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
         "total": total,
-        "facets": facets,
-        "items": page_items,
+        "facets": await _facet_counts(db, run_id),
+        "items": items,
     }
+
 
 
 _FACET_COLUMNS = (
     "approved", "validation", "data_status", "ai_verdict", "rule_verdict",
     "type", "upload_outcome", "wikibase_id", "authority",
 )
+
+
+
+def _compact_verdict(verdict: Any) -> dict[str, Any] | None:
+    from app.pipeline.rule_verify.persist import compact_rule_verdict
+
+    return compact_rule_verdict(verdict if isinstance(verdict, dict) else None)
+
+
+def _parse_col_filters(filters: list[str]) -> dict[str, set[str]]:
+    col_filters: dict[str, set[str]] = {}
+    for raw in filters:
+        col, _, value = str(raw).partition(":")
+        if col and value:
+            col_filters.setdefault(col, set()).add(value)
+    return col_filters
+
+
+def _row_filter_conditions(col_filters: dict[str, set[str]], mapping_sq, latest_write_sq):
+    """SQL conditions per review-table column filter (Postgres)."""
+    from sqlalchemy import and_, not_, or_
+
+    from app.models.hmo_studio_item_override import HmoStudioItemOverride
+    from app.models.hmo_studio_item_row import HmoStudioItemRow
+
+    approved = HmoStudioItemOverride.approved
+    ai_overall = HmoStudioItemOverride.ai_verdict["overall"].astext
+    rv = HmoStudioItemOverride.rule_verdict
+    rv_overall = rv["overall"].astext
+    rv_fails = cast(rv["fail_count"], _SQL_INT)
+    rv_errors = cast(rv["error_count"], _SQL_INT)
+    wiki_id = mapping_sq.c.wikibase_id
+    operation = latest_write_sq.c.operation
+    issues = HmoStudioItemRow.shacl_issues
+    blocking_shacl = HmoStudioItemRow.has_blocking_shacl
+
+    def data_status_expr(value: str):  # noqa: ANN202
+        # failed: last write failed; new: not mapped yet; updated: update;
+        # will_update: mapped, no update write yet.
+        failed = and_(operation.is_not(None), operation == "failed")
+        updated = operation == "update"
+        if value == "failed":
+            return failed
+        if value == "new":
+            return and_(wiki_id.is_(None), not_(failed))
+        if value == "updated":
+            return and_(wiki_id.is_not(None), updated)
+        return and_(wiki_id.is_not(None), not_(failed), not_(updated))
+
+    def validation_expr(value: str):  # noqa: ANN202
+        if value == "blocked":
+            return blocking_shacl.is_(True)
+        if value == "ok":
+            return and_(blocking_shacl.is_(False), func.jsonb_array_length(issues) == 0)
+        if value == "error":
+            return and_(
+                blocking_shacl.is_(False),
+                func.jsonb_array_length(issues) > 0,
+                issues.contains([{"severity": "Violation"}])
+                | issues.contains([{"severity": "Error"}]),
+            )
+        return and_(
+            blocking_shacl.is_(False),
+            func.jsonb_array_length(issues) > 0,
+            not_(
+                issues.contains([{"severity": "Violation"}])
+                | issues.contains([{"severity": "Error"}])
+            ),
+        )
+
+    def authority_expr(kind: str):  # noqa: ANN202
+        url_by_kind = {
+            "Wikidata": "wikidata.org",
+            "VIAF": "viaf.org",
+            "Mazal/NLI": "nli.org.il",
+        }
+        needle = url_by_kind.get(kind, kind.lower())
+        entity = HmoStudioItemRow.entity
+        return or_(
+            entity["authority_evidence"].op("@>")(cast(
+                json.dumps([{"kind": kind}]), _JSONB,
+            )),
+            entity["claims"].op("@>")(cast(
+                json.dumps([{"value": f"%{needle}%"}]), _JSONB,
+            )) if False else entity["authority_evidence"].op("@>")(cast(
+                json.dumps([{"source": needle}]), _JSONB,
+            )),
+            entity["claims"].op("@>")(cast(
+                json.dumps([{"value": f"https://www.{needle}/"}]), _JSONB,
+            )),
+        )
+
+    conditions = []
+    for col, wanted in col_filters.items():
+        conditions.append(or_(*(
+            _col_condition(
+                col, value,
+                approved=approved, ai_overall=ai_overall, rv_overall=rv_overall,
+                rv_fails=rv_fails, rv_errors=rv_errors, wiki_id=wiki_id,
+                operation=operation,
+                validation_expr=validation_expr,
+                data_status_expr=data_status_expr,
+                class_qid=HmoStudioItemRow.class_qid,
+                authority_expr=authority_expr,
+            )
+            for value in wanted
+        )))
+    return conditions
+
+
+def _col_condition(
+    col: str,
+    value: str,
+    *,
+    approved,
+    ai_overall,
+    rv_overall,
+    rv_fails,
+    rv_errors,
+    wiki_id,
+    operation,
+    validation_expr,
+    data_status_expr,
+    class_qid,
+    authority_expr,
+):
+    from sqlalchemy import and_, or_
+
+    if col == "approved":
+        if value == "approved":
+            return approved.is_(True)
+        if value == "rejected":
+            return approved.is_(False)
+        return approved.is_(None)
+    if col == "validation":
+        return validation_expr(value)
+    if col == "data_status":
+        return data_status_expr(value)
+    if col == "ai_verdict":
+        return ai_overall == value if value != "not verified" else ai_overall.is_(None)
+    if col == "rule_verdict":
+        if value == "not checked":
+            return rv_overall.is_(None)
+        if value == "fail":
+            return and_(rv_fails > 0)
+        if value == "error":
+            return and_(rv_errors > 0, or_(rv_fails.is_(None), rv_fails == 0))
+        return and_(rv_overall == value, or_(rv_fails.is_(None), rv_fails == 0))
+    if col == "type":
+        return class_qid == value
+    if col == "upload_outcome":
+        if value == "never":
+            return operation.is_(None)
+        return operation == value
+    if col == "wikibase_id":
+        if value == "—":
+            return wiki_id.is_(None)
+        return wiki_id == value
+    if col == "authority":
+        return authority_expr(value)
+
+    from sqlalchemy import true as _true
+
+    return _true()
+
+
+def _page_item_dict(
+    *,
+    row,
+    status: str,
+    wikibase_id: str | None,
+    approved: bool | None,
+    ai_verdict: dict[str, Any] | None,
+    rule_verdict: dict[str, Any] | None,
+    upload_outcome: str | None,
+    upload_message: str | None,
+    upload_at,
+) -> dict[str, Any]:
+    entity = row.entity if isinstance(row.entity, dict) else {}
+    return {
+        **entity,
+        "local_id": str(row.local_id),
+        "status": status,
+        "wikibase_id": wikibase_id,
+        "approved": approved,
+        "shacl_issues": row.shacl_issues or [],
+        "has_blocking_shacl": bool(row.has_blocking_shacl),
+        "ai_verdict": ai_verdict,
+        "ai_verdict_at": None,
+        "rule_verdict": rule_verdict,
+        "upload_outcome": upload_outcome,
+        "upload_message": upload_message or "",
+        "upload_at": upload_at.isoformat() if upload_at is not None else None,
+        "override_present": approved is not None,
+    }
+
+
+async def _facet_counts(db: AsyncSession, run_id: uuid.UUID) -> dict[str, dict[str, int]]:
+    """Global per-column value counts over the rows join (60 s cache)."""
+    import time  # noqa: PLC0415
+
+    key = ("facets", str(run_id))
+    cached = _FACET_CACHE.get(key)
+    if cached and time.monotonic() - cached[0] < 60:
+        return cached[1]
+
+    from sqlalchemy import func, select
+
+    from app.models.hmo_studio_item_override import HmoStudioItemOverride
+    from app.models.hmo_studio_item_row import HmoStudioItemRow
+    from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD, TARGET_ITEM, WikibaseCloudWrite
+    from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+
+    rv = HmoStudioItemOverride.rule_verdict
+    rv_fails = cast(rv["fail_count"], _SQL_INT)
+    rv_errors = cast(rv["error_count"], _SQL_INT)
+    rv_overall = rv["overall"].astext
+    ai_overall = HmoStudioItemOverride.ai_verdict["overall"].astext
+    facets: dict[str, dict[str, int]] = {}
+    base = select(
+        HmoStudioItemRow.class_qid,
+        HmoStudioItemRow.has_blocking_shacl,
+        HmoStudioItemRow.shacl_issues,
+        HmoStudioItemRow.local_id,
+        HmoStudioItemOverride.approved,
+        ai_overall,
+        rv_overall,
+        rv_fails,
+        rv_errors,
+    ).join(
+        HmoStudioItemOverride,
+        (HmoStudioItemOverride.run_id == HmoStudioItemRow.run_id)
+        & (HmoStudioItemOverride.local_id == HmoStudioItemRow.local_id),
+        isouter=True,
+    ).where(HmoStudioItemRow.run_id == run_id)
+    rows = (await db.execute(base)).all()
+
+    counts = {
+        "approved": {}, "validation": {}, "ai_verdict": {}, "rule_verdict": {},
+        "type": {},
+    }
+    for row in rows:
+        approved = row.approved
+        a = "approved" if approved is True else "rejected" if approved is False else "pending"
+        counts["approved"][a] = counts["approved"].get(a, 0) + 1
+        v = (
+            "blocked" if row.has_blocking_shacl
+            else "ok" if len(row.shacl_issues or []) == 0
+            else (
+                "error" if any(
+                    str(i.get("severity")) in ("Violation", "Error")
+                    for i in row.shacl_issues if isinstance(i, dict)
+                ) else "warn"
+            )
+        )
+        counts["validation"][v] = counts["validation"].get(v, 0) + 1
+        av = row.ai_overall or "not verified"
+        counts["ai_verdict"][av] = counts["ai_verdict"].get(av, 0) + 1
+        if row.rv_overall is None:
+            rvl = "not checked"
+        elif (row.rv_fails or 0) > 0:
+            rvl = "fail"
+        elif (row.rv_errors or 0) > 0:
+            rvl = "error"
+        else:
+            rvl = str(row.rv_overall)
+        counts["rule_verdict"][rvl] = counts["rule_verdict"].get(rvl, 0) + 1
+        cq = str(row.class_qid or "")
+        counts["type"][cq] = counts["type"].get(cq, 0) + 1
+
+    facets.update(counts)
+
+    # data_status + upload_outcome need the write join.
+    mapping_sq = select(
+        WikibaseEntityMapping.ontology_uri,
+        WikibaseEntityMapping.wikibase_id,
+    ).where(
+        WikibaseEntityMapping.run_id == run_id,
+        WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
+    ).subquery()
+    writes_sq = (
+        select(
+            WikibaseCloudWrite.source_uri,
+            WikibaseCloudWrite.operation,
+            func.row_number().over(
+                partition_by=WikibaseCloudWrite.source_uri,
+                order_by=WikibaseCloudWrite.created_at.desc(),
+            ).label("rn"),
+        ).where(
+            WikibaseCloudWrite.run_id == run_id,
+            WikibaseCloudWrite.channel == CHANNEL_ITEM_UPLOAD,
+            WikibaseCloudWrite.target_kind == TARGET_ITEM,
+        ).subquery()
+    )
+    writes_sq = select(
+        writes_sq.c.source_uri, writes_sq.c.operation,
+    ).where(writes_sq.c.rn == 1).subquery()
+    wrows = (
+        await db.execute(
+            select(
+                HmoStudioItemRow.source_uri,
+                mapping_sq.c.wikibase_id,
+                writes_sq.c.operation,
+            ).join(
+                mapping_sq,
+                mapping_sq.c.ontology_uri == HmoStudioItemRow.source_uri,
+                isouter=True,
+            ).join(
+                writes_sq, writes_sq.c.source_uri == HmoStudioItemRow.source_uri,
+                isouter=True,
+            ).where(HmoStudioItemRow.run_id == run_id)
+        )
+    ).all()
+    ds: dict[str, int] = {}
+    uo: dict[str, int] = {}
+    for source_uri, wikibase_id, operation in wrows:
+        failed = operation == "failed"
+        if failed:
+            d = "failed"
+        elif wikibase_id is None:
+            d = "new"
+        elif operation == "update":
+            d = "updated"
+        else:
+            d = "will_update"
+        ds[d] = ds.get(d, 0) + 1
+        u = str(operation or "never")
+        uo[u] = uo.get(u, 0) + 1
+    facets["data_status"] = ds
+    facets["upload_outcome"] = uo
+
+    _FACET_CACHE[key] = (time.monotonic(), facets)
+    return facets
+
+
+_FACET_CACHE: dict[tuple[str, str], tuple[float, dict[str, dict[str, int]]]] = {}
 
 
 def _item_label(item: dict[str, Any]) -> str:

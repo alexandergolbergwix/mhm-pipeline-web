@@ -54,6 +54,9 @@ export function HmoItemsPanel({
   const [tableTotal, setTableTotal] = useState(0);
   const [tableFacets, setTableFacets] = useState<Record<string, Record<string, number>>>({});
   const [tablePage, setTablePage] = useState(1);
+  // Keyset cursor per page boundary: cursorStack[i] starts page i+1.
+  const [cursorStack, setCursorStack] = useState<(string | null)[]>([null]);
+  const [tableHasMore, setTableHasMore] = useState(false);
   const [tableQuery, setTableQuery] = useState<HmoItemTableQuery>({
     search: "",
     sortKey: "label",
@@ -123,16 +126,23 @@ export function HmoItemsPanel({
     setError(null);
     try {
       const res = await HmoStudioItems.page(runId, {
-        page: tablePage,
-        pageSize: 25,
+        cursor: cursorStack[tablePage - 1] ?? null,
+        limit: 25,
         q: tableQuery.search,
         sort: tableQuery.sortKey,
         dir: tableQuery.sortDir,
         filters: tableQuery.colFilters as Record<string, string[]>,
       });
       setItems(res.items);
-      setTableTotal(res.total);
+      setTableHasMore(res.has_more);
+      if (res.total != null) setTableTotal(res.total);
       setTableFacets(res.facets);
+      // remember the cursor that starts the NEXT page (keyset walk)
+      setCursorStack((stack) => {
+        const next = stack.slice(0, tablePage);
+        next[tablePage] = res.next_cursor;
+        return next;
+      });
       setOpenItem((prev) => {
         if (!prev) return prev;
         return res.items.find((i) => i.local_id === prev.local_id) ?? prev;
@@ -142,7 +152,7 @@ export function HmoItemsPanel({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [buildPresent, runId, tablePage, tableQuery]);
+  }, [buildPresent, runId, tablePage, tableQuery, cursorStack]);
 
   // Light id-set refresh (bulk actions + verify scope) — debounced.
   useEffect(() => {
@@ -377,10 +387,10 @@ export function HmoItemsPanel({
           items={items}
           total={tableTotal}
           page={tablePage}
-          pageCount={Math.max(1, Math.ceil(tableTotal / 25))}
+          pageCount={tableHasMore ? tablePage + 1 : tablePage}
           facets={tableFacets}
           query={tableQuery}
-          onQueryChange={(q) => { setTablePage(1); setTableQuery(q); }}
+          onQueryChange={(q) => { setTablePage(1); setCursorStack([null]); setTableQuery(q); }}
           onPageChange={setTablePage}
           onOpenItem={setOpenItem}
           onToggleApproved={(item, next) => void handleToggleApproved(item, next)}
