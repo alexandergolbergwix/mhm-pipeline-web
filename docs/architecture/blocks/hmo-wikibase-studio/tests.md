@@ -125,5 +125,8 @@
   blank-node IDs and cross-run-capable deferred target serialization (R42/R43).
 - `backend/tests/test_hmo_studio_rule_verify_export_router.py` — rule-verify
   export: 409 without build, JSON/CSV shape per scope (block R58).
+- `backend/tests/test_rule_verify.py::test_rule_verify_single_entity_endpoint` —
+  one entity's non-pass results via `GET …/rule-verify/results/entities/{local_id}`
+  (drawer Rule check card), unchecked fallback for unknown local ids.
 - `backend/tests/unit/test_export_formatters.py` — `json_array_stream`
   byte-compat, empty header, header-before-items laziness (Rule W-247).
