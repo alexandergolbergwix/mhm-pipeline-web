@@ -257,13 +257,13 @@ async def _page_from_rows(
     )
     latest_write_sq = (
         select(
-            WikibaseCloudWrite.source_uri,
+            WikibaseCloudWrite.target_key.label("source_uri"),
             WikibaseCloudWrite.operation,
             WikibaseCloudWrite.outcome_message,
             WikibaseCloudWrite.created_at,
             func.row_number()
             .over(
-                partition_by=WikibaseCloudWrite.source_uri,
+                partition_by=WikibaseCloudWrite.target_key,
                 order_by=WikibaseCloudWrite.created_at.desc(),
             )
             .label("rn"),
@@ -702,10 +702,10 @@ async def _facet_counts(db: AsyncSession, run_id: uuid.UUID) -> dict[str, dict[s
     ).subquery()
     writes_sq = (
         select(
-            WikibaseCloudWrite.source_uri,
+            WikibaseCloudWrite.target_key.label("source_uri"),
             WikibaseCloudWrite.operation,
             func.row_number().over(
-                partition_by=WikibaseCloudWrite.source_uri,
+                partition_by=WikibaseCloudWrite.target_key,
                 order_by=WikibaseCloudWrite.created_at.desc(),
             ).label("rn"),
         ).where(
