@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-246)
+## Architectural rules (W-1…W-247)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -225,6 +225,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-244** — Modal containers heartbeat their own lease (60 s, `claimed_by`-guarded) so a long quiet CPU stretch never trips the stale reap, and `finish_job` never overwrites a terminal row
 - **W-245** — Verify scope preparation must yield the event loop and report phases: the 18k-item cache deserialise + MARC-context pass are pure CPU — without yields the heartbeat, publisher, and stale reap all freeze and the dyno wedges
 - **W-246** — Never load a multi-MB blob just to test existence or freshness: `ensure_ttl_on_disk` probes `md5(ttl_content)` server-side and transfers the TTL blob only on mismatch, and the merged Studio items view is fingerprint-keyed in-process so unchanged repeat loads skip the 18k-entity merge
+- **W-247** — Large exports stream per item: heavy loads run inside the `StreamingResponse` generator after the first bytes go out (Heroku H12 = 30 s initial-response window), preconditions that need an error status are pre-checked cheaply before the stream starts, DB work uses short-lived `session_scope` windows (a request-scoped session stays pinned for the whole stream), and JSON uses `export/formatters.py:json_array_stream` — `json_stream` buffers the whole document in memory and is only for small payloads
 - **W-105** — Studio “Approve all visible” MUST run as a background job
 - **W-106** — All Studio / RDF builds MUST run as `run_jobs` with inline progress
 - **W-107** — All Studio publish/upload paths MUST run as `run_jobs`

@@ -325,3 +325,17 @@ cancel checks (W-244). Shard results merge into per-rule tallies only —
 the job result never carries per-entity payloads (R14). *Why:* a sync
 starmap iteration on the event loop starves the heartbeat and the stale
 reap kills the job mid-compute (2026-09-18 incident class).
+
+58. **R58 — Large exports stream per item (Rule W-247).**
+`GET .../rule-verify/export` wraps a true per-entity generator in
+`StreamingResponse`: JSON via `export/formatters.py:json_array_stream`
+(header prefix first, one item per yield, closing bracket), CSV one row
+per step. The merged-items load runs inside the generator after the first
+bytes are out; the no-build 409 is pre-checked with a cheap indexed
+lookup before the stream starts. The endpoint takes no
+`Depends(get_session)` — a streamed response pins the request session for
+the whole download, so DB work uses short-lived `session_scope` windows.
+*Why:* on the 18k-entity run the export
+built the full payload — including `json_stream`'s whole-document
+`json.dumps` — before the first byte, and Heroku's router killed the
+request at 30 s (H12); the 50–100 MB string also R14'd the dyno.

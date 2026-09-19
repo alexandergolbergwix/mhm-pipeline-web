@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -19,13 +20,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session, session_scope
-from app.export.formatters import json_stream
+from app.export.formatters import json_array_stream, json_stream
 from app.models.event import (
     ENTITY_TYPE_HMO_ITEM_OVERRIDE,
     OP_CREATE,
     OP_PATCH,
     ProjectEvent,
 )
+from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.hmo_studio_item_override import HmoStudioItemOverride
 from app.pipeline import hmo_item_actions
 from app.pipeline.agent_runner import (
@@ -1723,7 +1725,6 @@ async def export_rule_verify_results(
     format: Literal["json", "csv"] = Query(default="json"),
     scope: Literal["failures", "all"] = Query(default="failures"),
     auth: AuthContext = Depends(current_auth),
-    db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
     """Rule results per entity, with the full entity data attached.
 
@@ -1731,29 +1732,47 @@ async def export_rule_verify_results(
     ``fail``; ``all`` includes every checked entity. CSV emits one row per
     non-pass rule result; JSON attaches labels, descriptions, claims and
     authority evidence per entity.
-    """
-    await _lookup_run_with_access(db, run_id, auth, write=False)
-    try:
-        items = await fetch_merged_hmo_items_cached(db, run_id)
-    except ItemBuildMissingError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    verdict_rows = (
-        await db.execute(
-            select(
-                HmoStudioItemOverride.local_id,
-                HmoStudioItemOverride.rule_verdict,
-            ).where(HmoStudioItemOverride.run_id == run_id)
+    Streams per entity (Rule W-247). Deliberately does NOT take
+    ``db: AsyncSession = Depends(get_session)``: a request-scoped session
+    stays open for the whole streamed response (ai_verify.py note), and a
+    100 MB download can hold it for minutes — long enough to exhaust the
+    pool (2026-07-04 outage). All DB work uses short-lived
+    :func:`session_scope` windows instead.
+    """
+    async with session_scope() as db:
+        await _lookup_run_with_access(db, run_id, auth, write=False)
+        # The heavy merged-items load runs inside the streaming generator so the
+        # first bytes go out well inside Heroku's 30 s initial-response window
+        # (H12) and the payload never buffers in memory (R14). A missing build
+        # must still answer 409 — impossible once the body has started — so the
+        # build row is pre-checked with this cheap indexed lookup.
+        built_at = await db.scalar(
+            select(HmoStudioItemCache.built_at).where(HmoStudioItemCache.run_id == run_id)
         )
-    ).all()
+        if built_at is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"No item build exists for run {run_id}. Call build-items first.",
+            )
+
+        verdict_rows = (
+            await db.execute(
+                select(
+                    HmoStudioItemOverride.local_id,
+                    HmoStudioItemOverride.rule_verdict,
+                ).where(HmoStudioItemOverride.run_id == run_id)
+            )
+        ).all()
     verdicts = {
         str(local_id): verdict
         for local_id, verdict in verdict_rows
         if isinstance(verdict, dict) and verdict.get("results")
     }
 
-    def _entity_rows() -> list[dict[str, Any]]:
-        out: list[dict[str, Any]] = []
+    async def _entity_rows() -> AsyncIterator[dict[str, Any]]:
+        async with session_scope() as db:
+            items = await fetch_merged_hmo_items_cached(db, run_id)
         for item in items:
             local_id = str(item.get("local_id") or "")
             verdict = verdicts.get(local_id)
@@ -1765,7 +1784,7 @@ async def export_rule_verify_results(
                 r.get("state") == "fail" for r in results
             ):
                 continue
-            out.append({
+            yield {
                 "local_id": local_id,
                 "label": item_label(item),
                 "class_qid": item.get("class_qid"),
@@ -1787,18 +1806,21 @@ async def export_rule_verify_results(
                     "skipped_statements": item.get("skipped_statements") or [],
                     "shacl_issues": item.get("shacl_issues") or [],
                 },
-            })
-        return out
+            }
 
     filename = f"run-{run_id}-rule-verify-{scope}.{format}"
     if format == "json":
         return StreamingResponse(
-            json_stream({"run_id": str(run_id), "scope": scope, "entities": _entity_rows()}),
+            json_array_stream(
+                {"run_id": str(run_id), "scope": scope},
+                "entities",
+                _entity_rows(),
+            ),
             media_type="application/json",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    def _csv_stream():
+    async def _csv_stream():
         buf = io.StringIO()
         fields = [
             "local_id", "label", "class_qid", "entity_type", "wikibase_id",
@@ -1807,7 +1829,7 @@ async def export_rule_verify_results(
         ]
         writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
-        for row in _entity_rows():
+        async for row in _entity_rows():
             skip = ("rule_id", "state", "field", "message")
             base = {k: row.get(k) for k in fields if k not in skip}
             if not row["results"]:

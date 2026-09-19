@@ -79,6 +79,22 @@ added the columns (also on `wikidata_item_overrides` for phase 3).
 - Advisory contract: rule results never gate upload and never auto-approve
   (eval-agent R13 parity). Only SHACL keeps its existing upload gate.
 
+## Export (streaming)
+
+`GET /rule-verify/export?format=json|csv&scope=failures|all` streams one
+row per entity with the full entity data (labels, claims, authority
+evidence) attached. Two invariants (block R58, Rule W-247):
+
+- The JSON document is produced by `export/formatters.py:json_array_stream`
+  — header prefix first, then one serialised entity per yield — so the
+  first bytes go out before the ~30 s merged-items load and the payload
+  never buffers in memory.
+- The no-build case answers 409 via a cheap pre-check; the heavy
+  `fetch_merged_hmo_items_cached` call runs inside the generator. The
+  endpoint takes no `Depends(get_session)` — DB work uses short-lived
+  `session_scope` windows so the download never pins a pooled connection
+  (2026-07-04 outage pattern).
+
 ## Related rules
 
 - `rules.md` R36 — rule-verify invariants (advisory, fail-closed API

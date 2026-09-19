@@ -592,3 +592,52 @@ Invariant:
 Tests: `test_graph_builder_codicological_labels.py`
 (`test_restriction_url_strips_marc_quote_wrappers`),
 `test_hmo_item_upload.py` (`test_url_claims_strip_marc_quote_wrappers_before_wbi`).
+
+### Rule W-247 — Large exports MUST stream per item; never serialise the whole payload (added 2026-09-19)
+
+The rule-verify panel's **Export CSV / Export JSON** on an 18k-entity run
+silently failed in production. Two defects, both invisible on small runs:
+
+1. The endpoint loaded the merged items view (~30 s on a cold cache) and
+builds the full entity-row list **before** the response started. Heroku's
+router kills a request that sends no data within 30 s (H12), so the
+download died before the first byte. The endpoint also took the
+request-scoped `Depends(get_session)` session, which a streamed response
+pins for the whole download (pool-exhaustion class, 2026-07-04).
+2. `export.formatters.json_stream` calls `json.dumps` on the **whole**
+   payload and then chunk-yields the encoded string. That is streaming in
+   name only: a 50–100 MB document (plus Python-object overhead, often 3–5×
+   the JSON size) still materialises in memory — R14 territory.
+
+Invariant:
+
+1. An export endpoint over a large run must wrap a **true per-item
+   generator** in `StreamingResponse`. For JSON documents shaped
+   `{...header, "<items_key>": [...]}`, use
+   `app/export/formatters.py:json_array_stream` — it emits the header
+   prefix first, then one serialised item per yield, then the closing
+   bracket. The document is byte-compatible with a `json.dumps` of the
+   full payload, so consumers cannot tell the difference.
+2. The heavy load (`fetch_merged_hmo_items_cached`) runs **inside** the
+   generator, after the first bytes are out. Preconditions that need an
+   HTTP error status (409 no-build, 404 no-run) are pre-checked with cheap
+   indexed lookups **before** the stream starts — the status cannot change
+   once the body has begun.
+3. CSV exports write one row per generator step (`io.StringIO` reset
+   between rows), never a row list.
+4. Emit a chunk at least every ~55 s (Heroku's rolling idle window H15/H28);
+   never set a guessed `Content-Length` on a streamed response.
+5. Do NOT take `db: AsyncSession = Depends(get_session)` on a streamed
+   endpoint: the request-scoped session stays open until the response has
+   fully streamed, and a 100 MB download can hold it for minutes — pool
+   exhaustion territory (2026-07-04 outage). Use short-lived
+   :func:`app.db.session_scope` windows for the pre-checks and the
+   in-generator load instead (see `ai_verify.py` for the SSE precedent).
+
+Note the sibling hand-rolled pattern in
+`app/routers/ai_verify.py` (`_json_gen`, verdict export) — same contract.
+`json_stream` remains valid only for payloads known to be small.
+
+Tests: `tests/test_hmo_studio_rule_verify_export_router.py` (409 without
+build, JSON/CSV shapes per scope), `tests/unit/test_export_formatters.py`
+(byte-compat, empty header, header-before-items laziness).

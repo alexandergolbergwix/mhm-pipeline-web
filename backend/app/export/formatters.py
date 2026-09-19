@@ -14,7 +14,7 @@ import csv
 import io
 import json
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterable
 from datetime import date, datetime
 from typing import Any
 
@@ -38,6 +38,43 @@ async def json_stream(payload: dict[str, Any] | list[Any]) -> AsyncIterator[byte
     chunk = 64 * 1024
     for i in range(0, len(encoded), chunk):
         yield encoded[i: i + chunk]
+
+
+async def json_array_stream(
+    header: dict[str, Any],
+    items_key: str,
+    items: AsyncIterator[dict[str, Any]] | Iterable[dict[str, Any]],
+) -> AsyncIterator[bytes]:
+    """Stream a ``{...header, "<items_key>": [item, item, ...]}`` document.
+
+    Unlike :func:`json_stream`, which serialises the whole payload before
+    yielding, this emits the header prefix first, then one serialised item
+    per yield, then the closing bracket — memory stays O(1 item) and the
+    first bytes go out before any slow item generation starts (Heroku's
+    router kills a request that sends no data within 30 s).
+
+    The item dicts are serialised one at a time with the same defaults as
+    :func:`json_stream`, so the document is byte-compatible with a plain
+    ``json.dumps`` of ``{**header, items_key: [...]}``.
+    """
+    prefix = json.dumps(header, default=_json_default, ensure_ascii=False)
+    opener = f'"{items_key}":['
+    yield (f"{prefix[:-1]},{opener}" if header else f"{{{opener}").encode("utf-8")
+    first = True
+
+    def _encode(item: dict[str, Any]) -> bytes:
+        nonlocal first
+        sep = b"" if first else b","
+        first = False
+        return sep + json.dumps(item, default=_json_default, ensure_ascii=False).encode("utf-8")
+
+    if hasattr(items, "__aiter__"):
+        async for item in items:
+            yield _encode(item)
+    else:
+        for item in items:
+            yield _encode(item)
+    yield b"]}"
 
 
 # ── CSV ──────────────────────────────────────────────────────────────

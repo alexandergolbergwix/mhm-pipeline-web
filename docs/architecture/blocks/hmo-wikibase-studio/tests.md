@@ -123,3 +123,7 @@
   drift reporting (R40).
 - `backend/tests/unit/test_hmo_exporter_resolution.py` — deterministic typed
   blank-node IDs and cross-run-capable deferred target serialization (R42/R43).
+- `backend/tests/test_hmo_studio_rule_verify_export_router.py` — rule-verify
+  export: 409 without build, JSON/CSV shape per scope (block R58).
+- `backend/tests/unit/test_export_formatters.py` — `json_array_stream`
+  byte-compat, empty header, header-before-items laziness (Rule W-247).
