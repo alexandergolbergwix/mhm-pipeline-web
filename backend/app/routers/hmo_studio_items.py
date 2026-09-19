@@ -632,10 +632,10 @@ async def _facet_counts(db: AsyncSession, run_id: uuid.UUID) -> dict[str, dict[s
     from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 
     rv = HmoStudioItemOverride.rule_verdict
-    rv_fails = cast(rv["fail_count"], _SQL_INT)
-    rv_errors = cast(rv["error_count"], _SQL_INT)
-    rv_overall = rv["overall"].astext
-    ai_overall = HmoStudioItemOverride.ai_verdict["overall"].astext
+    rv_fails = cast(rv["fail_count"], _SQL_INT).label("rv_fails")
+    rv_errors = cast(rv["error_count"], _SQL_INT).label("rv_errors")
+    rv_overall = rv["overall"].astext.label("rv_overall")
+    ai_overall = HmoStudioItemOverride.ai_verdict["overall"].astext.label("ai_overall")
     facets: dict[str, dict[str, int]] = {}
     base = select(
         HmoStudioItemRow.class_qid,
