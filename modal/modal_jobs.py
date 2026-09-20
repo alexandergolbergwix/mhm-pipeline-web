@@ -331,7 +331,13 @@ def run_modal_job_detached(job_id: str, kind: str, callback_url: str = "") -> di
 # orchestrator (below, inside the claimed container) merges summaries and
 # owns progress + terminal state on the single claimed job row.
 
-_RULE_VERIFY_SHARD_SIZE = 1500
+# Prod Postgres is a shared essential-1 instance with a hard 20-connection
+# budget that other tenants fluctuate (Rule W-253): every shard container
+# holds its own SQLAlchemy pool, so the fan-out is env-tunable. Defaults
+# sized so peak shard pools + the claimed orchestrator + web dynos fit
+# under the budget; set MHM_RULE_VERIFY_SHARD_SIZE / MHM_RDF_BUILD_SHARD_SIZE
+# on the mhm-jobs2 secret to retune without a code change.
+_RULE_VERIFY_SHARD_SIZE = int(os.environ.get("MHM_RULE_VERIFY_SHARD_SIZE") or 6000)
 
 
 @app.function(
@@ -537,7 +543,7 @@ async def _run_rule_verify_sharded(job_id: str) -> None:
 # checkpoints identical to the sequential path (a local fallback resumes
 # at the same record index), and owns progress + terminal state.
 
-_RDF_BUILD_SHARD_SIZE = 1000
+_RDF_BUILD_SHARD_SIZE = int(os.environ.get("MHM_RDF_BUILD_SHARD_SIZE") or 4000)
 
 
 @app.function(

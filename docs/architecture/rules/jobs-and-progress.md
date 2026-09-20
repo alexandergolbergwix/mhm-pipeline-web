@@ -485,3 +485,31 @@ only light kinds, `worker.*` everything. A queued heavy job waits
 process claims it — strictness never traps a job in `queued` forever. The
 worker entrypoint is `python -m app.jobs_worker` (Procfile `worker:`,
 scale with `heroku ps:scale worker=1`).
+
+### Rule W-253 — Modal shard fan-out must fit the shared Postgres connection budget (added 2026-09-20)
+
+Prod `DATABASE_URL` is a **shared** Heroku Postgres essential-1 instance:
+a hard 20-connection limit whose co-tenants (other apps, GUI clients)
+fluctuate between ~6 and ~18 connections within minutes. Every Modal
+shard container creates its own SQLAlchemy engine
+(`pool_size=5 + max_overflow=10`, connections opened lazily at first
+use), so a fan-out of N containers bursts N×(1-5) connections at
+container startup — on top of whatever the web dynos and co-tenants
+already hold.
+
+The 2026-09-20 rebuild of run 3494ebf5 hit this three times in a row:
+`rdf_build` (1000 records/shard → 7 containers) failed three attempts
+and the `hmo_rule_verify` fan-out (1500 items/shard → 13 containers)
+failed once, all with `too many connections for role "u8g61pe77ojmd0"`
+— even `heroku pg:psql` could not get in while co-tenants peaked.
+
+Therefore: the shard sizes in `modal/modal_jobs.py` are **env-tunable**
+(`MHM_RDF_BUILD_SHARD_SIZE`, `MHM_RULE_VERIFY_SHARD_SIZE`, read per
+container) with defaults 4000 records (2 containers) and 6000 items
+(4 containers) so peak shard pools + web dynos stay under the budget.
+Bigger shards are safe: shard functions run with 4 GB memory and the
+18.5k-item corpus already fits a single unsharded container
+(`hmo_item_build` is not sharded and succeeded in 510 s). Any default
+change lands with `modal deploy modal_jobs.py` in the same change
+(Rule W-243). When the DB is saturated, retry the job later rather than
+raising concurrency — the co-tenant load is not ours to terminate.

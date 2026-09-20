@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-252)
+## Architectural rules (W-1…W-253)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -231,6 +231,7 @@ alone; the one-line summaries are pointers, not the invariant.
  - **W-250** — JSONB containment binds carry the Python object, never `json.dumps` output: asyncpg JSON-encodes JSONB bind values itself, so a pre-dumped string double-encodes into a jsonb scalar that matches nothing (rule-verify drill-down `results @>` filter and the review-table External authority column filters both matched 0 rows while the Python-side summary still counted the fails) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
  - **W-251** — Rule-verify value shapes must mirror the builder/exporter output in the same change: the `time` shape unwraps the Wikibase `{time, precision}` dict and accepts the `+` sign, the `quantity` shape accepts a falsy `0.0` amount (never `amount or ""`), and API-backed probes pass every required kwarg (`_fetch_json(..., timeout=...)`). Shape drift or a missed kwarg reads as mass error/fail: run 3494ebf5 logged 2216 `label_candidates` errors + 318 datatype fails from two rule bugs. The same run also fixed the builder side: EN comments/descriptions never embed Hebrew script (`_split_scripts` moves Hebrew to the `he` comment) and object-property flags (`has_vocalization`/`has_cantillation`) emit typed vocabulary individuals instead of boolean literals (which skipped 26 statements) — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
  - **W-252** — The in-run duplicate rule keys on the item's OWN record CN (the control number present in its source URI), never on `control_numbers[0]`: W-48 propagation gives shared hubs (text traditions, subject headers, corpus-wide works) the CN set of every linked manuscript, so the first entry is corpus-wide — every 'תכלאל' expression across 96 manuscripts and every same-title/different-author work pair read as one duplicate group (536 fails on the run 3494ebf5 re-measure). Items with no own-CN (corpus-shared nodes) are not same-record comparable: the rule marks them `not_relevant` — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
+ - **W-253** — Modal shard fan-out must fit the shared Postgres connection budget: prod `DATABASE_URL` is a shared essential-1 instance (hard 20-connection limit, co-tenants fluctuate 6→18 within minutes), every shard container holds its own SQLAlchemy pool, and oversized fan-outs burst-past the budget (`rdf_build` ×3 + `hmo_rule_verify` ×1 failed with `too many connections` on the run 3494ebf5 rebuild). Shard sizes are env-tunable (`MHM_RDF_BUILD_SHARD_SIZE`, `MHM_RULE_VERIFY_SHARD_SIZE`) with defaults 4000 records / 6000 items; retry on saturation instead of raising concurrency — see [jobs-and-progress.md](docs/architecture/rules/jobs-and-progress.md)
 - **W-105** — Studio “Approve all visible” MUST run as a background job
 - **W-106** — All Studio / RDF builds MUST run as `run_jobs` with inline progress
 - **W-107** — All Studio publish/upload paths MUST run as `run_jobs`
