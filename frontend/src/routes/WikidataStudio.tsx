@@ -281,10 +281,6 @@ export default function WikidataStudio() {
               runId={runId}
               builtNotUploaded={builtNotUploaded}
               noHmoBuild={noHmoBuild}
-              onUseLegacy={() => {
-                setError(null);
-                setProjectionSource("legacy");
-              }}
             />
           )}
         </Glass>
@@ -1470,9 +1466,8 @@ function CanonicalMissingHelp(props: {
   runId: string;
   builtNotUploaded: boolean;
   noHmoBuild: boolean;
-  onUseLegacy: () => void;
 }) {
-  const {runId, builtNotUploaded, noHmoBuild, onUseLegacy} = props;
+  const {runId, builtNotUploaded, noHmoBuild} = props;
   const [uploadState, setUploadState] = useState<"idle" | "starting" | "started" | "error">("idle");
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -1489,12 +1484,6 @@ function CanonicalMissingHelp(props: {
       setUploadState("error");
     }
   }, [runId]);
-
-  const legacyBtn = (
-    <button onClick={onUseLegacy} className="button-ghost text-sm">
-      Use legacy source instead
-    </button>
-  );
 
   if (builtNotUploaded) {
     return (
@@ -1513,7 +1502,6 @@ function CanonicalMissingHelp(props: {
           >
             {uploadState === "starting" ? "Starting upload…" : "Upload HMO items now"}
           </button>
-          {legacyBtn}
           <Link to={`/runs/${runId}/hmo-studio`} className="text-biu-sky underline">
             Open HMO Studio
           </Link>
@@ -1534,14 +1522,13 @@ function CanonicalMissingHelp(props: {
     <div className="space-y-2 text-sm">
       <p className="muted">
         {noHmoBuild
-          ? "This run has no HMO Studio item build yet. Build the items in HMO Studio, upload them to HMO Wikibase, and the read-back stores the canonical entities this source projects from."
+          ? "This run has no HMO Studio item build yet. Build the items in HMO Studio and upload them to HMO Wikibase — the read-back stores the canonical entities this source projects from."
           : "The HMO read-back for this run is incomplete or stale. Re-upload the built items in HMO Studio, then rebuild here."}
       </p>
       <div className="flex flex-wrap gap-2 items-center">
         <Link to={`/runs/${runId}/hmo-studio`} className="button-primary text-sm inline-block">
           Open HMO Studio
         </Link>
-        {legacyBtn}
       </div>
     </div>
   );
