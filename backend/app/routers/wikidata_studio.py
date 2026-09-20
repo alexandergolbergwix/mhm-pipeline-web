@@ -124,6 +124,53 @@ async def _canonical_entities_for_run(
     return [normalize_live_entity(row.snapshot) for row in rows]
 
 
+# Stable prefixes the frontend matches on — never reword them casually.
+_CANONICAL_MISSING_PREFIX = "no durable HMO canonical entities"
+_BUILT_NOT_UPLOADED_MARK = "built but not yet uploaded to HMO Wikibase"
+_NO_HMO_BUILD_MARK = "no HMO Studio item build exists"
+
+
+async def _canonical_missing_detail(db: AsyncSession, run_id: uuid.UUID) -> str:
+    """Diagnose WHY the canonical source is empty, for the curator-facing
+    error panel (built-but-not-uploaded vs no build vs partial read-back)."""
+    from sqlalchemy import func  # noqa: PLC0415
+
+    from app.models.hmo_studio_item_row import HmoStudioItemRow  # noqa: PLC0415
+    from app.models.wikibase_entity_mapping import (  # noqa: PLC0415
+        ENTITY_KIND_INSTANCE,
+        WikibaseEntityMapping,
+    )
+
+    hmo_rows = int(await db.scalar(
+        select(func.count()).select_from(HmoStudioItemRow).where(
+            HmoStudioItemRow.run_id == run_id,
+        )
+    ) or 0)
+    uploaded = int(await db.scalar(
+        select(func.count()).select_from(WikibaseEntityMapping).where(
+            WikibaseEntityMapping.run_id == run_id,
+            WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
+        )
+    ) or 0)
+    if uploaded == 0 and hmo_rows == 0:
+        return (
+            f"{_CANONICAL_MISSING_PREFIX} for run {run_id}: "
+            f"{_NO_HMO_BUILD_MARK} — run Build items in HMO Studio first"
+        )
+    if uploaded == 0:
+        return (
+            f"{_CANONICAL_MISSING_PREFIX} for run {run_id}: "
+            f"{hmo_rows} HMO items are {_BUILT_NOT_UPLOADED_MARK} "
+            f"(0 live QIDs) — upload them in HMO Studio; the read-back "
+            f"stores the canonical entities"
+        )
+    return (
+        f"{_CANONICAL_MISSING_PREFIX} for run {run_id}: the HMO read-back is "
+        f"incomplete or stale ({uploaded} live instances) — re-upload in "
+        f"HMO Studio to refresh the canonical entities"
+    )
+
+
 async def _canonical_cache_fingerprint(
     db: AsyncSession, run_id: uuid.UUID,
 ) -> str:
@@ -629,7 +676,7 @@ async def execute_studio_build(
         phase("loading canonical entities")
         canonical = await _canonical_entities_for_run(db, run_id)
         if not canonical:
-            raise ValueError(f"no durable HMO canonical entities for run {run_id}")
+            raise ValueError(await _canonical_missing_detail(db, run_id))
         enrichment_fp = wikidata_studio.compute_build_fingerprint(
             records, all_matches, entity_rows, override_rows, approved_only,
             hmo_instance_qids,

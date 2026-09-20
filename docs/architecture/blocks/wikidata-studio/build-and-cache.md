@@ -75,6 +75,12 @@ upload source, never a table read path — the same fix as
   request-scoped session is held for the stream; auth + 409 pre-check run
   in their own session window first.
 
+The canonical source is fail-closed about WHY it is empty: `_canonical_missing_detail`
+(wikidata_studio.py) diagnoses built-but-not-uploaded (HMO items exist, zero live
+QIDs), no HMO item build, or a stale/partial read-back, and the Studio error panel
+matches those stable markers to offer the right CTA (Upload HMO items now /
+Open HMO Studio / Use legacy source instead).
+
 Canonical enrichment applies a second notability boundary after matching
 the HMO projection with fresh MARC/authority items. Trusted VIAF/NLI/QID on
 authority evidence are stamped first (HMO `kind`+`identifier` and legacy

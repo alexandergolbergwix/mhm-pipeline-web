@@ -3,6 +3,7 @@ import {Link, useParams} from "react-router-dom";
 
 import {Layout} from "@/components/Layout";
 import {ApiError} from "@/api/client";
+import {HmoStudio} from "@/api/hmoStudio";
 import {MarcRecordPopup} from "@/components/MarcRecordPopup";
 import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {useProjectEvents} from "@/api/realtime";
@@ -269,32 +270,22 @@ export default function WikidataStudio() {
 
   if (error) {
     const canonicalMissing = error.includes("no durable HMO canonical entities");
+    const builtNotUploaded = error.includes("built but not yet uploaded to HMO Wikibase");
+    const noHmoBuild = error.includes("no HMO Studio item build exists");
     return (
       <Layout>
         <Glass as="section" className="p-6 space-y-3">
           <p className="text-danger text-sm">{error}</p>
-          {canonicalMissing && (
-            <div className="space-y-2 text-sm">
-              <p className="muted">
-                This run has no uploaded HMO Wikibase items yet, so the
-                <b className="text-ink"> Reviewed HMO records </b>
-                source has nothing to project.
-              </p>
-              <ol className="list-disc pl-5 space-y-1">
-                <li>
-                  Open <Link to={`/runs/${runId}/hmo-studio`} className="text-biu-sky underline">HMO Studio</Link> and run
-                  <b className="text-ink"> Build items</b>.
-                </li>
-                <li>
-                  Upload the built items to HMO Wikibase — the read-back
-                  stores the canonical entities.
-                </li>
-                <li>Return here and rebuild the review table.</li>
-              </ol>
-              <Link to={`/runs/${runId}/hmo-studio`} className="button-primary text-sm inline-block">
-                Go to HMO Studio
-              </Link>
-            </div>
+          {canonicalMissing && runId && (
+            <CanonicalMissingHelp
+              runId={runId}
+              builtNotUploaded={builtNotUploaded}
+              noHmoBuild={noHmoBuild}
+              onUseLegacy={() => {
+                setError(null);
+                setProjectionSource("legacy");
+              }}
+            />
           )}
         </Glass>
       </Layout>
@@ -1472,6 +1463,88 @@ function Stat({
 function labelOf(it: StudioItem): string {
   const l = it.labels ?? {};
   return l.en || l.he || Object.values(l)[0] || it.local_id || "";
+}
+
+
+function CanonicalMissingHelp(props: {
+  runId: string;
+  builtNotUploaded: boolean;
+  noHmoBuild: boolean;
+  onUseLegacy: () => void;
+}) {
+  const {runId, builtNotUploaded, noHmoBuild, onUseLegacy} = props;
+  const [uploadState, setUploadState] = useState<"idle" | "starting" | "started" | "error">("idle");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const startUpload = useCallback(async () => {
+    setUploadState("starting");
+    setUploadError(null);
+    try {
+      // Live upload with update_existing — the read-back stores the
+      // canonical entities the canonical source projects from.
+      await HmoStudio.uploadItems(runId, false, true, false);
+      setUploadState("started");
+    } catch (e) {
+      setUploadError(e instanceof ApiError ? e.detail : String(e));
+      setUploadState("error");
+    }
+  }, [runId]);
+
+  const legacyBtn = (
+    <button onClick={onUseLegacy} className="button-ghost text-sm">
+      Use legacy source instead
+    </button>
+  );
+
+  if (builtNotUploaded) {
+    return (
+      <div className="space-y-2 text-sm">
+        <p className="muted">
+          Your HMO items are <b className="text-ink">built but not yet uploaded</b> to HMO
+          Wikibase. The canonical source projects from the upload read-back — it needs
+          the live QIDs the upload returns. Uploading also stores the canonical entities
+          for RDF and future rebuilds.
+        </p>
+        <div className="flex flex-wrap gap-2 items-center">
+          <button
+            onClick={startUpload}
+            disabled={uploadState === "starting" || uploadState === "started"}
+            className="button-primary text-sm"
+          >
+            {uploadState === "starting" ? "Starting upload…" : "Upload HMO items now"}
+          </button>
+          {legacyBtn}
+          <Link to={`/runs/${runId}/hmo-studio`} className="text-biu-sky underline">
+            Open HMO Studio
+          </Link>
+        </div>
+        {uploadState === "started" && (
+          <p className="text-biu-sky">
+            Upload started — follow progress in the job tray (bottom-right) or in
+            {" "}<Link to={`/runs/${runId}/hmo-studio`} className="underline">HMO Studio</Link>.
+            Return here and rebuild when it finishes.
+          </p>
+        )}
+        {uploadError && <p className="text-danger">{uploadError}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 text-sm">
+      <p className="muted">
+        {noHmoBuild
+          ? "This run has no HMO Studio item build yet. Build the items in HMO Studio, upload them to HMO Wikibase, and the read-back stores the canonical entities this source projects from."
+          : "The HMO read-back for this run is incomplete or stale. Re-upload the built items in HMO Studio, then rebuild here."}
+      </p>
+      <div className="flex flex-wrap gap-2 items-center">
+        <Link to={`/runs/${runId}/hmo-studio`} className="button-primary text-sm inline-block">
+          Open HMO Studio
+        </Link>
+        {legacyBtn}
+      </div>
+    </div>
+  );
 }
 
 
