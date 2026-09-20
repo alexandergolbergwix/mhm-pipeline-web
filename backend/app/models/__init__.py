@@ -91,6 +91,7 @@ from app.models.wikibase_entity_mapping import (
 )
 from app.models.wikibase_user_access import WikibaseUserAccess
 from app.models.wikidata_studio_cache import WikidataStudioCache
+from app.models.wikidata_studio_item_row import WikidataStudioItemRow
 
 __all__ = [
     "ALL_ENTITY_TYPES",
@@ -148,6 +149,7 @@ __all__ = [
     "PublicationWriteReceipt",
     "WikidataItemOverride",
     "WikidataStudioCache",
+    "WikidataStudioItemRow",
     "ROLE_ADMIN",
     "ROLE_EDITOR",
     "RUN_STATUS_FAILED",

@@ -251,6 +251,11 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                 # Sharded fan-out: parallel rule-check containers; the
                 # claimed container orchestrates progress + terminal state.
                 await _run_rule_verify_sharded(job_id)
+            elif kind == "wikidata_studio_build":
+                # Sharded fan-out (batch-build parity with rdf_build):
+                # parallel item-builder containers; the claimed container
+                # merges, finishes the corpus, and owns terminal state.
+                await _run_wikidata_studio_build_sharded(job_id)
             else:
                 raise ValueError(f"kind {kind!r} has no Modal executor")
         except Exception as exc:  # noqa: BLE001
@@ -619,6 +624,105 @@ async def _run_rdf_build_sharded(job_id: str) -> None:
     await consume_rdf_shard_results(job_uuid, plan, _results())
 
 
+# ── wikidata_studio_build shard fan-out (batch-build parity) ─────────────
+# The Studio item corpus fans out to parallel builder containers: each
+# maps its control_number slice with the same desktop builder and
+# returns lossless native item payloads. The claimed container merges
+# (persons/works dedupe by the builder's local_id key), runs the
+# corpus-wide finish pipeline once, gates the result, upserts the same
+# cache row the sequential build writes, and owns progress + terminal
+# state. Memory profile: no process holds the MARC/authority corpus —
+# shards hold one slice, the orchestrator holds merged native items.
+
+_WIKIDATA_BUILD_SHARD_SIZE = 500
+
+
+@app.function(
+    image=image,
+    cpu=2,
+    memory=8192,
+    timeout=7200,
+    secrets=[modal.Secret.from_name("mhm-jobs2")],
+)
+def run_wikidata_studio_build_shard(
+    job_id: str, run_id: str, control_numbers: list[str],
+) -> dict:
+    import asyncio  # noqa: PLC0415
+    import uuid as _uuid  # noqa: PLC0415
+
+    from app.pipeline.wikidata_studio_build_shard import (
+        run_wikidata_studio_build_shard as run_shard,
+    )
+
+    async def _run() -> dict:
+        # Warm containers run this function once per shard invocation;
+        # each asyncio.run makes a fresh loop, so the engine pool from a
+        # previous invocation carries stale-loop futures. Reset first.
+        from app import db as app_db
+
+        await app_db.reset_engine()
+        return await run_shard(
+            _uuid.UUID(job_id), _uuid.UUID(run_id), control_numbers,
+        )
+
+    return asyncio.run(_run())
+
+
+async def _wikidata_shard_results(job_id: str, run_id: str, slices: list[list[str]]):
+    """Ordered async stream over the shard ``starmap`` (input order)."""
+    import asyncio as _asyncio
+    import queue as _queue
+    import threading as _threading
+
+    results_q: _queue.Queue = _queue.Queue()
+
+    def _consume() -> None:
+        try:
+            for res in run_wikidata_studio_build_shard.starmap(
+                [(job_id, run_id, cns) for cns in slices],
+            ):
+                results_q.put(res)
+        except Exception as exc:  # noqa: BLE001 — surfaced by the consumer
+            results_q.put({"__error__": str(exc)})
+        results_q.put(None)
+
+    _threading.Thread(target=_consume, daemon=True).start()
+
+    while True:
+        try:
+            item = await _asyncio.to_thread(results_q.get, True, 10)
+        except _queue.Empty:
+            if await _is_cancel_requested(job_id):
+                yield {"__cancelled__": True}
+                return
+            continue
+        if item is None:
+            return
+        yield item
+
+
+async def _run_wikidata_studio_build_sharded(job_id: str) -> None:
+    """Orchestrate the Studio item build shard fan-out."""
+    import uuid as _uuid
+
+    from app.pipeline.wikidata_studio_build_shard import (
+        consume_wikidata_shard_results,
+        load_wikidata_shard_plan,
+    )
+
+    plan = await load_wikidata_shard_plan(_uuid.UUID(job_id), _WIKIDATA_BUILD_SHARD_SIZE)
+    if plan is None:
+        return
+
+    async def _results():
+        async for item in _wikidata_shard_results(
+            job_id, str(plan.run_id), plan.slices,
+        ):
+            yield item
+
+    await consume_wikidata_shard_results(plan, _results())
+
+
 @app.function(
     image=image,
     cpu=1,
@@ -648,6 +752,7 @@ def run(request_body: dict) -> dict:
     kind = str(request_body.get("kind") or "")
     if not job_id or kind not in (
         "rdf_build", "hmo_item_build", "hmo_item_verify", "hmo_rule_verify",
+        "wikidata_studio_build",
     ):
         raise HTTPException(status_code=422, detail="job_id and kind required")
 

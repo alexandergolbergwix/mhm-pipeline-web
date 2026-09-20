@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session, session_scope
-from app.export.formatters import csv_stream, json_stream
+from app.export.formatters import json_array_stream
 from app.models.event import (
     ENTITY_TYPE_WIKIDATA_OVERRIDE,
     OP_CREATE,
@@ -44,7 +44,7 @@ from app.models.run_job import (
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_WIKIDATA_VERIFY,
 )
-from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD
+from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD, TARGET_ITEM
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.pipeline import agent_actions, wikidata_actions, wikidata_studio, wikidata_upload
 from app.pipeline.agent_runner import (
@@ -549,6 +549,45 @@ async def _get_studio_cache_row(
     ).scalar_one_or_none()
 
 
+def match_to_build_payload(m: AuthorityMatch) -> dict[str, Any]:
+    """Shape one ``authority_matches`` row into the dict the desktop
+    item builder reads. Shared by the sequential and sharded builds."""
+    return {
+        "id": str(m.id),
+        "control_number": m.control_number,
+        "entity_text": m.entity_text,
+        "entity_kind": m.entity_kind,
+        "role": m.role,
+        "field": (m.payload or {}).get("field") or "",
+        "matched_name": m.matched_name,
+        "mazal_id": m.mazal_id,
+        "viaf_id": m.viaf_id,
+        "wikidata_qid": m.wikidata_qid,
+        "confidence": m.confidence,
+        "source": m.source,
+        "approved": bool(m.approved),
+        "payload": m.payload or {},
+    }
+
+
+async def _replace_item_rows(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    *,
+    approved_only: bool,
+    source: str,
+    items: list[dict[str, Any]],
+) -> int:
+    """Write the per-item review read-model rows for a fresh build."""
+    from app.pipeline.wikidata_item_row_views import (  # noqa: PLC0415
+        replace_wikidata_item_rows,
+    )
+
+    return await replace_wikidata_item_rows(
+        db, run_id, approved_only=approved_only, source=source, items=items,
+    )
+
+
 async def execute_studio_build(
     db: AsyncSession,
     *,
@@ -634,23 +673,7 @@ async def execute_studio_build(
             for r in override_rows
         }
         approved_matches = [
-            {
-                "id": str(m.id),
-                "control_number": m.control_number,
-                "entity_text": m.entity_text,
-                "entity_kind": m.entity_kind,
-                "role": m.role,
-                "field": (m.payload or {}).get("field") or "",
-                "matched_name": m.matched_name,
-                "mazal_id": m.mazal_id,
-                "viaf_id": m.viaf_id,
-                "wikidata_qid": m.wikidata_qid,
-                "confidence": m.confidence,
-                "source": m.source,
-                "approved": bool(m.approved),
-                "payload": m.payload or {},
-            }
-            for m in (m for m in all_matches if m.approved)
+            match_to_build_payload(m) for m in (m for m in all_matches if m.approved)
         ]
         context = canonical_studio_context(
             marc_records=marc_records,
@@ -710,6 +733,7 @@ async def execute_studio_build(
             marc_records=marc_records,
         )
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=result["quickstatements"], summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
+        await _replace_item_rows(db, run_id, approved_only=approved_only, source=source, items=items)
         row = await _get_studio_cache_row(db, run_id, approved_only, source)
         if row is None:
             raise RuntimeError(f"canonical Studio cache missing after build for run {run_id}")
@@ -719,25 +743,7 @@ async def execute_studio_build(
     pending_count = len(all_matches) - approved_count
     matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
 
-    approved_matches = [
-        {
-            "id": str(m.id),
-            "control_number": m.control_number,
-            "entity_text": m.entity_text,
-            "entity_kind": m.entity_kind,
-            "role": m.role,
-            "field": (m.payload or {}).get("field") or "",
-            "matched_name": m.matched_name,
-            "mazal_id": m.mazal_id,
-            "viaf_id": m.viaf_id,
-            "wikidata_qid": m.wikidata_qid,
-            "confidence": m.confidence,
-            "source": m.source,
-            "approved": bool(m.approved),
-            "payload": m.payload or {},
-        }
-        for m in matches
-    ]
+    approved_matches = [match_to_build_payload(m) for m in matches]
 
     overrides = {
         r.local_id: {
@@ -801,6 +807,9 @@ async def execute_studio_build(
         existing=cached,
     )
     await db.commit()
+    await _replace_item_rows(
+        db, run_id, approved_only=approved_only, source=source, items=result["items"],
+    )
     row = await _get_studio_cache_row(db, run_id, approved_only, source)
     if row is None:
         raise RuntimeError(f"studio cache missing after build for run {run_id}")
@@ -1377,6 +1386,46 @@ async def list_validation_errors(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+@router.get("/{run_id}/wikidata-studio/items/page")
+async def list_wikidata_items_page(
+    run_id: uuid.UUID,
+    cursor: str = Query(default="", description="Opaque keyset cursor"),
+    limit: int = Query(default=25, ge=1, le=500),
+    q: str = Query(default=""),
+    entity_type: str = Query(default=""),
+    sort: Literal["label", "local_id"] = Query(default="label"),
+    dir: Literal["asc", "desc"] = Query(default="asc"),
+    approved_only: bool = Query(default=True),
+    source: str = Query(default="legacy", pattern="^(legacy|canonical)$"),
+    include_total: bool = Query(default=True),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Cursor-paginated review table, entirely in SQL over per-item rows.
+
+    Keyset pagination on ``(sort_value, local_id)`` — no offsets, stable
+    under concurrent edits, and the payload never scales with the corpus.
+    Rows are written at build time and lazily backfilled from the cache
+    blob for older runs.
+    """
+    from app.pipeline.wikidata_item_row_views import (
+        ensure_rows_backfilled,
+        page_wikidata_items,
+    )
+
+    await _lookup_run_with_access(db, run_id, auth)
+    try:
+        await ensure_rows_backfilled(db, run_id, approved_only=approved_only, source=source)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return await page_wikidata_items(
+        db, run_id,
+        cursor=cursor, limit=limit, q=q, entity_type=entity_type,
+        sort=sort, dir=dir, approved_only=approved_only, source=source,
+        include_total=include_total,
+    )
+
+
 @router.get("/{run_id}/wikidata-studio/items/export")
 async def export_wikidata_items(
     run_id: uuid.UUID,
@@ -1384,125 +1433,210 @@ async def export_wikidata_items(
     approved_only: bool = Query(default=True),
     source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
     auth: AuthContext = Depends(current_auth),
-    db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
-    await _lookup_run_with_access(db, run_id, auth)
-    try:
-        items = await fetch_merged_wikidata_items(
-            db, run_id, approved_only=approved_only, source=source,
-        )
-    except StudioBuildMissingError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    """Studio items export, streamed SQL-side (Rule W-247).
 
-    # Show the duplicate answer the probe already has. Cache-only — an export must
-    # never turn into external I/O (Rule W-144).
+    Rows stream off ``wikidata_studio_item_rows`` in build order; each
+    partition merges with overrides/verdicts + duplicate-probe and
+    verify evidence exactly like the legacy in-memory export. The
+    endpoint deliberately does NOT take a request-scoped session: a
+    large download can hold one for minutes and exhaust the pool
+    (2026-07-04 outage). Auth + build pre-check run in their own
+    short-lived session window, before the stream starts.
+    """
     from app.db import session_scope  # noqa: PLC0415
-    from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
-        adopt_identifier_matched_duplicates,
-        attach_cached_duplicate_evidence,
-        stamp_duplicate_check,
-    )
-    from app.pipeline.wikidata_verdict_cache import (  # noqa: PLC0415
-        annotate_duplicate_rejudge,
-    )
-    from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
-        attach_live_value_labels,
-        enrich_items_with_verify_evidence,
-    )
+    from app.pipeline.wikidata_item_row_views import ensure_rows_backfilled
 
-    # Build the evidence pack BEFORE the probe answer is stamped, then let
-    # `stamp_duplicate_check` publish that answer into it. Doing it the other way
-    # round is what left `verify_evidence.wikidata_existing.duplicate_check` reading
-    # `not_run` on all 343 items of export (23) while 314 answers sat at the top
-    # level (Rule W-159). `fetch_merged_wikidata_items` only enriches when a stored
-    # verdict exists, so the pack is guaranteed here (Rule W-62).
-    marc_records = await _load_marc_records_for_run(db, run_id)
-    await attach_live_value_labels(db, items)
-    enrich_items_with_verify_evidence(items, marc_records)
+    async with session_scope() as db:
+        await _lookup_run_with_access(db, run_id, auth)
+        # A missing build must still answer 409 — impossible once the body
+        # has started — so the rows are pre-checked (and lazily backfilled
+        # from the cache blob) with this cheap indexed lookup first.
+        try:
+            await ensure_rows_backfilled(db, run_id, approved_only=approved_only, source=source)
+        except LookupError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(exc),
+            ) from exc
 
-    await db.rollback()
-    await attach_cached_duplicate_evidence(session_scope, items)
-    # An item whose own identifier is already on Wikidata is an UPDATE, not a
-    # CREATE (Rule W-168). Adoption does not authorise the write — the upload path
-    # still checks ownership.
-    adopt_identifier_matched_duplicates(items)
-    for item in items:
-        item["duplicate_check"] = stamp_duplicate_check(item)
-        item.pop("_wikidata_existence", None)
-        # A verdict judged before the probe answered is kept, and flagged — the
-        # curator should re-run verify on it (Rule W-157).
-        annotated = annotate_duplicate_rejudge(item.get("ai_verdict"), item)
-        if annotated is not None:
-            item["ai_verdict"] = annotated
+    async def _entity_rows() -> AsyncIterator[dict[str, Any]]:
+        from app.pipeline.marc_verify_context import (  # noqa: PLC0415
+            load_run_marc_records_scoped,
+        )
+        from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+            adopt_identifier_matched_duplicates,
+            attach_cached_duplicate_evidence,
+            stamp_duplicate_check,
+        )
+        from app.pipeline.wikidata_item_row_views import (  # noqa: PLC0415
+            iter_wikidata_row_payloads,
+        )
+        from app.pipeline.wikidata_item_views import (  # noqa: PLC0415
+            _merge_one_wikidata_item,
+            attach_local_reference_targets,
+        )
+        from app.pipeline.wikidata_qid_ledger import load_global_ledger  # noqa: PLC0415
+        from app.pipeline.wikidata_verdict_cache import (  # noqa: PLC0415
+            annotate_duplicate_rejudge,
+        )
+        from app.pipeline.wikidata_verify_evidence import (  # noqa: PLC0415
+            attach_live_value_labels,
+            enrich_items_with_verify_evidence,
+        )
+        from app.services.wikibase_audit import fetch_latest_wikibase_writes  # noqa: PLC0415
+
+        # Build-stable context: ledger + upload writes + override rows are
+        # small (curator-scoped) and shared by every partition.
+        async with session_scope() as db:
+            ledger = await load_global_ledger(db)
+            latest_writes = await fetch_latest_wikibase_writes(
+                db, run_id, channel=CHANNEL_WIKIDATA_UPLOAD, target_kind=TARGET_ITEM,
+            )
+            override_rows = (
+                await db.execute(
+                    select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+                )
+            ).scalars().all()
+        overrides_by_id = {r.local_id: r for r in override_rows}
+
+        async for partition in iter_wikidata_row_payloads(
+            run_id, approved_only=approved_only, source=source,
+        ):
+            # Build the evidence pack BEFORE the probe answer is stamped, then
+            # let `stamp_duplicate_check` publish that answer into it. Doing it
+            # the other way round is what left
+            # `verify_evidence.wikidata_existing.duplicate_check` reading
+            # `not_run` on all 343 items of export (23) (Rule W-159).
+            merged: list[dict[str, Any]] = []
+            for raw in partition:
+                local_id = str(raw.get("local_id") or "")
+                ov_row = overrides_by_id.get(local_id)
+                merged.append(_merge_one_wikidata_item(
+                    raw, ov_row=ov_row, ledger=ledger, latest_writes=latest_writes,
+                ))
+            attach_local_reference_targets(merged)
+
+            # Show the duplicate answer the probe already has. Cache-only —
+            # an export must never turn into external I/O (Rule W-144).
+            await attach_cached_duplicate_evidence(session_scope, merged)
+            # An item whose own identifier is already on Wikidata is an UPDATE,
+            # not a CREATE (Rule W-168). Adoption does not authorise the write —
+            # the upload path still checks ownership.
+            adopt_identifier_matched_duplicates(merged)
+
+            # MARC context is scoped to the partition's records — the full
+            # corpus pack is far too heavy to hold per export (Rule W-132).
+            wanted: set[str] = set()
+            for item in merged:
+                records = item.get("record_ids") or item.get("records") or []
+                wanted.update(str(r) for r in records if r)
+            async with session_scope() as db:
+                marc_records = await load_run_marc_records_scoped(db, run_id, wanted)
+                await attach_live_value_labels(db, merged)
+            enrich_items_with_verify_evidence(merged, marc_records)
+
+            for item in merged:
+                item["duplicate_check"] = stamp_duplicate_check(item)
+                item.pop("_wikidata_existence", None)
+                # A verdict judged before the probe answered is kept, and
+                # flagged — the curator should re-run verify on it (W-157).
+                annotated = annotate_duplicate_rejudge(item.get("ai_verdict"), item)
+                if annotated is not None:
+                    item["ai_verdict"] = annotated
+                yield item
 
     filename = f"run-{run_id}-wikidata-studio-items.{format}"
     if format == "json":
         return StreamingResponse(
-            json_stream({"run_id": str(run_id), "items": items}),
+            json_array_stream(
+                {
+                    "run_id": str(run_id),
+                    "approved_only": approved_only,
+                    "source": source,
+                },
+                "items",
+                _entity_rows(),
+            ),
             media_type="application/json",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    def _json_cell(value: Any) -> str:
-        if value in (None, "", {}, []):
-            return ""
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    async def _csv_stream():
+        import csv  # noqa: PLC0415
+        import io  # noqa: PLC0415
 
-    fields = [
-        "local_id", "entity_type", "existing_qid", "approved", "source_uri",
-        "record_ids_json", "label_en", "label_he", "description_en", "description_he",
-        "aliases_json", "statement_count", "statements_json", "validation_issues_json",
-        "authority_evidence_json", "local_reference_targets_json",
-        "has_blocking_validation", "marc_context_json", "upload_outcome", "upload_message",
-        "upload_at", "ai_verdict_overall", "ai_verdict_name_ok", "ai_verdict_type_ok",
-        "ai_verdict_role_ok", "ai_verdict_reasoning", "ai_verdict_model",
-        "ai_verdict_judged_at", "ai_verdict_json",
-    ]
-    rows: list[dict[str, Any]] = []
-    for it in items:
-        labels = it.get("labels") if isinstance(it.get("labels"), dict) else {}
-        descriptions = it.get("descriptions") if isinstance(it.get("descriptions"), dict) else {}
-        av = it.get("ai_verdict") if isinstance(it.get("ai_verdict"), dict) else {}
-        marc_context = marc_context_for_wikidata_item(it, marc_records)
-        records = it.get("record_ids") or it.get("records") or []
-        statements = it.get("statements") if isinstance(it.get("statements"), list) else []
-        rows.append({
-            "local_id": it.get("local_id"),
-            "entity_type": it.get("entity_type"),
-            "existing_qid": it.get("existing_qid"),
-            "approved": it.get("approved"),
-            "source_uri": it.get("source_uri"),
-            "record_ids_json": _json_cell(records),
-            "label_en": labels.get("en"),
-            "label_he": labels.get("he"),
-            "description_en": descriptions.get("en"),
-            "description_he": descriptions.get("he"),
-            "aliases_json": _json_cell(it.get("aliases")),
-            "authority_evidence_json": _json_cell(it.get("authority_evidence")),
-            "local_reference_targets_json": _json_cell(it.get("local_reference_targets")),
-            "statement_count": len(statements),
-            "statements_json": _json_cell(statements),
-            "validation_issues_json": _json_cell(it.get("validation_issues")),
-            "has_blocking_validation": it.get("has_blocking_validation"),
-            "marc_context_json": _json_cell(marc_context),
-            "upload_outcome": it.get("upload_outcome"),
-            "upload_message": it.get("upload_message"),
-            "upload_at": it.get("upload_at"),
-            "ai_verdict_overall": av.get("overall"),
-            "ai_verdict_name_ok": av.get("name_ok"),
-            "ai_verdict_type_ok": av.get("type_ok"),
-            "ai_verdict_role_ok": av.get("role_ok"),
-            "ai_verdict_reasoning": av.get("reasoning"),
-            "ai_verdict_model": av.get("model"),
-            "ai_verdict_judged_at": it.get("ai_verdict_at") or av.get("judged_at"),
-            "ai_verdict_json": _json_cell(av),
-        })
+        buf = io.StringIO()
+        fields = [
+            "local_id", "entity_type", "existing_qid", "approved", "source_uri",
+            "record_ids_json", "label_en", "label_he", "description_en", "description_he",
+            "aliases_json", "statement_count", "statements_json", "validation_issues_json",
+            "authority_evidence_json", "local_reference_targets_json",
+            "has_blocking_validation", "marc_context_json", "upload_outcome", "upload_message",
+            "upload_at", "ai_verdict_overall", "ai_verdict_name_ok", "ai_verdict_type_ok",
+            "ai_verdict_role_ok", "ai_verdict_reasoning", "ai_verdict_model",
+            "ai_verdict_judged_at", "ai_verdict_json",
+        ]
+        writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+        writer.writeheader()
+        yield buf.getvalue().encode("utf-8-sig")
+        buf.seek(0)
+        buf.truncate(0)
+
+        def _json_cell(value: Any) -> str:
+            if value in (None, "", {}, []):
+                return ""
+            return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+        async for it in _entity_rows():
+            labels = it.get("labels") if isinstance(it.get("labels"), dict) else {}
+            descriptions = it.get("descriptions") if isinstance(it.get("descriptions"), dict) else {}
+            av = it.get("ai_verdict") if isinstance(it.get("ai_verdict"), dict) else {}
+            marc_context = marc_context_for_wikidata_item(it, [])
+            records = it.get("record_ids") or it.get("records") or []
+            statements = it.get("statements") if isinstance(it.get("statements"), list) else []
+            writer.writerow({
+                "local_id": it.get("local_id"),
+                "entity_type": it.get("entity_type"),
+                "existing_qid": it.get("existing_qid"),
+                "approved": it.get("approved"),
+                "source_uri": it.get("source_uri"),
+                "record_ids_json": _json_cell(records),
+                "label_en": labels.get("en"),
+                "label_he": labels.get("he"),
+                "description_en": descriptions.get("en"),
+                "description_he": descriptions.get("he"),
+                "aliases_json": _json_cell(it.get("aliases")),
+                "authority_evidence_json": _json_cell(it.get("authority_evidence")),
+                "local_reference_targets_json": _json_cell(it.get("local_reference_targets")),
+                "statement_count": len(statements),
+                "statements_json": _json_cell(statements),
+                "validation_issues_json": _json_cell(it.get("validation_issues")),
+                "has_blocking_validation": it.get("has_blocking_validation"),
+                "marc_context_json": _json_cell(marc_context),
+                "upload_outcome": it.get("upload_outcome"),
+                "upload_message": it.get("upload_message"),
+                "upload_at": it.get("upload_at"),
+                "ai_verdict_overall": av.get("overall"),
+                "ai_verdict_name_ok": av.get("name_ok"),
+                "ai_verdict_type_ok": av.get("type_ok"),
+                "ai_verdict_role_ok": av.get("role_ok"),
+                "ai_verdict_reasoning": av.get("reasoning"),
+                "ai_verdict_model": av.get("model"),
+                "ai_verdict_judged_at": it.get("ai_verdict_at") or av.get("judged_at"),
+                "ai_verdict_json": _json_cell(av),
+            })
+            yield buf.getvalue().encode("utf-8-sig")
+            buf.seek(0)
+            buf.truncate(0)
 
     return StreamingResponse(
-        csv_stream(rows, fields),
+        _csv_stream(),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename=\"{filename}\""},
     )
+
+
+
 
 
 

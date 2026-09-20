@@ -29,6 +29,52 @@ identifier or omits the person, so this shape can only come from an older
 cache. GET marks that cache `cache_stale=true`; the curator must force-rebuild
 before reviewing or uploading it.
 
+### Sharded build on Modal (batch-build parity with rdf_build)
+
+`wikidata_studio_build` is Modal-eligible (`modal_job_client.MODAL_JOB_KINDS`).
+Heroku claims the row; the claimed container orchestrates (Rule W-237):
+
+- `wikidata_studio_batches.py` streams control numbers + fingerprint inputs
+  page by page (server-side cursors) — `compute_build_fingerprint_streamed`
+  is byte-identical to the sequential fingerprint, so the cache contract
+  holds; a fresh cache row finalises the job with no fan-out.
+- CN slices of 500 fan out via `run_wikidata_studio_build_shard.starmap`
+  (`modal/modal_jobs.py`). Each shard loads its slice with one `IN` query
+  per table, prewarms transliterations, and returns lossless native item
+  payloads (`native_item_payload` — plain dataclasses, JSON-safe).
+- The orchestrator merges shards (`merge_shard_items`): persons/works dedupe
+  by the builder's own `local_id` key, first shard wins (input order is CN
+  order), `records` union; manuscripts never dedupe. Then the corpus-wide
+  finish pipeline (`finish_native_items`: local refs, hygiene, validate, QS),
+  the export quality gate, the same cache-row upsert, and the item-rows
+  write run once over the merged corpus.
+- Modal outage / dispatch failure degrades to the unchanged sequential local
+  job (Rule W-15). `canonical`-source builds always run the sequential local
+  job: the canonical assembler consumes the legacy native items as input, so
+  the sharded path implements `legacy` semantics only (dispatch gate in
+  `run_job_service._execute_job`).
+
+### Per-item rows read model (cursor pagination + streaming export)
+
+`wikidata_studio_item_rows` (migration `0047`) stores one row per built
+entity per `(run_id, approved_only, source)`, written at build time (both
+sequential and sharded) and lazily backfilled from the cache blob
+(`ensure_rows_backfilled`). The cache blob stays a staleness cache and an
+upload source, never a table read path — the same fix as
+`hmo_studio_item_rows` (2026-09-19 H12).
+
+- `GET /wikidata-studio/items/page` — SQL keyset pagination on
+  `(sort_value, local_id)` with opaque cursors; per-page merge with
+  overrides/verdicts/upload writes reproduces the legacy item shape for
+  `limit` rows only. `fetchAllStudioItems` walks `next_cursor` (never
+  offsets).
+- `GET /wikidata-studio/items/export` — streamed SQL-side (Rule W-247
+  pattern): rows stream off the table in build order, each partition merges
+  + enriches (duplicate probe, verify evidence with partition-scoped MARC),
+  and `json_array_stream` / incremental CSV emit O(1 item) memory. No
+  request-scoped session is held for the stream; auth + 409 pre-check run
+  in their own session window first.
+
 Canonical enrichment applies a second notability boundary after matching
 the HMO projection with fresh MARC/authority items. Trusted VIAF/NLI/QID on
 authority evidence are stamped first (HMO `kind`+`identifier` and legacy

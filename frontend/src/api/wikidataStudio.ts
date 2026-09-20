@@ -204,33 +204,102 @@ export interface StudioBuildParams {
   uploadOutcome?: string | null;
 }
 
-/** Backend caps ``page_size`` at 500 on ``GET /wikidata-studio``. */
+export interface StudioPageParams {
+  cursor?: string;
+  limit?: number;
+  q?: string | null;
+  entityType?: string | null;
+  sort?: string;
+  sortDir?: string;
+  approvedOnly?: boolean;
+  source?: "legacy" | "canonical";
+  includeTotal?: boolean;
+}
+
+/** Backend caps ``limit`` at 500 on ``GET /wikidata-studio/items/page``. */
 export const STUDIO_MAX_PAGE_SIZE = 500;
+
+export interface StudioPage {
+  run_id: string;
+  limit: number;
+  has_more: boolean;
+  next_cursor: string | null;
+  total: number | null;
+  approved_count: number | null;
+  by_type: Record<string, number> | null;
+  items: StudioItem[];
+}
 
 export async function fetchAllStudioItems(
   runId: string,
   params: Omit<StudioBuildParams, "page" | "pageSize"> = {},
 ): Promise<StudioBuild> {
+  // Cursor-paginated bulk load: walks opaque keyset cursors over the
+  // per-item rows read model — never offsets, never the whole blob.
   const pageSize = STUDIO_MAX_PAGE_SIZE;
-  let page = 1;
-  let merged: StudioBuild | null = null;
+  let cursor = "";
+  let first: StudioPage | null = null;
   const allItems: StudioItem[] = [];
   while (true) {
-    const chunk = await Studio.build(runId, {...params, page, pageSize, listView: true});
-    if (!merged) merged = chunk;
+    const chunk = await Studio.page(runId, {...params, cursor, limit: pageSize});
+    if (!first) first = chunk;
     allItems.push(...chunk.items);
-    if (allItems.length >= chunk.total || chunk.items.length === 0) break;
-    page += 1;
+    if (!chunk.next_cursor || chunk.items.length === 0) break;
+    cursor = chunk.next_cursor;
   }
+  const head = first!;
+  const byType = head.by_type ?? {};
   return {
-    ...merged!,
     items: allItems,
+    quickstatements: "",
+    summary: {
+      total_items: head.total ?? allItems.length,
+      manuscripts: byType.manuscript ?? 0,
+      persons: byType.person ?? 0,
+      works: byType.work ?? 0,
+      statements: 0,
+    },
+    approved_match_count: 0,
+    pending_match_count: 0,
+    used_match_count: 0,
+    approved_only: params.approvedOnly ?? true,
+    source: params.source ?? "canonical",
+    record_count: head.total ?? allItems.length,
+    total: head.total ?? allItems.length,
     page: 1,
     page_size: allItems.length,
+    approved_item_count: head.approved_count ?? 0,
+    properties: [],
+    property_labels: {},
   };
 }
 
 export const Studio = {
+  page: (runId: string, params: StudioPageParams = {}) => {
+    const {
+      cursor = "",
+      limit = 25,
+      q,
+      entityType,
+      sort,
+      sortDir,
+      approvedOnly = true,
+      source = "canonical",
+      includeTotal = true,
+    } = params;
+    const qs = new URLSearchParams();
+    if (cursor) qs.set("cursor", cursor);
+    qs.set("limit", String(limit));
+    if (q) qs.set("q", q);
+    if (entityType && entityType !== "all") qs.set("entity_type", entityType);
+    if (sort) qs.set("sort", sort);
+    if (sortDir) qs.set("dir", sortDir);
+    qs.set("approved_only", approvedOnly ? "true" : "false");
+    qs.set("source", source);
+    if (!includeTotal) qs.set("include_total", "false");
+    return api.get<StudioPage>(`/runs/${runId}/wikidata-studio/items/page?${qs.toString()}`);
+  },
+
   build: (runId: string, params: StudioBuildParams = {}) => {
     const {
       source = "canonical",

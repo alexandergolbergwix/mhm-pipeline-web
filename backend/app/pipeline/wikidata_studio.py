@@ -225,18 +225,36 @@ async def build_items_for_run(
                                   "statements":int },
         }
     """
-    # Build the desktop's expected per-record input shape:
-    # each record carries its own ``marc_authority_matches`` list of
-    # *approved* matches (mirroring what authority_enriched.json holds
-    # in the desktop pipeline) plus its NER ``entities`` (mirroring
-    # ner_results.json + the desktop's _merge_ner_into_records step).
+    enriched = prepare_enriched_records(
+        marc_records, approved_matches, entities_by_cn or {},
+    )
+    return await run_in_threadpool(
+        _build_sync, enriched, return_native, overrides or {}, hmo_instance_qids or {},
+        progress_cb,
+    )
+
+
+def prepare_enriched_records(
+    marc_records: list[dict[str, Any]],
+    approved_matches: list[dict[str, Any]],
+    entities_by_cn: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """Build the desktop's expected per-record input shape.
+
+    Each record carries its own ``marc_authority_matches`` list of
+    *approved* matches (mirroring what authority_enriched.json holds
+    in the desktop pipeline) plus its NER ``entities`` (mirroring
+    ner_results.json + the desktop's _merge_ner_into_records step).
+    Shared by the sequential build and the Modal shard runner so both
+    paths feed the builder byte-identical inputs.
+    """
     by_cn: dict[str, list[dict[str, Any]]] = {}
     for match in approved_matches:
         control_number = canonical_control_number(match.get("control_number"))
         if control_number:
             by_cn.setdefault(control_number, []).append(match)
     ents_by_cn: dict[str, list[dict[str, Any]]] = {}
-    for control_number, entities in (entities_by_cn or {}).items():
+    for control_number, entities in entities_by_cn.items():
         canonical = canonical_control_number(control_number)
         if canonical:
             ents_by_cn.setdefault(canonical, []).extend(entities)
@@ -275,27 +293,22 @@ async def build_items_for_run(
         out["entities"] = list(existing) + ents_by_cn.get(cn, [])
         enriched.append(out)
 
-    return await run_in_threadpool(
-        _build_sync, enriched, return_native, overrides or {}, hmo_instance_qids or {},
-        progress_cb,
-    )
+    return enriched
 
 
-def _build_sync(
+def _build_native_sync(
     records: list[dict[str, Any]],
-    return_native: bool = False,
     overrides: dict[str, dict[str, Any]] | None = None,
     hmo_instance_qids: dict[str, str] | None = None,
     progress_cb: Callable[[int, int], None] | None = None,
-) -> dict[str, Any]:
-    from app.pipeline.wikidata_local_refs import (  # noqa: PLC0415
-        drop_orphan_significant_person_claims,
-        drop_redundant_unknown_text_exemplars,
-        resolve_local_references,
-    )
+) -> list[Any]:
+    """Run the desktop builder over *records* and apply curator overrides.
+
+    Returns native ``WikidataItem`` objects WITHOUT the corpus-wide
+    post-passes — those live in :func:`finish_native_items` so the
+    sharded build can run them over the merged corpus.
+    """
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
-    from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
-    from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
 
     builder = WikidataItemBuilder(  # SPARQL-free for the web
         reconciler=None, hmo_instance_qids=hmo_instance_qids,
@@ -309,10 +322,29 @@ def _build_sync(
             ov = overrides.get(_local_id_for(it))
             if ov:
                 _apply_override(it, ov)
+    return items
 
+
+def finish_native_items(items: list[Any]) -> dict[str, Any]:
+    """Corpus-wide post-passes + validation + QS export + serialisation.
+
+    Shared by the sequential build and the sharded build: every pass
+    here reads or rewrites the whole item corpus, so it must run once
+    over the merged corpus, never per shard.
+    """
     from app.pipeline.wikidata_canonical_enrichment import (
         normalize_work_author_claims,
     )
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        sanitize_studio_items_for_live,
+    )
+    from app.pipeline.wikidata_local_refs import (  # noqa: PLC0415
+        drop_orphan_significant_person_claims,
+        drop_redundant_unknown_text_exemplars,
+        resolve_local_references,
+    )
+    from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
+    from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
 
     normalize_work_author_claims(items)
 
@@ -322,9 +354,6 @@ def _build_sync(
     local_ref_stats = resolve_local_references(items)
     drop_orphan_significant_person_claims(items)
     drop_redundant_unknown_text_exemplars(items)
-    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
-        sanitize_studio_items_for_live,
-    )
 
     sanitize_studio_items_for_live(items)
 
@@ -362,10 +391,122 @@ def _build_sync(
 
     return {
         "items": serialised,
-        "native_items": items if return_native else None,
         "quickstatements": qs_text,
         "summary": summary,
     }
+
+
+def _build_sync(
+    records: list[dict[str, Any]],
+    return_native: bool = False,
+    overrides: dict[str, dict[str, Any]] | None = None,
+    hmo_instance_qids: dict[str, str] | None = None,
+    progress_cb: Callable[[int, int], None] | None = None,
+) -> dict[str, Any]:
+    items = _build_native_sync(records, overrides, hmo_instance_qids, progress_cb)
+    result = finish_native_items(items)
+    result["native_items"] = items if return_native else None
+    return result
+
+
+# ── Sharded-build helpers (batch-build parity with rdf_build_shard) ──────
+
+
+def native_item_payload(item: Any) -> dict[str, Any]:
+    """Lossless JSON-safe snapshot of a native ``WikidataItem``.
+
+    Both item and statement are plain dataclasses with JSON-safe field
+    types, so ``asdict`` + the shard's JSON transport round-trips
+    exactly. The orchestrator rebuilds native items with
+    :func:`native_item_from_payload` before the corpus-wide finish.
+    """
+    from dataclasses import asdict  # noqa: PLC0415
+
+    return _coerce(asdict(item))
+
+
+def native_item_from_payload(payload: dict[str, Any]) -> Any:
+    """Rebuild a native ``WikidataItem`` from :func:`native_item_payload`."""
+    from dataclasses import fields  # noqa: PLC0415
+
+    from converter.wikidata.item_models import (  # noqa: PLC0415
+        WikidataItem,
+        WikidataStatement,
+    )
+
+    stmt_fields = {f.name for f in fields(WikidataStatement)}
+    statements = [
+        WikidataStatement(**{k: v for k, v in s.items() if k in stmt_fields})
+        for s in payload.get("statements") or []
+    ]
+    item_fields = {f.name for f in fields(WikidataItem)}
+    data = {k: v for k, v in payload.items() if k in item_fields}
+    data["statements"] = statements
+    return WikidataItem(**data)
+
+
+def merge_shard_items(shards: list[list[Any]]) -> list[Any]:
+    """Merge shard-built native items into one corpus (build order).
+
+    Persons and works dedupe by ``local_id`` — the builder's own
+    dedup key, so the merged corpus matches what a single sequential
+    ``build_all`` over the same records produced. First occurrence
+    (shards arrive in control_number order) wins for content, exactly
+    like the sequential path; only the source-record associations
+    (``records``) union. Manuscripts never dedupe.
+
+    The corpus-wide ``promote_safe_work_author_claims`` pass re-runs
+    here over the merged corpus — it is idempotent (P2093 claims it
+    rewrote are gone on the second pass).
+    """
+    from converter.wikidata.work_author_claims import (  # noqa: PLC0415
+        promote_safe_work_author_claims,
+    )
+
+    manuscripts: list[Any] = []
+    persons: dict[str, Any] = {}
+    works: dict[str, Any] = {}
+    for shard in shards:
+        for item in shard:
+            entity_type = str(getattr(item, "entity_type", "") or "")
+            if entity_type == "manuscript":
+                manuscripts.append(item)
+                continue
+            local_id = str(getattr(item, "local_id", "") or "")
+            bucket = persons if entity_type == "person" else works
+            existing = bucket.get(local_id)
+            if existing is None:
+                bucket[local_id] = item
+                continue
+            existing.records = sorted({*existing.records, *item.records})
+    merged = [*works.values(), *persons.values(), *manuscripts]
+    promote_safe_work_author_claims(merged)
+    return merged
+
+
+async def build_shard_items(
+    *,
+    marc_records: list[dict[str, Any]],
+    approved_matches: list[dict[str, Any]],
+    entities_by_cn: dict[str, list[dict[str, Any]]],
+    overrides: dict[str, dict[str, Any]] | None = None,
+    hmo_instance_qids: dict[str, str] | None = None,
+    progress_cb: Callable[[int, int], None] | None = None,
+) -> list[dict[str, Any]]:
+    """Build one shard's native items and return lossless payloads.
+
+    Same record preparation + builder + override application as the
+    sequential path, but without the corpus-wide finish — the
+    orchestrator merges shards first, then runs :func:`finish_native_items`.
+    """
+    enriched = prepare_enriched_records(
+        marc_records, approved_matches, entities_by_cn,
+    )
+    items = await run_in_threadpool(
+        _build_native_sync, enriched, overrides or {}, hmo_instance_qids or {},
+        progress_cb,
+    )
+    return [native_item_payload(it) for it in items]
 
 
 def _approved_match_to_desktop_shape(m: dict[str, Any]) -> dict[str, Any]:
