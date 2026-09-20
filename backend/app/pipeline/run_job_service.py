@@ -886,7 +886,16 @@ async def _execute_job(job_id: uuid.UUID) -> None:
         # claimed process stays the owner (heartbeat via _background_tasks)
         # and waits on the completion webhook; Modal writes progress +
         # terminal state. False → local fallback below (Rule W-15).
-        if kind in MODAL_JOB_KINDS:
+        # canonical-source Studio builds stay Heroku-side: the sharded
+        # fan-out implements the legacy builder semantics only, and the
+        # canonical assembler needs the legacy natives as its input.
+        modal_eligible = kind in MODAL_JOB_KINDS
+        if kind == JOB_KIND_WIKIDATA_STUDIO_BUILD:
+            async with session_scope() as db:
+                job = await db.get(RunJob, job_id)
+                src = str((job.params or {}).get("source") or "legacy") if job else ""
+                modal_eligible = src != "canonical"
+        if modal_eligible:
             from app.pipeline.modal_job_client import run_on_modal  # noqa: PLC0415
 
             if await run_on_modal(job_id, run_id, kind):

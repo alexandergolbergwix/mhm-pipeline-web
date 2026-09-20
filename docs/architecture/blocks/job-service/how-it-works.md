@@ -90,7 +90,7 @@ already-judged items.
 | `authority_re_enrich` | retired | Compatibility rows fail closed with HTTP 410 / terminal error; HMO Studio owns enrichment |
 | `ner_verify` / `wikidata_verify` / `hmo_item_verify` | `verify_job.py` | Opens the corresponding eval-agent event stream, tracks unique candidate IDs (never aggregate stats or replayed events), mid-run **counters-only** progress (Rule W-128) and slim `session_snapshot` in `result` |
 | `rdf_build` | `rdf_build_job.py` | Builds the TTL from keyset-paged loads (R23), write-throughs `RdfArtifact`, invalidates on-disk graph caches; on Modal, shard fan-out (R24) |
-| `wikidata_studio_build` | `wikidata_studio_build_job.py` | Delegates to `execute_studio_build` (fingerprint cache per Rule W-26) |
+| `wikidata_studio_build` | `wikidata_studio_build_job.py` | Sequential: delegates to `execute_studio_build` (fingerprint cache per Rule W-26). Modal: shard fan-out via `modal_jobs.py` — streamed fingerprint, CN slices of 500, merge + corpus-wide finish + cache upsert (wikidata-studio "Sharded build") |
 | `wikidata_upload` | `wikidata_upload_job.py` | Two-pass dry-run/test/live upload through `wikidata_upload.upload_items` (W-30 / W-192); same two-step `steps` payload for every `upload_target` |
 | `wikidata_publication_prepare` | `wikidata_publication_prepare_job.py` | Streams the Studio source into a sealed immutable Release; the payload has request metadata and an actor ID but no credential secret |
 | `wikidata_publication_execution` | `wikidata_publication_execution_job.py` | Runs a queued, digest-bound Publication Execution and resolves its server credential only inside the worker |

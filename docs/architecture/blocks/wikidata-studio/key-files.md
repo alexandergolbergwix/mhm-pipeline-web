@@ -44,6 +44,11 @@
 | `backend/scripts/audit_test_wikidata_upload.py` | Per-entity test.wikidata.org write vs Studio native live-readiness (validator ERROR, claim count, live URI leak, W-190 identity clash); identifierless persons `skip_for_live` (W-195) |
 | `backend/scripts/judge_test_wikidata_live_ready.py` | LLM live-readiness judge: deterministic audit + eval-agent `wikidata_test_live_ready` on natives (never copy test Q/P); `skip_for_live` excluded from written denominator (W-195) |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | Background build job (`wikidata_studio_build` kind) — `reconcile=False`, threadpool canonical build (W-119) |
+| `backend/app/pipeline/wikidata_studio_batches.py` | Sharded-build loaders: CN keyset listing, streamed byte-identical fingerprint, per-slice `IN`-query inputs, `shard_slices` chunking |
+| `backend/app/pipeline/wikidata_studio_build_shard.py` | Modal shard runner (lossless native item payloads) + merge (`local_id` dedup, first-wins, `records` union) + orchestrator tail (finish → gate → cache upsert → rows write) |
+| `backend/app/pipeline/wikidata_item_row_views.py` | `wikidata_studio_item_rows` views: build-time replace, lazy backfill from the cache blob, SQL keyset `page_wikidata_items`, streamed row iterator for exports (W-247 pattern) |
+| `backend/app/models/wikidata_studio_item_row.py` | Per-item review read-model row per `(run_id, approved_only, source)` — indexed columns + full payload JSONB |
+| `backend/app/migrations/versions/0047_wikidata_item_rows.py` | Creates `wikidata_studio_item_rows` |
 | `backend/app/pipeline/wikidata_upload.py` | `resolve_upload_mode` / `upload_target`, `_prepare_for_upload`, person identity gate (W-190), work skip+`link_qid` (W-196), clash-cleared identifierless skip + uncertain-duplicate confirm + own-only pass 2 (W-195), `UploadOutcome` |
 | `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` — Rule-38 guards + `allow_live` / moratorium; `is_bot` via `mark_as_bot` (default false, W-181); test-wiki remap; leftover snaks refuse the write; `partition_unresolved_local` / session `created_qids` (W-191 / W-192); quantity/time exists-match (W-193); adopt-on-conflict + datatype-keyed maps + MHM stub reuse + holder/live gloss stubs + item-write adopt (W-182 / W-183 / W-186 / W-187 / W-189) |
 | `backend/converter/wikidata/test_wiki_compat.py` | Remap live P/Q to test entities by label+datatype; `(live_pid, value_type)` map keys; conflict-id parse; holder/live gloss; leftover list for W-186 refuse (W-189) |
@@ -86,7 +91,7 @@
 | `frontend/src/utils/wikidataUploadOutcomes.tsx` | Shared upload outcome tally/table helpers (panel summary + progress modal) |
 | `frontend/src/components/shared/UploadOutcomeBadge.tsx` | Shared upload-outcome pill (HMO + Wikidata) |
 | `frontend/src/components/wikidata/` | Also: `ItemValidatorBadge`, `ItemApprovalBadge`, `WikidataComparePanel`, `WikidataVerificationModal`, data-status + AI verdict badges |
-| `frontend/src/api/wikidataStudio.ts` | Typed API client; `STUDIO_MAX_PAGE_SIZE` (500); `fetchAllStudioItems` paginates bulk loads |
+| `frontend/src/api/wikidataStudio.ts` | Typed API client; `STUDIO_MAX_PAGE_SIZE` (500); `fetchAllStudioItems` walks opaque keyset cursors over `GET /wikidata-studio/items/page` (per-item rows read model) |
 | `frontend/src/api/publication.ts` | Typed client for Release prepare, commands, cursor reads, and audit |
 | `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | The only default target selector for test/live Release preparation, plus readable result actions, direct record editing, and a 50-row Publication entity page; enables the compatibility panel only after 404/405/410 |
 | `frontend/src/components/wikidata/WikidataPublicationControls.tsx` | Hard UI gates for Review, pre-publication checks, Publish, Resume, and Cancel, with included and omitted result counts |
