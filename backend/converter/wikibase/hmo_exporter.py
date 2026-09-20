@@ -363,27 +363,31 @@ def _descriptions_for_node(
     Wikibase.
     """
     descriptions: dict[str, str] = {}
-    comment_texts: list[str] = []
+    comments_by_lang: dict[str, list[str]] = {}
     for comment in graph.objects(subject, RDFS.comment):
         if not isinstance(comment, Literal):
             continue
-        language = comment.language or "en"
         text = _truncate(str(comment), _MAX_DESCRIPTION_LENGTH)
-        if text and text not in comment_texts:
-            comment_texts.append(text)
-        descriptions.setdefault(language, text)
-    if comment_texts:
-        merged = comment_texts[0] if len(comment_texts) == 1 else " · ".join(comment_texts)
-        merged = _dedupe_sentences(merged)
-        control_numbers = _control_numbers_for_node(graph, subject)
-        merged = _enrich_description_with_control_numbers(merged, control_numbers)
-        return sanitize_monolingual_map(
-            {"en": _truncate(merged, _MAX_DESCRIPTION_LENGTH)},
-        )
-    if descriptions:
-        return sanitize_monolingual_map(descriptions)
-    readable = local_name(class_uri).replace("_", " ")
+        if not text:
+            continue
+        comments_by_lang.setdefault(comment.language or "en", []).append(text)
+        descriptions.setdefault(comment.language or "en", text)
+    built: dict[str, str] = {}
     control_numbers = _control_numbers_for_node(graph, subject)
+    for lang in ("en", "he"):
+        texts = comments_by_lang.get(lang)
+        if not texts:
+            continue
+        # Never merge comments across scripts into the `en` description:
+        # a manuscript's Hebrew notes/contents would surface as Hebrew
+        # embedded in an English description (Rule W-69).
+        merged = texts[0] if len(texts) == 1 else " · ".join(texts)
+        merged = _dedupe_sentences(merged)
+        merged = _enrich_description_with_control_numbers(merged, control_numbers)
+        built[lang] = _truncate(merged, _MAX_DESCRIPTION_LENGTH)
+    if built:
+        return sanitize_monolingual_map(built)
+    readable = local_name(class_uri).replace("_", " ")
     labels = _labels_for_node(graph, subject)
     label_text = labels.get("en") or labels.get("he") or ""
     if control_numbers:
@@ -394,8 +398,14 @@ def _descriptions_for_node(
             ),
         }
     if label_text and not label_text.startswith("BlankNode"):
+        # Match the description language to the label's script so a
+        # Hebrew-labelled node never gets its Hebrew title stamped into
+        # an English description.
+        desc_lang = label_language_for_text(label_text)
         return {
-            "en": _truncate(f"{readable}: {label_text}.", _MAX_DESCRIPTION_LENGTH),
+            desc_lang: _truncate(
+                f"{readable}: {label_text}.", _MAX_DESCRIPTION_LENGTH
+            ),
         }
     return {"en": _truncate(f"{readable} in the Hebrew manuscripts corpus.", _MAX_DESCRIPTION_LENGTH)}
 

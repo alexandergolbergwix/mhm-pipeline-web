@@ -81,8 +81,10 @@ def test_engine_reports_fail_pass_and_relevance() -> None:
 
 def test_within_run_duplicate_rule_uses_precomputed_index() -> None:
     items = [
-        _item(local_id="A", labels={"en": "Same Title"}),
-        _item(local_id="B", labels={"en": "same  title"}),
+        _item(local_id="A", labels={"en": "Same Title"},
+              source_uri="https://w3id.org/mhm/ontology#ExprA_in_CN1"),
+        _item(local_id="B", labels={"en": "same  title"},
+              source_uri="https://w3id.org/mhm/ontology#ExprB_in_CN1"),
     ]
     ctx = build_context(run_id="r1", items=items, api_enabled=False)
     assert ctx.in_run_dup_index  # twins precomputed
@@ -92,6 +94,77 @@ def test_within_run_duplicate_rule_uses_precomputed_index() -> None:
         dup = next(r for r in rows if r.rule_id == "hmo.duplicate.in_run")
         assert dup.state == "fail"
         assert dup.evidence["duplicates"][0]["local_id"] in {"A", "B"}
+
+
+def test_within_run_duplicate_skips_corpus_shared_nodes() -> None:
+    """Corpus-shared nodes (no CN in their source URI) have no record
+    identity: same-title/different-author works must not read as twins."""
+    shared_cns = ["990000403370205171", "990000403660205171"]
+    items = [
+        _item(local_id="W1", labels={"he": "שלחן ערוך (יורה דעה)"},
+              source_uri="https://w3id.org/mhm/ontology#Work_X_by_37",
+              control_numbers=shared_cns),
+        _item(local_id="W2", labels={"he": "שלחן ערוך (יורה דעה)"},
+              source_uri="https://w3id.org/mhm/ontology#Work_Y_by_38",
+              control_numbers=shared_cns),
+        # Keep the index non-empty so the per-entity gate (not the empty-index
+        # early return) handles the corpus-shared node.
+        _item(local_id="E1", labels={"en": "Shared Title"},
+              source_uri="https://w3id.org/mhm/ontology#ExprE1_in_CN1"),
+        _item(local_id="E2", labels={"en": "Shared Title"},
+              source_uri="https://w3id.org/mhm/ontology#ExprE2_in_CN1"),
+    ]
+    ctx = build_context(run_id="r1", items=items, api_enabled=False)
+    assert ctx.in_run_dup_index
+    results = RuleEngine(build_hmo_rules(), ctx).run_scope(items)
+    dup_w1 = next(r for r in results["W1"] if r.rule_id == "hmo.duplicate.in_run")
+    assert dup_w1.state == "not_relevant"
+    dup_e1 = next(r for r in results["E1"] if r.rule_id == "hmo.duplicate.in_run")
+    assert dup_e1.state == "fail"
+
+
+def test_within_run_duplicate_key_uses_own_record_cn() -> None:
+    """Regression (run 3494ebf5 re-measure, 536 fails): shared hubs inherit
+    the whole corpus's CN set, so ``control_numbers[0]`` is not a record
+    identity — a 'תכלאל' expression per manuscript all carried the same
+    first CN and read as one duplicate group. The key must use the item's
+    own CN (the one present in its source URI)."""
+    shared_cns = ["990000403370205171", "990000403660205171"]
+    items = [
+        _item(
+            local_id="A",
+            labels={"he": "תכלאל"},
+            source_uri="https://w3id.org/mhm/ontology#Expression_in_990000403660205171",
+            control_numbers=shared_cns,
+        ),
+        _item(
+            local_id="B",
+            labels={"he": "תכלאל"},
+            source_uri="https://w3id.org/mhm/ontology#Expression_in_990000409260205171",
+            control_numbers=shared_cns,
+        ),
+    ]
+    ctx = build_context(run_id="r1", items=items, api_enabled=False)
+    assert not ctx.in_run_dup_index  # distinct own records → no twins
+    engine = RuleEngine(build_hmo_rules(), ctx)
+    results = engine.run_scope(items)
+    for rows in results.values():
+        dup = next(r for r in rows if r.rule_id == "hmo.duplicate.in_run")
+        assert dup.state == "pass"
+
+    # Same record + same label is still a twin.
+    twin_b = _item(
+        local_id="B",
+        labels={"he": "תכלאל"},
+        source_uri="https://w3id.org/mhm/ontology#Expression2_in_990000403660205171",
+        control_numbers=shared_cns,
+    )
+    items[1] = twin_b
+    ctx = build_context(run_id="r1", items=items, api_enabled=False)
+    assert ctx.in_run_dup_index
+    results = RuleEngine(build_hmo_rules(), ctx).run_scope(items)
+    dup = next(r for r in results["A"] if r.rule_id == "hmo.duplicate.in_run")
+    assert dup.state == "fail"
 
 
 def test_shacl_rules_split_blocking_from_warning() -> None:
@@ -322,3 +395,52 @@ def test_verdict_rule_filter_binds_python_object() -> None:
     jsonb_params = [p for p in params if isinstance(p.type, JSONB)]
     assert len(jsonb_params) == 1
     assert jsonb_params[0].value == [{"rule_id": "r1", "state": "fail"}]
+
+
+def test_claim_datatype_accepts_wikibase_time_and_zero_quantity() -> None:
+    """Regression (run 3494ebf5, 318 fails): the time shape applied its regex
+    to ``str(dict)`` — every Wikibase ``time`` claim failed — and the quantity
+    shape used ``amount or ""``, so the falsy ``0.0`` read as empty."""
+    item = _item(claims=[
+        {
+            "property_id": "P38",
+            "datatype": "time",
+            "value": {"time": "+1572-00-00T00:00:00Z", "precision": 9},
+        },
+        {"property_id": "P232", "datatype": "quantity", "value": {"amount": 0.0}},
+        {"property_id": "P265", "datatype": "quantity", "value": {"amount": 1.0}},
+    ])
+    results = _engine([item]).run_scope([item])
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    assert row["hmo.claims.datatype"].state == "pass"
+
+    bad_time = _item(claims=[
+        {"property_id": "P38", "datatype": "time", "value": {"time": "not-a-date", "precision": 9}},
+    ])
+    results = _engine([bad_time]).run_scope([bad_time])
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    assert row["hmo.claims.datatype"].state == "fail"
+
+
+def test_production_fetcher_probe_passes_timeout() -> None:
+    """Regression (run 3494ebf5, 2216 errors): the inlabel probe called
+    ``_fetch_json(url)`` without the required ``timeout`` keyword, so every
+    probe raised and the rule errored for the whole run."""
+    import app.pipeline.wikidata_duplicate_probe as probe
+
+    recorded: dict[str, object] = {}
+
+    def fake_fetch_json(url: str, *, timeout: float) -> dict[str, object]:
+        recorded["timeout"] = timeout
+        return {"query": {"search": []}}
+
+    original = (probe._fetch_json, probe._search_url)
+    probe._fetch_json = fake_fetch_json  # type: ignore[assignment]
+    probe._search_url = lambda *_a, **_k: "https://example.org/search"  # type: ignore[assignment]
+    try:
+        from app.pipeline.rule_verify.api_fetcher import production_fetcher
+
+        production_fetcher()("inlabel_search", "Codex A")
+    finally:
+        probe._fetch_json, probe._search_url = original  # type: ignore[assignment]
+    assert recorded["timeout"] == 30.0

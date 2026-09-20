@@ -657,3 +657,71 @@ Note the sibling hand-rolled pattern in
 Tests: `tests/test_hmo_studio_rule_verify_export_router.py` (409 without
 build, JSON/CSV shapes per scope), `tests/unit/test_export_formatters.py`
 (byte-compat, empty header, header-before-items laziness).
+
+## W-251 — Rule-verify value shapes mirror builder output; EN text stays script-clean (2026-09-20)
+
+Rule-verify run 3494ebf5 failed all 2218 entities. Three root causes were
+verify-rule bugs, four were builder bugs — and every one hid real signal
+behind mass error/fail states:
+
+1. The `time` datatype shape applied its regex to `str(dict)` and its regex
+   rejected the Wikibase `+` sign, so every `time` claim (P37/P38/P77/P219)
+   failed. The shape must unwrap `{time, precision}` dicts and match
+   `^[+-]\d{1,4}-\d{2}-\d{2}T00:00:00Z$`.
+2. The `quantity` shape used `str(amount or "")` — a falsy `0.0` amount read
+   as an empty string and failed. Never `or`-collapse numeric claim values.
+3. The inlabel probe called `_fetch_json(url)` without the required
+   keyword-only `timeout` → 2216 `label_candidates` errors. API seams must
+   pass every required kwarg; a kwarg miss is a run-wide error, not a skip.
+4. Builder EN comments embedded Hebrew titles/contents (CU/work/expression/
+   tradition/witness/colophon/creation emitters) and the exporter merged
+   `he` comments into the `en` description → 1170 description-language
+   fails. `GraphBuilder._stamp_wikibase_comment` now splits scripts
+   (`_split_scripts`): Hebrew segments move to the `he` comment, the EN
+   remainder is punctuation-cleaned, and `_descriptions_for_node` builds
+   each language from that language's comments only. No text is dropped.
+5. Boolean literals on object properties (`has_vocalization`/
+   `has_cantillation`) cannot shape a `wikibase-item` claim → 26 skipped
+   statements. The builder now links typed vocabulary individuals
+   (`Vocab_Vocalization_present` as `VocalizationType`,
+   `Vocab_Cantillation_present` as `E55_Type`); `HM.Good` carries its
+   `ConditionType` type triple inside the built graph so SHACL `sh:class`
+   can verify it.
+
+Invariant: when the exporter produces a new datavalue shape, the matching
+rule shape in `rules/hmo.py` lands in the same change — and vice versa.
+
+Tests: `tests/test_rule_verify.py` (time/zero-quantity shapes, probe
+timeout kwarg), `tests/test_hmo_comment_script_split.py` (split, exporter
+language map, CU he-title side, vocabulary individuals).
+
+## W-252 — Duplicate twins compare OWN record CNs only (2026-09-20)
+
+The re-measure of run 3494ebf5 with the W-251 fixes still showed 536
+`hmo.duplicate.in_run` fails. Two causes, both the same flaw:
+
+1. W-48 CN propagation gives shared hubs the CN set of every linked
+   manuscript (the 'תכלאל' text tradition carries 96 CNs; subject headers
+   carry ~300). Every item derived from such a hub inherits that set, so
+   `control_numbers[0]` — the sorted corpus-min CN — is identical across
+   hundreds of distinct items. The dup key `(class, label, first CN)`
+   collapsed them into one group.
+2. Corpus-wide work nodes (`Work…_by_N` URIs, no CN) share the same
+   first CN too, so same-title/different-author works read as twins.
+
+Fix: `rules/hmo.py::_own_record_cn` derives the record identity ONLY from
+a control number present in the item's own source URI. `in_run_dup_index`
+indexes items with an own CN; `_run_in_run_duplicate` marks entities
+without one `not_relevant` ("no own record identity — corpus-shared node
+cannot be a same-record twin"). Same-record twins (same MS, same label,
+two drafts) still fail — that is the rule's purpose.
+
+Known limitation (documented, not fixed): `hmo.marc.linked` /
+`hmo.marc.label_grounded` are `not_relevant` in production because the
+rule-verify job ships an empty MARC index; with an index populated they
+flag structural nodes (subject headers, hierarchies, paradigms) and items
+whose inherited first CN points at the wrong record. Do not enable the
+index without scoping those rules first.
+
+Tests: `tests/test_rule_verify.py::test_within_run_duplicate_key_uses_own_record_cn`,
+`::test_within_run_duplicate_skips_corpus_shared_nodes`.

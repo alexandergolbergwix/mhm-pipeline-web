@@ -429,6 +429,41 @@
       "expires": "2027-09-13"
     },
     {
+      "fingerprint": "sha256:14ba0ca1b1b0753c7a6d26d2b9d44f2c",
+      "path": "backend/converter/rdf/graph_builder.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed: MARC author/authority-evidence variable plumbing, no credential value",
+      "expires": "2026-12-31"
+    },
+    {
+      "fingerprint": "sha256:a6e8df88ec0fd84fbc6e3d4387a12333",
+      "path": "backend/converter/rdf/graph_builder.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed: MARC author/authority-evidence variable plumbing, no credential value",
+      "expires": "2026-12-31"
+    },
+    {
+      "fingerprint": "sha256:26f9140a030ee8a22646a649187dde4a",
+      "path": "backend/converter/wikibase/hmo_exporter.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed: MARC author/authority-evidence variable plumbing, no credential value",
+      "expires": "2026-12-31"
+    },
+    {
+      "fingerprint": "sha256:ded37e2dc7c314b02c49e866d2b73bef",
+      "path": "backend/converter/wikibase/hmo_exporter.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed: MARC author/authority-evidence variable plumbing, no credential value",
+      "expires": "2026-12-31"
+    },
+    {
+      "fingerprint": "sha256:f60110666ab43f75fca0a532a0f89f65",
+      "path": "backend/converter/wikibase/hmo_exporter.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Reviewed: MARC author/authority-evidence variable plumbing, no credential value",
+      "expires": "2026-12-31"
+    },
+    {
       "fingerprint": "sha256:0bc605d114f237f628d30ae5368d3634",
       "path": "docs/architecture/blocks/deployment/key-files.md",
       "rule_id": "database-url",

@@ -172,3 +172,15 @@
     only its unmapped suffix (record chunks are self-contained). *Why:* a
     Modal outage mid-build falls back to the sequential runner and must
     resume at the same record index, not restart (Rule W-15).
+
+25. **R25 — EN comments/descriptions stay script-clean; object-property
+flags emit typed individuals (Rule W-251).**
+`GraphBuilder._stamp_wikibase_comment` splits mixed-script text
+(`_split_scripts`): Hebrew segments move to the `he` comment, the EN
+remainder is punctuation-cleaned; `_descriptions_for_node` builds each
+language from that language's comments only. `has_vocalization`/
+`has_cantillation` link typed vocabulary individuals, never boolean
+literals; `HM.Good` carries its `ConditionType` type triple inside the
+built graph so SHACL `sh:class` verifies. *Why:* run 3494ebf5 showed 1170
+Hebrew-in-EN description fails, 26 unshapable boolean statements, and a
+SHACL condition violation.

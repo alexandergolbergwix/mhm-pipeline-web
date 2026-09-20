@@ -341,3 +341,19 @@ before the first byte, `json_stream` buffering a 50–100 MB `json.dumps`),
 then H15/H18'd (83-byte header, then a >55 s cold-cache stall), then the
 full verdict + merged load measured ~1.1 GB RSS and R15'd the 512 MB dyno
 mid-download (2026-09-19).
+
+59. **R59 — Rule-verify value shapes mirror builder/exporter output in the
+same change (Rule W-251).** The `time` shape unwraps the Wikibase
+`{time, precision}` dict and accepts the `+` sign; the `quantity` shape
+accepts a falsy `0.0` amount (never `amount or ""`); the inlabel probe
+passes `_fetch_json(..., timeout=...)`. *Why:* run 3494ebf5 logged 2216
+probe errors + 318 datatype fails from shape drift between the rule
+catalog and the exporter's real datavalue shapes.
+
+60. **R60 — Duplicate twins compare the item's OWN record CN (Rule
+W-252).** `_own_record_cn` takes the control number present in the item's
+source URI; `control_numbers[0]` is corpus-wide for W-48-propagated shared
+hubs and is not a record identity. Corpus-shared nodes (no own CN) are
+`not_relevant` for the dup rule. *Why:* the run 3494ebf5 re-measure
+flagged 536 false twins ('תכלאל' ×96 across manuscripts, same-title
+different-author works).

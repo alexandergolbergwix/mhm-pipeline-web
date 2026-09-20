@@ -130,3 +130,12 @@
   (drawer Rule check card), unchecked fallback for unknown local ids.
 - `backend/tests/unit/test_export_formatters.py` — `json_array_stream`
   byte-compat, empty header, header-before-items laziness (Rule W-247).
+- `backend/tests/test_rule_verify.py::test_claim_datatype_accepts_wikibase_time_and_zero_quantity`
+  / `::test_production_fetcher_probe_passes_timeout` — Rule W-251 shapes and
+  the probe `timeout` kwarg (block R59).
+- `backend/tests/test_hmo_comment_script_split.py` — script-split stamping,
+  exporter per-language descriptions, CU he-title side, typed vocabulary
+  individuals (Rule W-251, rdf-graph R25).
+- `backend/tests/test_rule_verify.py::test_within_run_duplicate_key_uses_own_record_cn`
+  / `::test_within_run_duplicate_skips_corpus_shared_nodes` — Rule W-252 own-CN
+  dup identity (block R60).

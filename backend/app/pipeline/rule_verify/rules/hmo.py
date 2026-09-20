@@ -34,7 +34,7 @@ _PID_RE = re.compile(r"^P\d+$")
 _HEBREW_RE = re.compile(r"[\u0590-\u05ea]")
 _LATIN_RE = re.compile(r"[A-Za-z]")
 _QTY_VALUE_RE = re.compile(r"^[+-]?\d+(\.\d+)?$")
-_TIME_VALUE_RE = re.compile(r"^\d{1,4}(-\d{1,2}(-\d{1,2})?)?T?00:?00?:?00?Z?$")
+_TIME_VALUE_RE = re.compile(r"^[+-]\d{1,4}-\d{2}-\d{2}T00:00:00Z$")
 
 
 class SimpleRule(Rule):
@@ -165,7 +165,11 @@ _EXPECTED_DATATYPE_SHAPES: dict[str, Any] = {
     ),
     "url": lambda v: str(v or "").startswith(("http://", "https://")),
     "quantity": lambda v: bool(_qty_shape(v)),
-    "time": lambda v: bool(_TIME_VALUE_RE.match(str(v or ""))),
+    "time": lambda v: bool(
+        _TIME_VALUE_RE.match(
+            str(v.get("time") or "") if isinstance(v, dict) else str(v or "")
+        )
+    ),
     "globe-coordinate": (
         lambda v: isinstance(v, dict) and "latitude" in v and "longitude" in v
     ),
@@ -173,8 +177,12 @@ _EXPECTED_DATATYPE_SHAPES: dict[str, Any] = {
 
 
 def _qty_shape(v: Any) -> bool:
+    # Never `amount or ""` here: 0.0 is falsy, so a legitimate zero amount
+    # (e.g. P232 part numbering) would read as an empty string and fail.
     amount = v.get("amount") if isinstance(v, dict) else v
-    return bool(_QTY_VALUE_RE.match(str(amount or "")))
+    if amount is None:
+        return False
+    return bool(_QTY_VALUE_RE.match(str(amount)))
 
 
 def _run_claim_datatypes(entity: dict[str, Any], ctx: Any) -> RuleResult:
@@ -267,13 +275,36 @@ def _normalise_label(text: str) -> str:
     return " ".join(str(text or "").split()).casefold()
 
 
+def _own_record_cn(item: dict[str, Any]) -> str:
+    """The MARC record this item itself belongs to, from its source URI.
+
+    W-48 propagation gives shared hubs (a text tradition, a subject header,
+    a corpus-wide work) the CN set of every linked manuscript, so the first
+    ``control_numbers`` entry is a corpus-wide value, not a record identity.
+    Only a CN present in the item's own source URI identifies the record the
+    item was minted from (run 3494ebf5 re-measure: every 'תכלאל' expression
+    across 96 manuscripts carried the same first CN and read as one group,
+    and same-title/different-author works (``Work…_by_N``) share the
+    corpus-wide first CN too).
+    """
+    source = str(item.get("source_uri") or "")
+    if not source:
+        return ""
+    for value in item.get("control_numbers") or []:
+        cn = str(value)
+        if cn and cn in source:
+            return cn
+    return ""
+
+
 def in_run_dup_index(items: list[dict[str, Any]]) -> dict[tuple[str, str, str], list[str]]:
-    """(class, normalised label, primary control number) → local_ids.
+    """(class, normalised label, own control number) → local_ids.
 
     Control numbers enter the key because a shared generic title is normal
     across distinct manuscripts ("מגלת אסתר" names many scrolls) — only
-    same-record twins (same class + label + MARC record) are duplicates
-    (Rule W-48 propagates CNs to derived nodes, so they compare correctly).
+    same-record twins (same class + label + MARC record) are duplicates.
+    Only items with an own record CN (``_own_record_cn``) participate:
+    corpus-shared nodes have no record identity to compare.
     """
     index: dict[tuple[str, str, str], list[str]] = {}
     for item in items:
@@ -281,11 +312,9 @@ def in_run_dup_index(items: list[dict[str, Any]]) -> dict[tuple[str, str, str], 
         lid = str(item.get("local_id") or "")
         if not lid:
             continue
-        cn = ""
-        for value in item.get("control_numbers") or []:
-            if value:
-                cn = str(value)
-                break
+        cn = _own_record_cn(item)
+        if not cn:
+            continue
         for label in _labels(item).values():
             index.setdefault((cls, _normalise_label(label), cn), []).append(lid)
     return {k: v for k, v in index.items() if len(v) > 1}
@@ -295,9 +324,14 @@ def _run_in_run_duplicate(entity: dict[str, Any], ctx: RuleContext) -> RuleResul
     index = getattr(ctx, "in_run_dup_index", None) or {}
     if not index:
         return warn_as_pass("hmo.duplicate.in_run", "no within-run label twins in scope")
+    cn = _own_record_cn(entity)
+    if not cn:
+        return not_relevant(
+            "hmo.duplicate.in_run",
+            "no own record identity — corpus-shared node cannot be a same-record twin",
+        )
     labels = _labels(entity)
     cls = str(entity.get("class_qid") or "")
-    cn = str((entity.get("control_numbers") or [""])[0] or "")
     seen = {str(entity.get("local_id") or "")}
     twins: list[dict[str, str]] = []
     for label in labels.values():

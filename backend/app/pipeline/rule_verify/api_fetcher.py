@@ -31,7 +31,7 @@ def production_fetcher() -> Any:
         if call == "inlabel_search":
             from app.pipeline.wikidata_duplicate_probe import _fetch_json, _search_url
 
-            payload = _fetch_json(_search_url(f'inlabel:"{arg}"', limit=10))
+            payload = _fetch_json(_search_url(f'inlabel:"{arg}"', limit=10), timeout=30.0)
             rows = ((payload or {}).get("query") or {}).get("search") or []
             return [
                 {"qid": str(r.get("title") or ""), "label": str(arg)}

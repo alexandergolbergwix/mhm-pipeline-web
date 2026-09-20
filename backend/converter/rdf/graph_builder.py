@@ -48,6 +48,57 @@ from .rdf_helpers import (
 _WGS84_LAT = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#lat")
 _WGS84_LONG = URIRef("http://www.w3.org/2003/01/geo/wgs84_pos#long")
 
+# Hebrew-script run incl. inner separators (spaces, niqqud, gershayim,
+# quotes, brackets, digits) so titles like 'תי"ט-תצ"א' and '(30ב)' stay
+# on the Hebrew side of the split. An optional leading bracket/quote run
+# (e.g. "[=צום ...") moves with the segment.
+_HEB_SEGMENT_RE = re.compile(
+    r"(?:[\[(\"'=]*\s*)[\u0590-\u05ff]"
+    r"[\u0590-\u05ff\s\u05c3\u05f3\u05f4'\"()\[\],\.\-·:0-9]*"
+    r"[\u0590-\u05ff'\"\)\]]"
+    r"|[\u0590-\u05ff]"
+)
+
+
+def _split_scripts(text: str) -> tuple[str, str]:
+    """Split mixed-script text into (english_part, hebrew_part).
+
+    Maximal Hebrew-bearing segments move to the Hebrew side; the English
+    remainder is cleaned of the punctuation they leave behind. Pure-English
+    text passes through unchanged.
+    """
+    if not re.search(r"[\u0590-\u05ff]", text):
+        return text.strip(), ""
+    hebrew_bits: list[str] = []
+
+    def _extract(match: re.Match[str]) -> str:
+        hebrew_bits.append(match.group(0).strip(" '\"·,."))
+        return " "
+
+    en_part = _HEB_SEGMENT_RE.sub(_extract, text)
+    en_part = re.sub(r"\s+", " ", en_part)
+    en_part = re.sub(r"\s+([,.;:)])", r"\1", en_part)
+    en_part = re.sub(r"([(:])\s*([,.;)])+", r"\1", en_part)
+    en_part = re.sub(r"\(\s*\)|\[\s*\]", "", en_part)
+    en_part = re.sub(r",\s*(?=[.)])", "", en_part)
+    en_part = re.sub(r"\s+,", ",", en_part)
+    en_part = re.sub(r"\s*\.\s*\.", ".", en_part)
+    en_part = re.sub(r"\s+\.", ".", en_part)
+    en_part = re.sub(r"\s{2,}", " ", en_part).strip()
+    en_part = re.sub(r"['\"]+(?=\s*[,.;:)])", "", en_part)
+    en_part = re.sub(r"['\"]+$", "", en_part).strip()
+    en_part = re.sub(r"\s+([,.;:)])", r"\1", en_part)
+    en_part = re.sub(r"\b(of|containing|authored|by)\s+(?=in manuscript)", "", en_part)
+    en_part = re.sub(r"\b(of|containing|authored|by)\s*\.$", ".", en_part)
+    en_part = re.sub(r"[,;:]\s*\.$", ".", en_part)
+    if en_part in {"", ".", "·", ":,."} or set(en_part) <= set(" .,:;·'\"()[]-"):
+        en_part = ""
+    else:
+        en_part = en_part.rstrip(" ,;:") + ("" if en_part.endswith((".", "!", "?")) else ".")
+    hebrew_bits = [bit.strip(" '\"·,.)") for bit in hebrew_bits]
+    hebrew_bits = [bit for bit in hebrew_bits if bit]
+    return en_part, " · ".join(hebrew_bits)
+
 
 class GraphBuilder:
     """Builds RDF graphs from extracted MARC data.
@@ -565,7 +616,7 @@ class GraphBuilder:
         details: list[str] = []
         if shelfmark:
             details.append(f"shelfmark {shelfmark}")
-        if work_title:
+        if work_title and label_language_for_text(work_title) == "en":
             details.append(f"containing '{work_title}'")
         if folio_range:
             details.append(f"folios {folio_range}")
@@ -573,7 +624,9 @@ class GraphBuilder:
         comment = prefix + (f" ({', '.join(details)})" if details else "") + "."
 
         graph.add((cu_uri, RDFS.label, Literal(label, lang="en")))
-        graph.add((cu_uri, RDFS.comment, Literal(comment, lang="en")))
+        GraphBuilder._stamp_wikibase_comment(graph, cu_uri, comment)
+        if work_title and label_language_for_text(work_title) != "en":
+            GraphBuilder._stamp_wikibase_comment(graph, cu_uri, work_title, lang="he")
 
     @staticmethod
     def _stamp_wikibase_comment(
@@ -583,10 +636,36 @@ class GraphBuilder:
         *,
         lang: str = "en",
     ) -> None:
-        """Attach a human-readable Wikibase description via ``rdfs:comment``."""
+        """Attach a human-readable Wikibase description via ``rdfs:comment``.
+
+        English comments never embed Hebrew-script text (Rule W-69): when a
+        would-be English comment quotes a Hebrew title, scribe name, or
+        contents row, the Hebrew-bearing segments move to a ``he`` comment on
+        the same node and the English remainder is punctuation-cleaned. No
+        text is dropped — every character lands on one side of the split.
+        """
         cleaned = text.strip()
-        if cleaned:
+        if not cleaned:
+            return
+        if lang != "en":
             graph.add((node_uri, RDFS.comment, Literal(cleaned, lang=lang)))
+            return
+        en_part, he_part = _split_scripts(cleaned)
+        if he_part:
+            existing_he = [
+                str(value).strip()
+                for value in graph.objects(node_uri, RDFS.comment)
+                if isinstance(value, Literal) and (value.language or "en") == "he"
+            ]
+            merged_he = he_part
+            if existing_he:
+                merged_he = " · ".join([*existing_he, he_part])
+                for value in list(graph.objects(node_uri, RDFS.comment)):
+                    if isinstance(value, Literal) and (value.language or "en") == "he":
+                        graph.remove((node_uri, RDFS.comment, value))
+            graph.add((node_uri, RDFS.comment, Literal(merged_he, lang="he")))
+        if en_part:
+            graph.add((node_uri, RDFS.comment, Literal(en_part, lang="en")))
 
     @staticmethod
     def _ensure_viewtype_paradigm_metadata(
@@ -1562,11 +1641,22 @@ class GraphBuilder:
                     Literal(f"Creation of '{work_title}' by {display_name}", lang="en"),
                 )
             )
-            self._stamp_wikibase_comment(
-                graph,
-                creation_uri,
-                f"Work-creation event: {display_name} authored '{work_title}'.",
-            )
+            if label_language_for_text(display_name) == "en" and label_language_for_text(
+                work_title
+            ) == "en":
+                self._stamp_wikibase_comment(
+                    graph,
+                    creation_uri,
+                    f"Work-creation event: {display_name} authored '{work_title}'.",
+                )
+            else:
+                self._stamp_wikibase_comment(graph, creation_uri, "Work-creation event.")
+                self._stamp_wikibase_comment(
+                    graph,
+                    creation_uri,
+                    f"{display_name} authored '{work_title}'.",
+                    lang="he",
+                )
 
         if control_number:
             role_text = role.replace("_", " ")
@@ -2236,10 +2326,22 @@ class GraphBuilder:
             graph.add((hc_uri, HM.intervention_location, location_uri))
 
         if data.has_vocalization:
-            graph.add((ms_uri, HM.has_vocalization, Literal(True, datatype=XSD.boolean)))
+            # hm:has_vocalization is an object property (SHACL: sh:class
+            # hm:VocalizationType) — link a typed vocabulary individual,
+            # never a boolean literal the exporter cannot shape.
+            self._stamp_vocabulary_individual(
+                graph, HM.Vocab_Vocalization_present, HM.VocalizationType,
+                "Vocalization present",
+            )
+            graph.add((ms_uri, HM.has_vocalization, HM.Vocab_Vocalization_present))
 
         if data.has_cantillation:
-            graph.add((ms_uri, HM.has_cantillation, Literal(True, datatype=XSD.boolean)))
+            # Same shape as has_vocalization; ontology range is cidoc:E55_Type.
+            self._stamp_vocabulary_individual(
+                graph, HM.Vocab_Cantillation_present, CIDOC.E55_Type,
+                "Cantillation present",
+            )
+            graph.add((ms_uri, HM.has_cantillation, HM.Vocab_Cantillation_present))
 
         if data.has_incipit:
             graph.add((ms_uri, HM.has_incipit, Literal(data.has_incipit, datatype=XSD.string)))
@@ -2314,8 +2416,22 @@ class GraphBuilder:
         if not condition_notes:
             return
         cond_uri = HM.Good
+        # The condition individual must carry its ConditionType type triple
+        # inside the built graph or SHACL cannot verify sh:class (the
+        # ontology TTL is not part of the validated data graph).
+        self._stamp_vocabulary_individual(
+            graph, cond_uri, HM.ConditionType, "Good condition"
+        )
         graph.add((ms_uri, HM.P44_has_condition, cond_uri))
-        graph.add((ms_uri, RDFS.comment, Literal(condition_notes[0], lang="en")))
+        self._stamp_wikibase_comment(graph, ms_uri, condition_notes[0])
+
+    @staticmethod
+    def _stamp_vocabulary_individual(
+        graph: Graph, individual_uri: URIRef, rdf_class: URIRef, label: str
+    ) -> None:
+        """Declare one E55-style vocabulary individual with its type + label."""
+        graph.add((individual_uri, RDF.type, rdf_class))
+        graph.add((individual_uri, RDFS.label, Literal(label, lang="en")))
 
     def _add_codicological_hierarchy_from_data(
         self, graph: Graph, ms_uri: URIRef, data: "ExtractedData", control_number: str
@@ -2772,7 +2888,7 @@ class GraphBuilder:
             (tradition_uri, RDFS.label, Literal(label_text, lang=label_language_for_text(label_text)))
         )
         graph.add((tradition_uri, HM.tradition_name, Literal(label_text, datatype=XSD.string)))
-        graph.add((tradition_uri, RDFS.comment, Literal(comment_text, lang="en")))
+        self._stamp_wikibase_comment(graph, tradition_uri, comment_text)
 
         if description:
             graph.add(
@@ -2815,15 +2931,10 @@ class GraphBuilder:
                 Literal(f"Witness of {work_title} in MS {control_number}", lang="en"),
             )
         )
-        graph.add(
-            (
-                witness_uri,
-                RDFS.comment,
-                Literal(
-                    f"Attests the textual tradition of '{work_title}' in manuscript {control_number}.",
-                    lang="en",
-                ),
-            )
+        self._stamp_wikibase_comment(
+            graph,
+            witness_uri,
+            f"Attests the textual tradition of '{work_title}' in manuscript {control_number}.",
         )
 
         graph.add((ms_uri, HM.witnesses, tradition_uri))
