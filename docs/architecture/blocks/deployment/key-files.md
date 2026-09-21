@@ -9,7 +9,7 @@
 | `scripts/start_worker.sh` | Worker entrypoint (Rule W-235): same eval-agent env, `RUN_JOB_ROLE=worker`, `RUN_JOB_MAINTENANCE_INTERVAL=10`, `python -m app.jobs_worker` — executes heavy job kinds off the web dyno |
 | `modal/modal_jobs.py` | `mhm-jobs` Modal app (Rule W-237): body-token dispatch + detached containers running the Heroku job code against Postgres; `rdf_build` fans out shard containers (`run_rdf_build_shard` + `_run_rdf_build_sharded`, rdf-graph R24). `MODAL_JOBS_TOKEN` + `DATABASE_URL` + `AUTHORITY_MODE=postgres` live in the `mhm-jobs2` Modal secret. Redeploy it in the same change as any job-runner code edit (Rule W-243). Module-level work MUST run behind `modal.is_local()` (Rule W-248 — containers re-import the module on every cold start) |
 | `scripts/release.sh` | Release phase: fail-fast eval-agent bundle check (`locate_eval_agent()`), then `alembic upgrade head` |
-| `backend/alembic.ini` + `backend/app/migrations/` | Alembic config (`script_location = app/migrations`); versions `0001`…`0042_research_agent` |
+| `backend/alembic.ini` + `backend/app/migrations/` | Alembic config (`script_location = app/migrations`); versions `0001`…`0048_run_job_executor_heartbeat` |
 | `backend/app/settings.py` | Pydantic settings, canonical-first cohort/percentage rollout, and Heroku `postgres://` normalization |
 | `backend/app/db.py` | Engine: forced SSL on managed Postgres, `pool_size=5 + max_overflow=10`, 120 s `idle_in_transaction_session_timeout` |
 | `backend/app/main.py` | Lifespan starts `run_job_maintenance_loop()` task, tears down `close_redis()` |
