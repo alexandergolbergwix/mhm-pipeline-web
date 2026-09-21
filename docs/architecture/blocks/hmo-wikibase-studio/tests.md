@@ -139,3 +139,7 @@
 - `backend/tests/test_rule_verify.py::test_within_run_duplicate_key_uses_own_record_cn`
   / `::test_within_run_duplicate_skips_corpus_shared_nodes` — Rule W-252 own-CN
   dup identity (block R60).
+- `backend/tests/test_rule_verify.py::test_probe_budget_exhausted_is_not_relevant_not_error`
+  / `::test_rate_limited_probe_is_not_relevant_not_error`
+  / `::test_qid_budget_exhausted_is_not_relevant_not_error` — Rule W-255
+  abstain semantics for protective caps and 429 probes (block R61).

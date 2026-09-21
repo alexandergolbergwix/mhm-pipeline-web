@@ -20,4 +20,9 @@
   semantics for Modal execution, including `test_run_on_modal_accepts_200_ok_body`
   (Rule W-243): the endpoint's real 200 `{"ok":true,"spawned":true}` counts as
   an accepted dispatch, a live executor lease blocks re-dispatch, and a stale
-  lease is taken over.
+  lease is taken over. Rule W-254 pins the executor-heartbeat semantics:
+  `test_owner_heartbeat_does_not_mask_dead_executor` (a stale
+  `executor_heartbeat_at` is takeable even when the owner keeps `updated_at`
+  fresh), `test_fresh_executor_heartbeat_blocks_redispatch`, and
+  `test_owner_heartbeat_does_not_extend_wait_past_budget` (the poller's wait
+  expires once the executor heartbeat is dead).

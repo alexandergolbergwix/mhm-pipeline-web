@@ -153,6 +153,11 @@ async def _heartbeat_claim(job_id: str, executor_id: str) -> None:
         await asyncio.sleep(60)
         try:
             async with session_scope() as db:
+                # W-254: the executor bumps its own liveness column. The web
+                # owner heartbeats ``updated_at`` for ``modal-%`` rows while
+                # polling, so executor staleness must never be read from
+                # ``updated_at`` — a preemption restart would otherwise see a
+                # permanently fresh claim and exit (2026-09-21 zombie).
                 await db.execute(
                     update(RunJob)
                     .where(
@@ -160,7 +165,10 @@ async def _heartbeat_claim(job_id: str, executor_id: str) -> None:
                         RunJob.status == "running",
                         RunJob.claimed_by == executor_id,
                     )
-                    .values(updated_at=datetime.now(timezone.utc))
+                    .values(
+                        updated_at=datetime.now(timezone.utc),
+                        executor_heartbeat_at=datetime.now(timezone.utc),
+                    )
                     .execution_options(synchronize_session=False),
                 )
                 await db.commit()
@@ -176,7 +184,7 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
     async def _execute() -> dict:
         from datetime import datetime, timedelta, timezone
 
-        from sqlalchemy import select, update
+        from sqlalchemy import func, select, update
 
         from app import db as app_db
         from app.db import session_scope
@@ -195,6 +203,12 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
         # preemption restart re-enters here while the dead container's
         # claim may still look fresh — sleep ONCE until its heartbeat
         # would have gone stale (no busy waiting), then take over.
+        # Staleness reads the executor's own liveness column (W-254): the
+        # web owner heartbeats ``updated_at`` for ``modal-%`` rows while
+        # polling, so a dead executor's claim would otherwise look fresh
+        # forever and the restart would exit without acquiring (2026-09-21
+        # zombie). Legacy rows without the column fall back to
+        # ``updated_at`` via COALESCE.
         acquired = False
         for _attempt in range(3):
             async with session_scope() as db:
@@ -212,11 +226,15 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                             (RunJob.claimed_by == "modal-dispatch")
                             | (
                                 RunJob.claimed_by.like("modal-executor:%")
-                                & (RunJob.updated_at < stale)
+                                & (func.coalesce(RunJob.executor_heartbeat_at, RunJob.updated_at) < stale)
                             )
                         ),
                     )
-                    .values(claimed_by=executor_id, updated_at=datetime.now(timezone.utc))
+                    .values(
+                        claimed_by=executor_id,
+                        updated_at=datetime.now(timezone.utc),
+                        executor_heartbeat_at=datetime.now(timezone.utc),
+                    )
                     .execution_options(synchronize_session=False),
                 )
                 await db.commit()

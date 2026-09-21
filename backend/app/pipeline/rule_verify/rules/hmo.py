@@ -11,7 +11,10 @@ Two families:
   throttled Action API helpers (Rule W-139).
 
 Every rule is advisory. ``error`` (API down, evidence missing) never
-reads as pass and never folds into ``fail`` (the abstain contract).
+reads as pass and never folds into ``fail`` (the abstain contract). A
+protective budget cap or a rate-limited probe that never executed is
+``not_relevant`` (W-255), not ``error`` — the budget is an operational
+guard, not a data defect.
 """
 
 from __future__ import annotations
@@ -487,8 +490,10 @@ def _run_wikidata_qids_alive(entity: dict[str, Any], ctx: RuleContext) -> RuleRe
 
         remaining = int(os.getenv("RULE_VERIFY_WD_QID_MAX", "2000"))
     if remaining <= 0:
-        return RuleResult(
-            "hmo.wikidata.qids_alive", STATE_ERROR, "",
+        # W-255: budget exhaustion is a protective cap, not an execution
+        # error — the check did not run, so it is not_relevant (fail-closed).
+        return not_relevant(
+            "hmo.wikidata.qids_alive",
             "QID liveness budget exhausted for this run — check did not execute",
         )
     wanted = qids[:remaining]
@@ -529,17 +534,20 @@ def _run_wikidata_label_candidates(entity: dict[str, Any], ctx: RuleContext) -> 
         return not_relevant("hmo.wikidata.label_candidates", "label too short to probe")
     budget_key = "wd_probe_budget"
     if ctx.counters.get(budget_key, 1) <= 0:
-        return RuleResult(
-            "hmo.wikidata.label_candidates", STATE_ERROR, "",
+        # W-255: a probe that never executed is not an execution error —
+        # the budget is a protective cap (W-71), not a data defect. Not
+        # folding into fail/pass keeps the rule fail-closed.
+        return not_relevant(
+            "hmo.wikidata.label_candidates",
             "probe budget exhausted for this run — check did not execute",
         )
     ctx.counters[budget_key] = ctx.counters.get(budget_key, 1) - 1
     try:
         candidates = ctx.fetcher("inlabel_search", title)
-    except Exception as exc:  # noqa: BLE001
-        return RuleResult(
-            "hmo.wikidata.label_candidates", STATE_ERROR, "",
-            f"probe failed: {exc}"[:200],
+    except Exception as exc:  # noqa: BLE001 — rate-limit/network is never a fail
+        return not_relevant(
+            "hmo.wikidata.label_candidates",
+            f"probe did not execute: {exc}"[:200],
         )
     if not candidates:
         return warn_as_pass("hmo.wikidata.label_candidates", "no live Wikidata label collision")

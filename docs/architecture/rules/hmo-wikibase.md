@@ -725,3 +725,27 @@ index without scoping those rules first.
 
 Tests: `tests/test_rule_verify.py::test_within_run_duplicate_key_uses_own_record_cn`,
 `::test_within_run_duplicate_skips_corpus_shared_nodes`.
+
+## W-255 — A protective budget cap or a rate-limited probe abstains, never errors (2026-09-21)
+
+The fresh verify of run 3494ebf5 (2026-09-20 22:48) showed every
+deterministic rule at 0 fails / 0 errors, yet `hmo.wikidata.label_candidates`
+alone logged **17,450 errors** — 17,252 "probe budget exhausted for this
+run" plus 198 "probe failed: HTTP 429". The per-run probe budget
+(`RULE_VERIFY_WD_PROBE_MAX`, W-71's protective cap) and CirrusSearch
+rate limits are operational guards, not data defects: none of those
+entities had a wrong fact in it, and mass `error` rows drowned the
+signal in the per-rule summary and read as "the verify failed".
+
+Therefore: in `rules/hmo.py`, an **unexecuted** probe abstains as
+`not_relevant` — budget-exhausted `label_candidates`, budget-exhausted
+`qids_alive`, and a probe exception (429 / network). The abstain
+contract is unchanged (W-71): it never folds into `fail`, never reads as
+`pass`, and genuine label collisions (19 on that run) still fail.
+`error` stays reserved for real execution failures: the API disabled
+(`_api_gate`), a partially-executed liveness check ("liveness unknown
+for N QIDs"), or a lookup failure on an already-running check.
+
+Tests: `tests/test_rule_verify.py::test_probe_budget_exhausted_is_not_relevant_not_error`,
+`::test_rate_limited_probe_is_not_relevant_not_error`,
+`::test_qid_budget_exhausted_is_not_relevant_not_error`.

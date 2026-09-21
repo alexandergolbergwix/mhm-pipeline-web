@@ -128,6 +128,13 @@ class RunJob(Base):
         DateTime(timezone=True), nullable=True,
     )
     claimed_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Modal-executor-only heartbeat (Rule W-254). The web owner heartbeats
+    # ``updated_at`` for ``modal-%`` rows while polling, so executor
+    # liveness must never be read from ``updated_at``. NULL on legacy rows
+    # — readers fall back to ``updated_at`` (COALESCE).
+    executor_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,
     )

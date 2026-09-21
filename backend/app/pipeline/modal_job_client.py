@@ -36,7 +36,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.settings import get_settings
 
@@ -153,7 +153,17 @@ async def run_on_modal(
                     (RunJob.claimed_by == WORKER_ID)
                     | (
                         RunJob.claimed_by.like("modal-executor:%")
-                        & (RunJob.updated_at < _stale_cutoff())
+                        # W-254: executor liveness is its own heartbeat column
+                        # — the web owner heartbeats ``updated_at`` while
+                        # polling, which must never mask a dead container.
+                        # Legacy rows without the column fall back to
+                        # ``updated_at`` via COALESCE.
+                        & (
+                            func.coalesce(
+                                RunJob.executor_heartbeat_at, RunJob.updated_at,
+                            )
+                            < _stale_cutoff()
+                        )
                     ),
                 )
                 .values(
@@ -229,7 +239,11 @@ async def _wait_for_terminal(
                 progress = dict(job.progress or {})
                 status = str(job.status)
                 claimed_by = str(job.claimed_by or "")
-                updated_at = job.updated_at
+                # W-254: the executor's own heartbeat decides liveness —
+                # ``updated_at`` is also bumped by this process's poller
+                # heartbeat, which would otherwise keep the wait alive
+                # forever after a container preemption (2026-09-21 zombie).
+                executor_alive_at = job.executor_heartbeat_at or job.updated_at
 
             if progress != last_progress and on_progress is not None:
                 try:
@@ -243,7 +257,7 @@ async def _wait_for_terminal(
 
             budget_spent = time.monotonic() - started >= _WAIT_BUDGET_S
             container_alive = claimed_by.startswith("modal-executor:") and (
-                updated_at is not None and updated_at >= _stale_cutoff()
+                executor_alive_at is not None and executor_alive_at >= _stale_cutoff()
             )
             if budget_spent and not container_alive:
                 logger.warning(

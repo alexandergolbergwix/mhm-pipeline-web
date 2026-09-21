@@ -45,9 +45,12 @@ One `RuleResult` per rule per entity with an explicit state:
 - `pass` — check ran, no finding.
 - `fail` — check ran and found a problem (carries `field` + `message` +
   `evidence`).
-- `not_relevant` — `applies_to()` said this entity is out of scope.
-- `error` — the check could **not** execute (API down, budget out).
-  Never folds into `fail`, never reads as pass (abstain contract).
+- `not_relevant` — `applies_to()` said this entity is out of scope, or a
+  probe backed by a protective budget did not execute (budget exhausted
+  / HTTP 429 — Rule W-255): an operational guard, not a data defect.
+- `error` — the check could **not** execute (API down via `_api_gate`, a
+  partially-executed liveness check, a mid-check lookup failure). Never
+  folds into `fail`, never reads as pass (abstain contract).
 
 The owning `HmoStudioItemOverride` row stores a compact `rule_verdict`
 JSONB (`rule_verdict_v1`: worst-state `overall` + per-rule entries;

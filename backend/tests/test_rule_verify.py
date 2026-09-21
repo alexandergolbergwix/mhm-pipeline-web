@@ -444,3 +444,63 @@ def test_production_fetcher_probe_passes_timeout() -> None:
     finally:
         probe._fetch_json, probe._search_url = original  # type: ignore[assignment]
     assert recorded["timeout"] == 30.0
+
+
+def _engine_with_counters(items, counters: dict[str, int], *, api=True, fetcher=None):  # type: ignore[no-untyped-def]
+    ctx = build_context(run_id="r1", items=items, api_enabled=api, fetcher=fetcher)
+    ctx.marc_index = {"CN1": {"title": "Codex A"}}
+    ctx.counters.update(counters)
+    return RuleEngine(build_hmo_rules(), ctx)
+
+
+def test_probe_budget_exhausted_is_not_relevant_not_error() -> None:
+    """W-255 (run 3494ebf5, 17,450 errors): a protective budget cap is an
+    operational guard, not a data defect — an unexecuted probe is
+    ``not_relevant``, never ``error`` and never ``pass``."""
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        raise AssertionError(f"budget exhausted — fetcher must not run ({call!r})")
+
+    items = [_item()]
+    results = _engine_with_counters(
+        items, {"wd_probe_budget": 0}, fetcher=fetcher,
+    ).run_scope(items, include_api=True)
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    cand = row["hmo.wikidata.label_candidates"]
+    assert cand.state == "not_relevant"
+    assert "did not execute" in cand.message
+
+
+def test_rate_limited_probe_is_not_relevant_not_error() -> None:
+    """W-255: an HTTP 429 / network probe failure did not execute —
+    fail-closed abstain (not_relevant), not an execution error."""
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        if call == "inlabel_search":
+            raise RuntimeError("HTTP 429: too many requests")
+        raise AssertionError(f"unexpected call {call!r}")
+
+    items = [_item(claims=[])]
+    results = _engine_with_counters(items, {}, fetcher=fetcher).run_scope(
+        items, include_api=True,
+    )
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    cand = row["hmo.wikidata.label_candidates"]
+    assert cand.state == "not_relevant"
+    assert "429" in cand.message
+
+
+def test_qid_budget_exhausted_is_not_relevant_not_error() -> None:
+    """W-255: the QID liveness budget cap abstains, not errors."""
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        raise AssertionError(f"budget exhausted — fetcher must not run ({call!r})")
+
+    items = [_item()]
+    results = _engine_with_counters(
+        items, {"wd_qid_budget": 0}, fetcher=fetcher,
+    ).run_scope(items, include_api=True)
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    alive = row["hmo.wikidata.qids_alive"]
+    assert alive.state == "not_relevant"
+    assert "did not execute" in alive.message

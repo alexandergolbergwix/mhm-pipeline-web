@@ -513,3 +513,35 @@ Bigger shards are safe: shard functions run with 4 GB memory and the
 change lands with `modal deploy modal_jobs.py` in the same change
 (Rule W-243). When the DB is saturated, retry the job later rather than
 raising concurrency — the co-tenant load is not ours to terminate.
+
+### Rule W-254 — Modal executor liveness has its own heartbeat column (added 2026-09-21)
+
+The 2026-09-21 `hmo_item_build` on run 3494ebf5 hung as a zombie `running`
+row: Modal **preempted** the executor container mid-job, re-invoked the
+same input, but the preemption restart could never take over the lease —
+the web poller's `_heartbeat_owned_jobs` heartbeats `updated_at` for
+every `modal-%` row while it polls (W-237), so the restart's stale-claim
+condition (`updated_at < cutoff`) was permanently false. After 3 attempts
+the restart exited silently; the poller waited on `container_alive`,
+which it computed from the same self-refreshed `updated_at` — a wait that
+can never expire. No container existed, `request_cancel` only stamps a
+flag the dead executor would need to read, and only a manual SQL
+force-cancel freed the row (R37 precedent).
+
+Therefore: `run_jobs.executor_heartbeat_at` (migration 0048) is the
+**executor-only liveness signal**. The Modal executor sets it on claim
+and bumps it in `_heartbeat_claim`; web owners never touch it. Every
+staleness/liveness read for a `modal-executor:*` claim uses
+`COALESCE(executor_heartbeat_at, updated_at)` (legacy rows without the
+column keep the old semantics) in all three places: the preemption
+restart's lease acquisition (`modal_jobs.py::_run_job_detached`), the
+web dispatch lease (`modal_job_client.py::_lease_for_dispatch`), and the
+poller's `container_alive` wait-expiry check. The migration lands with
+the Heroku deploy; `modal deploy modal_jobs.py` lands in the same change
+(Rule W-243) — deploy Heroku first so the column exists before the new
+container image writes it.
+
+Tests: `backend/tests/unit/test_modal_job_client.py`
+(`test_owner_heartbeat_does_not_mask_dead_executor`,
+`test_fresh_executor_heartbeat_blocks_redispatch`,
+`test_owner_heartbeat_does_not_extend_wait_past_budget`).

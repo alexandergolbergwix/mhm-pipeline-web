@@ -281,3 +281,90 @@ async def test_stale_modal_executor_is_taken_over(
     assert await run_on_modal(job.id, sample_run["run_id"], JOB_KIND_RDF_BUILD) is True
     await finisher
     assert len(dispatches) == 1
+
+
+@pytest.mark.asyncio
+async def test_owner_heartbeat_does_not_mask_dead_executor(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """W-254 (2026-09-21 zombie, run 3494ebf5): the web owner heartbeats
+    ``updated_at`` for ``modal-%`` rows while polling, so a preemption
+    restart saw a permanently fresh claim and exited — the row ran
+    forever. Executor staleness reads ``executor_heartbeat_at`` instead:
+    a dead container whose claim looks fresh via owner heartbeats is
+    still takeable."""
+    _settings(monkeypatch)
+    _fast_safety_tick(monkeypatch)
+    job = await _add_running_job(
+        db_session, sample_run, claimed_by="modal-executor:dead1",
+    )
+    # Owner heartbeat keeps updated_at fresh; the executor itself died.
+    job.updated_at = _now()
+    job.executor_heartbeat_at = _now() - timedelta(seconds=600)
+    await db_session.commit()
+
+    dispatches = _install_client(monkeypatch)
+
+    async def _finish():
+        await asyncio.sleep(0.05)
+        job.status = JOB_STATUS_SUCCEEDED
+        await db_session.commit()
+        modal_job_client.notify_modal_finished(job.id)
+
+    finisher = asyncio.create_task(_finish())
+    assert await run_on_modal(job.id, sample_run["run_id"], JOB_KIND_RDF_BUILD) is True
+    await finisher
+    assert len(dispatches) == 1, "a dead executor must be takeable even when updated_at is fresh"
+
+
+@pytest.mark.asyncio
+async def test_fresh_executor_heartbeat_blocks_redispatch(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """W-254 parity: a live container with a fresh executor heartbeat is
+    protected even when ``updated_at`` alone would look stale."""
+    _settings(monkeypatch)
+    _fast_safety_tick(monkeypatch)
+    job = await _add_running_job(
+        db_session, sample_run, claimed_by="modal-executor:live1",
+    )
+    job.updated_at = _now() - timedelta(seconds=600)
+    job.executor_heartbeat_at = _now()
+    await db_session.commit()
+
+    dispatches = _install_client(monkeypatch)
+
+    async def _finish():
+        await asyncio.sleep(0.08)
+        job.status = JOB_STATUS_SUCCEEDED
+        await db_session.commit()
+        modal_job_client.notify_modal_finished(job.id)
+
+    finisher = asyncio.create_task(_finish())
+    assert await run_on_modal(job.id, sample_run["run_id"], JOB_KIND_RDF_BUILD) is True
+    await finisher
+    assert dispatches == [], "a fresh executor heartbeat must not be re-dispatched"
+
+
+@pytest.mark.asyncio
+async def test_owner_heartbeat_does_not_extend_wait_past_budget(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """W-254: after the wait budget lapses, only a live EXECUTOR heartbeat
+    keeps the wait alive. Owner heartbeats refresh ``updated_at`` only —
+    a preempted container must not pin the poller forever."""
+    _settings(monkeypatch)
+    monkeypatch.setattr(modal_job_client, "_SAFETY_TICK_S", 0.02)
+    monkeypatch.setattr(modal_job_client, "_WAIT_BUDGET_S", 0.01)
+    job = await _add_running_job(
+        db_session, sample_run, claimed_by="modal-executor:dead1",
+    )
+    # Owner heartbeat keeps updated_at fresh; the executor is dead.
+    job.updated_at = _now()
+    job.executor_heartbeat_at = _now() - timedelta(seconds=600)
+    await db_session.commit()
+
+    _install_client(monkeypatch)
+    assert await run_on_modal(job.id, sample_run["run_id"], JOB_KIND_RDF_BUILD) is False, (
+        "the wait must expire when the executor heartbeat is dead"
+    )

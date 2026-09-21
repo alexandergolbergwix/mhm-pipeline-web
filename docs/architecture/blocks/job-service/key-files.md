@@ -9,7 +9,7 @@
 | `backend/app/pipeline/verify_resume.py` | Auto-resume helpers: `apply_verify_job_auto_resume`, resumable result copy (W-130 / W-134) |
 | `backend/app/pipeline/run_job_params.py` | Bounded per-kind request validation + server-side secret injection; slow scope loading stays in workers |
 | `backend/app/routers/run_jobs.py` | HTTP API: list mine, list per run, start (201/409), get, cancel |
-| `backend/app/models/run_job.py` | `RunJob` model, kind/status constants, `uq_run_jobs_active_kind` partial unique index |
+| `backend/app/models/run_job.py` | `RunJob` model (incl. `executor_heartbeat_at`, W-254), kind/status constants, `uq_run_jobs_active_kind` partial unique index |
 | `backend/app/migrations/versions/0024_run_jobs.py` | Creates the `run_jobs` table + original active-kind index |
 | `backend/app/migrations/versions/0030_run_job_claims.py` | Adds `claimed_by` + `uq_run_jobs_active_kind` |
 | `backend/app/main.py` (lifespan, ~L35-60) | Startup: `fail_stale_jobs` → `recover_interrupted_jobs` → start `run_job_maintenance_loop`; shutdown cancels the loop first |

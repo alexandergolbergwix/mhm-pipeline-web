@@ -357,3 +357,5 @@ hubs and is not a record identity. Corpus-shared nodes (no own CN) are
 `not_relevant` for the dup rule. *Why:* the run 3494ebf5 re-measure
 flagged 536 false twins ('תכלאל' ×96 across manuscripts, same-title
 different-author works).
+
+61. **R61 — An unexecuted probe abstains as `not_relevant`, never `error` (Rule W-255).** The per-run probe budget (`RULE_VERIFY_WD_PROBE_MAX`) and CirrusSearch rate limits are protective operational guards, not data defects: budget-exhausted `label_candidates`, budget-exhausted `qids_alive`, and a 429/network probe exception abstain (`not_relevant`). `error` stays reserved for real execution failures (API disabled via `_api_gate`, partially-executed liveness, lookup failure mid-check). *Why:* the fresh verify of run 3494ebf5 (2026-09-20) put 17,450 `error` rows on `hmo.wikidata.label_candidates` (17,252 budget + 198 HTTP 429) while every deterministic rule sat at 0/0 — mass errors drowned the signal and read as "the verify failed", though only 19 genuine label-collision fails existed.
