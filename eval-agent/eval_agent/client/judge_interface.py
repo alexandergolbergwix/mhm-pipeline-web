@@ -29,6 +29,10 @@ class JudgeResponse:
     judge_id: str
     input_tokens: int | None = None
     output_tokens: int | None = None
+    # Provider-specific per-candidate data that must NOT live in the
+    # (schema-constrained) verdict dict — e.g. TypeSafe Jev's raw question
+    # answers + min-axis confidence, consumed by the session's jev_gates.
+    meta: dict[str, Any] | None = None
 
 
 class Judge(Protocol):
@@ -42,5 +46,8 @@ class Judge(Protocol):
         prompt: str,
         schema: dict[str, Any],
         timeout: int = 120,
+        # Per-candidate context for providers that need more than the prompt
+        # (TypeSafe Jev's question sets). Judges that don't use it ignore it.
+        context: dict[str, Any] | None = None,
     ) -> JudgeResponse:
         ...

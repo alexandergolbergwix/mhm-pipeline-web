@@ -59,7 +59,7 @@ class _ScriptedJudge:
         self.prompts: list[str] = []
         self._retry_response = retry_response
 
-    def judge(self, *, prompt: str, schema, timeout: int = 120) -> JudgeResponse:  # noqa: ANN001
+    def judge(self, *, prompt: str, schema, timeout: int = 120, context: dict | None = None) -> JudgeResponse:  # noqa: ANN001
         self.prompts.append(prompt)
         if "EXPANDED CONTEXT" in prompt:
             return self._retry_response
@@ -127,7 +127,7 @@ class _RetryInvalidJudge:
     def __init__(self) -> None:
         self.calls = 0
 
-    def judge(self, *, prompt: str, schema, timeout: int = 120) -> JudgeResponse:  # noqa: ANN001
+    def judge(self, *, prompt: str, schema, timeout: int = 120, context: dict | None = None) -> JudgeResponse:  # noqa: ANN001
         self.calls += 1
         if self.calls == 1:
             return _resp("fail", error="invalid JSON", verdict_present=False)
@@ -140,7 +140,7 @@ class _FallbackJudge:
     def __init__(self) -> None:
         self.calls = 0
 
-    def judge(self, *, prompt: str, schema, timeout: int = 120) -> JudgeResponse:  # noqa: ANN001
+    def judge(self, *, prompt: str, schema, timeout: int = 120, context: dict | None = None) -> JudgeResponse:  # noqa: ANN001
         self.calls += 1
         return _resp("full")
 
@@ -151,7 +151,7 @@ class _AlwaysFailJudge:
     def __init__(self) -> None:
         self.calls = 0
 
-    def judge(self, *, prompt: str, schema, timeout: int = 120) -> JudgeResponse:  # noqa: ANN001
+    def judge(self, *, prompt: str, schema, timeout: int = 120, context: dict | None = None) -> JudgeResponse:  # noqa: ANN001
         self.calls += 1
         return _resp("full", error="HTTP 400", verdict_present=False)
 

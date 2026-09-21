@@ -6,6 +6,7 @@
 |---|---|
 | `backend/app/pipeline/agent_runner.py` | Core runner: `locate_eval_agent`, `resolve_verify_state_dir/-session_dir`, `spawn_eval_agent_run`, `sse_stream`, trace persistence + session listing/reading (both layouts) |
 | `backend/scripts/analyze_wikidata_verdicts.py` | Token-minimal, read-only Codex CLI analysis of only `partial`/`fail` rows from Wikidata CSV/JSON exports |
+| `backend/scripts/typesafe_bakeoff.py` | Phase-0 judge bake-off: rebuilds a channel fixture read-only, judges the same fixture with Jev (TypeSafe System One, typed questions) and a tier-1 model, reports axis/overall agreement + latency + cost (`--tier1-reuse` reloads prior eval-state verdicts) |
 | `backend/app/pipeline/verify_outcome.py` | Honest `complete`/`partial` outcome + TRACE/checkpoint verdict merge (Rule W-126) + synthesize missing `runner.exit` (Rule W-127) |
 | `backend/app/pipeline/verify_job.py` | Background-job wrapper (`run_verify_job`); mid-run counters-only progress + slim terminal snapshot (Rule W-128); interrupted → resumable result (W-130) |
 | `backend/app/pipeline/verify_resume.py` | Resumable verify result + stale-error Continue copy (Rule W-130) |
@@ -17,9 +18,12 @@
 | `backend/app/pipeline/run_job_params.py` | Validates verify job params; resolves tier-1 credentials before spawn |
 | `backend/app/pipeline/judge_models.py` | Reads `eval-agent/config/tier1_models.yaml`; model list + availability |
 | `backend/app/pipeline/ai_verifier.py` | `GEMINI_MODEL` (default tier-1), `unwrap_user_gemini_key`, legacy single-match LLM/heuristic verdict |
-| `eval-agent/config/tier1_models.yaml` | Registry: `gemini-3.5-flash`, `moonshotai/Kimi-K2.5` (`thinking: {type: disabled}`), `deepseek-ai/DeepSeek-V4-Flash` (Qubrid OpenAI-compat) |
+| `eval-agent/config/tier1_models.yaml` | Registry: `gemini-3.5-flash`, `moonshotai/Kimi-K2.5` (`thinking: {type: disabled}`), `deepseek-ai/DeepSeek-V4-Flash` (Qubrid OpenAI-compat), `typesafe/jev-1.13.0` (TypeSafe Jev, RLCD judge) |
 | `eval-agent/eval_agent/judge_models.py` | Eval-agent-side registry loader |
 | `eval-agent/eval_agent/client/openai_compat_client.py` | `OpenAICompatJudge` — `/chat/completions` + JSON object parsing |
+| `eval-agent/eval_agent/client/typesafe_client.py` | `TypesafeJudge` — TypeSafe System One (`/v1/systemone`): byte-identical state rewrite (trailing JSON-verdict line → Jev instruction), tuned questions from `context` (evaluator_id + payload), retries honoring `retry-after`, 4xx fails the row only; answers → verdict via the universal table (raw answers travel in `JudgeResponse.meta`, not the schema-constrained verdict) |
+| `eval-agent/eval_agent/client/typesafe_questions.py` | Tuned per-evaluator Jev question sets ported verbatim from the bake-off (`questions_for`) + generic schema→questions fallback for authority / hmo-schema channels |
+| `eval-agent/eval_agent/jev_gates.py` | Deterministic code gates ported from the harness (`_map_row` semantics): `_deterministic_text_artifacts`, ERROR-severity validator gate, artifact downgrade, `ROLE_CONF_GATE = 0.5`, full overall computation (axes + name_quality/text_quality/claims/match_kind), plus the wikidata-contract gates — live-duplicate probe (`candidates_found` without an adopted QID → `type_ok=no`, Rule W-139) and missing-P31 (structural claim missing → `type_ok=no`) — applied by the session only when the primary judge is typesafe |
 | `backend/app/routers/ai_verify.py` | Authority channel: `/runs/{id}/ai-verify/*` + `_persist_ai_verdicts_to_matches` |
 | `backend/app/routers/extraction_verify.py` | NER channel: `/runs/{id}/extraction/ai-verify/*` + `_persist_ai_verdicts_to_entities` |
 | `backend/app/routers/wikidata_studio.py` | Wikidata channel: `/{id}/wikidata-studio/ai-verify/*`, `_wikidata_verify_event_stream` (~line 1677) |

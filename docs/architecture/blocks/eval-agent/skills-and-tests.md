@@ -25,7 +25,9 @@
 1. Add an entry to `eval-agent/config/tier1_models.yaml` (`provider`, `api_key_env`,
    `base_url` for OpenAI-compat, `supports_agentic`).
 2. If `provider: openai_compat`, implement or extend `OpenAICompatJudge`; if Gemini,
-   `GeminiJudge` already handles it. `session.py::_build_judge` routes by provider.
+   `GeminiJudge` already handles it; if `provider: typesafe`, `TypesafeJudge`
+   already handles it (tuned question sets + `jev_gates.py` run in the session —
+   R44). `session.py::_build_judge_for_model` routes by provider.
 3. Document the env var in `docs/architecture/blocks/deployment/env-vars.md`; set on
    Heroku with `heroku config:set`.
 4. Tests: `eval-agent/tests/test_judge_models.py` + provider client unit test;
@@ -101,6 +103,82 @@ python backend/scripts/analyze_wikidata_verdicts.py \
   --report /tmp/wikidata-verdict-fixes.md
 ```
 
+## Skill: bake off a new judge against the tier-1 judge
+
+Run `backend/scripts/typesafe_bakeoff.py` to measure an alternative judge
+(currently TypeSafe Jev, `jev-1.13.0`) against a tier-1 model on the SAME
+locally rebuilt fixture — read-only, no DB/cache/DB writes:
+
+```bash
+cd backend && DATABASE_URL=… .venv/bin/python -m scripts.typesafe_bakeoff \
+  --channel ner|hmo|wikidata --evaluator person_ner|hmo_wikibase_item|wikidata_item \
+  --limit 25 [--tier1-reuse]
+```
+
+- Jev `state` = the byte-identical tier-1 prompt (`build_prompt`) with only the
+  trailing "Return only the JSON verdict." line swapped; each rubric axis
+  becomes a typed Choice question and `overall` is derived from the worst
+  check state (never asked of the model).
+- Every row carries a `checks` list in the rule-verify `RuleResult` shape
+  (`rule_id`, `state` pass/partial/fail/not_applicable, `field`, `message`,
+  `evidence`) so curators see exactly which checks failed or partially
+  failed — same visual language as `RuleVerificationPanel`. The report JSON
+  adds a per-check `check_summary`; an HTML sibling
+  (`bakeoff_checks_*.html`) renders check chips + per-entity cards.
+- Studio channels additionally ask atomic quality questions the tier-1 judge
+  only does implicitly: `name_quality` (system-label/controlled-vocabulary
+  acceptance) and `text_quality` Noul (generation artifacts → `name_ok`
+  downgrade, rubric rule 5).
+- A blocking `no` below `ROLE_CONF_GATE` (0.5) confidence is downgraded to
+  `partial` inside the check list (message names the gate) — uncertainty
+  routes to review, never to a hard fail. `overall` is computed from the
+  final check states, so the gate is baked into the verdict.
+- Tier-1 judging is slow (linear, minutes); `--tier1-reuse` reloads the most
+  complete prior `eval-state/runs/*/results.jsonl` instead of re-judging.
+- Gold-set certification (Phase 1 of "trust Jev"): export a labeling sheet
+  with `--export-gold PATH --silver` (silver pre-fills `overall` from
+  persisted curator approvals: approved→full, rejected→fail; no API calls),
+  fill `label.overall` (full/partial/fail, optional axes), then score with
+  `--gold PATH`. Gold mode skips tier-1 entirely and reports accuracy,
+  **unsafe-approve count** (Jev `full` where gold is partial/fail — must be
+  0 for certification), safe-miss count, and the confusion matrix. Baselines
+  and per-axis agreement in gold mode come from the gold labels. The sheet
+  rows carry a `summary` block (labels/descriptions for Studio; text/role/
+  type for NER) so labels can be filled offline.
+- `--determinism` runs the Jev pass twice and reports overall/axis
+  stability plus changed keys (Phase 2 gate: ≥ 0.99).
+- Jev-vs-Qubrid comparison report: `state/typesafe-bakeoff/jev-vs-qubrid/comparison.html`
+  (quality vs gold for both judges, speed, cost with the Qubrid-rate formula,
+  decision-design mechanics, production recommendation). Kimi token counts
+  live in the eval-agent run `manifest.json` `stats` (not results.jsonl);
+  its full-gold scoring needs the multi-hour `scripts/gold_score_tier1.py` run.
+- Certification run v1 (2026-09-20/21, 1,238 Claude-labeled gold rows =
+  full populations for NER + wikidata, 500 stratified HMO): gates NOT yet
+  met — accuracy 0.67–0.94 per channel vs the ≥ 0.98 gate; unsafe-approve
+  8/1,238 (0.65%, gate = 0). Tuning loop results: wikidata fail-class
+  63/63 after the deterministic ERROR-severity validator gate (never
+  confidence-gated); HMO unsafe 11 → 1 after deterministic text-artifact
+  checks (per-text paren balance, identity-CN vs description-CN mismatch
+  per W-137, quote-collision garble `"[א-ת]{2,}`, truncated folio ranges);
+  person unsafe 1 → 0 after the dictation-note (מכתיבת יד) role rule.
+  Known gold noise: the truncated-folio artifact class is labeled
+  inconsistently across labeling batches (needs reconciliation).
+  Production policy until gates pass: Jev primary, tier-1 confirms
+  anything that is not a high-confidence pass.
+- 2026-09-20 head-to-head (run `48ba6c13`, 40 items/channel, Jev vs Kimi
+  K2.5 on the identical fixture): HMO (exportable items) overall agreement
+  **0.975** with all axes ≥ 0.975; wikidata name_ok/type_ok **1.0** and
+  per-claim statement checks P31/P1476 40/40 pass — every disagreement is a
+  conservative `full→partial` review route, zero false fails in any run;
+  person_ner 0.85 (borderline `type_ok` partials). Speed: Jev 3.6–4.7 s for
+  40 items vs 392–397 s for the tier-1 linear pass (~90x). Cost: Jev
+  $0.21/1k NER, $0.34/1k HMO, $0.63/1k wikidata ($0.042/Mtok input,
+  $42/Btok console-verified; the full 1,238-row certification cost $0.42) The
+  claim-check framing must name the real evidence channels (statement
+  references, `work_candidate_evidence`, MARC slice, authority packs) — a
+  `claim_sources`-only framing mis-flagged every supported P31/P1476 as
+  unsupported.
+
 ## Tests pinning this block
 
 - `backend/tests/test_agent_runner_sessions.py` — session dir layouts (new +
@@ -143,6 +221,25 @@ python backend/scripts/analyze_wikidata_verdicts.py \
 - `eval-agent/tests/test_judge_models.py`, `test_openai_compat_judge.py` —
   tier-1 registry + Qubrid OpenAI-compat judge; Kimi `thinking` is a JSON
   object (Rule W-46).
+- `eval-agent/tests/test_typesafe_client.py` — TypesafeJudge: state rewrite
+  byte parity, tuned question sets per evaluator (+ the wikidata `p31_ok` /
+  `duplicate_risk` contract questions) + schema fallback, universal overall
+  table, missing-axis row error, 4xx-no-retry / 429-retry transport
+  (Jev-primary rollout step 8).
+- `eval-agent/tests/test_jev_gates.py` — deterministic gates ported from the
+  bake-off harness: artifact downgrade, ERROR-severity validator gate,
+  `ROLE_CONF_GATE`, claim/name_quality/match_kind overall effects, the
+  wikidata duplicate gate (probe `candidates_found` → fail; update/adopted/
+  absent pass; `not_run` never moves an axis), missing-P31 gate,
+  schema-clean gated verdicts, session wiring (gates run for the typesafe
+  provider only).
+- `eval-agent/tests/test_jev_escalation.py` — escalation policy: high-conf
+  full stays with Jev; partial / low-conf full → fallback verdict with the
+  deciding `judge_id`; policy off / non-typesafe primary never escalate;
+  cache-hit non-full rows re-check the fallback.
+- `backend/tests/unit/test_typesafe_pass_through.py` — typesafe registry
+  entry, credential resolution, `TYPESAFE_API_KEY` in the spawned subprocess
+  env (rollout step 6).
 - `eval-agent/tests/test_judge_failure_verdicts.py` and
   `eval-agent/tests/test_gated_retry.py` — provider and parse failures become
   uncached `abstain` rows with `provider_error` status, and the fallback judge

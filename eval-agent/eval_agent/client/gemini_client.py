@@ -106,6 +106,7 @@ class GeminiJudge:
         prompt: str,
         schema: dict[str, Any],
         timeout: int = 120,
+        context: dict[str, Any] | None = None,
     ) -> JudgeResponse:
         """Send prompt + schema; return parsed verdict (or error)."""
         payload = self._payload(prompt, schema)

@@ -534,6 +534,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p_run.add_argument("--escalate-model", default=None,
                        help="model the loop escalates to when still uncertain "
                             "(default gemini-3.1-pro-preview).")
+    p_run.add_argument("--escalate-policy", action="store_true",
+                       help="Jev-primary escalation (LLM exception handler): re-judge "
+                            "rows that are not a high-confidence `full` with the "
+                            "fallback model. Default OFF until the registry entry "
+                            "is validated.")
+    p_run.add_argument("--escalate-below-conf", type=float, default=None,
+                       help="with --escalate-policy: also escalate `full` rows whose "
+                            "Jev confidence is below this (default 0.85).")
 
     p_report = sub.add_parser("report", help="regenerate report from a run")
     p_report.add_argument("--run", default="latest")

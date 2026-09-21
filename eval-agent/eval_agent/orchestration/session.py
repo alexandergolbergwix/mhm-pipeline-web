@@ -28,7 +28,7 @@ import os
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -39,6 +39,7 @@ from eval_agent.cache.verdict_cache import VerdictCache
 from eval_agent.client.gemini_client import GeminiJudge
 from eval_agent.client.judge_interface import Judge, JudgeResponse
 from eval_agent.client.rate_limiter import RateLimiter
+from eval_agent.client.typesafe_client import TypesafeJudge
 from eval_agent.evaluators import (
     AUTHORITY_EVALUATORS,
     HMO_WIKIBASE_ITEM_EVALUATORS,
@@ -130,6 +131,12 @@ class SessionConfig:
         "fetch_marc_field", "expand_note", "list_record_entities", "lookup_authority",
     )
     authority_rpm: int = 60
+    # ── Jev-primary escalation (LLM exception handler) ────────────────
+    # When the primary judge is typesafe (Jev) and this is on, rows that are
+    # not a high-confidence `full` are re-judged by `fallback_model` (Kimi).
+    # Default OFF until the registry entry is validated.
+    escalate_policy: bool = False
+    escalate_below_conf: float = 0.85
 
     @classmethod
     def from_args(cls, args: Any, defaults: dict[str, Any]) -> "SessionConfig":
@@ -208,6 +215,7 @@ class SessionConfig:
                 else "moonshotai/Kimi-K2.5"
             )
         auth_cfg = ag_cfg.get("authority", {})
+        below_conf = getattr(args, "escalate_below_conf", None)
         return cls(
             pipeline_output=Path(args.pipeline_output).expanduser().resolve(),
             threshold=float(args.threshold or thr_cfg.get("default", 0.85)),
@@ -229,6 +237,8 @@ class SessionConfig:
             ),
             tools=tuple(ag_cfg.get("tools", list(cls.tools))),
             authority_rpm=int(auth_cfg.get("rpm", 60)),
+            escalate_policy=bool(getattr(args, "escalate_policy", False)),
+            escalate_below_conf=float(below_conf) if below_conf is not None else 0.85,
         )
 
 
@@ -324,6 +334,12 @@ class Session:
         ui.kv("judge", judge_label)
         if self.config.fallback_model:
             ui.kv("fallback judge", self.config.fallback_model)
+        if self.config.escalate_policy:
+            ui.kv(
+                "escalation policy",
+                f"not a high-confidence full → {self.config.fallback_model} "
+                f"(below {self.config.escalate_below_conf:.2f})",
+            )
         ui.kv("threshold", self.config.threshold)
         rpm_label = f"{self.config.rpm} / {self.config.parallel}"
         if is_pro:
@@ -636,6 +652,10 @@ class Session:
                 v.judge_id = self._judge.id
                 v.cache_key = key
                 if self._verdict_is_usable(v):
+                    if self._should_escalate_cached(v):
+                        escalated = self._judge_fallback(evaluator, candidate, prompt)
+                        if escalated is not None:
+                            return escalated
                     return v
 
         if self.config.mode == "linear":
@@ -696,6 +716,13 @@ class Session:
         if self._usable_verdict(response, v):
             assert response.verdict is not None
             self._cache.append(judge_id=cache_id, prompt=prompt, verdict=response.verdict)
+            # Jev-primary escalation (LLM exception handler): the fallback
+            # re-judges rows that are not a high-confidence `full`; its
+            # verdict (judge_id = the deciding judge) wins for that row.
+            if self._should_escalate(response, v):
+                escalated = self._judge_fallback(evaluator, candidate, prompt)
+                if escalated is not None:
+                    return escalated
         v.judge_id = self._judge.id
         v.cache_key = key
         if response.error:
@@ -703,6 +730,37 @@ class Session:
         if self._usable_verdict(response, v):
             return v
         return self._judge_fallback(evaluator, candidate, prompt) or v
+
+    def _should_escalate(self, response: JudgeResponse, verdict: Verdict) -> bool:
+        """Jev-primary escalation policy (LLM exception handler).
+
+        Only live when the primary judge is typesafe and ``--escalate-policy``
+        is on: every row that is not a `full`, plus every `full` whose Jev
+        confidence sits below ``escalate_below_conf``, goes to the fallback
+        judge (already wired as ``config.fallback_model``).
+        """
+        if not self.config.escalate_policy:
+            return False
+        if not isinstance(self._judge, TypesafeJudge):
+            return False
+        if str(verdict.overall).lower() != "full":
+            return True
+        conf = (response.meta or {}).get("confidence")
+        return isinstance(conf, (int, float)) and conf < self.config.escalate_below_conf
+
+    def _should_escalate_cached(self, verdict: Verdict) -> bool:
+        """Escalation check for cache-hit rows.
+
+        A cached verdict carries no per-axis confidence, so this is
+        overall-based only: a cached non-`full` row re-checks the fallback
+        (which warm-hits its own cache entry), keeping re-runs consistent
+        with the first escalated run.
+        """
+        if not self.config.escalate_policy:
+            return False
+        if not isinstance(self._judge, TypesafeJudge):
+            return False
+        return str(verdict.overall).lower() != "full"
 
     def _judge_with_retries(
         self,
@@ -715,8 +773,10 @@ class Session:
         """Retry transport, parse, and schema failures before a public failure."""
         active_judge = judge or self._judge
         assert active_judge is not None
-        response = active_judge.judge(prompt=prompt, schema=self._schema)
+        context = self._judge_context(evaluator, candidate)
+        response = active_judge.judge(prompt=prompt, schema=self._schema, context=context)
         self._tally_tokens(response.input_tokens, response.output_tokens)
+        response = self._apply_jev_gates(active_judge, evaluator, candidate, response)
         verdict = evaluator.parse_verdict(response.verdict, candidate)
         for attempt in range(_judge_retries()):
             if self._usable_verdict(response, verdict):
@@ -726,10 +786,45 @@ class Session:
                 f"(attempt {attempt + 1})",
                 flush=True,
             )
-            response = active_judge.judge(prompt=prompt, schema=self._schema)
+            response = active_judge.judge(prompt=prompt, schema=self._schema, context=context)
             self._tally_tokens(response.input_tokens, response.output_tokens)
+            response = self._apply_jev_gates(active_judge, evaluator, candidate, response)
             verdict = evaluator.parse_verdict(response.verdict, candidate)
         return response, verdict
+
+    @staticmethod
+    def _judge_context(evaluator: Evaluator, candidate: Candidate) -> dict[str, Any]:
+        """Per-candidate context for providers that need more than the prompt
+        (TypeSafe Jev question sets). Other judges ignore it."""
+        return {"evaluator_id": evaluator.id, "payload": dict(candidate.payload)}
+
+    def _apply_jev_gates(
+        self,
+        active_judge: Judge,
+        evaluator: Evaluator,
+        candidate: Candidate,
+        response: JudgeResponse,
+    ) -> JudgeResponse:
+        """Deterministic code gates for TypeSafe Jev verdicts (ported from the
+        bake-off harness — artifact downgrade, ERROR-severity validator gate,
+        ROLE_CONF_GATE). They need the candidate payload, which the Judge
+        protocol does not carry, so they run here — not in the client — and
+        only for the typesafe provider."""
+        from eval_agent import jev_gates  # noqa: PLC0415
+
+        if (
+            not isinstance(active_judge, TypesafeJudge)
+            or response.verdict is None
+            or response.error
+        ):
+            return response
+        gated = jev_gates.apply_jev_gates(
+            response.verdict,
+            evaluator_id=evaluator.id,
+            candidate=candidate,
+            meta=response.meta,
+        )
+        return replace(response, verdict=gated)
 
     def _get_fallback_judge(self) -> Judge | None:
         if self._fallback_attempted:
@@ -952,6 +1047,16 @@ def _build_judge_for_model(config: SessionConfig, model: str) -> Judge:
             temperature=float(defaults.get("temperature", 0.0)),
             max_output_tokens=int(defaults.get("max_output_tokens", 4096)),
         )
+
+    if spec.provider == "typesafe":
+        from eval_agent.client.typesafe_client import TypesafeJudge  # noqa: PLC0415
+
+        api_key = os.environ.get(spec.api_key_env, "")
+        if not api_key:
+            raise RuntimeError(
+                f"{spec.label} API key required (env {spec.api_key_env})",
+            )
+        return TypesafeJudge(model=spec.id, api_key=api_key, rate_limiter=rl)
 
     api_key = config.api_key
     if not api_key:

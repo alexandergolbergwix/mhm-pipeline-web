@@ -27,3 +27,9 @@ models:
     api_key_env: QUBRID_API_KEY
     base_url: https://platform.qubrid.com/v1
     supports_agentic: false
+
+  typesafe/jev-1.13.0:
+    label: Jev 1.13 (TypeSafe)
+    provider: typesafe
+    api_key_env: TYPESAFE_API_KEY
+    supports_agentic: false

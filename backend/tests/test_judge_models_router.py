@@ -16,9 +16,14 @@ async def test_list_judge_models(auth_user) -> None:
     assert "gemini-3.5-flash" in ids
     assert "moonshotai/Kimi-K2.5" in ids
     assert "deepseek-ai/DeepSeek-V4-Flash" in ids
+    assert "typesafe/jev-1.13.0" in ids
     gemini = next(m for m in body["models"] if m["id"] == "gemini-3.5-flash")
     assert gemini["supports_agentic"] is True
     deepseek = next(m for m in body["models"] if m["id"] == "deepseek-ai/DeepSeek-V4-Flash")
     assert deepseek["provider"] == "openai_compat"
     assert deepseek["supports_agentic"] is False
     assert deepseek["label"] == "DeepSeek V4 Flash (Qubrid)"
+    jev = next(m for m in body["models"] if m["id"] == "typesafe/jev-1.13.0")
+    assert jev["provider"] == "typesafe"
+    assert jev["supports_agentic"] is False
+    assert jev["label"] == "Jev 1.13 (TypeSafe)"

@@ -11,7 +11,8 @@ curator picks action + scope + tier-1 judge (never types a prompt — agent_acti
 POST …/ai-verify/start-stream        (or POST /runs/{id}/jobs for background)
    │  short-lived session_scope(): access check, fetch scope rows,
    │  resolve tier_model via judge_models registry + unwrap provider credentials
-   │  (Gemini: user Settings key or GEMINI_API_KEY; Qubrid: server QUBRID_API_KEY)
+   │  (Gemini: user Settings key or GEMINI_API_KEY; Qubrid: server QUBRID_API_KEY;
+   │  TypeSafe Jev: server TYPESAFE_API_KEY)
    ▼
 _…_event_stream generator
    1. pre-check inference_cache (Redis L1 → Postgres L2, kind=ai_verdict)
@@ -53,6 +54,13 @@ returns the public `abstain` provider-error state. The default is three retries;
 `EVAL_AGENT_JUDGE_RETRY` can change that value. Job snapshots preserve the
 verdict envelope metadata that the live table displays, including the judge,
 evaluator, confidence, cache key, and judged time (Rule W-210).
+
+When the tier-1 judge is the TypeSafe Jev model (`typesafe/jev-1.13.0`), the
+session additionally runs the deterministic code gates (`jev_gates.py` —
+artifact downgrade, ERROR-severity validator gate, `ROLE_CONF_GATE`) on every
+fresh Jev verdict, and `--escalate-policy` routes rows that are not a
+high-confidence `full` to the fallback LLM, whose `judge_id` then records the
+deciding judge (block rule **R44**; rollout plan: [jev-primary-rollout.md](jev-primary-rollout.md)).
 
 ## The five channels
 

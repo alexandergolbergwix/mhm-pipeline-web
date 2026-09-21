@@ -56,6 +56,7 @@ class OpenAICompatJudge:
         prompt: str,
         schema: dict[str, Any],
         timeout: int = 120,
+        context: dict[str, Any] | None = None,
     ) -> JudgeResponse:
         schema_hint = json.dumps(schema, ensure_ascii=False)
         full_prompt = (

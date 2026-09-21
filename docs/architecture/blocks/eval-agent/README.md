@@ -20,8 +20,9 @@ verdict summaries back onto the owning DB row, and write-throughs the shared
 - [Key files](key-files.md) — runner core, per-channel routers/streams, vendored CLI, rubrics, frontend modals
 - [Session pipeline & channels](session-pipeline.md) — the shared SSE session pipeline and the five channels' quirks
 - [State, jobs & caching](state-and-caching.md) — background jobs + session snapshots, state-dir layout, verdict summary shape, cache tiers, frontend
-- [Rules](rules.md) — R1–R43 invariants (trust boundary, state dirs, cache keys, SSE, secrets, tier-1 registry, HMO item MARC scope, schema prompt context, provider-error verdicts)
+- [Rules](rules.md) — R1–R44 invariants (trust boundary, state dirs, cache keys, SSE, secrets, tier-1 registry, HMO item MARC scope, schema prompt context, provider-error verdicts, Jev verdict parity)
 - [Skills & tests](skills-and-tests.md) — add a channel, debug/replay a session, inspect the cache, analyze non-passing exports with Codex; tests pinning this block
+- [Jev-primary rollout](jev-primary-rollout.md) — full path to RLCD-based verification in production (policy, wiring steps, gates, rollout sequence; wiring steps 1–8 implemented — Jev is selectable as a tier-1 model, deterministic gates + LLM escalation live, rollout sequence pending)
 
 ## Related blocks
 

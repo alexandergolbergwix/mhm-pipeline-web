@@ -464,6 +464,27 @@
       "expires": "2026-12-31"
     },
     {
+      "fingerprint": "sha256:7174a8707541e96993baaf84e4295bbe",
+      "path": "backend/scripts/typesafe_bakeoff.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Variable named authority_matches (authority data rows from DB read), not a credential",
+      "expires": "2027-09-21"
+    },
+    {
+      "fingerprint": "sha256:f8e0d5fb4c34c0376a83508eab64bfad",
+      "path": "backend/scripts/typesafe_bakeoff.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Keyword arg authority_matches= passing DB rows, not a credential",
+      "expires": "2027-09-21"
+    },
+    {
+      "fingerprint": "sha256:fe39f6e72d3ebc09abe0998fcce08778",
+      "path": "backend/scripts/typesafe_bakeoff.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "api_key resolution helper call; reads key from env/heroku into memory for API auth, no secret literal",
+      "expires": "2027-09-21"
+    },
+    {
       "fingerprint": "sha256:0bc605d114f237f628d30ae5368d3634",
       "path": "docs/architecture/blocks/deployment/key-files.md",
       "rule_id": "database-url",
@@ -476,6 +497,55 @@
       "rule_id": "database-url",
       "reason": "Reviewed source or documentation text; it is not a credential.",
       "expires": "2027-03-15"
+    },
+    {
+      "fingerprint": "sha256:76c5a93a0702b5f00dd96ad62dbe7b99",
+      "path": "docs/architecture/blocks/eval-agent/jev-primary-rollout.md",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Doc references env var NAME TYPESAFE_API_KEY, not a secret value",
+      "expires": "2027-09-21"
+    },
+    {
+      "fingerprint": "sha256:416ce34bcbc5bc796867042839cc17cc",
+      "path": "eval-agent/config/tier1_models.yaml",
+      "rule_id": "structured-sensitive-value",
+      "reason": "Env var NAME GEMINI_API_KEY in registry config, pre-existing pattern",
+      "expires": "2027-09-21"
+    },
+    {
+      "fingerprint": "sha256:cc1458affa1149920af4a5eebbfdcf97",
+      "path": "eval-agent/config/tier1_models.yaml",
+      "rule_id": "structured-sensitive-value",
+      "reason": "Env var NAME 'TYPESAFE_API_KEY' in config, not a secret value; same pattern as existing GEMINI_API_KEY/QUBRID_API_KEY lines",
+      "expires": "2027-09-21"
+    },
+    {
+      "fingerprint": "sha256:d9ae38f69c57c8440d9d1b0e1df97441",
+      "path": "eval-agent/config/tier1_models.yaml",
+      "rule_id": "structured-sensitive-value",
+      "reason": "Env var NAME QUBRID_API_KEY in registry config, pre-existing pattern",
+      "expires": "2027-09-21"
+    },
+    {
+      "fingerprint": "sha256:3c74b3ad5603e32f5b561120119aaf89",
+      "path": "eval-agent/eval_agent/cli.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "args.api_key read from CLI/env into variable; no secret literal",
+      "expires": "2027-09-21"
+    },
+    {
+      "fingerprint": "sha256:2e9a1e0f44463bf3bf02f92a9ad9d1df",
+      "path": "eval-agent/eval_agent/client/gemini_client.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "self._max_output_tokens assignment false positive; pre-existing line",
+      "expires": "2027-09-21"
+    },
+    {
+      "fingerprint": "sha256:899b3f159aff0128039934e5cf496687",
+      "path": "eval-agent/eval_agent/client/openai_compat_client.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "self._max_output_tokens assignment false positive; pre-existing line",
+      "expires": "2027-09-21"
     },
     {
       "fingerprint": "sha256:162305dfb31503c4d3e47e9bc8f10483",
