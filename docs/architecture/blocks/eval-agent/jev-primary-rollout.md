@@ -4,9 +4,10 @@
 > Companion data: `state/typesafe-bakeoff/` · Harness:
 > `backend/scripts/typesafe_bakeoff.py` (all measured functions to port live here)
 > Plan written 2026-09-21; implement in a fresh session. Status:
-> **steps 1–8 implemented** (2026-09-21) — Jev selectable as a tier-1 model
-> (`typesafe/jev-1.13.0`), deterministic gates + escalation policy wired,
-> escalation default OFF. Step 9 (rollout sequence) not started.
+> **steps 1–8 implemented + deployed (release v563)** — Jev selectable as a
+> tier-1 model (`typesafe/jev-1.13.0`), deterministic gates + escalation
+> policy wired, escalation default OFF. Step 9 (rollout) in progress:
+> shadow cycle 1 done — see the results block below.
 
 ## Goal and policy (fixed, from the 2026-09-20/21 measurements)
 
