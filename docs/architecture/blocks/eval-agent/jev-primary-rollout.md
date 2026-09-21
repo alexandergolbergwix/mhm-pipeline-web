@@ -155,12 +155,50 @@ missing), and `duplicate_risk=duplicate_found` is a blocking check in the
 overall while `unknown` never moves an axis. The duplicate gate reads the
 probe answer with the backend's surface precedence (`_wikidata_existence` →
 `verify_evidence.wikidata_existing.duplicate_check` → `_duplicate_status`).
-These two questions extend the certified set — re-run the wikidata-channel
-bake-off (`typesafe_bakeoff.py --channel wikidata --gold …`) before defaulting
-that channel to Jev.
+These two questions extend the certified set — the wikidata re-certification
+below covers that.
+
+**Wikidata re-certification (2026-09-21, post-extension):** re-scored the
+231-row wikidata gold with the extended question set + gates (report
+`wikidata-wikidata_item-48ba6c13/bakeoff_report_20260921T134938Z.json`):
+accuracy **0.671 → 0.675**, unsafe-approvals **2 → 2** (same two work keys),
+safe-miss **0**, double-run determinism **0.983** overall / 0.874 per axis.
+The mechanical gates added zero false failures (`type_ok` 0 fails, duplicate
+gate fired 0× on this corpus, P31 pass=233). The channel's accuracy gap is
+NOT from the new questions: the dominant error class is over-strictness —
+71 `full→partial` transitions capped by the per-claim noul checks on
+P2888 (HMO bridges, partial=67), P973 (described-at, partial=66), and
+P217 (shelfmark, partial=32). Relaxing the bridge-claim noul thresholds is
+the biggest single lever on this channel's accuracy (owner decision — it
+changes certified question-set behavior).
+
+**Deploy (2026-09-21):** commit `075086e` shipped to Heroku as release
+v563 — Jev 1.13 is selectable in every verify modal; escalation stays OFF
+until the registry entry is validated in shadow.
 
 Step 9 (rollout sequence: shadow → default-per-channel → monitoring →
-Jev-only phase) is untouched and still requires the certification gates.
+Jev-only phase) is in progress: **shadow cycle 1 completed 2026-09-21**
+(agreement runs logged below). Defaulting any channel still requires the
+certification gates.
+
+**Shadow cycle 1 results (2026-09-21, 125 rows: hmo 50 / wikidata 25 /
+person 25 / provenance 25; report dirs `state/typesafe-bakeoff/*/
+bakeoff_report_20260921T15–16*.json`, adjudication
+`state/typesafe-bakeoff/jev-vs-qubrid/shadow-cycle-1-adjudication.md`):**
+overall agreement Jev-vs-Kimi hmo **0.96**, wikidata **1.00**, person **1.00**,
+provenance **0.92**; hmo double-run determinism **1.00**; 0 transport errors;
+Jev cost $0.035 total. Adjudication (AI referee vs curator gold): the 4
+overall disagreements split 2/2 — Kimi made the one unsafe-direction error
+(approved a garbled-description item the gold caps at partial; the
+deterministic artifact gate caught it), while both Jev errors are safe
+direction (under-approved two exact-match provenance OWNER rows at low
+confidence). Axis-level: Jev over-strictly marks `type_ok=partial` on
+single-given-name persons (10 rows, gold axis disagrees), and the wikidata
+P50 claim-noul check caps two gold-full works at partial (the known
+over-strict claim class). Known style divergence (no outcome impact): Kimi
+answers `role_ok=n/a` on 48 structural-ish HMO entities where Jev answers
+`yes` per its certified question contract. contents/genre Kimi comparisons
+stalled (Kimi-side) — gold-mode runs stand in until a fresh comparison.
 
 ### 9. Rollout sequence
 1. Shadow: run both judges on real verify jobs for 2–4 cycles; log
