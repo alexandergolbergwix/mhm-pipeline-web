@@ -1137,7 +1137,7 @@ async def is_cancel_requested(job_id: uuid.UUID) -> bool:
         return job is not None and job.cancel_requested_at is not None
 
 
-class JobCancelledErrorError(Exception):
+class JobCancelledError(Exception):
     """Raised by a cancel watcher inside a runner loop (Rule R8).
 
     Runners catch it and finalize their own row with ``status=cancelled``;
@@ -1151,7 +1151,7 @@ def cancel_watcher(
     *,
     min_interval_s: float = 1.0,
 ) -> Callable[[], Awaitable[None]]:
-    """Build a time-throttled async check that raises ``JobCancelledErrorError``.
+    """Build a time-throttled async check that raises ``JobCancelledError``.
 
     Long-running runners call the returned check inside their loops, not
     only at phase boundaries (Rule R28: the 2026-09-17 build crawled for
@@ -1169,7 +1169,7 @@ def cancel_watcher(
             return
         last = time.monotonic()
         if await is_cancel_requested(job_id):
-            raise JobCancelledErrorError(str(job_id))
+            raise JobCancelledError(str(job_id))
 
     return check
 

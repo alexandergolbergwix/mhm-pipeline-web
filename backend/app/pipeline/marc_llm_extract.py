@@ -329,7 +329,7 @@ async def attach_llm_proposals(
     result is written back in one statement. Takes a session **factory** so no
     transaction is ever open across a model call (Rule W-40).
 
-    ``should_cancel`` is an optional awaitable that raises ``JobCancelledErrorError``
+    ``should_cancel`` is an optional awaitable that raises ``JobCancelledError``
     when the curator cancelled; it is tested before each model call so a
     cancel stops the mining phase within one in-flight request (Rule R28).
     """

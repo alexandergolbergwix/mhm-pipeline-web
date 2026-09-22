@@ -34,7 +34,7 @@ from app.models.run_job import (
     RunJob,
 )
 from app.pipeline.run_job_service import (
-    JobCancelledErrorError,
+    JobCancelledError,
     finish_job,
     is_cancel_requested,
     update_job_progress,
@@ -139,7 +139,7 @@ async def load_wikidata_shard_plan(
     yields an empty slice list — the orchestrator finalises the row
     without any fan-out.
 
-    ``should_cancel`` is an awaitable that raises ``JobCancelledErrorError`` when
+    ``should_cancel`` is an awaitable that raises ``JobCancelledError`` when
     the curator cancelled; the fingerprint + cache read can run for
     minutes on big runs, so it is tested between stages (Rule R28).
     """
@@ -402,7 +402,7 @@ async def _mine_and_finalise(
                 source=plan.source,
                 should_cancel=should_cancel,
             )
-        except JobCancelledErrorError:
+        except JobCancelledError:
             pass  # mining is optional; the cancel re-check below finalises
 
     if should_cancel is not None:

@@ -16,7 +16,7 @@ from app.models.run_job import (
     RunJob,
 )
 from app.pipeline.run_job_service import (
-    JobCancelledErrorError,
+    JobCancelledError,
     cancel_watcher,
     finish_job,
     is_cancel_requested,
@@ -187,7 +187,7 @@ async def _mine_provenance_prose(
     Runs here rather than on the verify path: one model call per manuscript kept
     "Loading Studio scope…" spinning for minutes before the judge could start.
     Never fatal — a build must not fail because an optional enrichment did.
-    Cancel is the exception: a JobCancelledErrorError propagates so the caller can
+    Cancel is the exception: a JobCancelledError propagates so the caller can
     finalize the row as cancelled instead of succeeded.
     """
     items = list(getattr(cached, "result_items", None) or [])
@@ -229,7 +229,7 @@ async def _mine_provenance_prose(
             # memory alone left every export reading `not_run`. Persist the
             # enriched items or the proposals never reach a curator.
             await _persist_mined_items(run_id, approved_only, source, items)
-    except JobCancelledErrorError:
+    except JobCancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 — enrichment must not fail the build
         logger.warning("marc llm extract skipped for job %s: %s", job_id, exc)
@@ -283,7 +283,7 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
                     phase_cb=on_phase,
                     should_cancel=should_cancel,
                 )
-        except JobCancelledErrorError:
+        except JobCancelledError:
             # Rule R28: finalize at the record/phase boundary where the flag
             # was seen — not after the whole build crawled to its end.
             await finish_job(
@@ -318,7 +318,7 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
             run_id=run_id, approved_only=approved_only, source=source,
             should_cancel=should_cancel,
         )
-    except JobCancelledErrorError:
+    except JobCancelledError:
         await finish_job(
             job_id,
             status=JOB_STATUS_CANCELLED,

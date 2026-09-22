@@ -859,7 +859,7 @@ async def test_force_cancel_leaves_fresh_flag_and_flagless_rows_alone(
 @pytest.mark.asyncio
 async def test_cancel_watcher_throttles_and_raises(monkeypatch) -> None:
     """The watcher polls the flag at most once per window and raises
-    JobCancelledErrorError for the runner loop to finalize (Rule R28)."""
+    JobCancelledError for the runner loop to finalize (Rule R28)."""
     polls = {"n": 0}
 
     async def fake_is_cancel(job_id):
@@ -869,7 +869,7 @@ async def test_cancel_watcher_throttles_and_raises(monkeypatch) -> None:
     monkeypatch.setattr(run_job_service, "is_cancel_requested", fake_is_cancel)
     check = run_job_service.cancel_watcher(uuid.uuid4())
 
-    with pytest.raises(run_job_service.JobCancelledErrorError):
+    with pytest.raises(run_job_service.JobCancelledError):
         await check()
     assert polls["n"] == 1
 

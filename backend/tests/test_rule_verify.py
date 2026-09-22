@@ -512,13 +512,13 @@ async def test_load_rule_verify_scope_aborts_on_cancel(db_session) -> None:
     must abort it before the first merge, not after the whole load."""
     import uuid
 
-    from app.pipeline.run_job_service import JobCancelledErrorError
+    from app.pipeline.run_job_service import JobCancelledError
     from app.pipeline.rule_verify.scope import load_rule_verify_scope
 
     async def cancelled() -> None:
-        raise JobCancelledErrorError("cancel requested")
+        raise JobCancelledError("cancel requested")
 
-    with pytest.raises(JobCancelledErrorError):
+    with pytest.raises(JobCancelledError):
         await load_rule_verify_scope(
             db_session, uuid.uuid4(), should_cancel=cancelled,
         )

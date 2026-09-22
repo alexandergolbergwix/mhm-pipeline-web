@@ -657,13 +657,13 @@ async def execute_studio_build(
 
     ``reconcile=False`` skips live WDQS lookups (verify scope materialisation).
 
-    ``should_cancel`` is an awaitable that raises ``JobCancelledErrorError`` when the
+    ``should_cancel`` is an awaitable that raises ``JobCancelledError`` when the
     curator pressed Cancel (Rule R28). It is polled at every phase boundary
     and — via a threading.Event bridge — inside the per-record build loop,
     so a cancel stops the build at the next record instead of after the
     whole build.
     """
-    from app.pipeline.run_job_service import JobCancelledErrorError  # noqa: PLC0415
+    from app.pipeline.run_job_service import JobCancelledError  # noqa: PLC0415
 
     async def check_cancel() -> None:
         if should_cancel is not None:
@@ -681,7 +681,7 @@ async def execute_studio_build(
             while not cancel_seen.is_set():
                 try:
                     await should_cancel()
-                except JobCancelledErrorError:
+                except JobCancelledError:
                     cancel_seen.set()
                     return
                 except Exception:  # noqa: BLE001 — a poll error must not fail the build
@@ -692,7 +692,7 @@ async def execute_studio_build(
 
     def sync_cancel() -> None:
         if cancel_seen.is_set():
-            raise JobCancelledErrorError("cancelled during item build")
+            raise JobCancelledError("cancelled during item build")
 
     if should_cancel is not None:
         watcher = asyncio.create_task(_watch_cancel())

@@ -15,7 +15,7 @@ from app.models.run_job import (
     JOB_STATUS_SUCCEEDED,
     RunJob,
 )
-from app.pipeline.run_job_service import JobCancelledErrorError
+from app.pipeline.run_job_service import JobCancelledError
 from app.pipeline.wikidata_studio_build_job import (
     BUILD_PHASES,
     _build_progress,
@@ -49,7 +49,7 @@ async def test_build_job_finalizes_cancelled_when_the_build_is_cancelled(
     with (
         patch(
             "app.routers.wikidata_studio.execute_studio_build",
-            new=AsyncMock(side_effect=JobCancelledErrorError("cancelled")),
+            new=AsyncMock(side_effect=JobCancelledError("cancelled")),
         ),
         patch(
             "app.pipeline.wikidata_studio_build_job.is_cancel_requested",
@@ -137,9 +137,9 @@ async def test_execute_studio_build_raises_when_cancelled_before_start() -> None
     from app.routers.wikidata_studio import execute_studio_build
 
     async def cancelled() -> None:
-        raise JobCancelledErrorError("cancel requested")
+        raise JobCancelledError("cancel requested")
 
-    with pytest.raises(JobCancelledErrorError):
+    with pytest.raises(JobCancelledError):
         await execute_studio_build(
             MagicMock(),
             run_id=uuid.uuid4(),
