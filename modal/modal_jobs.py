@@ -26,6 +26,7 @@ Set on Heroku:
     heroku config:set MODAL_JOBS_URL=https://<workspace>--mhm-jobs-run.modal.run \\
       MODAL_JOBS_TOKEN=<same value as the Modal secret>
 """
+import logging
 import os
 import subprocess
 import tempfile
@@ -34,6 +35,8 @@ from pathlib import Path
 from typing import Any
 
 import modal
+
+logger = logging.getLogger(__name__)
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
 _TIMEOUT_S = 43200  # 12 h — verify of an 18k scope at 4-way parallel needs it
@@ -343,12 +346,14 @@ def run_modal_job_detached(job_id: str, kind: str, callback_url: str = "") -> di
     return _run_job_detached(job_id, kind, callback_url)
 
 
-# ── rule-verify shard fan-out ────────────────────────────────────────────
+# ── rule-verify shard fan-out (batch-build R23 parity) ───────────────────
 # The 18k-item rule check fans out to parallel shard containers: each
-# loads the merged scope slice, runs the deterministic engine, persists
-# its slice's rule_verdicts, and returns a partial summary. The
-# orchestrator (below, inside the claimed container) merges summaries and
-# owns progress + terminal state on the single claimed job row.
+# loads the merged scope slice, runs the deterministic CPU engine,
+# persists its slice's rule_verdicts, and returns a partial summary
+# (Rule W-256: CPU rules only — the Wikidata probes run once, in the
+# dedicated run_rule_verify_api_pass container). The orchestrator (below,
+# inside the claimed container) merges summaries and owns progress +
+# terminal state on the single claimed job row.
 
 # Prod Postgres is a shared essential-1 instance with a hard 20-connection
 # budget that other tenants fluctuate (Rule W-253): every shard container
@@ -380,6 +385,39 @@ def run_rule_verify_shard(job_id: str, run_id: str, local_ids: list[str]) -> dic
 
         await app_db.reset_engine()
         return await run_shard(job_id, _uuid.UUID(run_id), local_ids)
+
+    return asyncio.run(_run())
+
+
+# Rule W-256: the Wikidata probes run in ONE container so the Action API
+# stays a single throttle domain (Rule W-139) with one shared budget.
+# Timeout vs budget: ~30k probes x ~1.15 s (1.1 s throttle + latency) ≈
+# 9.5 h worst case — raise this together with RULE_VERIFY_API_PASS_PROBE_MAX.
+_API_PASS_TIMEOUT_S = 21600  # 6 h
+
+
+@app.function(
+    image=image,
+    cpu=1,
+    memory=8192,
+    timeout=_API_PASS_TIMEOUT_S,
+    secrets=[modal.Secret.from_name("mhm-jobs2")],
+)
+def run_rule_verify_api_pass(job_id: str, run_id: str) -> dict:
+    import asyncio  # noqa: PLC0415
+    import uuid as _uuid  # noqa: PLC0415
+
+    from app.pipeline.rule_verify_job import (
+        run_rule_verify_api_pass as run_api_pass,
+    )
+
+    async def _run() -> dict:
+        # Warm containers: reset the engine pool the same way the shard
+        # function does (fresh loop per invocation).
+        from app import db as app_db
+
+        await app_db.reset_engine()
+        return await run_api_pass(job_id, _uuid.UUID(run_id))
 
     return asyncio.run(_run())
 
@@ -437,7 +475,9 @@ async def _is_cancel_requested(job_id: str) -> bool:
     return bool(row is not None and row.cancel_requested_at is not None)
 
 
-async def _update_rule_verify_progress(job_id: str, done: int, total: int) -> None:
+async def _update_rule_verify_progress(
+    job_id: str, done: int, total: int, message: str | None = None,
+) -> None:
     from sqlalchemy import update
 
     from app.db import session_scope
@@ -450,7 +490,7 @@ async def _update_rule_verify_progress(job_id: str, done: int, total: int) -> No
             .values(
                 progress={
                     "phase": "running", "processed": done, "total": total,
-                    "message": f"Checked {done} of {total} items…",
+                    "message": message or f"Checked {done} of {total} items…",
                 },
                 updated_at=datetime.now(timezone.utc),
             )
@@ -531,7 +571,8 @@ async def _run_rule_verify_sharded(job_id: str) -> None:
         return
     if plan is None:
         return
-    run_id, local_ids, _params = plan
+    run_id, local_ids, params = plan
+    with_api = bool(params.get("with_api", True))
     total = len(local_ids)
     if not total:
         await _finalise_rule_verify(
@@ -586,11 +627,46 @@ async def _run_rule_verify_sharded(job_id: str) -> None:
         if await _is_cancel_requested(job_id):
             cancelled = True
             break
+
+    # Rule W-256: shards ran CPU rules only. The Wikidata probes run once,
+    # in a single dedicated container — one throttle domain (W-139), one
+    # shared budget — and merge their results into the shard verdicts.
+    if not cancelled and with_api:
+        await _update_rule_verify_progress(
+            job_id, min(done, total), total,
+            "Probing live Wikidata labels…",
+        )
+        summaries.append(await _dispatch_rule_verify_api_pass(job_id, run_id))
+        if await _is_cancel_requested(job_id):
+            cancelled = True
+
     from app.pipeline.rule_verify_job import merge_summaries
 
     await _finalise_rule_verify(
         job_id, merge_summaries(summaries), total, cancelled,
     )
+
+
+async def _dispatch_rule_verify_api_pass(job_id: str, run_id: str) -> dict:
+    """Run the single-container API pass; degrade inline on failure (W-15).
+
+    The dedicated container carries the 6 h probe budget/timeout pair; the
+    orchestrator container (12 h) can absorb the pass itself when Modal
+    dispatch fails, so a broken fan-out never silently skips the probes.
+    """
+    import uuid as _uuid
+
+    try:
+        return await _asyncio.to_thread(run_rule_verify_api_pass.call, job_id, run_id)
+    except Exception as exc:  # noqa: BLE001 — degraded inline pass beats no pass
+        logger.warning(
+            "rule-verify api pass dispatch failed; running inline: %s", exc,
+        )
+        from app.pipeline.rule_verify_job import (
+            run_rule_verify_api_pass as run_api_pass,
+        )
+
+        return await run_api_pass(job_id, _uuid.UUID(run_id))
 
 
 # ── rdf_build shard fan-out (batch-build R23) ────────────────────────────

@@ -47,9 +47,11 @@ logger = logging.getLogger(__name__)
 # (W-249): the 18k-item verify prep + eval-agent subprocess blew the
 # 512 MB web dyno's memory quota (R14 thrash) — the Modal container's
 # 8 GB runs it comfortably. hmo_rule_verify fans out to shard containers
-# (parallel rule checks; the orchestrator is still one claimed job row).
-# wikidata_studio_build fans out the same way (parallel item builders;
-# the orchestrator merges + finishes the corpus and upserts the cache).
+# (parallel CPU rule checks) plus one dedicated API-pass container for
+# the Wikidata probes (Rule W-256; the orchestrator is still one claimed
+# job row). wikidata_studio_build fans out the same way (parallel item
+# builders; the orchestrator merges + finishes the corpus and upserts
+# the cache).
 MODAL_JOB_KINDS = frozenset({
     "rdf_build", "hmo_item_build", "hmo_item_verify", "hmo_rule_verify",
     "wikidata_studio_build",

@@ -2,9 +2,9 @@
 
 CPU rules run in chunks with cooperative yields (the 18k-entity lesson,
 Rule W-245). API rules run only when the context allows external I/O —
-in the sharded Modal path each container runs the CPU rules and ONE
-container runs the API pass, so the Action API stays a single throttle
-domain (Rule W-139).
+in the sharded Modal path each container runs the CPU rules and a
+single dedicated container runs the API pass, so the Action API stays
+one throttle domain with one shared budget (Rules W-139 / W-256).
 """
 
 from __future__ import annotations
@@ -88,13 +88,18 @@ class RuleEngine:
         on_progress: ProgressCb | None = None,
         should_cancel: Callable[[], bool] | None = None,
         include_api: bool = False,
+        api_only: bool = False,
     ) -> dict[str, list[RuleResult]]:
-        """Run every rule over every entity. Returns local_id → results."""
-        # API-backed rules ALWAYS run when include_api is requested: with
-        # no fetcher / api_enabled they produce an explicit ``error``
-        # result ("did not execute") instead of silently passing — the
-        # abstain contract, fail closed.
-        run_api = include_api and include_api_rules(self.rules)
+        """Run every rule over every entity. Returns local_id → results.
+
+        ``api_only`` runs only the API-backed rules — the single-container
+        API pass over verdict rows a CPU pass already wrote (Rule W-256).
+        API-backed rules ALWAYS run when include_api/api_only is requested:
+        with no fetcher / api_enabled they produce an explicit ``error``
+        result ("did not execute") instead of silently passing — the
+        abstain contract, fail closed.
+        """
+        run_api = (include_api or api_only) and include_api_rules(self.rules)
         results: dict[str, list[RuleResult]] = {}
         total = len(items)
         done = 0
@@ -104,6 +109,9 @@ class RuleEngine:
             chunk = items[start : start + CHUNK_SIZE]
             for entity in chunk:
                 key = entity_key(entity)
+                if api_only:
+                    results[key] = self.run_entity_api(entity)
+                    continue
                 cpu_results = self.run_entity(entity)
                 if run_api:
                     results[key] = cpu_results + self.run_entity_api(entity)

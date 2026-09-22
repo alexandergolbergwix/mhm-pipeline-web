@@ -5,14 +5,19 @@ override-merged item scope and persist a per-item ``rule_verdict`` to the
 owning override rows. Advisory only: nothing here blocks an upload, and
 bulk approval treats a rule as blocking only when the curator opted in.
 
-Two execution paths, same engine:
+Three execution paths, one engine:
 
 * **Heroku fallback / small scopes** — this module's single-process loop
-  with chunked cooperative yields (Rule W-245) and cancel checks.
+  with chunked cooperative yields (Rule W-245) and cancel checks. CPU and
+  API rules run inline; the probe budget is per 1 000-item chunk, which
+  keeps the degraded dyno path bounded.
 * **Modal (preferred)** — ``modal_jobs.py`` claims the same job and fans
-  the scope out to shard containers via ``.map()``; each shard runs
-  :func:`run_rule_verify_shard`, and the orchestrator merges the partial
-  summaries. Dispatch failure degrades to the local path (Rule W-15).
+  the scope out to shard containers via ``.starmap()``; each shard runs
+  :func:`run_rule_verify_shard` (CPU rules only), and the orchestrator
+  merges the partial summaries. A single dedicated container then runs
+  :func:`run_rule_verify_api_pass` over the full scope so the Wikidata
+  probes share one throttle domain and one budget (Rules W-139 / W-256).
+  Dispatch failure degrades to the local path (Rule W-15).
 
 Progress stays counter-only (Rule W-128); the job result carries the
 per-rule summary, never per-entity payloads (R14 lesson) — the review
@@ -36,7 +41,9 @@ from app.models.run_job import (
 from app.pipeline.rule_verify.base import RULE_STATES, RuleResult
 from app.pipeline.rule_verify.engine import RuleEngine
 from app.pipeline.rule_verify.persist import (
+    merge_api_rule_verdicts,
     persist_rule_verdicts,
+    per_rule_tally,
     summary_from_results,
 )
 from app.pipeline.rule_verify.rules.hmo import build_hmo_rules
@@ -244,17 +251,101 @@ async def run_rule_verify_shard(
     """One Modal shard: check a slice, persist, return a partial summary.
 
     Runs inside a shard container — never writes the job row (the
-    orchestrator owns progress and terminal state).
+    orchestrator owns progress and terminal state). Shards run the CPU
+    rules only (Rule W-256): every shard probing with its own fetcher
+    split the probe budget four ways and stacked four request rates into
+    Wikidata 429s (132 measured on run 45513a45). The dedicated
+    :func:`run_rule_verify_api_pass` owns every API rule.
     """
     async with session_scope() as db:
         items = await load_rule_verify_scope(db, run_id, item_ids=local_ids)
     if not items:
         return {"scope": 0, "overall_counts": {}, "per_rule": {}}
-    params: dict[str, Any] = {}
-    async with session_scope() as db:
-        job = await db.get(RunJob, uuid.UUID(job_id))
-        params = dict(job.params or {}) if job else {}
-    with_api = bool(params.get("with_api", True))
     return await _run_and_persist(
-        run_id=run_id, items=items, with_api=with_api, job_id=job_id,
+        run_id=run_id, items=items, with_api=False, job_id=job_id,
     )
+
+
+def _api_pass_budgets() -> dict[str, int]:
+    """The API pass owns the whole scope: budgets sized to cover it.
+
+    ~30k probes x ~1.15 s (1.1 s throttle + latency) ≈ 9.5 h worst case;
+    the default fits the 6 h API-pass container for the current corpus
+    (~13k eligible items ≈ 4.2 h). Raise the container timeout in
+    ``modal/modal_jobs.py`` together with ``RULE_VERIFY_API_PASS_PROBE_MAX``.
+    """
+    return {
+        "wd_probe_budget": _int_env("RULE_VERIFY_API_PASS_PROBE_MAX", 30000),
+        "wd_qid_budget": _int_env("RULE_VERIFY_API_PASS_QID_MAX", 60000),
+    }
+
+
+async def run_rule_verify_api_pass(job_id: str, run_id: uuid.UUID) -> dict[str, Any]:
+    """The single-container API pass over the full scope (Rule W-256).
+
+    One container holds the whole probe budget and the one 1.1 s
+    throttle domain (Rule W-139), so parallel shards never split the
+    budget or stack their request rates into Wikidata 429s. Results
+    merge into the verdict rows the shards wrote; the return carries
+    per-rule tallies only — the shards already counted the entities.
+    """
+    async with session_scope() as db:
+        items = await load_rule_verify_scope(db, run_id)
+    if not items:
+        return {"scope": 0, "overall_counts": {}, "per_rule": {}, "probed": 0}
+    from app.pipeline.rule_verify.api_fetcher import production_fetcher  # noqa: PLC0415
+
+    wikibase_endpoint = ""
+    try:
+        from app.settings import get_settings  # noqa: PLC0415
+
+        wikibase_endpoint = get_settings().wikibase_cloud_base_url
+    except Exception:  # noqa: BLE001 — settings missing → API rules abstain
+        pass
+    ctx = build_context(
+        run_id=str(run_id),
+        items=items,
+        api_enabled=True,
+        fetcher=production_fetcher(),
+        wikibase_endpoint=wikibase_endpoint,
+    )
+    ctx.counters.update(_api_pass_budgets())
+    engine = RuleEngine(build_hmo_rules(), ctx)
+
+    job_uuid = uuid.UUID(str(job_id))
+    items_by_id = {
+        str(i.get("_local_id") or i.get("local_id") or ""): i for i in items
+    }
+    results: dict[str, list[RuleResult]] = {}
+    total = len(items)
+    done = 0
+    cancelled = False
+    for start in range(0, total, CHUNK):
+        if await is_cancel_requested(job_uuid):
+            cancelled = True
+            break
+        chunk = items[start : start + CHUNK]
+        part = await _to_thread(engine.run_scope, chunk, api_only=True)
+        results.update(part)
+        chunk_by_id = {
+            lid: items_by_id[lid] for lid in part if lid in items_by_id
+        }
+        async with session_scope() as db:
+            await merge_api_rule_verdicts(
+                db, run_id=run_id, results_by_local_id=part, job_id=str(job_id),
+                items_by_id=chunk_by_id,
+            )
+        done += len(chunk)
+        await update_job_progress(job_uuid, {
+            "phase": "probing",
+            "processed": done,
+            "total": total,
+            "message": f"Probing live Wikidata labels: {done} of {total}…",
+        })
+    return {
+        "scope": 0,
+        "overall_counts": {},
+        "per_rule": per_rule_tally(results),
+        "probed": len(results),
+        "cancelled": cancelled,
+    }
