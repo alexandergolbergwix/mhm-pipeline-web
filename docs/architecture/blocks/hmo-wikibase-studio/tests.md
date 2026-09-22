@@ -143,3 +143,12 @@
   / `::test_rate_limited_probe_is_not_relevant_not_error`
   / `::test_qid_budget_exhausted_is_not_relevant_not_error` — Rule W-255
   abstain semantics for protective caps and 429 probes (block R61).
+- `backend/tests/test_rule_verify.py::test_api_rule_ownership_is_stable`
+  / `::test_api_only_scope_runs_only_api_rules`
+  / `::test_shard_runs_cpu_rules_only`
+  / `::test_api_pass_merges_and_reports_per_rule_only`
+  / `::test_api_pass_summary_merges_without_double_counting`
+  / `::test_merge_api_rule_verdicts_replaces_stale_api_entries` — Rule
+  W-256: CPU-only shards, the single-container API pass (per-rule-only
+  summary), and the verdict merge that strips stale API-rule entries and
+  recomputes rollups (block R62).

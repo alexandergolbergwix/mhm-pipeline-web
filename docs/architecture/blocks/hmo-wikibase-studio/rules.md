@@ -308,15 +308,16 @@ automatic gate on a heuristic re-introduces silent data loss; the user
 explicitly chose "nothing blocking automatically".
 
 56. **R56 — API-backed rules fail closed as `error`, and stay one throttle
-domain.** A rule that needs external evidence (live Wikibase, Wikidata
-Action API) reports `error` ("did not execute") when no fetcher is
-configured or the budget is out — never `pass`, never `fail`. All Wikidata
-probes reuse the duplicate-probe client's throttled fetcher (Rule W-139)
-and shared budgets (`RULE_VERIFY_WD_PROBE_MAX`, `RULE_VERIFY_WD_QID_MAX`);
-sharded Modal runs keep one throttle domain by design (CPU rules shard,
-API rules run once per shard against the shared probe cache). *Why:* an
-unavailable check read as "no finding" is how duplicates were let through
-before (W-30/W-144).
+ domain.** A rule that needs external evidence (live Wikibase, Wikidata
+ Action API) reports `error` ("did not execute") when no fetcher is
+ configured — never `pass`, never `fail`. All Wikidata
+ probes reuse the duplicate-probe client's throttled fetcher (Rule W-139)
+ and shared budgets (`RULE_VERIFY_WD_PROBE_MAX`, `RULE_VERIFY_WD_QID_MAX`);
+ sharded Modal runs keep one throttle domain because the API rules run in
+ a single dedicated pass (R62, Rule W-256). A probe that never executed
+ (budget exhausted / 429) abstains as `not_relevant` instead (R61,
+ Rule W-255). *Why:* an unavailable check read as "no finding" is how
+ duplicates were let through before (W-30/W-144).
 
 57. **R57 — Modal shard fan-out must not block the heartbeat loop.**
 `run_rule_verify_shard.starmap()` is consumed on a thread with a queue;
@@ -359,3 +360,5 @@ flagged 536 false twins ('תכלאל' ×96 across manuscripts, same-title
 different-author works).
 
 61. **R61 — An unexecuted probe abstains as `not_relevant`, never `error` (Rule W-255).** The per-run probe budget (`RULE_VERIFY_WD_PROBE_MAX`) and CirrusSearch rate limits are protective operational guards, not data defects: budget-exhausted `label_candidates`, budget-exhausted `qids_alive`, and a 429/network probe exception abstain (`not_relevant`). `error` stays reserved for real execution failures (API disabled via `_api_gate`, partially-executed liveness, lookup failure mid-check). *Why:* the fresh verify of run 3494ebf5 (2026-09-20) put 17,450 `error` rows on `hmo.wikidata.label_candidates` (17,252 budget + 198 HTTP 429) while every deterministic rule sat at 0/0 — mass errors drowned the signal and read as "the verify failed", though only 19 genuine label-collision fails existed.
+
+62. **R62 — Rule-verify Wikidata probes run once, in a single container (Rule W-256).** In the sharded `hmo_rule_verify` fan-out, shards run CPU rules only; after they merge, the orchestrator dispatches `run_rule_verify_api_pass` (one container, 6 h timeout) over the full scope — one throttle domain (W-139), one whole-scope budget (`RULE_VERIFY_API_PASS_PROBE_MAX` default 30 000, `RULE_VERIFY_API_PASS_QID_MAX` default 60 000) — and its results merge into the shard verdicts (`merge_api_rule_verdicts` replaces API-rule entries and recomputes rollups); its summary is per-rule tallies only. Dispatch failure degrades to an inline pass in the orchestrator (W-15), never to skipping the probes. *Why:* per-shard fetchers split the 300-probe budget four ways (≤1 200 probes for ~12.8k eligible items ≈ 95 % unprobed) and stacked four request rates into 132 HTTP 429s (run 45513a45).

@@ -654,6 +654,7 @@ async def _dispatch_rule_verify_api_pass(job_id: str, run_id: str) -> dict:
     orchestrator container (12 h) can absorb the pass itself when Modal
     dispatch fails, so a broken fan-out never silently skips the probes.
     """
+    import asyncio as _asyncio  # noqa: PLC0415
     import uuid as _uuid
 
     try:

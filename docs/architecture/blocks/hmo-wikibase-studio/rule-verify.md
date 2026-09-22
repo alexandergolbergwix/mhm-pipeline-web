@@ -78,6 +78,9 @@ added the columns (also on `wikidata_item_overrides` for phase 3).
   loop, cancel checks between chunks (W-245/W-128 patterns). The scope
   load takes `should_cancel` and polls between stages, yielding per 500
   items (R37); a `JobCancelledError` finalizes the job `cancelled`.
+  CPU + API rules run inline per chunk; the probe budget is per chunk
+  (`RULE_VERIFY_WD_PROBE_MAX`, default 300 — the degraded dyno path
+  stays bounded), so a degraded run still abstains on most items.
 - Modal (preferred, `MODAL_JOB_KINDS`): the claimed container publishes
   "Loading rule-verify scope…" progress *before* loading the scope (the
   tray must never show a bare "running" during the load, R37), then
@@ -90,6 +93,21 @@ added the columns (also on `wikidata_item_overrides` for phase 3).
   every ≤10 s and finalizes `cancelled` without waiting for in-flight
   shards. The orchestrator merges per-rule tallies and owns progress +
   terminal state. Dispatch failure degrades to the local path (Rule W-15).
+- **Shards run CPU rules only (Rule W-256).** Every shard probing with
+  its own fetcher split the probe budget four ways (300 × 4 for ~12.8k
+  eligible items) and stacked four request rates into Wikidata 429s
+  (132 measured on run 45513a45). After the shards merge, the
+  orchestrator dispatches **one dedicated API-pass container**
+  (`run_rule_verify_api_pass`, cpu 1 / 8 GB, 6 h timeout) over the full
+  scope: one throttle domain (Rule W-139), one budget
+  (`RULE_VERIFY_API_PASS_PROBE_MAX`, default 30 000; `RULE_VERIFY_API_PASS_QID_MAX`,
+  default 60 000), running only the `uses_api` rules (`engine.run_scope(api_only=True)`).
+  Its results merge into the verdict rows the shards wrote
+  (`persist.merge_api_rule_verdicts` — strips API-rule entries, writes
+  fresh ones, recomputes the rollups); its summary carries per-rule
+  tallies only so `merge_summaries` never double-counts the scope.
+  Dispatch failure degrades to running the pass inline in the
+  orchestrator (12 h container) — never to silently skipping the probes.
 - Job result carries the per-rule summary only — per-entity data lives
   in the override rows and the results endpoint (R14 lesson).
 
@@ -128,5 +146,6 @@ evidence) attached. Two invariants (block R58, Rule W-247):
 
 ## Related rules
 
-- `rules.md` R36 — rule-verify invariants (advisory, fail-closed API
-  rules, single throttle domain for API rules, shard/heartbeat rule).
+- `rules.md` R55–R62 — rule-verify invariants (advisory, fail-closed
+  API rules, one throttle domain for API rules, single-container API
+  pass, shard/heartbeat rule).

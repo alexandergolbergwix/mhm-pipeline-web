@@ -571,7 +571,7 @@ async def test_shard_runs_cpu_rules_only(monkeypatch) -> None:
     seen: dict[str, object] = {}
 
     class _FakeSession:
-        async def __aenter__(self) -> "_FakeSession":
+        async def __aenter__(self) -> _FakeSession:
             return self
 
         async def __aexit__(self, *exc: object) -> None:
@@ -602,7 +602,7 @@ async def test_api_pass_merges_and_reports_per_rule_only(monkeypatch) -> None:
     from app.pipeline import rule_verify_job as rvj
 
     class _FakeSession:
-        async def __aenter__(self) -> "_FakeSession":
+        async def __aenter__(self) -> _FakeSession:
             return self
 
         async def __aexit__(self, *exc: object) -> None:

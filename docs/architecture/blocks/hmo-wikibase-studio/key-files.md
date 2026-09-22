@@ -26,8 +26,8 @@
 | `backend/converter/wikibase/label_sanitize.py` | Shared `und`→`en` language-code hygiene for exporter + cloud writer |
 | `backend/app/models/wikibase_cloud_write.py` | Audit-log model; `OPERATION_ADOPT` distinguishes reconcile-match links from `OPERATION_CREATE` |
 | `backend/app/pipeline/hmo_item_verify.py` / `hmo_item_actions.py` | AI-verify SSE stream + prefab actions (`audit_hmo_wikibase_item`, `autofix_hmo_wikibase_item`) |
-| `backend/app/pipeline/rule_verify/` | Deterministic (non-AI) rule engine: `base.py` states/protocol, `engine.py` runner + summary, `rules/hmo.py` 30-rule catalog, `persist.py` rule_verdict writer, `scope.py` loader, `api_fetcher.py` network seam (rule-verify.md) |
-| `backend/app/pipeline/rule_verify_job.py` | `hmo_rule_verify` job worker (local fallback) + `run_rule_verify_shard` for Modal shards |
+| `backend/app/pipeline/rule_verify/` | Deterministic (non-AI) rule engine: `base.py` states/protocol, `engine.py` runner + summary (`api_only` mode), `rules/hmo.py` 30-rule catalog, `persist.py` rule_verdict writer + API-pass merge, `scope.py` loader, `api_fetcher.py` network seam (rule-verify.md) |
+| `backend/app/pipeline/rule_verify_job.py` | `hmo_rule_verify` job worker (local fallback) + `run_rule_verify_shard` (CPU-only shards) + `run_rule_verify_api_pass` (single-container Wikidata probes, Rule W-256) |
 | `backend/app/routers/rule_verify_settings.py` | `/me/rule-verify-settings` — per-user blocking rules + filter presets |
 | `backend/app/models/user_rule_settings.py` | `user_rule_settings` table (blocked_rules JSONB; nothing blocks by default) |
 | `backend/app/pipeline/hmo_schema_verify.py` / `hmo_schema_actions.py` | Same, for schema bootstrap entries (`hmo_wikibase_schema` evaluator) |

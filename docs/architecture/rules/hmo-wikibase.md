@@ -749,3 +749,39 @@ for N QIDs"), or a lookup failure on an already-running check.
 Tests: `tests/test_rule_verify.py::test_probe_budget_exhausted_is_not_relevant_not_error`,
 `::test_rate_limited_probe_is_not_relevant_not_error`,
 `::test_qid_budget_exhausted_is_not_relevant_not_error`.
+
+## W-256 — Rule-verify Wikidata probes run once, in a single container (2026-09-22)
+
+W-255 fixed the *semantics* (an unexecuted probe abstains), but the
+2026-09-20 run 45513a45 still showed **why the probes do not execute**:
+the sharded fan-out gave every shard container its own fetcher, its own
+1.1 s throttle domain, and its own `RULE_VERIFY_WD_PROBE_MAX` budget of
+300 — for a 6 000-item shard with ~3 200 probe-eligible items. The four
+shards executed at most 4 × 300 = 1 200 probes (1 068 answered + 132
+aborted on aggregate HTTP 429 — four parallel request rates stacked into
+one per-IP Wikidata limit), so ~95 % of eligible items abstained without
+ever being probed. A cancelled post-W-255 run confirmed the same split:
+one shard wrote 300 passes + 5 693 budget abstains.
+
+Therefore: in the sharded `hmo_rule_verify` fan-out, **shards run CPU
+rules only**; every API-backed rule runs in **one dedicated container**
+(`run_rule_verify_api_pass`, 6 h timeout, 8 GB) after the shards merge.
+That container owns the whole scope's budget (`RULE_VERIFY_API_PASS_PROBE_MAX`,
+default 30 000; `RULE_VERIFY_API_PASS_QID_MAX`, default 60 000) and is
+the only throttle domain (Rule W-139). Its results **merge into the
+verdict rows the shards wrote** (`merge_api_rule_verdicts` strips the
+API-rule entries, writes fresh ones, and recomputes the rollups — a row
+must never mix a stale API answer with fresh CPU answers). Its summary
+carries per-rule tallies only; `merge_summaries` must not double-count
+the scope or the per-entity overalls. Dispatch failure degrades to
+running the pass inline in the orchestrator (W-15), never to skipping
+the probes silently. Raise the container timeout in `modal/modal_jobs.py`
+together with the probe budget: ~30 k probes × ~1.15 s ≈ 9.5 h worst
+case; ~13 k eligible items on the current corpus ≈ 4.2 h.
+
+Tests: `tests/test_rule_verify.py::test_api_rule_ownership_is_stable`,
+`::test_api_only_scope_runs_only_api_rules`,
+`::test_shard_runs_cpu_rules_only`,
+`::test_api_pass_merges_and_reports_per_rule_only`,
+`::test_api_pass_summary_merges_without_double_counting`,
+`::test_merge_api_rule_verdicts_replaces_stale_api_entries`.

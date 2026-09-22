@@ -42,8 +42,8 @@ from app.pipeline.rule_verify.base import RULE_STATES, RuleResult
 from app.pipeline.rule_verify.engine import RuleEngine
 from app.pipeline.rule_verify.persist import (
     merge_api_rule_verdicts,
-    persist_rule_verdicts,
     per_rule_tally,
+    persist_rule_verdicts,
     summary_from_results,
 )
 from app.pipeline.rule_verify.rules.hmo import build_hmo_rules
@@ -300,8 +300,8 @@ async def run_rule_verify_api_pass(job_id: str, run_id: uuid.UUID) -> dict[str, 
         from app.settings import get_settings  # noqa: PLC0415
 
         wikibase_endpoint = get_settings().wikibase_cloud_base_url
-    except Exception:  # noqa: BLE001 — settings missing → API rules abstain
-        pass
+    except Exception as exc:  # noqa: BLE001 — settings missing → API rules abstain
+        logger.debug("rule-verify api pass: settings unavailable (%s)", exc)
     ctx = build_context(
         run_id=str(run_id),
         items=items,
