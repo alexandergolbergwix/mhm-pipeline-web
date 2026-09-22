@@ -39,6 +39,9 @@ class RuleContext:
     # Per-job counters shared across rules (probe budgets, progress ticks).
     counters: dict[str, int] = field(default_factory=dict)
     on_progress: Any = None
+    # Per-run API memo (payload cache keyed by fetch shape) so repeated
+    # labels/QIDs across items cost one probe, not one per item.
+    memo: dict[str, Any] = field(default_factory=dict)
     # (class_qid, normalised label, control number) → local_ids with >1
     # member — precomputed per scope for the within-run duplicate rule.
     in_run_dup_index: dict[tuple[str, str, str], list[str]] = field(default_factory=dict)
@@ -56,6 +59,7 @@ def context_for_item(ctx: RuleContext, item: dict[str, Any]) -> RuleContext:
         results_so_far=ctx.results_so_far,
         counters=ctx.counters,
         on_progress=ctx.on_progress,
+        memo=ctx.memo,
         in_run_dup_index=ctx.in_run_dup_index,
     )
 

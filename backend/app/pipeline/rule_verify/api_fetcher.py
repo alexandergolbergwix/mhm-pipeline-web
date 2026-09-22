@@ -21,28 +21,63 @@ logger = logging.getLogger(__name__)
 
 
 def production_fetcher() -> Any:
-    """The real fetcher. Never raises on its own — rules catch and abstain."""
+    """The real fetcher, memoized per run. Never raises on its own — rules
+    catch and abstain.
+
+    The caches die with the pass instance, so nothing crosses runs. They
+    collapse repeated probes: the same label/QID recurs across items of a
+    corpus, and every avoided request is ~1.1 s of throttle time (W-139).
+    ``confirm_qids_alive`` dedupes per QID and batches only the missing
+    ones, preserving the client's ``True/False/None`` abstain contract.
+    """
+
+    inlabel_cache: dict[str, Any] = {}
+    qid_alive_cache: dict[str, bool | None] = {}
+    wbget_cache: dict[tuple[str, tuple[tuple[str, str], ...]], Any] = {}
 
     def fetch(call: Any, arg: Any = None) -> Any:
         if call == "confirm_qids_alive":
-            from app.pipeline.wikidata_existence import confirm_qids_alive
+            qids = [str(q) for q in arg]
+            missing = sorted({q for q in qids if q not in qid_alive_cache})
+            if missing:
+                from app.pipeline.wikidata_existence import confirm_qids_alive  # noqa: PLC0415
 
-            return confirm_qids_alive([str(q) for q in arg])
+                results = confirm_qids_alive(missing) or {}
+                for qid, alive in results.items():
+                    qid_alive_cache[str(qid)] = alive
+            return {q: qid_alive_cache.get(q) for q in qids}
         if call == "inlabel_search":
-            from app.pipeline.wikidata_duplicate_probe import _fetch_json, _search_url
+            title = str(arg)
+            if title not in inlabel_cache:
+                from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
+                    _fetch_json,
+                    _search_url,
+                )
 
-            payload = _fetch_json(_search_url(f'inlabel:"{arg}"', limit=10), timeout=30.0)
-            rows = ((payload or {}).get("query") or {}).get("search") or []
-            return [
-                {"qid": str(r.get("title") or ""), "label": str(arg)}
-                for r in rows
-                if isinstance(r, dict) and str(r.get("title") or "").startswith("Q")
-            ]
-        url, params = call
-        from urllib.parse import urlencode
+                payload = _fetch_json(
+                    _search_url(f'inlabel:"{title}"', limit=10), timeout=30.0,
+                )
+                rows = ((payload or {}).get("query") or {}).get("search") or []
+                inlabel_cache[title] = [
+                    {"qid": str(r.get("title") or ""), "label": title}
+                    for r in rows
+                    if isinstance(r, dict) and str(r.get("title") or "").startswith("Q")
+                ]
+            return list(inlabel_cache[title])
+        if isinstance(call, str):
+            # Tolerate the (url, params) two-argument call style.
+            url, params = call, dict(arg or {})
+        else:
+            url, params = call
+        key = (str(url), tuple(sorted((str(k), str(v)) for k, v in (params or {}).items())))
+        if key not in wbget_cache:
+            from urllib.parse import urlencode  # noqa: PLC0415
 
-        from app.pipeline.wikidata_existence import _fetch_json_throttled
+            from app.pipeline.wikidata_existence import _fetch_json_throttled  # noqa: PLC0415
 
-        return _fetch_json_throttled(f"{url}?{urlencode(params)}", timeout=30.0)
+            wbget_cache[key] = _fetch_json_throttled(
+                f"{url}?{urlencode(params)}", timeout=30.0,
+            )
+        return wbget_cache[key]
 
     return fetch

@@ -415,6 +415,27 @@ def _api_gate(rule_id: str, ctx: RuleContext) -> RuleResult | None:
     return None
 
 
+def _wikibase_entity(qid: str, ctx: RuleContext) -> dict[str, Any]:
+    """One merged wbgetentities per item per pass — alive + label_drift
+    share it via ``ctx.memo``.
+
+    The two live rules previously fetched the same QID twice (``info``,
+    then ``labels``); one ``info|labels`` request halves the per-item
+    request count against the 1.1 s throttle domain (W-139)."""
+    key = f"wb:{qid}"
+    if key not in ctx.memo:
+        payload = ctx.fetcher((
+            f"{ctx.wikibase_endpoint.rstrip('/')}/w/api.php",
+            {
+                "action": "wbgetentities", "ids": qid,
+                "props": "info|labels", "languages": "en|he",
+                "format": "json", "formatversion": "2",
+            },
+        ))
+        ctx.memo[key] = payload or {}
+    return ctx.memo[key]
+
+
 def _run_wikibase_alive(entity: dict[str, Any], ctx: RuleContext) -> RuleResult:
     qid = str(entity.get("wikibase_id") or "").strip()
     if not qid:
@@ -423,10 +444,7 @@ def _run_wikibase_alive(entity: dict[str, Any], ctx: RuleContext) -> RuleResult:
     if blocked is not None:
         return blocked
     try:
-        payload = ctx.fetcher(f"{ctx.wikibase_endpoint.rstrip('/')}/w/api.php", {
-            "action": "wbgetentities", "ids": qid, "props": "info",
-            "format": "json", "formatversion": "2",
-        })
+        payload = _wikibase_entity(qid, ctx)
     except Exception as exc:  # noqa: BLE001 — network failure is never a fail
         return RuleResult("hmo.live.alive", STATE_ERROR, "", f"lookup failed: {exc}"[:200])
     ent = ((payload or {}).get("entities") or {}).get(qid) or {}
@@ -445,10 +463,7 @@ def _run_wikibase_label_drift(entity: dict[str, Any], ctx: RuleContext) -> RuleR
     if blocked is not None:
         return blocked
     try:
-        payload = ctx.fetcher(f"{ctx.wikibase_endpoint.rstrip('/')}/w/api.php", {
-            "action": "wbgetentities", "ids": qid, "props": "labels",
-            "languages": "en|he", "format": "json", "formatversion": "2",
-        })
+        payload = _wikibase_entity(qid, ctx)
     except Exception as exc:  # noqa: BLE001
         return RuleResult(
             "hmo.live.label_drift", STATE_ERROR, "", f"lookup failed: {exc}"[:200],

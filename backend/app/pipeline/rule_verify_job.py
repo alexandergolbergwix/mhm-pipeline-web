@@ -63,6 +63,10 @@ from app.pipeline.run_job_service import (
 logger = logging.getLogger(__name__)
 
 CHUNK = 1000
+# The API pass merges and reports progress every 100 items so the tray
+# shows live counts during the throttle-bound probe phase; the 1000-item
+# cadence stays for the local worker loop (136/210).
+_API_PASS_CHUNK = 100
 
 
 def _budgets() -> dict[str, int]:
@@ -320,7 +324,7 @@ async def run_rule_verify_api_pass(job_id: str, run_id: uuid.UUID) -> dict[str, 
     total = len(items)
     done = 0
     cancelled = False
-    for start in range(0, total, CHUNK):
+    for start in range(0, total, _API_PASS_CHUNK):
         if await is_cancel_requested(job_uuid):
             cancelled = True
             break

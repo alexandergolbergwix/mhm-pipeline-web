@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from app.pipeline.rule_verify.base import (
@@ -557,6 +559,69 @@ def test_api_only_scope_runs_only_api_rules() -> None:
     api_ids = {r.id for r in build_hmo_rules() if r.uses_api}
     assert {r.rule_id for r in row} == api_ids
     assert row[0].state in {"pass", "not_relevant"}
+
+
+def test_production_fetcher_memoizes_per_run(monkeypatch) -> None:
+    """The per-run memo collapses repeated label/QID probes — every
+    avoided request is ~1.1 s of throttle time (W-139) on a corpus where
+    the same labels and QIDs recur across items."""
+    from app.pipeline.rule_verify import api_fetcher
+
+    confirm_calls: list[list[str]] = []
+
+    def fake_confirm(qids):  # type: ignore[no-untyped-def]
+        confirm_calls.append(list(qids))
+        return {q: True for q in qids}
+
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qids_alive", fake_confirm,
+    )
+
+    search_calls: list[str] = []
+
+    def fake_fetch_json(url, timeout=None):  # type: ignore[no-untyped-def]
+        search_calls.append(url)
+        return {"query": {"search": [{"title": "Q9"}]}}
+
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_duplicate_probe._fetch_json", fake_fetch_json,
+    )
+
+    fetcher = api_fetcher.production_fetcher()
+    assert fetcher("confirm_qids_alive", ["Q1", "Q2"]) == {"Q1": True, "Q2": True}
+    # Overlapping batches probe only the missing QIDs; cache hits re-map.
+    assert fetcher("confirm_qids_alive", ["Q2", "Q3"]) == {"Q2": True, "Q3": True}
+    assert confirm_calls == [["Q1", "Q2"], ["Q3"]]
+    assert fetcher("inlabel_search", "Codex A") == [{"qid": "Q9", "label": "Codex A"}]
+    assert fetcher("inlabel_search", "Codex A") == [{"qid": "Q9", "label": "Codex A"}]
+    assert len(search_calls) == 1
+
+
+def test_wikibase_live_rules_share_one_fetch() -> None:
+    """alive + label_drift probe the same QID on the same endpoint — one
+    merged wbgetentities per item per pass (ctx.memo), not two."""
+    calls: list[Any] = []
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        calls.append(call)
+        if call == "confirm_qids_alive":
+            return {"Q2": True}
+        if call == "inlabel_search":
+            return []
+        url, params = call
+        assert params["ids"] == "Q9"
+        return {"entities": {"Q9": {"id": "Q9", "labels": {"en": {"value": "Codex A"}}}}}
+
+    item = _item(wikibase_id="Q9")
+    results = _engine([item], api=True, fetcher=fetcher).run_scope(
+        [item], include_api=True,
+    )
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    assert row["hmo.live.alive"].state == "pass"
+    assert row["hmo.live.label_drift"].state == "pass"
+    wbgets = [c for c in calls if isinstance(c, tuple)]
+    assert len(wbgets) == 1
+    assert wbgets[0][1]["props"] == "info|labels"
 
 
 @pytest.mark.asyncio

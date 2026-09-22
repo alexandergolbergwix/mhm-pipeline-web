@@ -108,6 +108,21 @@ added the columns (also on `wikidata_item_overrides` for phase 3).
   tallies only so `merge_summaries` never double-counts the scope.
   Dispatch failure degrades to running the pass inline in the
   orchestrator (12 h container) — never to silently skipping the probes.
+- **The API pass is memoized and merges per 100 items.** The pass's
+  fetcher (`rule_verify.api_fetcher.production_fetcher`) caches per run:
+  `confirm_qids_alive` dedupes per QID and batches only the missing ones,
+  `inlabel_search` caches per label, and raw Wikibase `wbgetentities`
+  calls cache per (url, params) — the same labels/QIDs recur across items
+  of a corpus, and every avoided request is ~1.1 s of throttle time (W-139).
+  The two Wikibase live rules (`hmo.live.alive`, `hmo.live.label_drift`)
+  share ONE merged `wbgetentities` per item (`props=info|labels`) via
+  `ctx.memo` instead of two round-trips; the raw fetch shape is a
+  `(url, params)` tuple — the two-argument style unpacked the URL string
+  and every live rule failed with "lookup failed: too many values to
+  unpack" (the seam was never exercised end-to-end before 2026-09-22).
+  The pass merges + reports progress every 100 items
+  (`_API_PASS_CHUNK`) so the tray shows live counts instead of sitting
+  on the generic "Probing live Wikidata…" message for an hour.
 - Job result carries the per-rule summary only — per-entity data lives
   in the override rows and the results endpoint (R14 lesson).
 
