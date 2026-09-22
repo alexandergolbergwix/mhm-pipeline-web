@@ -658,7 +658,7 @@ async def _dispatch_rule_verify_api_pass(job_id: str, run_id: str) -> dict:
     import uuid as _uuid
 
     try:
-        return await _asyncio.to_thread(run_rule_verify_api_pass.call, job_id, run_id)
+        return await _asyncio.to_thread(run_rule_verify_api_pass.remote, job_id, run_id)
     except Exception as exc:  # noqa: BLE001 — degraded inline pass beats no pass
         logger.warning(
             "rule-verify api pass dispatch failed; running inline: %s", exc,
