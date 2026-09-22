@@ -65,6 +65,13 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:2a9852ae98d9c2d2c59157d4d8df6b9d",
+      "path": "backend/app/pipeline/marc_llm_extract.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Variable holds a server-env key resolved at runtime via tier1_api_key_for_spec; no literal credential in code",
+      "expires": "2027-09-22"
+    },
+    {
       "fingerprint": "sha256:351d94f3124b6ff23d4d4e9cec4ad9b1",
       "path": "backend/app/pipeline/rdf_build_job.py",
       "rule_id": "generic-assigned-secret",

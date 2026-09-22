@@ -797,3 +797,83 @@ async def test_cancel_requested_queued_job_is_never_claimed(
     assert claimed is False
     await db_session.refresh(queued)
     assert queued.status == JOB_STATUS_QUEUED
+
+
+@pytest.mark.asyncio
+async def test_force_cancel_finalizes_running_job_with_old_flag(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """R28 safety net: a running row whose cancel flag outlived the grace is
+    finalized by the maintenance pass even when its executor wedged in a
+    non-polling stretch (2026-09-17: a build crawled 20+ minutes past Cancel)."""
+    monkeypatch.setattr(run_job_service, "RUN_JOB_CANCEL_FORCE_AFTER_S", 300)
+
+    running = await _add_job(
+        db_session, sample_run, kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_RUNNING,
+    )
+    from app.pipeline.run_job_service import request_cancel
+    await request_cancel(db_session, running.id)
+    await db_session.execute(
+        update(RunJob)
+        .where(RunJob.id == running.id)
+        .values(cancel_requested_at=run_job_service._now() - timedelta(seconds=400))
+        .execution_options(synchronize_session=False)
+    )
+    await db_session.commit()
+
+    finalized = await run_job_service.cancel_requested_running_jobs()
+    assert finalized == 1
+    await db_session.refresh(running)
+    assert running.status == "cancelled"
+    assert running.error == "Cancelled by user"
+
+
+@pytest.mark.asyncio
+async def test_force_cancel_leaves_fresh_flag_and_flagless_rows_alone(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    """A healthy runner finalizes within seconds — the net must not race it."""
+    monkeypatch.setattr(run_job_service, "RUN_JOB_CANCEL_FORCE_AFTER_S", 300)
+
+    fresh = await _add_job(
+        db_session, sample_run, kind=JOB_KIND_RDF_BUILD,
+        status=JOB_STATUS_RUNNING,
+    )
+    from app.pipeline.run_job_service import request_cancel
+    await request_cancel(db_session, fresh.id)
+
+    flagless = await _add_job(
+        db_session, sample_run, kind=JOB_KIND_WIKIDATA_UPLOAD,
+        status=JOB_STATUS_RUNNING,
+    )
+
+    finalized = await run_job_service.cancel_requested_running_jobs()
+    assert finalized == 0
+    await db_session.refresh(fresh)
+    await db_session.refresh(flagless)
+    assert fresh.status == JOB_STATUS_RUNNING
+    assert flagless.status == JOB_STATUS_RUNNING
+
+
+@pytest.mark.asyncio
+async def test_cancel_watcher_throttles_and_raises(monkeypatch) -> None:
+    """The watcher polls the flag at most once per window and raises
+    JobCancelledErrorError for the runner loop to finalize (Rule R28)."""
+    polls = {"n": 0}
+
+    async def fake_is_cancel(job_id):
+        polls["n"] += 1
+        return True
+
+    monkeypatch.setattr(run_job_service, "is_cancel_requested", fake_is_cancel)
+    check = run_job_service.cancel_watcher(uuid.uuid4())
+
+    with pytest.raises(run_job_service.JobCancelledErrorError):
+        await check()
+    assert polls["n"] == 1
+
+    # Inside the 1 s window the flag is not polled again (R34: the throttle
+    # window resets after the query completes).
+    await check()
+    assert polls["n"] == 1

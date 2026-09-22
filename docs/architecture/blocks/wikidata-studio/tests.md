@@ -133,7 +133,11 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `backend/tests/test_wikidata_items_export_import.py` — JSON export excludes
   non-public entity types (W-118).
 - `backend/tests/unit/test_wikidata_studio_build_job.py` — build worker passes
-  `reconcile=False` (W-119 / R46).
+  `reconcile=False` (W-119 / R46); a `JobCancelledError` from
+  `execute_studio_build` finalizes the job `cancelled` at the boundary it was
+  seen; a cancel landing during the mining tail finalizes `cancelled`, never
+  `succeeded`; `execute_studio_build` raises before any work when cancelled
+  pre-start (W-236).
 - `backend/tests/unit/test_wikidata_studio_build_gate.py` — the build snapshots
   MARC before transliteration cache work and uses bulk cache sessions (W-197).
 - `backend/tests/unit/test_wikidata_studio_list_view.py` — `list_view` trim,

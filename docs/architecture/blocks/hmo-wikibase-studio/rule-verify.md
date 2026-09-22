@@ -75,14 +75,21 @@ added the columns (also on `wikidata_item_overrides` for phase 3).
 ## Execution model
 
 - Heroku fallback: single-process loop, 1 000-item chunks off the event
-  loop, cancel checks between chunks (W-245/W-128 patterns).
-- Modal (preferred, `MODAL_JOB_KINDS`): the claimed container loads the
-  scope and fans out `run_rule_verify_shard` via `.starmap()` over
-  1 500-item shards (parallel containers, cpu 1 / 4 GB each). Shard
-  results are collected on a thread — the Modal starmap iterator is
-  synchronous and must never block the heartbeat loop (W-244). The
-  orchestrator merges per-rule tallies and owns progress + terminal
-  state. Dispatch failure degrades to the local path (Rule W-15).
+  loop, cancel checks between chunks (W-245/W-128 patterns). The scope
+  load takes `should_cancel` and polls between stages, yielding per 500
+  items (R37); a `JobCancelledError` finalizes the job `cancelled`.
+- Modal (preferred, `MODAL_JOB_KINDS`): the claimed container publishes
+  "Loading rule-verify scope…" progress *before* loading the scope (the
+  tray must never show a bare "running" during the load, R37), then
+  loads the scope with a `cancel_watcher` and fans out
+  `run_rule_verify_shard` via `.starmap()` over env-tunable shards
+  (`MHM_RULE_VERIFY_SHARD_SIZE`, default 6 000 items — parallel
+  containers, cpu 1 / 4 GB each). Shard results are collected
+  on a thread — the Modal starmap iterator is synchronous and must never
+  block the heartbeat loop (W-244); the consumer polls the cancel flag
+  every ≤10 s and finalizes `cancelled` without waiting for in-flight
+  shards. The orchestrator merges per-rule tallies and owns progress +
+  terminal state. Dispatch failure degrades to the local path (Rule W-15).
 - Job result carries the per-rule summary only — per-entity data lives
   in the override rows and the results endpoint (R14 lesson).
 

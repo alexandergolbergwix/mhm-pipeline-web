@@ -4,7 +4,7 @@
 
 | File | Purpose |
 |---|---|
-| `backend/app/pipeline/run_job_service.py` | Core: create/claim/admission gate (W-129, heavy cap + web/worker role split W-235)/heartbeat/reap/respawn/admit, spawn + dispatch, progress, finish, cancel, serialise; stale verify → resumable (W-130) |
+| `backend/app/pipeline/run_job_service.py` | Core: create/claim/admission gate (W-129, heavy cap + web/worker role split W-235)/heartbeat/reap/respawn/admit, spawn + dispatch, progress, finish, cancel (flag, `JobCancelledError` + `cancel_watcher` for in-loop polling, force-finalize of wedged running rows), serialise; stale verify → resumable (W-130) |
 | `backend/app/jobs_worker.py` + `scripts/start_worker.sh` | Worker-dyno entrypoint (W-235): recovery + maintenance loop off the web dyno |
 | `backend/app/pipeline/verify_resume.py` | Auto-resume helpers: `apply_verify_job_auto_resume`, resumable result copy (W-130 / W-134) |
 | `backend/app/pipeline/run_job_params.py` | Bounded per-kind request validation + server-side secret injection; slow scope loading stays in workers |

@@ -19,6 +19,9 @@ POST /runs/{run_id}/jobs {kind, params}
 
 Every 60 s (run_job_maintenance_loop):
   _heartbeat_owned_jobs()   # bump updated_at on rows whose task is alive here
+  cancel_requested_queued_jobs()   # queued + flag → cancelled (no owner exists)
+  cancel_requested_running_jobs()  # running + flag older than
+                                   #   RUN_JOB_CANCEL_FORCE_AFTER_S → cancelled
   fail_stale_jobs()         # running + updated_at > 5 min old
                             # verify kinds with judged>0 → re-queue (W-134)
                             # else → failed (verify stamps resumable — W-130)

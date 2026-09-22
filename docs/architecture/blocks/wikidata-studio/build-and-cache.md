@@ -115,6 +115,8 @@ request).
 
 Before grouping build inputs, `build_items_for_run` runs every MARC record, approved authority match, and approved NER entity key through `canonical_control_number`. This makes harmless storage formatting such as surrounding quotes or whitespace equivalent to the record’s clean 001. The normalisation is a build-boundary requirement: grouping any one source by its raw control number can silently remove its authority/person or NER/work projection.
 
+**Cancel (Rule W-236):** `execute_studio_build` takes `should_cancel` — an awaitable that raises `JobCancelledError`. It is polled at every phase boundary and, through a `threading.Event` bridge (a 1 s watcher task maps the async check onto a sync flag), inside `build_items_for_run`'s per-record loop. A cancel aborts the build at the next record or phase, skips the cache upsert, and the job finalizes `cancelled`; a cancel that lands during `_mine_provenance_prose` is re-checked before the `succeeded` finish, so mining can never override Cancel.
+
 Canonical source mode reads durable `hmo_canonical_entities` rows first; the per-run HMO cache is only a migration fallback. This keeps Wikidata Studio projections independent of cache retention. Claim predicates and item values are translated to public Wikidata P/Q only through `hmo_wikidata_pq_mapper` (ontology local-name / ledger URI → allowlist; bare project Cloud QIDs never become Wikidata values — Rule W-100).
 
 **Canonical enrichment (Rule W-125):** before validation, `execute_studio_build`

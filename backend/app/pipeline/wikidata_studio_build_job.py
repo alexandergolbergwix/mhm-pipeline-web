@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 
 from app.db import session_scope
 from app.models.run_job import (
@@ -15,6 +16,8 @@ from app.models.run_job import (
     RunJob,
 )
 from app.pipeline.run_job_service import (
+    JobCancelledErrorError,
+    cancel_watcher,
     finish_job,
     is_cancel_requested,
     update_job_progress,
@@ -177,12 +180,15 @@ async def _mine_provenance_prose(
     run_id: uuid.UUID,
     approved_only: bool,
     source: str,
+    should_cancel: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     """Attach span-grounded LLM proposals to the built items (Rule W-140).
 
     Runs here rather than on the verify path: one model call per manuscript kept
     "Loading Studio scope…" spinning for minutes before the judge could start.
     Never fatal — a build must not fail because an optional enrichment did.
+    Cancel is the exception: a JobCancelledErrorError propagates so the caller can
+    finalize the row as cancelled instead of succeeded.
     """
     items = list(getattr(cached, "result_items", None) or [])
     if not items:
@@ -204,9 +210,12 @@ async def _mine_provenance_prose(
         # Without it every manuscript had zero prose to read, so the whole phase
         # was a 0.4 s no-op and every export reported `not_run` (Rule W-140).
         await _attach_prose_context(run_id, items, list(SOURCE_SLICES))
+        if should_cancel is not None:
+            await should_cancel()
         try:
             stats = await attach_llm_proposals(
                 session_scope, items, on_progress=on_progress,
+                should_cancel=should_cancel,
             )
         finally:
             # The prose slice is a mining input, not curator data — never let it
@@ -220,6 +229,8 @@ async def _mine_provenance_prose(
             # memory alone left every export reading `not_run`. Persist the
             # enriched items or the proposals never reach a curator.
             await _persist_mined_items(run_id, approved_only, source, items)
+    except JobCancelledErrorError:
+        raise
     except Exception as exc:  # noqa: BLE001 — enrichment must not fail the build
         logger.warning("marc llm extract skipped for job %s: %s", job_id, exc)
 
@@ -244,6 +255,8 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         await finish_job(job_id, status=JOB_STATUS_CANCELLED)
         return
 
+    should_cancel = cancel_watcher(job_id)
+
     def on_record(done: int, total: int) -> None:
         state["done"], state["records"] = done, total
 
@@ -254,20 +267,38 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
     try:
         from app.routers.wikidata_studio import execute_studio_build  # noqa: PLC0415
 
-        async with session_scope() as db:
-            cached = await execute_studio_build(
-                db,
-                run_id=run_id,
-                approved_only=approved_only,
-                force_rebuild=force_rebuild,
-                run_user_id=run_user_id,
-                source=source,
-                # Never WDQS-reconcile the full corpus on the build path (Rule W-119).
-                # Reconcile runs on upload / gated QS / the preview endpoint only.
-                reconcile=False,
-                progress_cb=on_record,
-                phase_cb=on_phase,
+        try:
+            async with session_scope() as db:
+                cached = await execute_studio_build(
+                    db,
+                    run_id=run_id,
+                    approved_only=approved_only,
+                    force_rebuild=force_rebuild,
+                    run_user_id=run_user_id,
+                    source=source,
+                    # Never WDQS-reconcile the full corpus on the build path (Rule W-119).
+                    # Reconcile runs on upload / gated QS / the preview endpoint only.
+                    reconcile=False,
+                    progress_cb=on_record,
+                    phase_cb=on_phase,
+                    should_cancel=should_cancel,
+                )
+        except JobCancelledErrorError:
+            # Rule R28: finalize at the record/phase boundary where the flag
+            # was seen — not after the whole build crawled to its end.
+            await finish_job(
+                job_id,
+                status=JOB_STATUS_CANCELLED,
+                error="Cancelled by user",
+                progress={
+                    "phase": "cancelled",
+                    "processed": min(int(state.get("done") or 0) + 1, len(phases)),
+                    "total": len(phases),
+                    "unit": "steps",
+                    "message": "Cancelled by user",
+                },
             )
+            return
     except Exception as exc:  # noqa: BLE001
         logger.exception("wikidata studio build job failed for %s", run_id)
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
@@ -281,10 +312,32 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         await finish_job(job_id, status=JOB_STATUS_CANCELLED)
         return
 
-    await _mine_provenance_prose(
-        job_id, cached, state, phases,
-        run_id=run_id, approved_only=approved_only, source=source,
-    )
+    try:
+        await _mine_provenance_prose(
+            job_id, cached, state, phases,
+            run_id=run_id, approved_only=approved_only, source=source,
+            should_cancel=should_cancel,
+        )
+    except JobCancelledErrorError:
+        await finish_job(
+            job_id,
+            status=JOB_STATUS_CANCELLED,
+            error="Cancelled by user",
+            progress={
+                "phase": "cancelled",
+                "processed": len(phases),
+                "total": len(phases),
+                "unit": "steps",
+                "message": "Cancelled by user",
+            },
+        )
+        return
+
+    if await is_cancel_requested(job_id):
+        # A cancel that landed mid-mining must not be overridden by a
+        # succeeded finish — mining is optional, cancel is not.
+        await finish_job(job_id, status=JOB_STATUS_CANCELLED)
+        return
 
     total = len(cached.result_items or [])
     summary = cached.summary or {}

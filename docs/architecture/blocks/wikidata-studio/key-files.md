@@ -43,9 +43,9 @@
 | `backend/scripts/check_wikidata_export_quality.py` | Read-only compact audit of work identity, author, language, quote, validation, linked-QID handling, and export-field failures (W-199) |
 | `backend/scripts/audit_test_wikidata_upload.py` | Per-entity test.wikidata.org write vs Studio native live-readiness (validator ERROR, claim count, live URI leak, W-190 identity clash); identifierless persons `skip_for_live` (W-195) |
 | `backend/scripts/judge_test_wikidata_live_ready.py` | LLM live-readiness judge: deterministic audit + eval-agent `wikidata_test_live_ready` on natives (never copy test Q/P); `skip_for_live` excluded from written denominator (W-195) |
-| `backend/app/pipeline/wikidata_studio_build_job.py` | Background build job (`wikidata_studio_build` kind) — `reconcile=False`, threadpool canonical build (W-119) |
+| `backend/app/pipeline/wikidata_studio_build_job.py` | Background build job (`wikidata_studio_build` kind) — `reconcile=False`, threadpool canonical build (W-119); catches `JobCancelledError` and finalizes `cancelled` at phase/record boundaries (W-236), never overrides a mid-mining cancel with `succeeded` |
 | `backend/app/pipeline/wikidata_studio_batches.py` | Sharded-build loaders: CN keyset listing, streamed byte-identical fingerprint, per-slice `IN`-query inputs, `shard_slices` chunking |
-| `backend/app/pipeline/wikidata_studio_build_shard.py` | Modal shard runner (lossless native item payloads) + merge (`local_id` dedup, first-wins, `records` union) + orchestrator tail (finish → gate → cache upsert → rows write) |
+| `backend/app/pipeline/wikidata_studio_build_shard.py` | Modal shard runner (lossless native item payloads) + merge (`local_id` dedup, first-wins, `records` union) + orchestrator tail (finish → gate → cache upsert → rows write); plan load + mining tail take `should_cancel` (W-236) |
 | `backend/app/pipeline/wikidata_item_row_views.py` | `wikidata_studio_item_rows` views: build-time replace, lazy backfill from the cache blob, SQL keyset `page_wikidata_items`, streamed row iterator for exports (W-247 pattern) |
 | `backend/app/models/wikidata_studio_item_row.py` | Per-item review read-model row per `(run_id, approved_only, source)` — indexed columns + full payload JSONB |
 | `backend/app/migrations/versions/0047_wikidata_item_rows.py` | Creates `wikidata_studio_item_rows` |

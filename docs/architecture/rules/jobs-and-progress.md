@@ -486,6 +486,29 @@ process claims it — strictness never traps a job in `queued` forever. The
 worker entrypoint is `python -m app.jobs_worker` (Procfile `worker:`,
 scale with `heroku ps:scale worker=1`).
 
+### Rule W-236 — Cancel is cooperative, runners poll in-loop, and wedged rows are force-finalized (extended 2026-09-21)
+
+`request_cancel` only stamps `cancel_requested_at`; nothing force-kills a
+task. Three layers make Cancel actually terminate a job:
+
+1. **Queued rows** (no owner): the maintenance pass finalizes them
+   (`cancel_requested_queued_jobs`) and the claim path refuses them.
+2. **Running rows**: the owner polls the flag and finalizes itself. Long
+   runners MUST poll **inside** their loops, not only at phase boundaries —
+   the 2026-09-17 Modal build crawled 20+ minutes after Cancel because the
+   flag was checked at phase boundaries only. `cancel_watcher(job_id)`
+   (run_job_service) builds the time-throttled (~1/s, R34 throttle rule)
+   check that raises `JobCancelledError`; runners catch it and finalize
+   `cancelled`. `execute_studio_build(should_cancel=…)` polls at phase
+   boundaries AND inside the per-record build loop via a threading.Event
+   bridge; rule-verify scope loads poll between stages (R37 yield rule).
+3. **Wedged rows** (safety net): `cancel_requested_running_jobs` in the
+   maintenance tick finalizes any running row whose flag is older than
+   `RUN_JOB_CANCEL_FORCE_AFTER_S` (default 300 s, 0 disables). A healthy
+   runner finalizes in seconds; an older flag means the executor is stuck
+   in a non-polling stretch or dead. `finish_job` refuses terminal rows
+   (W-244), so a late zombie writer cannot resurrect the job.
+
 ### Rule W-253 — Modal shard fan-out must fit the shared Postgres connection budget (added 2026-09-20)
 
 Prod `DATABASE_URL` is a **shared** Heroku Postgres essential-1 instance:

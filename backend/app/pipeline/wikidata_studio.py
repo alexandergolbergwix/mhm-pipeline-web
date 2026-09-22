@@ -201,6 +201,7 @@ async def build_items_for_run(
     overrides: dict[str, dict[str, Any]] | None = None,
     hmo_instance_qids: dict[str, str] | None = None,
     progress_cb: Callable[[int, int], None] | None = None,
+    should_cancel: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Build Wikidata items + QuickStatements for *marc_records* enriched
     with *approved_matches* and Stage-2 NER *entities*.
@@ -214,6 +215,10 @@ async def build_items_for_run(
     P127/P571 provenance fallbacks. Without this merge, the studio
     creates zero work items (the rest of the pipeline's authority
     surface comes through ``marc_authority_matches``).
+
+    ``should_cancel`` is a sync callable (runs on the worker thread) that
+    raises when the curator cancelled; it is tested at every record
+    boundary so a cancel stops the build mid-loop (Rule R28).
 
     Returns::
 
@@ -230,7 +235,7 @@ async def build_items_for_run(
     )
     return await run_in_threadpool(
         _build_sync, enriched, return_native, overrides or {}, hmo_instance_qids or {},
-        progress_cb,
+        progress_cb, should_cancel,
     )
 
 
@@ -301,6 +306,7 @@ def _build_native_sync(
     overrides: dict[str, dict[str, Any]] | None = None,
     hmo_instance_qids: dict[str, str] | None = None,
     progress_cb: Callable[[int, int], None] | None = None,
+    should_cancel: Callable[[], None] | None = None,
 ) -> list[Any]:
     """Run the desktop builder over *records* and apply curator overrides.
 
@@ -313,7 +319,16 @@ def _build_native_sync(
     builder = WikidataItemBuilder(  # SPARQL-free for the web
         reconciler=None, hmo_instance_qids=hmo_instance_qids,
     )
-    items = builder.build_all(records, progress_cb=progress_cb)
+    record_cb = progress_cb
+    if should_cancel is not None:
+        def record_cb(done: int, total: int) -> None:
+            if progress_cb is not None:
+                progress_cb(done, total)
+            should_cancel()
+
+    items = builder.build_all(records, progress_cb=record_cb)
+    if should_cancel is not None:
+        should_cancel()
 
     # Apply per-item curator overrides FIRST so validation reflects the
     # final curator-adjusted state (not the raw builder output).
@@ -402,8 +417,11 @@ def _build_sync(
     overrides: dict[str, dict[str, Any]] | None = None,
     hmo_instance_qids: dict[str, str] | None = None,
     progress_cb: Callable[[int, int], None] | None = None,
+    should_cancel: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    items = _build_native_sync(records, overrides, hmo_instance_qids, progress_cb)
+    items = _build_native_sync(
+        records, overrides, hmo_instance_qids, progress_cb, should_cancel,
+    )
     result = finish_native_items(items)
     result["native_items"] = items if return_native else None
     return result

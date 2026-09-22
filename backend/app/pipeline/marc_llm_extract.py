@@ -320,6 +320,7 @@ async def attach_llm_proposals(
     call: Any = None,
     budget: int | None = None,
     on_progress: Any = None,
+    should_cancel: Any = None,
 ) -> dict[str, int]:
     """Stamp `_llm_proposals` on every manuscript item we can read prose for.
 
@@ -327,6 +328,10 @@ async def attach_llm_proposals(
     trip, only the misses reach the model, those run concurrently, and every
     result is written back in one statement. Takes a session **factory** so no
     transaction is ever open across a model call (Rule W-40).
+
+    ``should_cancel`` is an optional awaitable that raises ``JobCancelledErrorError``
+    when the curator cancelled; it is tested before each model call so a
+    cancel stops the mining phase within one in-flight request (Rule R28).
     """
     remaining = _budget() if budget is None else budget
     stats = {
@@ -417,6 +422,8 @@ async def attach_llm_proposals(
 
     if not misses:
         return stats
+    if should_cancel is not None:
+        await should_cancel()
 
     # 3. Call the model for the misses only, concurrently, with NO transaction open.
     from fastapi.concurrency import run_in_threadpool  # noqa: PLC0415
@@ -427,6 +434,8 @@ async def attach_llm_proposals(
     async def extract(entry: tuple[dict[str, Any], str, str]) -> None:
         nonlocal done
         item, control_number, record_text = entry
+        if should_cancel is not None:
+            await should_cancel()
         prompt = build_prompt(control_number, record_text)
         invoke = call or (
             lambda: _call_qubrid(prompt, model_id=model, timeout=_timeout())

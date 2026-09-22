@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -34,6 +34,7 @@ from app.models.run_job import (
     RunJob,
 )
 from app.pipeline.run_job_service import (
+    JobCancelledErrorError,
     finish_job,
     is_cancel_requested,
     update_job_progress,
@@ -127,7 +128,9 @@ async def run_wikidata_studio_build_shard(
 
 
 async def load_wikidata_shard_plan(
-    job_id: uuid.UUID, shard_size: int = _SHARD_CNS,
+    job_id: uuid.UUID,
+    shard_size: int = _SHARD_CNS,
+    should_cancel: Callable[[], Awaitable[None]] | None = None,
 ) -> WikidataShardPlan | None:
     """Load the fan-out plan for one claimed ``wikidata_studio_build`` job.
 
@@ -135,6 +138,10 @@ async def load_wikidata_shard_plan(
     row instead of leaving it "running" forever. A fresh cache hit
     yields an empty slice list — the orchestrator finalises the row
     without any fan-out.
+
+    ``should_cancel`` is an awaitable that raises ``JobCancelledErrorError`` when
+    the curator cancelled; the fingerprint + cache read can run for
+    minutes on big runs, so it is tested between stages (Rule R28).
     """
     from app.pipeline.wikidata_studio import (  # noqa: PLC0415
         studio_cache_has_stale_validation,
@@ -156,9 +163,13 @@ async def load_wikidata_shard_plan(
         if not control_numbers:
             raise ValueError(f"run {run_id} has no records")
 
+        if should_cancel is not None:
+            await should_cancel()
         fingerprint = await compute_build_fingerprint_streamed(
             db, run_id, approved_only=approved_only,
         )
+        if should_cancel is not None:
+            await should_cancel()
         cached = await _get_studio_cache_row(db, run_id, approved_only, source)
 
     plan = WikidataShardPlan(
@@ -200,6 +211,7 @@ async def _update_build_progress(
 async def consume_wikidata_shard_results(
     plan: WikidataShardPlan,
     results: AsyncIterator[dict[str, Any]],
+    should_cancel: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     """Merge shard payloads, finish the corpus, and finalise the job.
 
@@ -275,13 +287,14 @@ async def consume_wikidata_shard_results(
 
     merged = merge_shard_items(shards)
     result = finish_native_items(merged)
-    await _persist_build_result(plan, merged, result)
+    await _persist_build_result(plan, merged, result, should_cancel=should_cancel)
 
 
 async def _persist_build_result(
     plan: WikidataShardPlan,
     native_items: list[Any],
     result: dict[str, Any],
+    should_cancel: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     """Quality-gate, cache upsert, and finalise — shared tail of the fan-out.
 
@@ -356,13 +369,14 @@ async def _persist_build_result(
             items=items,
         )
 
-    await _mine_and_finalise(plan, items, result)
+    await _mine_and_finalise(plan, items, result, should_cancel=should_cancel)
 
 
 async def _mine_and_finalise(
     plan: WikidataShardPlan,
     items: list[dict[str, Any]],
     result: dict[str, Any],
+    should_cancel: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     """Prose mining + terminal state — same tail as the sequential job."""
     from app.db import session_scope as _ss  # noqa: PLC0415
@@ -380,12 +394,33 @@ async def _mine_and_finalise(
             "phase": "mining provenance prose", "done": 0, "records": 0,
         }
         phases = ("mining provenance prose",)
-        await _mine_provenance_prose(
-            plan.job_id, cached, state, phases,
-            run_id=plan.run_id,
-            approved_only=plan.approved_only,
-            source=plan.source,
+        try:
+            await _mine_provenance_prose(
+                plan.job_id, cached, state, phases,
+                run_id=plan.run_id,
+                approved_only=plan.approved_only,
+                source=plan.source,
+                should_cancel=should_cancel,
+            )
+        except JobCancelledErrorError:
+            pass  # mining is optional; the cancel re-check below finalises
+
+    if should_cancel is not None:
+        await should_cancel()
+    if await is_cancel_requested(plan.job_id):
+        await finish_job(
+            plan.job_id,
+            status=JOB_STATUS_CANCELLED,
+            error="Cancelled by user",
+            progress={
+                "phase": "cancelled",
+                "processed": len(items),
+                "total": max(plan.total, 1),
+                "unit": "items",
+                "message": "Cancelled by user",
+            },
         )
+        return
 
     total = len(items)
     await finish_job(

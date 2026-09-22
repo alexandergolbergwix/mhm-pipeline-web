@@ -504,3 +504,21 @@ def test_qid_budget_exhausted_is_not_relevant_not_error() -> None:
     alive = row["hmo.wikidata.qids_alive"]
     assert alive.state == "not_relevant"
     assert "did not execute" in alive.message
+
+
+@pytest.mark.asyncio
+async def test_load_rule_verify_scope_aborts_on_cancel(db_session) -> None:
+    """Rule R28: the scope load is a long silent stretch — the cancel check
+    must abort it before the first merge, not after the whole load."""
+    import uuid
+
+    from app.pipeline.run_job_service import JobCancelledErrorError
+    from app.pipeline.rule_verify.scope import load_rule_verify_scope
+
+    async def cancelled() -> None:
+        raise JobCancelledErrorError("cancel requested")
+
+    with pytest.raises(JobCancelledErrorError):
+        await load_rule_verify_scope(
+            db_session, uuid.uuid4(), should_cancel=cancelled,
+        )

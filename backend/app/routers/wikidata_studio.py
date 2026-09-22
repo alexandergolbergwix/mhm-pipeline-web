@@ -12,10 +12,12 @@ workflow's unit of truth (see Rule 54 in the desktop CLAUDE.md).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import threading
 import uuid
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -646,6 +648,7 @@ async def execute_studio_build(
     reconcile: bool = True,
     progress_cb: Callable[[int, int], None] | None = None,
     phase_cb: Callable[[str], None] | None = None,
+    should_cancel: Callable[[], Awaitable[None]] | None = None,
 ) -> WikidataStudioCache:
     """Run the full item builder and upsert the Postgres cache.
 
@@ -653,11 +656,84 @@ async def execute_studio_build(
     Heroku HTTP request (30 s router timeout).
 
     ``reconcile=False`` skips live WDQS lookups (verify scope materialisation).
+
+    ``should_cancel`` is an awaitable that raises ``JobCancelledErrorError`` when the
+    curator pressed Cancel (Rule R28). It is polled at every phase boundary
+    and — via a threading.Event bridge — inside the per-record build loop,
+    so a cancel stops the build at the next record instead of after the
+    whole build.
     """
+    from app.pipeline.run_job_service import JobCancelledErrorError  # noqa: PLC0415
+
+    async def check_cancel() -> None:
+        if should_cancel is not None:
+            await should_cancel()
+
+    # The desktop builder runs in a worker thread and cannot await — a
+    # watcher task maps the async check onto a threading.Event that the
+    # sync build loop tests per record.
+    cancel_seen = threading.Event()
+    watcher: asyncio.Task[None] | None = None
+
+    async def _watch_cancel() -> None:
+        assert should_cancel is not None
+        try:
+            while not cancel_seen.is_set():
+                try:
+                    await should_cancel()
+                except JobCancelledErrorError:
+                    cancel_seen.set()
+                    return
+                except Exception:  # noqa: BLE001 — a poll error must not fail the build
+                    return
+                await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            return
+
+    def sync_cancel() -> None:
+        if cancel_seen.is_set():
+            raise JobCancelledErrorError("cancelled during item build")
+
+    if should_cancel is not None:
+        watcher = asyncio.create_task(_watch_cancel())
+    try:
+        return await _execute_studio_build(
+            db,
+            run_id=run_id,
+            approved_only=approved_only,
+            source=source,
+            force_rebuild=force_rebuild,
+            run_user_id=run_user_id,
+            reconcile=reconcile,
+            progress_cb=progress_cb,
+            phase_cb=phase_cb,
+            check_cancel=check_cancel,
+            sync_cancel=sync_cancel if should_cancel is not None else None,
+        )
+    finally:
+        if watcher is not None:
+            watcher.cancel()
+
+
+async def _execute_studio_build(
+    db: AsyncSession,
+    *,
+    run_id: uuid.UUID,
+    approved_only: bool,
+    source: str,
+    force_rebuild: bool,
+    run_user_id: uuid.UUID | None,
+    reconcile: bool,
+    progress_cb: Callable[[int, int], None] | None,
+    phase_cb: Callable[[str], None] | None,
+    check_cancel: Callable[[], Awaitable[None]],
+    sync_cancel: Callable[[], None] | None,
+) -> WikidataStudioCache:
     def phase(label: str) -> None:
         if phase_cb is not None:
             phase_cb(label)
 
+    await check_cancel()
     phase("loading records")
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
         db, run_id,
@@ -671,12 +747,14 @@ async def execute_studio_build(
         hmo_instance_qids,
     )
     cached = await _get_studio_cache_row(db, run_id, approved_only, source)
+    await check_cancel()
 
     if source == "canonical":
         phase("loading canonical entities")
         canonical = await _canonical_entities_for_run(db, run_id)
         if not canonical:
             raise ValueError(await _canonical_missing_detail(db, run_id))
+        await check_cancel()
         enrichment_fp = wikidata_studio.compute_build_fingerprint(
             records, all_matches, entity_rows, override_rows, approved_only,
             hmo_instance_qids,
@@ -735,6 +813,7 @@ async def execute_studio_build(
         prewarmed = await _prewarm_transliterations(
             marc_records=marc_records, user_id=run_user_id,
         )
+        await check_cancel()
         phase("building items")
         hebrew_translit.set_prewarmed_labels(prewarmed)
         hebrew_translit.set_sync_network_disabled(True)
@@ -747,10 +826,12 @@ async def execute_studio_build(
                 return_native=True,
                 hmo_instance_qids=hmo_instance_qids,
                 progress_cb=progress_cb,
+                should_cancel=sync_cancel,
             )
         finally:
             hebrew_translit.set_sync_network_disabled(False)
             hebrew_translit.clear_prewarmed_labels()
+        await check_cancel()
 
         phase("assembling canonical projection")
         result = await run_in_threadpool(
@@ -762,6 +843,7 @@ async def execute_studio_build(
             legacy_native_items=legacy_result.get("native_items") or [],
             return_native=True,
         )
+        await check_cancel()
         items = result["items"]
         summary = result["summary"]
         # Adopt any QID the duplicate probe already resolved by identifier, so the
@@ -812,6 +894,7 @@ async def execute_studio_build(
     prewarmed = await _prewarm_transliterations(
         marc_records=marc_records, user_id=run_user_id,
     )
+    await check_cancel()
     phase("building items")
     hebrew_translit.set_prewarmed_labels(prewarmed)
     hebrew_translit.set_sync_network_disabled(True)
@@ -822,10 +905,12 @@ async def execute_studio_build(
             overrides=overrides, return_native=True,
             hmo_instance_qids=hmo_instance_qids,
             progress_cb=progress_cb,
+            should_cancel=sync_cancel,
         )
     finally:
         hebrew_translit.set_sync_network_disabled(False)
         hebrew_translit.clear_prewarmed_labels()
+    await check_cancel()
 
     if result.get("native_items"):
         assert_wikidata_export_quality(

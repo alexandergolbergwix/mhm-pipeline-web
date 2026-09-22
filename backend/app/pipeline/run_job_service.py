@@ -7,7 +7,9 @@ import json
 import logging
 import os
 import socket
+import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -335,6 +337,10 @@ STALE_JOB_AFTER = timedelta(minutes=5)
 MAINTENANCE_INTERVAL_SECONDS = 60
 # A queued row this old whose creator never claimed it is an orphan.
 ORPHAN_GRACE = timedelta(seconds=90)
+# Cancel grace for RUNNING jobs (Rule R28 safety net): a healthy runner
+# polls the flag and finalizes within seconds; a flag older than this means
+# the executor is wedged in a non-polling stretch or dead. 0 disables.
+RUN_JOB_CANCEL_FORCE_AFTER_S = _int_env("RUN_JOB_CANCEL_FORCE_AFTER_S", 300)
 
 
 async def recover_interrupted_jobs() -> int:
@@ -464,6 +470,43 @@ async def cancel_requested_queued_jobs() -> int:
             job.error = "Cancelled by user"
             job.finished_at = finished
         await db.commit()
+        return len(rows)
+
+
+async def cancel_requested_running_jobs() -> int:
+    """Finalize running jobs whose cancel flag is older than the grace.
+
+    A healthy runner polls the flag and finalizes within seconds of the
+    request (Rule R8/R28). A flag older than ``RUN_JOB_CANCEL_FORCE_AFTER_S``
+    means the executor is wedged in a non-polling stretch (the 2026-09-17
+    20-minute crawl) or dead outright. ``finish_job`` refuses terminal rows
+    (W-244), so a late zombie writer can never resurrect the job.
+    """
+    if RUN_JOB_CANCEL_FORCE_AFTER_S <= 0:
+        return 0
+    cutoff = _now() - timedelta(seconds=RUN_JOB_CANCEL_FORCE_AFTER_S)
+    async with session_scope() as db:
+        rows = (
+            await db.execute(
+                select(RunJob).where(
+                    RunJob.status == JOB_STATUS_RUNNING,
+                    RunJob.cancel_requested_at.is_not(None),
+                    RunJob.cancel_requested_at < cutoff,
+                )
+            )
+        ).scalars().all()
+        if not rows:
+            return 0
+        finished = _now()
+        for job in rows:
+            job.status = JOB_STATUS_CANCELLED
+            job.error = "Cancelled by user"
+            job.finished_at = finished
+        await db.commit()
+        logger.warning(
+            "force-cancelled %d running job(s) whose cancel flag exceeded the grace",
+            len(rows),
+        )
         return len(rows)
 
 
@@ -820,6 +863,7 @@ async def run_job_maintenance_tick() -> None:
     """
     await _heartbeat_owned_jobs()
     await cancel_requested_queued_jobs()
+    await cancel_requested_running_jobs()
     await fail_stale_jobs()
     await _respawn_orphaned_jobs()
     await admit_waiting_jobs()
@@ -1091,6 +1135,43 @@ async def is_cancel_requested(job_id: uuid.UUID) -> bool:
     async with session_scope() as db:
         job = await db.get(RunJob, job_id)
         return job is not None and job.cancel_requested_at is not None
+
+
+class JobCancelledErrorError(Exception):
+    """Raised by a cancel watcher inside a runner loop (Rule R8).
+
+    Runners catch it and finalize their own row with ``status=cancelled``;
+    it must never escape a job runner into the crash handler, which marks
+    rows failed.
+    """
+
+
+def cancel_watcher(
+    job_id: uuid.UUID,
+    *,
+    min_interval_s: float = 1.0,
+) -> Callable[[], Awaitable[None]]:
+    """Build a time-throttled async check that raises ``JobCancelledErrorError``.
+
+    Long-running runners call the returned check inside their loops, not
+    only at phase boundaries (Rule R28: the 2026-09-17 build crawled for
+    20+ minutes after Cancel because the flag was checked at phase
+    boundaries only). The throttle window resets AFTER the query
+    completes (Rule R34: an emit that outlasts the window must not pace
+    the loop at emit latency).
+    """
+    last = 0.0
+
+    async def check() -> None:
+        nonlocal last
+        now = time.monotonic()
+        if now - last < min_interval_s:
+            return
+        last = time.monotonic()
+        if await is_cancel_requested(job_id):
+            raise JobCancelledErrorError(str(job_id))
+
+    return check
 
 
 async def request_cancel(db: AsyncSession, job_id: uuid.UUID) -> RunJob | None:

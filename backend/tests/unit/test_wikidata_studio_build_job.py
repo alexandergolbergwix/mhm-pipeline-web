@@ -9,13 +9,146 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.run_job import JOB_KIND_WIKIDATA_STUDIO_BUILD, JOB_STATUS_SUCCEEDED, RunJob
+from app.models.run_job import (
+    JOB_KIND_WIKIDATA_STUDIO_BUILD,
+    JOB_STATUS_CANCELLED,
+    JOB_STATUS_SUCCEEDED,
+    RunJob,
+)
+from app.pipeline.run_job_service import JobCancelledErrorError
 from app.pipeline.wikidata_studio_build_job import (
     BUILD_PHASES,
     _build_progress,
     _phase_plan,
     run_wikidata_studio_build_job,
 )
+
+
+@pytest.mark.asyncio
+async def test_build_job_finalizes_cancelled_when_the_build_is_cancelled(
+    db_session,
+) -> None:
+    """Rule R28: a Cancel during the build must finalize the row as
+    cancelled at the record/phase boundary where the flag was seen — not
+    after the whole build crawled to its end (2026-09-17 incident)."""
+    run_id, job_id = uuid.uuid4(), uuid.uuid4()
+    db_session.add(
+        RunJob(
+            id=job_id,
+            project_id=uuid.uuid4(),
+            run_id=run_id,
+            kind=JOB_KIND_WIKIDATA_STUDIO_BUILD,
+            status="running",
+            params={"approved_only": True, "source": "canonical"},
+            progress={},
+            created_by=uuid.uuid4(),
+        )
+    )
+    await db_session.commit()
+
+    with (
+        patch(
+            "app.routers.wikidata_studio.execute_studio_build",
+            new=AsyncMock(side_effect=JobCancelledErrorError("cancelled")),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.is_cancel_requested",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.finish_job",
+            new=AsyncMock(),
+        ) as finish,
+        patch(
+            "app.pipeline.wikidata_studio_build_job.update_job_progress",
+            new=AsyncMock(),
+        ),
+    ):
+        await run_wikidata_studio_build_job(job_id)
+
+    finish.assert_awaited_once()
+    kwargs = finish.await_args.kwargs
+    assert kwargs["status"] == JOB_STATUS_CANCELLED
+    assert kwargs["error"] == "Cancelled by user"
+    assert kwargs["progress"]["phase"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_build_job_finalizes_cancelled_when_cancel_lands_during_mining(
+    db_session,
+) -> None:
+    """A Cancel that lands after the build check must not be overridden by
+    the mining tail — the job finalizes cancelled, never succeeded."""
+    run_id, job_id = uuid.uuid4(), uuid.uuid4()
+    db_session.add(
+        RunJob(
+            id=job_id,
+            project_id=uuid.uuid4(),
+            run_id=run_id,
+            kind=JOB_KIND_WIKIDATA_STUDIO_BUILD,
+            status="running",
+            params={"approved_only": True, "source": "canonical"},
+            progress={},
+            created_by=uuid.uuid4(),
+        )
+    )
+    await db_session.commit()
+
+    cached = SimpleNamespace(
+        result_items=[{"local_id": "ms1"}],
+        summary={},
+        record_count=1,
+        approved_match_count=0,
+    )
+
+    with (
+        patch(
+            "app.routers.wikidata_studio.execute_studio_build",
+            new=AsyncMock(return_value=cached),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.is_cancel_requested",
+            new=AsyncMock(side_effect=[False, False, True]),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job._mine_provenance_prose",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.finish_job",
+            new=AsyncMock(),
+        ) as finish,
+        patch(
+            "app.pipeline.wikidata_studio_build_job.update_job_progress",
+            new=AsyncMock(),
+        ),
+    ):
+        await run_wikidata_studio_build_job(job_id)
+
+    finish.assert_awaited_once()
+    assert finish.await_args.kwargs["status"] == JOB_STATUS_CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_execute_studio_build_raises_when_cancelled_before_start() -> None:
+    """The top-of-function check must abort the build before any work."""
+    from unittest.mock import MagicMock
+
+    from app.routers.wikidata_studio import execute_studio_build
+
+    async def cancelled() -> None:
+        raise JobCancelledErrorError("cancel requested")
+
+    with pytest.raises(JobCancelledErrorError):
+        await execute_studio_build(
+            MagicMock(),
+            run_id=uuid.uuid4(),
+            approved_only=True,
+            source="legacy",
+            force_rebuild=True,
+            run_user_id=None,
+            should_cancel=cancelled,
+        )
 
 
 @pytest.mark.asyncio

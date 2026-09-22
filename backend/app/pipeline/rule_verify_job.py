@@ -46,6 +46,8 @@ from app.pipeline.rule_verify.scope import (
     load_rule_verify_scope,
 )
 from app.pipeline.run_job_service import (
+    JobCancelledErrorError,
+    cancel_watcher,
     finish_job,
     is_cancel_requested,
     update_job_progress,
@@ -172,9 +174,21 @@ async def run_rule_verify_job(job_id: uuid.UUID) -> None:
 
     try:
         async with session_scope() as db:
-            items = await load_rule_verify_scope(db, run_id, item_ids=item_ids)
+            items = await load_rule_verify_scope(
+                db, run_id, item_ids=item_ids,
+                should_cancel=cancel_watcher(job_id),
+            )
     except ItemBuildMissingError as exc:
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
+        return
+    except JobCancelledErrorError:
+        await finish_job(
+            job_id, status=JOB_STATUS_CANCELLED, error="Cancelled by user",
+            progress={
+                "phase": "cancelled", "processed": 0, "total": 0,
+                "message": "Cancelled by user",
+            },
+        )
         return
     if not items:
         await finish_job(

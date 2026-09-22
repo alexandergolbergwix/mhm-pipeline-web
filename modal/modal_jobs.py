@@ -31,6 +31,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import modal
 
@@ -383,7 +384,10 @@ def run_rule_verify_shard(job_id: str, run_id: str, local_ids: list[str]) -> dic
     return asyncio.run(_run())
 
 
-async def _load_rule_verify_plan(job_id: str) -> tuple[str, list[str], dict] | None:
+async def _load_rule_verify_plan(
+    job_id: str,
+    should_cancel: Any = None,
+) -> tuple[str, list[str], dict] | None:
     import uuid as _uuid
 
     from sqlalchemy import select
@@ -406,7 +410,10 @@ async def _load_rule_verify_plan(job_id: str) -> tuple[str, list[str], dict] | N
     item_ids = [str(x) for x in (params.get("item_ids") or [])] or None
     try:
         async with session_scope() as db:
-            items = await load_rule_verify_scope(db, _uuid.UUID(run_id), item_ids=item_ids)
+            items = await load_rule_verify_scope(
+                db, _uuid.UUID(run_id), item_ids=item_ids,
+                should_cancel=should_cancel,
+            )
     except ItemBuildMissingError:
         raise ValueError(f"no item build for run {run_id}") from None
     local_ids = [str(i.get("local_id") or "") for i in items if i.get("local_id")]
@@ -493,8 +500,35 @@ async def _run_rule_verify_sharded(job_id: str) -> None:
     import asyncio as _asyncio
     import queue as _queue
     import threading as _threading
+    import uuid as _uuid
 
-    plan = await _load_rule_verify_plan(job_id)
+    from app.pipeline.run_job_service import (
+        JobCancelledError,
+        cancel_watcher,
+        update_job_progress,
+    )
+
+    should_cancel = cancel_watcher(_uuid.UUID(job_id))
+
+    # The scope load can run for minutes on big runs; publish preparing
+    # progress FIRST so the tray shows the phase instead of a bare
+    # "running", and let the watcher abort the load on Cancel (Rule R28).
+    await update_job_progress(_uuid.UUID(job_id), {
+        "phase": "preparing", "processed": 0, "total": 0,
+        "message": "Loading rule-verify scope…",
+    })
+    if await _is_cancel_requested(job_id):
+        await _finalise_rule_verify(
+            job_id, {"scope": 0, "overall_counts": {}, "per_rule": {}}, 0, True,
+        )
+        return
+    try:
+        plan = await _load_rule_verify_plan(job_id, should_cancel=should_cancel)
+    except JobCancelledError:
+        await _finalise_rule_verify(
+            job_id, {"scope": 0, "overall_counts": {}, "per_rule": {}}, 0, True,
+        )
+        return
     if plan is None:
         return
     run_id, local_ids, _params = plan
@@ -503,6 +537,12 @@ async def _run_rule_verify_sharded(job_id: str) -> None:
         await _finalise_rule_verify(
             job_id,
             {"scope": 0, "overall_counts": {}, "per_rule": {}}, 0, False,
+        )
+        return
+    await _update_rule_verify_progress(job_id, 0, total)
+    if await _is_cancel_requested(job_id):
+        await _finalise_rule_verify(
+            job_id, {"scope": 0, "overall_counts": {}, "per_rule": {}}, total, True,
         )
         return
     shards = _shards(local_ids, _RULE_VERIFY_SHARD_SIZE)
@@ -729,12 +769,36 @@ async def _run_wikidata_studio_build_sharded(job_id: str) -> None:
     """Orchestrate the Studio item build shard fan-out."""
     import uuid as _uuid
 
+    from app.models.run_job import JOB_STATUS_CANCELLED
+    from app.pipeline.run_job_service import (
+        JobCancelledError,
+        cancel_watcher,
+        finish_job,
+    )
     from app.pipeline.wikidata_studio_build_shard import (
         consume_wikidata_shard_results,
         load_wikidata_shard_plan,
     )
 
-    plan = await load_wikidata_shard_plan(_uuid.UUID(job_id), _WIKIDATA_BUILD_SHARD_SIZE)
+    should_cancel = cancel_watcher(_uuid.UUID(job_id))
+    try:
+        plan = await load_wikidata_shard_plan(
+            _uuid.UUID(job_id), _WIKIDATA_BUILD_SHARD_SIZE,
+            should_cancel=should_cancel,
+        )
+    except JobCancelledError:
+        # The fingerprint/cache plan load can run for minutes; finalize at
+        # the flag instead of crawling to the end of the load (Rule R28).
+        await finish_job(
+            _uuid.UUID(job_id),
+            status=JOB_STATUS_CANCELLED,
+            error="Cancelled by user",
+            progress={
+                "phase": "cancelled", "processed": 0, "total": 1,
+                "unit": "records", "message": "Cancelled by user",
+            },
+        )
+        return
     if plan is None:
         return
 
@@ -744,7 +808,7 @@ async def _run_wikidata_studio_build_sharded(job_id: str) -> None:
         ):
             yield item
 
-    await consume_wikidata_shard_results(plan, _results())
+    await consume_wikidata_shard_results(plan, _results(), should_cancel=should_cancel)
 
 
 @app.function(
