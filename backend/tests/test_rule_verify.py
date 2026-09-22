@@ -522,3 +522,223 @@ async def test_load_rule_verify_scope_aborts_on_cancel(db_session) -> None:
         await load_rule_verify_scope(
             db_session, uuid.uuid4(), should_cancel=cancelled,
         )
+
+
+# ── Rule W-256: CPU-only shards + single-container API pass ─────────────
+
+def test_api_rule_ownership_is_stable() -> None:
+    """The API pass owns exactly the ``uses_api`` rules — the merge strips
+    and replaces entries for precisely this set."""
+    api_ids = {r.id for r in build_hmo_rules() if r.uses_api}
+    assert api_ids == {
+        "hmo.live.alive",
+        "hmo.live.label_drift",
+        "hmo.wikidata.qids_alive",
+        "hmo.wikidata.label_candidates",
+    }
+
+
+def test_api_only_scope_runs_only_api_rules() -> None:
+    """The API-pass container runs only the API-backed rules over verdict
+    rows a CPU pass already wrote — CPU rules must not re-run there."""
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        if call == "inlabel_search":
+            return []
+        if call == "confirm_qids_alive":
+            return {"Q2": True}
+        raise AssertionError(f"unexpected call {call!r}")
+
+    items = [_item()]
+    results = _engine(items, api=True, fetcher=fetcher).run_scope(
+        items, api_only=True,
+    )
+    row = results["QDraft_MS1"]
+    api_ids = {r.id for r in build_hmo_rules() if r.uses_api}
+    assert {r.rule_id for r in row} == api_ids
+    assert row[0].state in {"pass", "not_relevant"}
+
+
+@pytest.mark.asyncio
+async def test_shard_runs_cpu_rules_only(monkeypatch) -> None:
+    """Rule W-256: a shard must never probe — every shard probing with its
+    own fetcher split the budget four ways and stacked four request rates
+    into Wikidata 429s (132 measured on run 45513a45)."""
+    import uuid
+
+    from app.pipeline import rule_verify_job as rvj
+
+    seen: dict[str, object] = {}
+
+    class _FakeSession:
+        async def __aenter__(self) -> "_FakeSession":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+    async def _fake_scope(db, run_id, *, item_ids=None, **_kw):  # type: ignore[no-untyped-def]
+        return [_item()]
+
+    async def _fake_run_and_persist(**kwargs):  # type: ignore[no-untyped-def]
+        seen.update(kwargs)
+        return {"scope": 1, "overall_counts": {}, "per_rule": {}}
+
+    monkeypatch.setattr(rvj, "session_scope", lambda: _FakeSession())
+    monkeypatch.setattr(rvj, "load_rule_verify_scope", _fake_scope)
+    monkeypatch.setattr(rvj, "_run_and_persist", _fake_run_and_persist)
+
+    summary = await rvj.run_rule_verify_shard("j1", uuid.uuid4(), ["QDraft_MS1"])
+    assert seen["with_api"] is False
+    assert summary["scope"] == 1
+
+
+@pytest.mark.asyncio
+async def test_api_pass_merges_and_reports_per_rule_only(monkeypatch) -> None:
+    """The API pass: API rules only, per-chunk merge, per-rule-only summary
+    (the shards already counted the entities — no second scope)."""
+    import uuid
+
+    from app.pipeline import rule_verify_job as rvj
+
+    class _FakeSession:
+        async def __aenter__(self) -> "_FakeSession":
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+    async def _fake_scope(db, run_id, *, item_ids=None, **_kw):  # type: ignore[no-untyped-def]
+        return [_item()]
+
+    def _fake_fetcher() -> object:
+        def fetch(call: object, arg: object = None) -> object:
+            if call == "inlabel_search":
+                return []
+            if call == "confirm_qids_alive":
+                return {"Q2": True}
+            raise AssertionError(f"unexpected call {call!r}")
+
+        return fetch
+
+    merged_calls: list[dict[str, object]] = []
+
+    async def _fake_merge(db, **kwargs):  # type: ignore[no-untyped-def]
+        merged_calls.append(kwargs)
+        return 1
+
+    async def _fake_progress(job_id: object, progress: object) -> None:
+        return None
+
+    async def _fake_cancel(job_id: object) -> bool:
+        return False
+
+    monkeypatch.setattr(rvj, "session_scope", lambda: _FakeSession())
+    monkeypatch.setattr(rvj, "load_rule_verify_scope", _fake_scope)
+    monkeypatch.setattr(rvj, "merge_api_rule_verdicts", _fake_merge)
+    monkeypatch.setattr(rvj, "update_job_progress", _fake_progress)
+    monkeypatch.setattr(rvj, "is_cancel_requested", _fake_cancel)
+
+    import app.pipeline.rule_verify.api_fetcher as api_fetcher
+
+    monkeypatch.setattr(api_fetcher, "production_fetcher", _fake_fetcher)
+
+    job_id = str(uuid.uuid4())
+    summary = await rvj.run_rule_verify_api_pass(job_id, uuid.uuid4())
+    assert summary["scope"] == 0
+    assert summary["overall_counts"] == {}
+    assert summary["probed"] == 1
+    cand = summary["per_rule"]["hmo.wikidata.label_candidates"]
+    assert cand["pass"] == 1
+    assert merged_calls and merged_calls[0]["job_id"] == job_id
+
+
+def test_api_pass_summary_merges_without_double_counting() -> None:
+    """``merge_summaries`` must add the API pass's per-rule tallies but not
+    a second copy of the scope or the per-entity overalls."""
+    from app.pipeline.rule_verify.persist import per_rule_tally
+    from app.pipeline.rule_verify_job import merge_summaries
+
+    shard = {
+        "scope": 2,
+        "overall_counts": {"fail": 1, "pass": 1, "not_relevant": 0, "error": 0},
+        "per_rule": {"cpu": {"fail": 1, "pass": 1, "not_relevant": 0, "error": 0}},
+    }
+    api = per_rule_tally({
+        "A": [RuleResult("api1", "pass")],
+        "B": [fail("api1", "labels", "x")],
+    })
+    merged = merge_summaries([shard, {"scope": 0, "overall_counts": {}, "per_rule": api}])
+    assert merged["scope"] == 2
+    assert merged["overall_counts"]["fail"] == 1
+    assert merged["per_rule"]["api1"]["pass"] == 1
+    assert merged["per_rule"]["api1"]["fail"] == 1
+
+
+@pytest.mark.asyncio
+async def test_merge_api_rule_verdicts_replaces_stale_api_entries(
+    db_session, sample_run,
+) -> None:
+    """The merge strips stale API-rule entries (the pre-W-255 error wall),
+    writes the fresh API answers, keeps CPU entries, and recomputes the
+    rollups — a row must never mix a stale API answer with fresh CPU ones."""
+    from sqlalchemy import select
+
+    from app.models.hmo_studio_item_override import HmoStudioItemOverride
+    from app.pipeline.rule_verify.persist import (
+        merge_api_rule_verdicts,
+        persist_rule_verdicts,
+    )
+
+    run_id = sample_run["run_id"]
+    await persist_rule_verdicts(
+        db_session,
+        run_id=run_id,
+        results_by_local_id={
+            "QDraft_MS1": [
+                fail("hmo.claims.datatype", "claims", "bad"),
+                RuleResult("hmo.source_uri.present", "pass"),
+            ],
+        },
+    )
+    row = (
+        await db_session.execute(
+            select(HmoStudioItemOverride).where(
+                HmoStudioItemOverride.run_id == run_id,
+                HmoStudioItemOverride.local_id == "QDraft_MS1",
+            )
+        )
+    ).scalar_one()
+    verdict = dict(row.rule_verdict)
+    verdict["results"] = list(verdict["results"]) + [{
+        "rule_id": "hmo.wikidata.label_candidates",
+        "state": "error",
+        "message": "probe budget exhausted for this run — check did not execute",
+    }]
+    verdict["overall"] = "error"
+    verdict["error_count"] = 1
+    row.rule_verdict = verdict
+    await db_session.commit()
+
+    written = await merge_api_rule_verdicts(
+        db_session,
+        run_id=run_id,
+        results_by_local_id={
+            "QDraft_MS1": [
+                RuleResult("hmo.wikidata.label_candidates", "pass"),
+                not_relevant("hmo.live.alive", "item is not on the wiki yet"),
+            ],
+        },
+    )
+    assert written == 1
+    await db_session.refresh(row)
+    merged = row.rule_verdict
+    entries = {e["rule_id"]: e for e in merged["results"]}
+    assert entries["hmo.wikidata.label_candidates"]["state"] == "pass"
+    assert "probe budget" not in str(entries["hmo.wikidata.label_candidates"])
+    assert entries["hmo.live.alive"]["state"] == "not_relevant"
+    assert entries["hmo.claims.datatype"]["state"] == "fail"
+    assert entries["hmo.source_uri.present"]["state"] == "pass"
+    assert merged["error_count"] == 0
+    assert merged["fail_count"] == 1
+    assert merged["overall"] == "fail"
