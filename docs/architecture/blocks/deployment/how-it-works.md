@@ -50,7 +50,10 @@ dyno's memory with the API. Heavy jobs also share one admission cap
 (`RUN_JOB_MAX_HEAVY`, default 1). If the worker is scaled to 0, a queued
 heavy job is claimed by web after `RUN_JOB_WORKER_GRACE` (120 s), so
 nothing queues forever. Scale it with `heroku ps:scale worker=1` after the
-first deploy that ships the split.
+first deploy that ships the split. The maintenance tick also finalizes
+queued rows carrying the cancel flag and force-finalizes running rows
+whose flag is older than `RUN_JOB_CANCEL_FORCE_AFTER_S` (default 300 s —
+Rule W-236).
 
 **Modal.** `modal/modal_app.py` bundles the four NER/genre models; deployed
 once via `modal deploy modal_app.py` (never imported by the backend — Rule
@@ -64,6 +67,10 @@ the Research Assistant AG-UI loop (timeout 150 s). It calls
 `POST /api/research-agent/tools` with a short-lived JWT. Wiki passwords
 never enter that container (Rule W-228). `/agui` must bind FastAPI
 `Request` and call `dispatch_request(request, agent=agent)` (Rule W-229).
+Heavy run-jobs execute on the separate `mhm-jobs` app
+(`modal deploy modal_jobs.py`, Rule W-237) — every change to job-runner
+code MUST land with that deploy in the same change (Rule W-243), because
+the detached container executes its own copy of `backend/`.
 
 **One-time data imports.** Mazal (~2.5 M authorities → ~600 MB Postgres) and
 KIMA (48 K places) are imported from local SQLite into Heroku Postgres by
