@@ -184,3 +184,15 @@ literals; `HM.Good` carries its `ConditionType` type triple inside the
 built graph so SHACL `sh:class` verifies. *Why:* run 3494ebf5 showed 1170
 Hebrew-in-EN description fails, 26 unshapable boolean statements, and a
 SHACL condition violation.
+
+26. **R26 — Approved place identity reaches the graph regardless of KIMA
+coordinates (Rule W-257).** `_merge_kima_place` (`app/pipeline/
+rdf_enrichment.py`) attaches Wikidata/VIAF/Mazal/KIMA/geonames identity to
+751 related places and provenance-event places whether or not the KIMA
+payload carries `kima_lat`/`kima_lon`; only the coordinate writes stay
+conditional (`is_plausible_coords` guards the emission). *Why:* run f4e8e4b3
+(2026-09-22) dropped 11 of 21 approved place matches behind the coordinate
+gate — Gaza Q47492, Akka Q2626422, Ukraine Q212, Pińczów Q275592, Szydłów
+Q787968, Mainz Q1720 and more went to review with no identity claim, and
+the label-collision rule then flagged their items. The local rebuild with
+the fix emits all 21 `owl:sameAs` identities (was 10).

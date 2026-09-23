@@ -1045,3 +1045,29 @@ looked like a confident judge result even though no judge answer existed.
 Regression tests: `backend/tests/unit/test_judge_failure_is_not_a_verdict.py`,
 `eval-agent/tests/test_judge_failure_verdicts.py`, and
 `eval-agent/tests/test_gated_retry.py`.
+
+### Rule W-258 — A verify pre-spawn failure MUST surface its real cause (added 2026-09-22)
+
+Run f4e8e4b3 (2026-09-22): both `hmo_item_verify` jobs picked
+`typesafe/jev-1.13.0` as tier-1 judge; the `mhm-jobs2` Modal secret carried
+no `TYPESAFE_API_KEY`; `spawn_eval_agent_run` calls
+`ensure_tier1_credentials` before the subprocess exists and raised
+`Tier1CredentialsError`. No child process ran — no stderr, no session dir,
+no results.jsonl, no `runner.exit` — and the verify stream's `finally`
+replaced the exception with the vague "eval-agent stopped after 0 of 2705
+verdicts without a clean exit or checkpoint" synthesis, so the job
+finalized `succeeded` with the tray message "Verification complete". The
+curator saw a clean finish with zero verdicts.
+
+Invariant: every verify stream (HMO items, Wikidata Studio, NER, authority)
+catches exceptions from its spawn phase — missing judge credentials, an
+unresolvable tier-1 model, a fixture writer failure — and carries the real
+message into `runner_error` / `session.end`; the never-ran outcome must not
+be masked by the "stopped after 0 of N verdicts" synthesis
+(`synthesize_missing_runner_error` keeps only genuinely unexplained stops).
+A job whose outcome is not `complete` must not report "Verification
+complete" in its tray progress. Missing provider keys on Modal are an ops
+surface: the `mhm-jobs2` secret must carry every provider key the tier-1
+registry offers on that surface (`TYPESAFE_API_KEY`, `QUBRID_API_KEY`, …).
+
+Tests: `backend/tests/unit/test_hmo_item_verify_spawn_failure.py`.

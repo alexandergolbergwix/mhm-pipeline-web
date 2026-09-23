@@ -239,3 +239,32 @@ materialise results inside the lock. If rdflib fixes pyparsing
 thread-safety upstream, keep the lock — it is cheap next to query cost.
 Tests: `tests/test_research_aggregate.py` (lock covered by shared
 helper import).
+
+### Rule W-257 — Approved place identity MUST reach the RDF graph regardless of KIMA coordinates (added 2026-09-22)
+
+`_merge_kima_place` (app/pipeline/rdf_enrichment.py) gated its entire
+related-place and provenance-event block behind
+`kima_lat is not None and kima_lon is not None`. KIMA-resolved places often
+carry no coordinates (catalog/gazetteer fallbacks), so the Wikidata QID,
+VIAF, Mazal, KIMA, and geonames identity of a 751 related place never
+reached the graph: run f4e8e4b3 (2026-09-22) dropped 11 of its 21 approved
+place matches — Gaza Q47492, Akka Q2626422, Ukraine Q212, Pińczów Q275592,
+Szydłów Q787968, Mainz Q1720, Metz Q22690, Egypt Q79 — while the auto-
+approved cross-source matches (kind=place, mazal+wikidata+source_count≥2,
+authority_re_enrich R358) looked like success on the authority surface.
+Those place items then reached rule-verify and review with no identity
+claim, and the Wikidata label-collision probe read them as unconfirmed
+candidates.
+
+Invariant: identity evidence (QID/VIAF/Mazal/KIMA/geonames) attaches to
+whichever place the approved match grounds against — subjects, production
+place, 751 related places, provenance-event places — whether or not
+coordinates exist. Only the coordinate writes stay conditional; the graph
+emission is already guarded by `is_plausible_coords`. A place identity may
+be dropped only when the match fails the fail-closed name join, never
+because enrichment lacked geo coordinates.
+
+Tests: `backend/tests/test_place_coords_in_rdf.py`
+(TestMergeAuthorityIdsRelatedPlaces::test_related_place_identity_lands_without_coordinates,
+test_provenance_event_identity_lands_without_coordinates). Local re-measure
+of the run rebuild: 21/21 `owl:sameAs` identities emitted (was 10).

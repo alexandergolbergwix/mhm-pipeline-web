@@ -70,7 +70,10 @@ added the columns (also on `wikidata_item_overrides` for phase 3).
    Wikidata QID liveness (reuses `wikidata_existence`), Wikidata label
    collision probe (CirrusSearch via the duplicate-probe client, sharing
    its 1.1 s throttle, Rule W-139). Without a fetcher they return
-   `error` — fail closed.
+   `error` — fail closed. The label-collision probe splits its
+   candidates against the item's own verified Wikidata identity
+   (block R63): a candidate equal to the linked QID is confirmed, only
+   unconfirmed same-label items fail.
 
 ## Execution model
 

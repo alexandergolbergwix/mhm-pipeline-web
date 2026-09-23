@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-256)
+## Architectural rules (W-1…W-258)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -69,6 +69,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-156** — The judge's evidence projection MUST NOT be the fingerprint projection
 - **W-157** — A verdict judged without a conclusive duplicate answer MUST be re-judged
 - **W-158** — A judge failure MUST NOT persist as a substantive verdict, nor be cached
+- **W-258** — A verify pre-spawn failure MUST surface its real cause; missing provider keys must not read as "Verification complete"
 
 ### [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md) — Wikidata Studio (public projection + write path)
 
@@ -277,6 +278,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-88** — GraphBuilder MUST emit only ontology-declared properties
 - **W-230** — Research summary MUST UNION work/person/place vocab the same way manuscripts UNION F4 + Bibliographic_Unit
 - **W-232** - Every rdflib `graph.query()` MUST run under the process-global `RDFLIB_QUERY_LOCK` (`query_graph` helper)
+- **W-257** — Approved place identity MUST reach the RDF graph regardless of KIMA coordinates (run f4e8e4b3 dropped 11/21 approved place matches behind a coordinate gate)
 
 ### [platform-infra.md](docs/architecture/rules/platform-infra.md) — Platform, caching, Heroku, external calls
 

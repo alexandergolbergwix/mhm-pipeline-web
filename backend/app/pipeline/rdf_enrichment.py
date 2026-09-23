@@ -402,51 +402,61 @@ def _merge_kima_place(
         if kima_geo:
             rec.setdefault("production_place_geonames_id", str(kima_geo))
 
-    if kima_lat is not None and kima_lon is not None:
-        prod_place = clean_marc_label(str(rec.get("place") or ""))
-        if prod_place and names_overlap(prod_place, entity_text):
-            rec.setdefault("production_place_lat", kima_lat)
-            rec.setdefault("production_place_lon", kima_lon)
-            if wikidata_qid:
-                rec.setdefault("production_place_wikidata_id", wikidata_qid)
+    prod_place = clean_marc_label(str(rec.get("place") or ""))
+    if (
+        prod_place
+        and names_overlap(prod_place, entity_text)
+        and kima_lat is not None
+        and kima_lon is not None
+    ):
+        rec.setdefault("production_place_lat", kima_lat)
+        rec.setdefault("production_place_lon", kima_lon)
 
-        for rp_name in rec.get("related_places") or []:
-            rp_clean = clean_marc_label(str(rp_name))
-            if rp_clean and names_overlap(rp_clean, entity_text):
-                coord_bucket = rec.setdefault("related_place_coords", {})
-                entry = coord_bucket.setdefault(rp_clean, {})
+    # Identity evidence (Wikidata/VIAF/Mazal/KIMA/geonames) must reach the
+    # graph even when KIMA carries no coordinates: the 2026-09-22 run
+    # f4e8e4b3 rebuild dropped 11 of 21 approved place matches because this
+    # block sat behind the coordinate gate, so their items went to Wikidata
+    # review with no identity claim and the label-collision rule flagged
+    # them. Coordinates stay optional; identity is the evidence.
+    for rp_name in rec.get("related_places") or []:
+        rp_clean = clean_marc_label(str(rp_name))
+        if rp_clean and names_overlap(rp_clean, entity_text):
+            coord_bucket = rec.setdefault("related_place_coords", {})
+            entry = coord_bucket.setdefault(rp_clean, {})
+            if kima_lat is not None:
                 entry.setdefault("lat", kima_lat)
+            if kima_lon is not None:
                 entry.setdefault("lon", kima_lon)
-                if wikidata_qid:
-                    entry.setdefault("wikidata_id", wikidata_qid)
-                if kima_id:
-                    entry.setdefault("kima_id", str(kima_id))
-                if viaf_id:
-                    entry.setdefault("viaf_id", str(viaf_id))
-                if mazal_id:
-                    entry.setdefault("mazal_id", str(mazal_id))
-                if kima_geo:
-                    entry.setdefault("geonames_id", str(kima_geo))
-                break
+            if wikidata_qid:
+                entry.setdefault("wikidata_id", wikidata_qid)
+            if kima_id:
+                entry.setdefault("kima_id", str(kima_id))
+            if viaf_id:
+                entry.setdefault("viaf_id", str(viaf_id))
+            if mazal_id:
+                entry.setdefault("mazal_id", str(mazal_id))
+            if kima_geo:
+                entry.setdefault("geonames_id", str(kima_geo))
+            break
 
-        for ev in rec.get("provenance_events") or []:
-            if not isinstance(ev, dict):
-                continue
-            pt = clean_marc_label(str(ev.get("place_text") or ""))
-            if pt and names_overlap(pt, entity_text):
-                # build_provenance_event (marc_ingest.py) pre-populates
-                # lat/lon/wikidata_id with explicit None placeholders, so
-                # setdefault (which only fires when the key is absent, not
-                # when its value is None) never actually filled them in —
-                # provenance-event coords from KIMA were silently dropped.
-                if ev.get("lat") is None:
-                    ev["lat"] = kima_lat
-                if ev.get("lon") is None:
-                    ev["lon"] = kima_lon
-                if wikidata_qid and ev.get("wikidata_id") is None:
-                    ev["wikidata_id"] = wikidata_qid
-                if kima_geo:
-                    ev.setdefault("geonames_id", str(kima_geo))
+    for ev in rec.get("provenance_events") or []:
+        if not isinstance(ev, dict):
+            continue
+        pt = clean_marc_label(str(ev.get("place_text") or ""))
+        if pt and names_overlap(pt, entity_text):
+            # build_provenance_event (marc_ingest.py) pre-populates
+            # lat/lon/wikidata_id with explicit None placeholders, so
+            # setdefault (which only fires when the key is absent, not
+            # when its value is None) never actually filled them in —
+            # provenance-event coords from KIMA were silently dropped.
+            if kima_lat is not None and ev.get("lat") is None:
+                ev["lat"] = kima_lat
+            if kima_lon is not None and ev.get("lon") is None:
+                ev["lon"] = kima_lon
+            if wikidata_qid and ev.get("wikidata_id") is None:
+                ev["wikidata_id"] = wikidata_qid
+            if kima_geo:
+                ev.setdefault("geonames_id", str(kima_geo))
 
 
 def _merge_entity_authority(rec: dict[str, Any], entity_text: str, ent: dict[str, Any]) -> None:

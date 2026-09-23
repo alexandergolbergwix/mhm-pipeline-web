@@ -251,58 +251,69 @@ async def hmo_item_verify_event_stream(
                 marc_records=marc_records,
                 items=uncached_items,
             )
-            async for ev in spawn_eval_agent_run(
-                pipeline_output=pipeline_output,
-                evaluators=action.evaluators,
-                api_key=api_key,
-                state_dir=state_dir,
-                tier_model=tier_model,
-                override_cache=override_cache,
-                rpm=action.rate_limit_rpm,
-                candidate_count=len(uncached_items),
-            ):
-                from app.pipeline.agent_runner import emit_session_event  # noqa: PLC0415
+            # A pre-spawn failure (missing judge credentials, unresolvable
+            # model, eval-agent env error) used to surface as the vague
+            # "stopped after 0 of N verdicts" synthesis with zero evidence
+            # — the 2026-09-22 run f4e8e4b3 verify against
+            # typesafe/jev-1.13.0 died on the missing Modal-secret key and
+            # the job still read "Verification complete". Catch the real
+            # cause and carry it into runner_error / session.end.
+            try:
+                async for ev in spawn_eval_agent_run(
+                    pipeline_output=pipeline_output,
+                    evaluators=action.evaluators,
+                    api_key=api_key,
+                    state_dir=state_dir,
+                    tier_model=tier_model,
+                    override_cache=override_cache,
+                    rpm=action.rate_limit_rpm,
+                    candidate_count=len(uncached_items),
+                ):
+                    from app.pipeline.agent_runner import emit_session_event  # noqa: PLC0415
 
-                await emit_session_event(session_dir, ev)
-                yield ev
-                if ev.type == "agent.verdict":
-                    from app.pipeline.verify_outcome import (  # noqa: PLC0415
-                        verdict_candidate_local_id,
-                    )
+                    await emit_session_event(session_dir, ev)
+                    yield ev
+                    if ev.type == "agent.verdict":
+                        from app.pipeline.verify_outcome import (  # noqa: PLC0415
+                            verdict_candidate_local_id,
+                        )
 
-                    payload = dict(ev.payload or {})
-                    local_id = verdict_candidate_local_id(payload)
-                    if local_id:
-                        streamed_fresh_verdict_keys.add(local_id)
-                        streamed_fresh_verdicts.append(payload)
+                        payload = dict(ev.payload or {})
+                        local_id = verdict_candidate_local_id(payload)
+                        if local_id:
+                            streamed_fresh_verdict_keys.add(local_id)
+                            streamed_fresh_verdicts.append(payload)
 
-                        async def _persist_one(
-                            verdict_payload: dict[str, Any],
-                            lid: str = local_id,
-                        ) -> None:
-                            try:
-                                await _persist_hmo_item_verdicts(
-                                    run_id=UUID(run_id),
-                                    items_by_id=items_by_id,
-                                    verdicts=[verdict_payload],
-                                    judge_model=tier_model or "gemini-3.5-flash",
-                                )
-                            except Exception:  # noqa: BLE001
-                                logger.exception(
-                                    "incremental HMO verdict persist failed for %s",
-                                    lid,
-                                )
+                            async def _persist_one(
+                                verdict_payload: dict[str, Any],
+                                lid: str = local_id,
+                            ) -> None:
+                                try:
+                                    await _persist_hmo_item_verdicts(
+                                        run_id=UUID(run_id),
+                                        items_by_id=items_by_id,
+                                        verdicts=[verdict_payload],
+                                        judge_model=tier_model or "gemini-3.5-flash",
+                                    )
+                                except Exception:  # noqa: BLE001
+                                    logger.exception(
+                                        "incremental HMO verdict persist failed for %s",
+                                        lid,
+                                    )
 
-                        asyncio.create_task(_persist_one(payload))
-                elif ev.type == "runner.error":
-                    runner_error = str((ev.payload or {}).get("message") or "verify failed")
-                elif ev.type == "runner.exit":
-                    saw_runner_exit = True
-                    raw_rc = (ev.payload or {}).get("return_code")
-                    try:
-                        runner_exit_code = int(raw_rc) if raw_rc is not None else None
-                    except (TypeError, ValueError):
-                        runner_exit_code = None
+                            asyncio.create_task(_persist_one(payload))
+                    elif ev.type == "runner.error":
+                        runner_error = str((ev.payload or {}).get("message") or "verify failed")
+                    elif ev.type == "runner.exit":
+                        saw_runner_exit = True
+                        raw_rc = (ev.payload or {}).get("return_code")
+                        try:
+                            runner_exit_code = int(raw_rc) if raw_rc is not None else None
+                        except (TypeError, ValueError):
+                            runner_exit_code = None
+            except Exception as exc:  # noqa: BLE001 — real cause beats the vague synthesis
+                logger.exception("eval-agent spawn failed for run %s", run_id)
+                runner_error = str(exc) or type(exc).__name__
     finally:
         from app.pipeline.agent_runner import generator_is_closing
 

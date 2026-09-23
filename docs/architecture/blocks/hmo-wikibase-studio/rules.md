@@ -362,3 +362,16 @@ different-author works).
 61. **R61 — An unexecuted probe abstains as `not_relevant`, never `error` (Rule W-255).** The per-run probe budget (`RULE_VERIFY_WD_PROBE_MAX`) and CirrusSearch rate limits are protective operational guards, not data defects: budget-exhausted `label_candidates`, budget-exhausted `qids_alive`, and a 429/network probe exception abstain (`not_relevant`). `error` stays reserved for real execution failures (API disabled via `_api_gate`, partially-executed liveness, lookup failure mid-check). *Why:* the fresh verify of run 3494ebf5 (2026-09-20) put 17,450 `error` rows on `hmo.wikidata.label_candidates` (17,252 budget + 198 HTTP 429) while every deterministic rule sat at 0/0 — mass errors drowned the signal and read as "the verify failed", though only 19 genuine label-collision fails existed.
 
 62. **R62 — Rule-verify Wikidata probes run once, in a single container (Rule W-256).** In the sharded `hmo_rule_verify` fan-out, shards run CPU rules only; after they merge, the orchestrator dispatches `run_rule_verify_api_pass` (one container, 6 h timeout) over the full scope — one throttle domain (W-139), one whole-scope budget (`RULE_VERIFY_API_PASS_PROBE_MAX` default 30 000, `RULE_VERIFY_API_PASS_QID_MAX` default 60 000) — and its results merge into the shard verdicts (`merge_api_rule_verdicts` replaces API-rule entries and recomputes rollups); its summary is per-rule tallies only. Dispatch failure degrades to an inline pass in the orchestrator (W-15), never to skipping the probes. *Why:* per-shard fetchers split the 300-probe budget four ways (≤1 200 probes for ~12.8k eligible items ≈ 95 % unprobed) and stacked four request rates into 132 HTTP 429s (run 45513a45). Dispatch code must use an API the pinned Modal client actually ships: modal 1.4.3 has no `Function.call`, so the one-shot dispatch crashed at runtime inside the orchestrator and degraded inline (2026-09-22) — the W-15 fallback worked as designed, but the pass then ran without its dedicated 6 h container. Use `Function.remote` for one-shot calls.
+
+63. **R63 — A collision candidate equal to the item's own verified Wikidata
+identity is confirmed, not a collision (W-199 parity; R59 parity in the
+same change).** `_run_wikidata_label_candidates` collects the item's own
+fail-closed identity (`authority_evidence` rows of kind `wikidata` with
+`accepted: true` — sourced from `hm:wikidata_id`/`owl:sameAs` — plus
+url/string claims pointing at `wikidata.org/entity/Qn`) and splits the
+probe candidates into linked (confirmed) and unconfirmed; it fails only
+when unconfirmed candidates remain, and its evidence carries
+`linked_candidates` so the drawer shows the curator what is already
+verified. *Why:* run f4e8e4b3 flagged 'Rome (Italy)' as "8 live items carry
+this label — curator must confirm" even though the item already carried the
+approved Q220 link — the curated identity read as an unconfirmed duplicate.

@@ -538,6 +538,35 @@ def _run_wikidata_qids_alive(entity: dict[str, Any], ctx: RuleContext) -> RuleRe
     return warn_as_pass("hmo.wikidata.qids_alive", f"{len(wanted)} QID claim(s) alive")
 
 
+def _own_wikidata_qids(entity: dict[str, Any]) -> set[str]:
+    """Wikidata QIDs this item already carries as verified identity.
+
+    The build attaches external identity fail-closed (approved authority
+    matches only, Rule W-101): authority_evidence rows of kind "wikidata"
+    (from ``hm:wikidata_id`` / ``owl:sameAs``) and url/string claims that
+    point at a wikidata.org/entity/Qn URI. A collision candidate equal to
+    one of these is the item's own confirmed live identity (W-199 parity),
+    not an unconfirmed duplicate.
+    """
+    qids: set[str] = set()
+    for evidence in entity.get("authority_evidence") or []:
+        if not isinstance(evidence, dict):
+            continue
+        if str(evidence.get("kind") or "") != "wikidata":
+            continue
+        if evidence.get("accepted") is not True:
+            continue
+        qid = str(evidence.get("identifier") or "").strip().upper()
+        if _QID_RE.match(qid):
+            qids.add(qid)
+    for claim in _claims(entity):
+        value = str(claim.get("value") or "").strip()
+        match = re.search(r"wikidata\.org/(?:entity|wiki)/(Q\d+)", value)
+        if match:
+            qids.add(match.group(1))
+    return qids
+
+
 def _run_wikidata_label_candidates(entity: dict[str, Any], ctx: RuleContext) -> RuleResult:
     """CirrusSearch for live Wikidata items with this label — candidates only."""
     blocked = _api_gate("hmo.wikidata.label_candidates", ctx)
@@ -566,10 +595,29 @@ def _run_wikidata_label_candidates(entity: dict[str, Any], ctx: RuleContext) -> 
         )
     if not candidates:
         return warn_as_pass("hmo.wikidata.label_candidates", "no live Wikidata label collision")
+    candidates = list(candidates)[:8]
+    # A candidate whose QID the item already carries as verified identity is
+    # the curator-confirmed same entity (the build only links approved
+    # matches, Rule W-101) — it cannot be an unconfirmed duplicate.
+    own_qids = _own_wikidata_qids(entity)
+    confirmed = [c for c in candidates if str(c.get("qid") or "").strip().upper() in own_qids]
+    unconfirmed = [c for c in candidates if str(c.get("qid") or "").strip().upper() not in own_qids]
+    if not unconfirmed:
+        return warn_as_pass(
+            "hmo.wikidata.label_candidates",
+            "live Wikidata label match is the item's own linked QID",
+            {"linked": [c.get("qid") for c in confirmed[:8]]},
+        )
+    message = f"{len(unconfirmed)} live Wikidata item(s) carry this label — curator must confirm"
+    if confirmed:
+        message += f"; {len(confirmed)} match the item's own linked QID"
     return fail(
-        "hmo.wikidata.label_candidates", "labels",
-        f"{len(candidates)} live Wikidata item(s) carry this label — curator must confirm",
-        {"candidates": list(candidates)[:8], "requires_curator_confirmation": True},
+        "hmo.wikidata.label_candidates", "labels", message,
+        {
+            "candidates": unconfirmed[:8],
+            "linked_candidates": [c.get("qid") for c in confirmed[:8]],
+            "requires_curator_confirmation": True,
+        },
     )
 
 

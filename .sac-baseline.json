@@ -86,6 +86,13 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:ecb4dcf89d8e44d945a2b11261fb1859",
+      "path": "backend/app/pipeline/rdf_enrichment.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "local variable named auth holds an NLI mazal catalogue id (987…), not a credential",
+      "expires": "2026-10-31"
+    },
+    {
       "fingerprint": "sha256:1aa53cc37c1c35eb07c390370852e808",
       "path": "backend/app/pipeline/research_aggregate.py",
       "rule_id": "generic-assigned-secret",
@@ -490,6 +497,13 @@
       "rule_id": "generic-assigned-secret",
       "reason": "api_key resolution helper call; reads key from env/heroku into memory for API auth, no secret literal",
       "expires": "2027-09-21"
+    },
+    {
+      "fingerprint": "sha256:099aa2ddc8b5e39c60775504ee8930f9",
+      "path": "backend/tests/test_place_coords_in_rdf.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "test variable auth holds a GraphBuilder authority-id parse result (public catalogue ids), not a secret",
+      "expires": "2026-10-31"
     },
     {
       "fingerprint": "sha256:0bc605d114f237f628d30ae5368d3634",

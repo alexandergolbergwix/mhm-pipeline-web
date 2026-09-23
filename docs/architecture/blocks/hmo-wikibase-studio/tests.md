@@ -152,3 +152,13 @@
   W-256: CPU-only shards, the single-container API pass (per-rule-only
   summary), and the verdict merge that strips stale API-rule entries and
   recomputes rollups (block R62).
+- `backend/tests/test_rule_verify.py::test_label_candidate_matching_own_linked_qid_is_confirmed`
+  / `::test_label_candidate_matches_url_claim_identity`
+  / `::test_label_candidates_mixed_linked_and_foreign_still_fail`
+  / `::test_unaccepted_wikidata_evidence_does_not_confirm` — block R63:
+  collision candidates equal to the item's own verified Wikidata identity
+  confirm; foreign candidates still fail (Rule W-257 companion fix,
+  run f4e8e4b3).
+- `backend/tests/unit/test_hmo_item_verify_spawn_failure.py` — a pre-spawn
+  failure carries its real cause into `runner_error` / `session.end`
+  (Rule W-258, eval-agent R45).

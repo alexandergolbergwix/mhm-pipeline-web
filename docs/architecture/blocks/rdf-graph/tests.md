@@ -22,7 +22,9 @@
   stale on-disk refresh from Postgres
 - `backend/tests/test_provenance_events_rdf.py` (5) +
   `test_provenance_events_ingest.py` (10) — Rule W-32 event nodes
-- `backend/tests/test_place_coords_in_rdf.py` — coord write-back into TTL
+- `backend/tests/test_place_coords_in_rdf.py` — coord write-back into TTL;
+  the coordinate-less related-place / provenance-event identity tests pin
+  Rule W-257 (block R26)
 - `backend/tests/unit/test_graph_builder_codicological_labels.py` — Rule W-52
   Production/Time-Span labels, manuscript shelfmark fallback, tradition language
 - `backend/tests/unit/test_graph_builder_philological_labels.py` — Hebrew

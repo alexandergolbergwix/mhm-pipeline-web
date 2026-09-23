@@ -127,6 +127,60 @@ class TestMergeAuthorityIdsRelatedPlaces:
         _merge_authority_ids(rec, [_kima_match("Fez", 34.03, -5.00)])
         assert "related_place_coords" not in rec
 
+    def test_related_place_identity_lands_without_coordinates(self) -> None:
+        """Run f4e8e4b3 (2026-09-22): 11 of 21 approved place matches had no
+        KIMA coordinates and the whole related-place block sat behind the
+        coordinate gate — the Wikidata QID never reached the graph and the
+        item went to review with no identity claim."""
+
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
+
+        rec = _rec(related=["Gaza (Gaza Strip)"])
+        _merge_authority_ids(rec, [{
+            "entity_text": "Gaza (Gaza Strip)",
+            "entity_kind": "place",
+            "role": "place",
+            "wikidata_qid": "Q47492",
+            "viaf_id": "",
+            "mazal_id": "987007270400005171",
+            "payload": {"kima_id": "KIMA999"},
+        }])
+        entry = rec["related_place_coords"]["Gaza (Gaza Strip)"]
+        assert entry["wikidata_id"] == "Q47492"
+        assert entry["kima_id"] == "KIMA999"
+        assert entry["mazal_id"] == "987007270400005171"
+        assert "lat" not in entry
+        assert "lon" not in entry
+
+    def test_related_place_coords_still_written_when_present(self) -> None:
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
+
+        rec = _rec(related=["Córdoba"])
+        _merge_authority_ids(rec, [_kima_match("Córdoba", 37.89, -4.78, role="place")])
+        entry = rec["related_place_coords"]["Córdoba"]
+        assert entry["lat"] == 37.89
+        assert entry["lon"] == -4.78
+        assert entry["wikidata_id"] == "Q1234"
+
+    def test_provenance_event_identity_lands_without_coordinates(self) -> None:
+        from app.pipeline.rdf_enrichment import merge_approved_authority as _merge_authority_ids
+
+        rec = _rec()
+        rec["provenance_events"] = [{
+            "place_text": "Akka (Morocco)", "lat": None, "lon": None,
+            "wikidata_id": None,
+        }]
+        _merge_authority_ids(rec, [{
+            "entity_text": "Akka (Morocco)",
+            "entity_kind": "place",
+            "wikidata_qid": "Q2626422",
+            "payload": {},
+        }])
+        ev = rec["provenance_events"][0]
+        assert ev["wikidata_id"] == "Q2626422"
+        assert ev["lat"] is None
+        assert ev["lon"] is None
+
 
 # ── graph_builder._add_production_event ───────────────────────────────
 

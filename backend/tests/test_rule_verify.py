@@ -220,6 +220,109 @@ def test_api_rules_run_with_fetcher_and_report_dead_qid() -> None:
     assert cand.evidence["candidates"][0]["qid"] == "Q777"
 
 
+def test_label_candidate_matching_own_linked_qid_is_confirmed() -> None:
+    """W-199 parity: a collision candidate equal to the item's own verified
+    Wikidata identity is the curator-confirmed same entity — the build only
+    links approved authority matches (Rule W-101), so it cannot be an
+    unconfirmed duplicate. Run f4e8e4b3: linked 'Rome (Italy)'→Q220 still
+    read as a collision fail."""
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        if call == "inlabel_search":
+            return [{"qid": "Q220", "label": arg}]
+        raise AssertionError(f"unexpected call {call!r}")
+
+    item = _item(
+        claims=[],
+        authority_evidence=[
+            {"kind": "wikidata", "source": "sameAs", "accepted": True,
+             "identifier": "Q220"},
+        ],
+    )
+    results = _engine([item], api=True, fetcher=fetcher).run_scope(
+        [item], include_api=True,
+    )
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    cand = row["hmo.wikidata.label_candidates"]
+    assert cand.state == "pass"
+    assert cand.evidence["linked"] == ["Q220"]
+
+
+def test_label_candidate_matches_url_claim_identity() -> None:
+    """Identity carried as a wikidata.org/entity URL claim (P84/P290 shape)
+    confirms the candidate too."""
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        if call == "inlabel_search":
+            return [{"qid": "Q641", "label": arg}]
+        raise AssertionError(f"unexpected call {call!r}")
+
+    item = _item(claims=[
+        {"property_id": "P84", "datatype": "url",
+         "value": "https://www.wikidata.org/entity/Q641"},
+    ])
+    results = _engine([item], api=True, fetcher=fetcher).run_scope(
+        [item], include_api=True,
+    )
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    cand = row["hmo.wikidata.label_candidates"]
+    assert cand.state == "pass"
+
+
+def test_label_candidates_mixed_linked_and_foreign_still_fail() -> None:
+    """Only the linked QID is confirmed; every foreign same-label item is
+    still an unconfirmed collision that needs curator review."""
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        if call == "inlabel_search":
+            return [
+                {"qid": "Q220", "label": arg},
+                {"qid": "Q777", "label": arg},
+            ]
+        raise AssertionError(f"unexpected call {call!r}")
+
+    item = _item(
+        claims=[],
+        authority_evidence=[
+            {"kind": "wikidata", "source": "sameAs", "accepted": True,
+             "identifier": "Q220"},
+        ],
+    )
+    results = _engine([item], api=True, fetcher=fetcher).run_scope(
+        [item], include_api=True,
+    )
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    cand = row["hmo.wikidata.label_candidates"]
+    assert cand.state == "fail"
+    assert [c["qid"] for c in cand.evidence["candidates"]] == ["Q777"]
+    assert cand.evidence["linked_candidates"] == ["Q220"]
+    assert "1 match the item's own linked QID" in cand.message
+
+
+def test_unaccepted_wikidata_evidence_does_not_confirm() -> None:
+    """Fail-closed: evidence rows the collision gate withheld (accepted is
+    not true) must not confirm a candidate."""
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        if call == "inlabel_search":
+            return [{"qid": "Q777", "label": arg}]
+        raise AssertionError(f"unexpected call {call!r}")
+
+    item = _item(
+        claims=[],
+        authority_evidence=[
+            {"kind": "wikidata", "source": "sameAs", "accepted": False,
+             "identifier": "Q777", "reason": "identifier assigned to multiple HMO entities"},
+        ],
+    )
+    results = _engine([item], api=True, fetcher=fetcher).run_scope(
+        [item], include_api=True,
+    )
+    row = {r.rule_id: r for r in results["QDraft_MS1"]}
+    cand = row["hmo.wikidata.label_candidates"]
+    assert cand.state == "fail"
+
+
 def test_worst_state_ordering() -> None:
     assert worst_state(["pass", "fail"]) == "fail"
     assert worst_state(["not_relevant", "pass"]) == "pass"

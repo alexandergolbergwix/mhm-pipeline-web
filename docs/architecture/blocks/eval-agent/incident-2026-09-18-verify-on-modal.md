@@ -105,3 +105,30 @@ path (see `verify_session_store.py`).
 - Interim workaround while unfixed: run verify from the UI on a small
   filtered scope (works — the fixture is small), or accept full-corpus
   runs only after the fixture check lands.
+
+## Update (2026-09-22): a confirmed root cause for the 0-verdict shape (run f4e8e4b3)
+
+Both `hmo_item_verify` jobs on run `f4e8e4b3` (11:34 / 11:36 UTC, judge
+`typesafe/jev-1.13.0`, 2705 items) ended `judged: 0, outcome: partial,
+runner_error: "stopped after 0 of 2705 verdicts…"` in ~30–60 s with zero
+stderr-tail lines. Diagnosis (Modal env probe against the same secret):
+**`mhm-jobs2` carries no `TYPESAFE_API_KEY`** (only `QUBRID_API_KEY`,
+`DATABASE_URL`, `AUTHORITY_MODE` et al. are set). For a non-Gemini tier-1
+model, `spawn_eval_agent_run` calls `ensure_tier1_credentials` BEFORE the
+subprocess exists and raises `Tier1CredentialsError` — no child process, no
+stderr, no session dir, no `runner.exit`. The verify stream's `finally` then
+synthesized the vague error and the job finalized `succeeded` with
+"Verification complete".
+
+- This explains the "zero stderr, instant end, no results.jsonl" shape for
+  every run whose judge needed a provider key absent from the secret.
+- Fixes landed (same change): the verify stream catches pre-spawn spawn
+  failures and carries the real message into `runner_error` (Rule W-258,
+  eval-agent R45), and the job tray no longer claims "Verification
+  complete" on a partial outcome.
+- Ops action: add `TYPESAFE_API_KEY` (and any other provider keys in use)
+  to the `mhm-jobs2` Modal secret; Jev/Qubrid verify runs on Modal need the
+  server-side key (AGENTS.md "AI verification — tier-1 judge").
+- The 2026-09-18 Qubrid runs (judged 0 of 18465, `QUBRID_API_KEY` present)
+  are NOT explained by this cause; the fixture-size hypothesis below stays
+  open for them.

@@ -466,6 +466,15 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
     )
 
     outcome = session_summary.get("outcome")
+    # "Verification complete" on a partial run read as success in the tray
+    # (2026-09-22 run f4e8e4b3: 0 of 2705 judged, tray said complete).
+    judged_total = total or judged
+    complete = outcome == "complete" and (not judged_total or judged >= judged_total)
+    verify_message = (
+        "Verification complete"
+        if complete
+        else f"Verification incomplete — {judged} of {judged_total} judged"
+    )
     result_body: dict[str, Any] = {
         "session_id": session_id,
         "judged": judged,
@@ -489,8 +498,8 @@ async def run_verify_job(job_id: uuid.UUID) -> None:
         progress={
             "phase": "done",
             "processed": judged,
-            "total": total or judged,
-            "message": "Verification complete",
+            "total": judged_total,
+            "message": verify_message,
             "session_id": session_id,
         },
     )
