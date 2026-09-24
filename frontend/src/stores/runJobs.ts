@@ -89,7 +89,19 @@ export const useRunJobs = create<RunJobsState>((set, get) => ({
   },
 
   async cancelJob(runId, jobId) {
-    await RunJobs.cancel(runId, jobId);
+    // The cancel endpoint returns the post-cancel snapshot: a queued job is
+    // already `cancelled`, a running job carries `cancel_requested_at` set.
+    // Upsert it before the next poll so the tray reflects the click on this
+    // response instead of waiting for the refresh to observe the change
+    // (2026-09-24: Cancel looked like a no-op for up to a minute).
+    try {
+      const snapshot = await RunJobs.cancel(runId, jobId);
+      if (snapshot) get().upsertJob(snapshot);
+    } catch (e) {
+      // Surface the error but still refresh — the job may have been
+      // cancelled by a sibling tab.
+      console.warn("cancel failed", e);
+    }
     await get().refresh();
   },
 

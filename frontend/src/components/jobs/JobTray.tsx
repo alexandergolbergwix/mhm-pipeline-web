@@ -79,16 +79,24 @@ export function JobTray() {
         const subPct =
           subTotal > 0 ? Math.min(100, Math.round((subProcessed / subTotal) * 100)) : 0;
         const label = JOB_KIND_LABELS[job.kind] ?? job.kind;
+        // The cancel flag is stamped the moment the curator clicks Cancel —
+        // finalization itself is cooperative (the runner stops at its next
+        // safe boundary), so show the in-between state instead of leaving
+        // RUNNING/QUEUED on screen (2026-09-24: Cancel looked like a no-op).
+        const cancelling =
+          isJobActive(job.status) && job.cancel_requested_at != null;
 
         return (
           <Glass key={job.id} variant="compact" className="p-3 space-y-2 shadow-lg">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{label}</p>
-                <p className="text-xs muted truncate">{progressLabel(job)}{trayEtaSuffix(job)}</p>
+                <p className="text-xs muted truncate">
+                  {cancelling ? "Cancelling…" : progressLabel(job)}{trayEtaSuffix(job)}
+                </p>
               </div>
               <GlassPill className="px-2 py-0.5 text-[10px] uppercase tracking-wide shrink-0">
-                {job.status}
+                {cancelling ? "cancelling" : job.status}
               </GlassPill>
             </div>
             {job.kind === "wikidata_upload" ? (

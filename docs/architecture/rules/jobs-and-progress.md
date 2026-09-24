@@ -486,13 +486,21 @@ process claims it — strictness never traps a job in `queued` forever. The
 worker entrypoint is `python -m app.jobs_worker` (Procfile `worker:`,
 scale with `heroku ps:scale worker=1`).
 
-### Rule W-236 — Cancel is cooperative, runners poll in-loop, and wedged rows are force-finalized (extended 2026-09-21)
+### Rule W-236 — Cancel is cooperative, runners poll in-loop, queued cancels finalize inline, and the UI shows the request (extended 2026-09-24)
 
-`request_cancel` only stamps `cancel_requested_at`; nothing force-kills a
-task. Three layers make Cancel actually terminate a job:
+`request_cancel` stamps `cancel_requested_at` (and, for queued rows,
+finalizes inline — see 1); nothing force-kills a task. Three layers make
+Cancel actually terminate a job, and the UI must reflect the request the
+moment it lands:
 
-1. **Queued rows** (no owner): the maintenance pass finalizes them
-   (`cancel_requested_queued_jobs`) and the claim path refuses them.
+1. **Queued rows** (no owner): `request_cancel` finalizes them **inline in
+   the cancel request** (conditional on the row still being queued; if a
+   claim won the race it falls through to the cooperative flag). The
+   maintenance tick's `cancel_requested_queued_jobs()` sweep remains as the
+   safety net for a cancel that raced a claim, and the claim path refuses
+   any queued row carrying the flag. (2026-09-24: the tick's 60 s cadence
+   left the tray showing "Waiting for capacity…" for up to a minute after
+   Cancel — the curator read it as a no-op.)
 2. **Running rows**: the owner polls the flag and finalizes itself. Long
    runners MUST poll **inside** their loops, not only at phase boundaries —
    the 2026-09-17 Modal build crawled 20+ minutes after Cancel because the
@@ -508,6 +516,13 @@ task. Three layers make Cancel actually terminate a job:
    runner finalizes in seconds; an older flag means the executor is stuck
    in a non-polling stretch or dead. `finish_job` refuses terminal rows
    (W-244), so a late zombie writer cannot resurrect the job.
+
+The cancel endpoint returns the post-cancel snapshot; `cancelJob` in
+`frontend/src/stores/runJobs.ts` upserts it immediately, and the tray
+renders `cancelling` (pill + "Cancelling…" line) while an active job
+carries `cancel_requested_at`. Running-job finalization stays cooperative,
+so the tray MUST show the in-between state instead of leaving
+RUNNING/QUEUED on screen after the click.
 
 ### Rule W-253 — Modal shard fan-out must fit the shared Postgres connection budget (added 2026-09-20)
 
