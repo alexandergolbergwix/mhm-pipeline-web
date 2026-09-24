@@ -32,6 +32,7 @@ from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.hmo_coverage_cache import HmoCoverageCache
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.hmo_studio_item_override import HmoStudioItemOverride
+from app.models.hmo_studio_item_row import HmoStudioItemRow
 from app.models.inference_cache import InferenceCache
 from app.models.invitation import Invitation
 from app.models.item_override import WikidataItemOverride
@@ -116,6 +117,7 @@ __all__ = [
     "HmoCoverageCache",
     "HmoStudioItemCache",
     "HmoStudioItemOverride",
+    "HmoStudioItemRow",
     "ExtractionApproval",
     "InferenceCache",
     "Invitation",
