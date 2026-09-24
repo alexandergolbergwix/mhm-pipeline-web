@@ -568,3 +568,37 @@ Tests: `backend/tests/unit/test_modal_job_client.py`
 (`test_owner_heartbeat_does_not_mask_dead_executor`,
 `test_fresh_executor_heartbeat_blocks_redispatch`,
 `test_owner_heartbeat_does_not_extend_wait_past_budget`).
+
+### Rule W-259 — Sub-progress must never regress, and every long phase must show movement or an ETA (added 2026-09-24, extended 2026-09-24)
+
+The authority-refresh sub-bar of an `hmo_item_build` (W-113) jumped from
+the full total back to a small number mid-run: the sweep phase counted
+every *visited* entity (`checked`) as done — fresh-skips and to-be-matched
+alike — so the bar reached 5295/5295 in seconds; the concurrent match
+phase then restarted the numerator at `len(work) - len(pending)`, which
+is 0 when nothing is fresh, and the curator watched 5295 → 323 (2026-09-24,
+run on HmoStudio). A progress display that goes backwards reads as lost
+work, even though no work was lost.
+
+Therefore: inside one `processed/total` pair the numerator counts only
+entities whose work has actually finished. The sweep reports
+`skipped_fresh` (fresh skips are done; pending entities are not), and the
+match phase continues it with `skipped_fresh + matched_done`. Any future
+multi-phase counter MUST derive its numerator from a monotone
+"completed-work" total, never from "items visited so far".
+
+A display that freezes at `n/m` reads as stuck too — the same build sat
+at "Matching pending entities… 5295/5295" for the whole serial DB-apply
+because that phase emitted nothing. Therefore: every long phase inside
+one `processed/total` pair MUST either advance its numerator or append a
+fresh ETA to its message, at least once per second of wall time.
+`re_enrich_run` implements this as: per-phase `time.monotonic()` start
+stamps → `_estimate_remaining(done, total, elapsed)` (hidden until 3
+samples, capped at 24 h) → `_format_eta` appended to the phase message
+("… 323/5295 · ~14 min left"). The ETA is message text, so it flows
+through the existing `sub_message` channel with no payload-shape change.
+Any future long phase (serial apply, finalize hardening, export) MUST
+follow the same pattern: monotone counter + phase-scoped ETA. Test:
+`tests/unit/test_authority_re_enrich_progress.py`
+(`test_re_enrich_run_reports_entity_progress` asserts the ticks never
+decrease and the final tick reaches the total).

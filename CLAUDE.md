@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-258)
+## Architectural rules (W-1…W-259)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -70,6 +70,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-157** — A verdict judged without a conclusive duplicate answer MUST be re-judged
 - **W-158** — A judge failure MUST NOT persist as a substantive verdict, nor be cached
 - **W-258** — A verify pre-spawn failure MUST surface its real cause; missing provider keys must not read as "Verification complete"
+- **W-259** — Job sub-progress must never regress and every long phase must move or show an ETA: the re-enrich sweep counted visited entities, hit the full bar, then the match phase restarted at 0 (bar jumped 5295 → 323, 2026-09-24); later the serial DB-apply sat frozen at "5295/5295" for its whole duration because it emitted nothing. Numerators count only finished work (sweep = `skipped_fresh`, match = `skipped_fresh + matched_done`), and every long phase appends a per-phase ETA (`~14 min left`) via monotonic start stamps + `_estimate_remaining` — message text through the existing `sub_message` channel, no payload change — see [jobs-and-progress.md](docs/architecture/rules/jobs-and-progress.md)
 
 ### [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md) — Wikidata Studio (public projection + write path)
 

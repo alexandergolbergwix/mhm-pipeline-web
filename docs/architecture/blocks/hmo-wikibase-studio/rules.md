@@ -283,8 +283,12 @@ looked stuck at `0/3` during the long authority refresh.
 54. **R54 — Long HMO build steps MUST nest sub-progress (Rule W-113).**
 Authority refresh reports `sub_processed`/`sub_total`/`sub_unit=entities`;
 RDF rebuild reports `sub_unit=records`. `JobProgressInline` and the job tray
-show a second bar when `sub_total > 0`. *Why:* `1/3 steps` alone hid hours of
-entity matching as a full bar with no movement.
+show a second bar when `sub_total > 0`. The sub-numerator counts completed
+work only — fresh skips, then finished matches — and never moves backwards
+within one `processed/total` pair (Rule W-259). *Why:* `1/3 steps` alone hid
+hours of entity matching as a full bar with no movement; counting visited
+entities then restarting at the match phase made the bar jump 5295 → 323
+(2026-09-24).
 
 **Canonical fingerprint stability (Rule W-137 follow-up).**
 `canonical_entity_fingerprint` coerces scalars/mappings/sequences to their empty

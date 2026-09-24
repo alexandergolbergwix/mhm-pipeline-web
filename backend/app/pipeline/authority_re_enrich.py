@@ -24,7 +24,37 @@ from app.pipeline.marc_ingest import extract_named_entities, prepare_record_for_
 
 logger = logging.getLogger(__name__)
 
-ProgressCb = Callable[[int, int, str], Awaitable[None]]
+ProgressCb = Callable[..., Awaitable[None]]
+
+
+def _format_eta(seconds: float | int | None) -> str:
+    """Short human ETA for a progress message (curator-facing, W-113)."""
+    if seconds is None or seconds < 0:
+        return "estimating…"
+    whole = int(seconds)
+    if whole < 60:
+        return f"~{whole}s left"
+    minutes = round(whole / 60)
+    if minutes < 60:
+        return f"~{minutes} min left"
+    hours = round(minutes / 60)
+    return f"~{hours} h left"
+
+
+def _estimate_remaining(
+    done: int,
+    total: int,
+    elapsed: float,
+    *,
+    min_samples: int = 3,
+) -> int | None:
+    """ETA for the current phase. Hidden until ``min_samples`` completions."""
+    if done < min_samples or total <= 0 or elapsed <= 0 or done <= 0:
+        return None
+    remaining = max(0, total - done)
+    if remaining == 0:
+        return 0
+    return int(min(remaining * (elapsed / done), 24 * 3600))
 
 
 def match_key(
@@ -213,11 +243,15 @@ async def re_enrich_run(
             and primary.enriched_at >= fresh_cutoff
         ):
             skipped_fresh += 1
-            await _maybe_progress(checked, control_number, clean_text)
+            # Only fresh-skips count as done here — pending entities are
+            # not finished until their match lands (2026-09-24: counting
+            # `checked` pushed the bar to the full total during the sweep,
+            # then the match phase restarted it at ~0 and the curator read
+            # the backwards jump as a bug).
+            await _maybe_progress(skipped_fresh, control_number, clean_text)
             continue
 
         pending.append((key, control_number, marc, entity, clean_text, clean_role, kind))
-        await _maybe_progress(checked, control_number, clean_text)
 
     # ── Release the main session's transaction before the gather ──────
     # Phase A only reads; commit so the connection never sits
@@ -233,7 +267,7 @@ async def re_enrich_run(
 
     if pending:
         await _emit_phase(
-            len(work) - len(pending),
+            skipped_fresh,
             f"Replaying {skipped_fresh} fresh entities; matching {len(pending)} pending…",
         )
 
@@ -261,15 +295,16 @@ async def re_enrich_run(
 
     match_results: dict[str, list] = {}
     if pending:
-        # Per-completion progress (W-113): the sweep reaches the full bar
-        # in seconds, then the concurrent match used to run with zero UI
-        # feedback for the whole fan-out (2026-09-17: the build sat at
-        # "5295 / 5295 entities" while matching ran). Report each
-        # completed match so the bar climbs back to the total as results
-        # land; the pending count is unique entity keys (R16).
-        sweep_done = len(work) - len(pending)
+        # Per-completion progress (W-113): the sweep only counts
+        # fresh-skips as done, so the concurrent match now owns the rest
+        # of the bar. Report each completed match so the numerator climbs
+        # monotonically from `skipped_fresh` to the total; the pending
+        # count is unique entity keys (R16). The message carries an ETA
+        # after a few samples — a frozen "n/m" for an hour reads as stuck
+        # (2026-09-24).
         matched_done = 0
         last_match_emit = 0.0
+        match_started = time.monotonic()
         for coro in asyncio.as_completed([_match_one(item) for item in pending]):
             key, candidates = await coro
             match_results[key] = candidates
@@ -277,15 +312,21 @@ async def re_enrich_run(
             await _check_cancel()
             now = time.monotonic()
             if matched_done == len(pending) or now - last_match_emit >= 1.0:
+                eta = _estimate_remaining(matched_done, len(pending), now - match_started)
+                eta_txt = f" · {_format_eta(eta)}" if eta is not None else ""
                 await _emit_phase(
-                    sweep_done + matched_done,
-                    f"Matching pending entities… {matched_done}/{len(pending)}",
+                    skipped_fresh + matched_done,
+                    f"Matching pending entities… {matched_done}/{len(pending)}{eta_txt}",
                 )
                 # Same post-emit reset as _maybe_progress (see above).
                 last_match_emit = time.monotonic()
 
     # ── Phase B — serial DB apply, short per-entity transactions ──────
+    apply_started = time.monotonic()
+    applied_done = 0
+    last_apply_emit = 0.0
     for key, control_number, marc, entity, clean_text, clean_role, kind in pending:
+        applied_done += 1
         candidates = match_results.get(key) or []
 
         if not candidates:
@@ -370,6 +411,20 @@ async def re_enrich_run(
         # preempted Modal restart cheap: committed matches stay committed.
         await db.commit()
 
+        # Phase B used to be silent — the bar sat frozen at the full
+        # "5295/5295" while this loop ran for minutes (2026-09-24: the
+        # curator read it as stuck). Emit throttled progress with an ETA
+        # so the sub-bar keeps moving through the apply.
+        now = time.monotonic()
+        if applied_done == len(pending) or now - last_apply_emit >= 1.0:
+            eta = _estimate_remaining(applied_done, len(pending), now - apply_started)
+            eta_txt = f" · {_format_eta(eta)}" if eta is not None else ""
+            await _emit_phase(
+                skipped_fresh + len(pending) - (len(pending) - applied_done),
+                f"Saving matches… {applied_done}/{len(pending)}{eta_txt}",
+            )
+            last_apply_emit = time.monotonic()
+
     for m, key in orphan_pairs:
         if key not in produced_keys:
             await db.delete(m)
@@ -391,15 +446,22 @@ async def re_enrich_run(
     _FINALIZE_CHUNK = 400
     rows_list = list(remaining_rows)
     finalize_done = 0
+    finalize_chunks = max(1, (len(rows_list) + _FINALIZE_CHUNK - 1) // _FINALIZE_CHUNK)
+    finalize_chunk_done = 0
+    finalize_started = time.monotonic()
     for i in range(0, len(rows_list), _FINALIZE_CHUNK):
         chunk_stats = finalize_authority_matches(rows_list[i:i + _FINALIZE_CHUNK])
         cross_linked += chunk_stats["cross_linked"]
         wd_crosschecked += chunk_stats["wikidata_crosschecked"]
         await db.commit()
         finalize_done = min(finalize_done + _FINALIZE_CHUNK, len(rows_list))
+        finalize_chunk_done += 1
+        now = time.monotonic()
+        eta = _estimate_remaining(finalize_chunk_done, finalize_chunks, now - finalize_started)
+        eta_txt = f" · {_format_eta(eta)}" if eta is not None else ""
         await _emit_phase(
             len(work),
-            f"Hardening authority evidence… {finalize_done}/{len(rows_list)} rows",
+            f"Hardening authority evidence… {finalize_done}/{len(rows_list)} rows{eta_txt}",
         )
 
     remaining_count = await db.scalar(
