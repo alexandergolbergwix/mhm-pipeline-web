@@ -386,7 +386,7 @@ export function HmoItemsPanel({
           refreshToken={refreshToken}
           compact
           failedLocalIds={retryScopeIds}
-          filteredScopeIds={hasActiveFilter ? idEntries : undefined}
+          filteredScopeIds={hasActiveFilter ? idEntries.map((e) => e.local_id) : undefined}
           onUploaded={handleLifecycleRefresh}
           onUploadOutcomes={applyUploadOutcomes}
         />
