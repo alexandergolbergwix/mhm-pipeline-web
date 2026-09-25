@@ -56,7 +56,14 @@
    partial result. Failures per item appear in `outcomes`/`link_outcomes` and
    the audit log.
 6. After a partial failure, use **Retry N failed** (sends `local_ids` of the
-   failed outcomes / Last-push=failed rows). Pass 1 only uploads that scope;
+   failed outcomes / Last-push=failed rows — the retry scope is corpus-wide:
+   the failed set is the audit log's latest write per item, fetched via
+   `filteredIds`, never only the visible page). Pass 1 only uploads that scope;
+   pass 2 writes deferred links that touch those ids. With an active table
+   filter the upload bar also offers **Publish filtered (N)** — it pushes
+   exactly the filtered rows (e.g. a Publication-failed view) instead of the
+   whole corpus; the full-corpus button remains the only path that persists
+   canonical state.
    pass 2 writes deferred links that touch those ids.
 
 ### Skill: debug a stuck or repeating coverage report

@@ -38,6 +38,8 @@ interface ItemUploadPanelProps {
   compact?: boolean;
   /** local_ids with Last push = failed (survives refresh when result panel is cleared). */
   failedLocalIds?: string[];
+  /** Current table-filter scope — enables "Publish filtered (N)" next to the full push. */
+  filteredScopeIds?: string[];
   /** Full reload after terminal upload (or non-job sync path). */
   onUploaded?: () => void;
   /** Patch only the rows that just finished uploading (mid-run, no flicker). */
@@ -64,6 +66,7 @@ export function ItemUploadPanel({
   refreshToken,
   compact = false,
   failedLocalIds = [],
+  filteredScopeIds,
   onUploaded,
   onUploadOutcomes,
 }: ItemUploadPanelProps) {
@@ -239,17 +242,20 @@ export function ItemUploadPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [verifyPhase, verifyRunning, verifyVerdicts]);
 
-  const startPreVerify = useCallback(async () => {
+const startPreVerify = useCallback(async (scope?: string[]) => {
     setVerifyError(null);
     setVerifyEvents([]);
     setVerifyVerdicts({});
     setVerifyFlow(makeInitialFlowState());
     setFailConfirm(null);
     try {
-      const { items } = await HmoStudioItems.list(runId);
-      const scopeIds = items.filter((i) => i.status === "would_create").map((i) => i.local_id);
+      const {items} = await HmoStudioItems.list(runId);
+      const wouldCreate = items.filter((i) => i.status === "would_create").map((i) => i.local_id);
+      const scopeIds = scope && scope.length > 0
+        ? wouldCreate.filter((id) => scope.includes(id))
+        : wouldCreate;
       if (scopeIds.length === 0) {
-        await doUpload();
+        await doUpload(scope);
         return;
       }
       setVerifyPhase("pre");
@@ -265,13 +271,13 @@ export function ItemUploadPanel({
     }
   }, [runId, doUpload, startVerifyJob, tierModel]);
 
-  const handleUploadClick = useCallback(() => {
+  const handleUploadClick = useCallback((scope?: string[]) => {
     setError(null);
     setFailConfirm(null);
     if (preVerify) {
-      void startPreVerify();
+      void startPreVerify(scope);
     } else {
-      void doUpload();
+      void doUpload(scope);
     }
   }, [preVerify, startPreVerify, doUpload]);
 
@@ -279,6 +285,9 @@ export function ItemUploadPanel({
   const jobRunning = liveJob?.status === "queued" || liveJob?.status === "running";
   const preVerifyRunning = verifyPhase === "pre" && verifyRunning;
   const canUpload = !!status?.build_present;
+  // Table-filter scope: "Publish filtered (N)" pushes exactly the filtered
+  // rows instead of the whole corpus (e.g. Publication-failed repairs).
+  const filteredScope = filteredScopeIds && filteredScopeIds.length > 0 ? filteredScopeIds : null;
 
   const controls = (
     <>
@@ -320,9 +329,9 @@ export function ItemUploadPanel({
           </label>
         </details>
         <button
-          onClick={handleUploadClick}
+          onClick={() => handleUploadClick()}
           disabled={busy || jobRunning || preVerifyRunning || !canUpload || (!dryRun && !wikibaseConfigured)}
-          className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}
+          className={filteredScope ? "button-ghost text-sm" : (dryRun ? "button-ghost text-sm" : "button-primary text-sm")}
           data-testid="hmo-upload-submit"
         >
           {busy || jobRunning || preVerifyRunning
@@ -335,6 +344,17 @@ export function ItemUploadPanel({
               ? "Preview upload"
               : "Publish approved entries"}
         </button>
+        {filteredScope && (
+          <button
+            onClick={() => handleUploadClick(filteredScopeIds)}
+            disabled={busy || jobRunning || preVerifyRunning || !canUpload || (!dryRun && !wikibaseConfigured)}
+            className={dryRun ? "button-ghost text-sm" : "button-primary text-sm"}
+            data-testid="hmo-upload-filtered-submit"
+            title="Push only the rows matching the current table filter."
+          >
+            {dryRun ? `Preview filtered (${filteredScope.length})` : `Publish filtered (${filteredScope.length})`}
+          </button>
+        )}
         {!dryRun && !wikibaseConfigured && (
           <span className="text-xs text-warn">
             Wikibase Cloud is not configured on this server — contact an admin.

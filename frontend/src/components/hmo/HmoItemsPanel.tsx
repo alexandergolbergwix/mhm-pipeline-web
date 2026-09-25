@@ -100,6 +100,37 @@ export function HmoItemsPanel({
     () => items.filter((i) => i.upload_outcome === "failed").map((i) => i.local_id),
     [items],
   );
+  // Corpus-wide retry scope: "Last push = failed" is the audit log's latest
+  // write per item, computed server-side — a scoped retry's tail must not
+  // shrink the retry offer to whatever failed rows sit on the visible page.
+  const [allFailedLocalIds, setAllFailedLocalIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!buildPresent) return;
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      HmoStudioItems.filteredIds(runId, {filters: {upload_outcome: ["failed"]}})
+        .then((res) => {
+          if (cancelled) return;
+          setAllFailedLocalIds(res.entries.map((e) => e.local_id));
+        })
+        .catch(() => { /* non-fatal — the page-scoped list stays the fallback */ });
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [buildPresent, runId, tableQuery, refreshToken]);
+  const retryScopeIds = useMemo(
+    () => (allFailedLocalIds.length > 0 ? allFailedLocalIds : failedLocalIds),
+    [allFailedLocalIds, failedLocalIds],
+  );
+  // Active table filter (search or column facets) → the upload bar gains
+  // "Publish filtered (N)" so a filtered view (e.g. Publication failed)
+  // pushes exactly those rows instead of the whole corpus.
+  const hasActiveFilter = useMemo(
+    () => Object.keys(tableQuery.colFilters).length > 0 || Boolean(tableQuery.search.trim()),
+    [tableQuery],
+  );
 
   const openVerify = useCallback((itemIds: string[], actionId?: string) => {
     setVerifyIds(itemIds);
@@ -354,7 +385,8 @@ export function HmoItemsPanel({
           wikibaseConfigured={wikibaseConfigured}
           refreshToken={refreshToken}
           compact
-          failedLocalIds={failedLocalIds}
+          failedLocalIds={retryScopeIds}
+          filteredScopeIds={hasActiveFilter ? idEntries : undefined}
           onUploaded={handleLifecycleRefresh}
           onUploadOutcomes={applyUploadOutcomes}
         />

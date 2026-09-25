@@ -42,6 +42,8 @@
   `test_url_claims_strip_marc_quote_wrappers_before_wbi` (W-111),
   `test_live_upload_drops_description_identical_to_label`,
   `test_live_upload_resolves_reconcile_pid_once_not_per_entity`,
+  plus `frontend/tests/unit/hmoItemsRetryScope.spec.tsx` (corpus-wide retry
+  scope) and `hmoFilteredPublish.spec.tsx` (filter-scoped publish button),
   `test_dry_run_never_resolves_reconcile_pid`,
   `test_live_upload_records_operation_adopt_in_audit_log`,
   `test_shacl_violation_blocks_live_create`,
