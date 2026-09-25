@@ -170,18 +170,27 @@ async def _canonical_missing_detail(db: AsyncSession, run_id: uuid.UUID) -> str:
             f"stores the canonical entities"
         )
     # Explain why the read-back is missing: the canonical gate persists only
-    # after a fully clean two-pass upload, so the last live upload's outcome
-    # tells the curator exactly what still blocks it.
+    # after a fully clean two-pass upload, so the last FULL upload's outcome
+    # tells the curator exactly what still blocks it. A scoped retry's tail
+    # numbers would understate the corpus gap.
     last_upload = (
-        await db.execute(
-            select(RunJob).where(
-                RunJob.run_id == run_id,
-                RunJob.kind == JOB_KIND_HMO_ITEM_UPLOAD,
-                RunJob.status == JOB_STATUS_SUCCEEDED,
-                RunJob.result.is_not(None),
-            ).order_by(RunJob.created_at.desc()).limit(1)
+        (
+            await db.execute(
+                select(RunJob)
+                .where(
+                    RunJob.run_id == run_id,
+                    RunJob.kind == JOB_KIND_HMO_ITEM_UPLOAD,
+                    RunJob.status == JOB_STATUS_SUCCEEDED,
+                    RunJob.result.is_not(None),
+                    RunJob.params["local_ids"].as_string().is_(None),
+                )
+                .order_by(RunJob.created_at.desc())
+                .limit(1)
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     outcome = (last_upload.result if last_upload else None) or {}
     failed = int(outcome.get("failed") or 0)
     unresolved = int(outcome.get("unresolved_links") or 0)

@@ -77,7 +77,8 @@ async def _seed_upload_job(db_session, sample_run, *, result: dict) -> uuid.UUID
 
 @pytest.mark.asyncio
 async def test_detail_names_last_upload_failures(db_session, sample_run):
-    """uploaded>0 with a dirty last upload → counts + zero-clean gate note."""
+    """uploaded>0 with a dirty last FULL upload → counts + zero-clean gate
+    note. A later scoped retry must not replace the full-corpus numbers."""
     await _seed_mapping(db_session, sample_run, "Q100", "http://example.org#MS1")
     await _seed_upload_job(
         db_session,
@@ -89,6 +90,19 @@ async def test_detail_names_last_upload_failures(db_session, sample_run):
             "cancelled": False,
         },
     )
+    # A later scoped retry (local_ids set) — smaller tail numbers.
+    db_session.add(
+        RunJob(
+            project_id=sample_run["project_id"],
+            run_id=sample_run["run_id"],
+            kind=JOB_KIND_HMO_ITEM_UPLOAD,
+            status=JOB_STATUS_SUCCEEDED,
+            params={"dry_run": False, "local_ids": ["QDraft_MS1"]},
+            progress={},
+            result={"created": 0, "failed": 3, "unresolved_links": 16, "cancelled": False},
+        )
+    )
+    await db_session.commit()
 
     detail = await _canonical_missing_detail(db_session, sample_run["run_id"])
 
@@ -97,6 +111,7 @@ async def test_detail_names_last_upload_failures(db_session, sample_run):
     assert "1 live instances" in detail
     assert "2104 failed item(s)" in detail
     assert "16912 unresolved link(s)" in detail
+    assert "3 failed" not in detail
     assert "persists only after a fully clean upload" in detail
     assert "fix those in HMO Studio" in detail
 
