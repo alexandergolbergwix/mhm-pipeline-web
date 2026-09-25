@@ -42,9 +42,12 @@ from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, RunRecord
 from app.models.run_job import (
+    JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_WIKIDATA_VERIFY,
+    JOB_STATUS_SUCCEEDED,
+    RunJob,
 )
 from app.models.wikibase_cloud_write import CHANNEL_WIKIDATA_UPLOAD, TARGET_ITEM
 from app.models.wikidata_studio_cache import WikidataStudioCache
@@ -166,10 +169,34 @@ async def _canonical_missing_detail(db: AsyncSession, run_id: uuid.UUID) -> str:
             f"(0 live QIDs) — upload them in HMO Studio; the read-back "
             f"stores the canonical entities"
         )
+    # Explain why the read-back is missing: the canonical gate persists only
+    # after a fully clean two-pass upload, so the last live upload's outcome
+    # tells the curator exactly what still blocks it.
+    last_upload = (
+        await db.execute(
+            select(RunJob).where(
+                RunJob.run_id == run_id,
+                RunJob.kind == JOB_KIND_HMO_ITEM_UPLOAD,
+                RunJob.status == JOB_STATUS_SUCCEEDED,
+                RunJob.result.is_not(None),
+            ).order_by(RunJob.created_at.desc()).limit(1)
+        )
+    ).scalars().first()
+    outcome = (last_upload.result if last_upload else None) or {}
+    failed = int(outcome.get("failed") or 0)
+    unresolved = int(outcome.get("unresolved_links") or 0)
+    gate_note = ""
+    advice = "re-upload in HMO Studio to refresh the canonical entities"
+    if failed or unresolved:
+        gate_note = (
+            f" — the last upload finished with {failed} failed item(s) and "
+            f"{unresolved} unresolved link(s), and the canonical read-back "
+            f"persists only after a fully clean upload"
+        )
+        advice = "fix those in HMO Studio (Retry failed / resolve links), then re-upload"
     return (
         f"{_CANONICAL_MISSING_PREFIX} for run {run_id}: the HMO read-back is "
-        f"incomplete or stale ({uploaded} live instances) — re-upload in "
-        f"HMO Studio to refresh the canonical entities"
+        f"incomplete or stale ({uploaded} live instances){gate_note} — {advice}"
     )
 
 

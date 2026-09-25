@@ -82,7 +82,11 @@ The canonical source is fail-closed about WHY it is empty: `_canonical_missing_d
 (wikidata_studio.py) diagnoses built-but-not-uploaded (HMO items exist, zero live
 QIDs), no HMO item build, or a stale/partial read-back, and the Studio error panel
 matches those stable markers to offer the right CTA (Upload HMO items now /
-Open HMO Studio).
+Open HMO Studio). For the stale/partial case the detail names the last succeeded
+upload's failed/unresolved counts — the canonical gate persists only after a fully
+clean two-pass upload (`hmo_item_upload.py`), so a bare "re-upload" advice would
+be unreachable while failures remain; with a dirty last upload the detail says
+"fix those in HMO Studio (Retry failed / resolve links), then re-upload".
 
 Canonical enrichment applies a second notability boundary after matching
 the HMO projection with fresh MARC/authority items. Trusted VIAF/NLI/QID on
