@@ -7,7 +7,9 @@ import {
   loadStudioBuild,
   runJobQueuedMessage,
   studioBuildJobIdFromConflict,
+  studioBuildProgressMessage,
   waitForRunJob,
+  waitForStudioBuild,
 } from "@/utils/waitForRunJob";
 
 describe("runJobQueuedMessage", () => {
@@ -88,6 +90,51 @@ describe("studioBuildJobIdFromConflict", () => {
     expect(studioBuildJobIdFromConflict(detail)).toBe(
       "e56425a1-8712-4605-b085-317261e678ed",
     );
+  });
+
+  it("prefers a non-empty progress message over the fallback copy", () => {
+    const running = studioBuildProgressMessage({
+      id: "j1", project_id: "p1", run_id: "r1", kind: "wikidata_studio_build",
+      status: "running", progress: {message: "Step 1 of 6: loading records…"},
+      params: {}, result: null, error: null, created_by: null, started_at: null,
+      finished_at: null, cancel_requested_at: null, created_at: null, updated_at: null,
+    } as RunJobSnapshot);
+    expect(running).toBe("Step 1 of 6: loading records…");
+    const quiet = studioBuildProgressMessage({
+      id: "j1", project_id: "p1", run_id: "r1", kind: "wikidata_studio_build",
+      status: "running", progress: {},
+      params: {}, result: null, error: null, created_by: null, started_at: null,
+      finished_at: null, cancel_requested_at: null, created_at: null, updated_at: null,
+    } as RunJobSnapshot);
+    expect(quiet).toBe("Building Wikidata items in the background…");
+  });
+});
+
+describe("waitForStudioBuild", () => {
+  it("attaches to an active build job and streams progress via onUpdate", async () => {
+    const running = {
+      id: "j1", project_id: "p1", run_id: "r1", kind: "wikidata_studio_build",
+      status: "running", progress: {message: "Step 1 of 6: loading records…"},
+      params: {}, result: null, error: null, created_by: null, started_at: null,
+      finished_at: null, cancel_requested_at: null, created_at: null, updated_at: null,
+    } as RunJobSnapshot;
+    const succeeded = {...running, status: "succeeded", progress: {}} as RunJobSnapshot;
+    const listSpy = vi.spyOn(RunJobs, "listForRun").mockResolvedValue({jobs: [running]});
+    const getSpy = vi.spyOn(RunJobs, "get")
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(succeeded);
+    const updates: RunJobSnapshot[] = [];
+
+    await waitForStudioBuild(
+      "r1",
+      {approvedOnly: true, forceRebuild: false},
+      {onUpdate: (job) => { updates.push(job); }},
+    );
+
+    expect(listSpy).toHaveBeenCalled();
+    expect(getSpy).toHaveBeenCalledWith("r1", "j1");
+    expect(updates.length).toBe(2);
+    expect(updates[0].progress.message).toBe("Step 1 of 6: loading records…");
   });
 });
 

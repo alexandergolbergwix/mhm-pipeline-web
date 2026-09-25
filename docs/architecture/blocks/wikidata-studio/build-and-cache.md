@@ -20,7 +20,10 @@ item instead of the static slug), then computes
   this supersedes CLAUDE.md Rule W-26's "invalidated automatically" wording —
   the cache is *detected* stale automatically, but rebuild is curator-driven.)*
 - **No cache row** → enqueue a `wikidata_studio_build` run-job and 409 with
-  `{code: "studio_build_in_progress", job_id}`; the frontend attaches to the job.
+  `{code: "studio_build_in_progress", job_id}`; the frontend attaches to the job
+  (`useRunJobAttachment`) and renders live step progress via `JobProgressInline` —
+  the 409 detail is never shown as an error while the build runs (HMO-parity,
+  frontend R15/W-106).
 
 The build schema is part of the fingerprint. Schema `source-aware-works-v8`
 also treats a cached person carrying an ERROR-level `NO_IDENTIFIER` issue as

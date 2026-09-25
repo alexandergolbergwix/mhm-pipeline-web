@@ -28,7 +28,7 @@ import {
   jobProcessedCount,
 } from "@/utils/throttledProgressRefresh";
 import {patchWikidataItemsFromUploadOutcomes} from "@/utils/studioUploadProgress";
-import {ensureRunJob, loadStudioBuild} from "@/utils/waitForRunJob";
+import {ensureRunJob, loadStudioBuild, studioBuildJobIdFromConflict} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 
 export interface WikidataItemsPanelProps {
@@ -141,6 +141,12 @@ export function WikidataItemsPanel({
       onBuildLoaded?.(result);
       setRefreshToken((t) => t + 1);
     } catch (e) {
+      // An in-flight studio build is progress, not an error: the attachment
+      // above tracks the job and renders JobProgressInline; a raw 409 leak
+      // here would paint red text while the tray shows the build running.
+      if (e instanceof ApiError && e.status === 409 && studioBuildJobIdFromConflict(e.detail)) {
+        return;
+      }
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
       if (!silent) {

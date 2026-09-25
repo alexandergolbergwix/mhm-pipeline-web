@@ -33,7 +33,7 @@
   controls do not render beside compatibility upload controls. It also checks
   that **Resolve N items with AI** requests blocked-only automatic resolution.
 - `frontend/tests/unit/liquidGlassMath.spec.ts`, `glassMapCache.spec.ts` — glass math, `glassSafeInset` (R21), map memoisation.
-- `frontend/tests/unit/clientCache.spec.ts`, `entityApi.test.ts`, `verifySession.spec.ts`, `waitForRunJob.spec.ts` — cache tiers, API mapping, job/session lifecycles.
+- `frontend/tests/unit/clientCache.spec.ts`, `entityApi.test.ts`, `verifySession.spec.ts`, `waitForRunJob.spec.ts` — cache tiers, API mapping, job/session lifecycles; `waitForStudioBuild` progress streaming + studio-build 409 copy.
 - `frontend/e2e/extraction-review.spec.ts`, `authority-*.spec.ts`, `wikidata-studio.spec.ts`, `hmo-wikibase-items.spec.ts`, `history-timeline.spec.ts`, `stage-rdf.spec.ts`, `access-request.spec.ts`, `admin-panel.spec.ts`, `linked-data-explorer.spec.ts`, `smoke.spec.ts` — the R8/R9 click-path layer.
 - `yarn typecheck` (strict tsc) gates every build.
 

@@ -9,8 +9,16 @@ import {HistoryTimeline} from "@/components/history/HistoryTimeline";
 import {useProjectEvents} from "@/api/realtime";
 import {Runs} from "@/api/runs";
 import {RunJobs} from "@/api/runJobs";
-import {useRunJobs} from "@/stores/runJobs";
-import {loadStudioBuild, waitForRunJob, waitForStudioBuild} from "@/utils/waitForRunJob";
+import {useRunJobs, isJobActive} from "@/stores/runJobs";
+import {JobProgressInline} from "@/components/jobs/JobProgressInline";
+import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
+import {
+  loadStudioBuild,
+  waitForRunJob,
+  waitForStudioBuild,
+  studioBuildJobIdFromConflict,
+  studioBuildProgressMessage,
+} from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
 import {useDebounce} from "@/hooks/useDebounce";
 import {
@@ -120,6 +128,27 @@ export default function WikidataStudio() {
     (localStorage.getItem("mhm.studio.reviewMode") as ReviewMode) || "modern");
   useEffect(() => { localStorage.setItem("mhm.studio.reviewMode", reviewMode); }, [reviewMode]);
 
+  // HMO-parity build surface (Rule W-106): attach to an active
+  // wikidata_studio_build job so a running build shows live step progress
+  // (JobProgressInline) instead of collapsing the page into an error card.
+  // The modern panel tracks the same job itself; only the legacy view acts
+  // on the sync here.
+  const {activeJob: studioBuildJob} = useRunJobAttachment(
+    runId,
+    "wikidata_studio_build",
+    (j) => {
+      if (reviewMode !== "legacy") return;
+      if (j.status === "succeeded") {
+        void refresh({nextForceRebuild: false});
+      }
+      if (j.status === "failed" || j.status === "cancelled") {
+        setError(j.error ?? (j.status === "cancelled" ? "Build cancelled." : "Build failed."));
+        setLoading(false);
+      }
+    },
+  );
+  const buildJobRunning = studioBuildJob != null && isJobActive(studioBuildJob.status);
+
   // Item view (one item at a time) vs. table view (every statement in
   // the run, flat). Persisted across reloads.
   const [view, setView] = useState<View>(() =>
@@ -139,7 +168,11 @@ export default function WikidataStudio() {
     try {
       if (force) {
         setBuildProgress("Starting fresh build…");
-        await waitForStudioBuild(runId, {approvedOnly: flag, forceRebuild: true, source: projectionSource});
+        await waitForStudioBuild(
+          runId,
+          {approvedOnly: flag, forceRebuild: true, source: projectionSource},
+          {onUpdate: (job) => { setBuildProgress(studioBuildProgressMessage(job)); }},
+        );
       }
       const fetchPage = () => Studio.build(runId, {
         source: projectionSource,
@@ -162,7 +195,17 @@ export default function WikidataStudio() {
         labelStore.seed(result.property_labels);
       }
     }
-    catch (e) { setError(e instanceof ApiError ? e.detail : String(e)); }
+    catch (e) {
+      // An in-flight studio build is progress, not an error (frontend R15
+      // parity with HMO Studio): the 409 conflict must never collapse the
+      // page into the danger card while the job runs — the attachment
+      // surface above renders the live step progress instead.
+      if (e instanceof ApiError && e.status === 409 && studioBuildJobIdFromConflict(e.detail)) {
+        setBuildProgress("Building Wikidata items…");
+      } else {
+        setError(e instanceof ApiError ? e.detail : String(e));
+      }
+    }
     finally   { setLoading(false); setBuildProgress(null); }
   }
 
@@ -320,7 +363,7 @@ export default function WikidataStudio() {
 
   if (!build) return (
     <Layout>
-      <Glass className="p-6">
+      <Glass className="p-6 space-y-3">
         <LoadingPanel
           title={loading ? "Building Wikidata items…" : "Loading Wikidata Studio…"}
           detail={
@@ -330,6 +373,17 @@ export default function WikidataStudio() {
               : null)
           }
         />
+        {studioBuildJob && (
+          <JobProgressInline
+            job={studioBuildJob}
+            labels={{
+              running: "Building Wikidata items…",
+              succeeded: "Build complete:",
+              failed: "Build failed:",
+              cancelled: "Build cancelled:",
+            }}
+          />
+        )}
       </Glass>
     </Layout>
   );
@@ -401,7 +455,7 @@ export default function WikidataStudio() {
               <button
                 type="button"
                 className="button-ghost !py-0.5 !px-2 text-xs"
-                disabled={!!busy}
+                disabled={!!busy || buildJobRunning}
                 onClick={() => { void refresh({nextForceRebuild: true}); }}
               >
                 Rebuild now
@@ -423,8 +477,13 @@ export default function WikidataStudio() {
                   approvedOnly ? "bg-white/12 text-ink" : "muted hover:text-ink"
                 }`}>Approved only</button>
             </GlassPill>
-            <button onClick={() => refresh({nextForceRebuild: forceRebuild})} disabled={loading || !!busy} className="button-ghost text-sm">
-              {loading ? "Rebuilding…" : "Rebuild"}
+            <button
+              onClick={() => refresh({nextForceRebuild: forceRebuild})}
+              disabled={loading || !!busy || buildJobRunning}
+              className="button-ghost text-sm"
+              data-testid="wikidata-studio-rebuild"
+            >
+              {loading || buildJobRunning ? "Rebuilding…" : "Rebuild"}
             </button>
             <label className="flex items-center gap-1.5 text-xs muted cursor-pointer select-none">
               <input

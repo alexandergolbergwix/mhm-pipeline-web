@@ -42,9 +42,12 @@
 11. **R11 — The build never runs inside an HTTP request when there is no cache
     row, and force-rebuild always starts `wikidata_studio_build`** — cache miss
     → 409 + attach; Rebuild with skip-cache → `ensureRunJob` + `JobProgressInline`
-    (Rule W-106).
+    (Rule W-106). The in-progress 409 MUST NOT render as a page-killing error
+    card: both the route (legacy view) and the modern panel skip it and show
+    the attached job's step progress instead; Rebuild stays disabled while the
+    job runs.
     A stale cache is served with `cache_stale=true`, not silently rebuilt.
-    *Why:* Heroku's 30 s router timeout, and passive page loads must not spawn surprise job-tray banners.
+    *Why:* Heroku's 30 s router timeout, and passive page loads must not spawn surprise job-tray banners; the raw 409 detail painted an ugly red "running in the background" card over an empty page while the tray showed the build at step 1.
 12. **R12 — Live/test uploads use the curator's own encrypted Wikidata token**
     (Settings → `_unwrap_user_secret`), never a shared credential. Target
     `test` unwraps `wikidata_test` (test.wikidata.org bot); `live` unwraps

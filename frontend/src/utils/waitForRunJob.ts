@@ -93,14 +93,17 @@ function studioBuildProgressMessage(job: RunJobSnapshot): string {
   return "Finishing build…";
 }
 
+export {studioBuildProgressMessage};
+
 /** Wait for an in-flight job, or start one when the API returns 409. */
 export async function waitForStudioBuild(
   runId: string,
   params: {approvedOnly: boolean; forceRebuild: boolean; source?: "legacy" | "canonical"},
+  opts?: {onUpdate?: (job: RunJobSnapshot) => void},
 ): Promise<void> {
   const active = await findActiveRunJob(runId, "wikidata_studio_build");
   if (active && isJobActive(active.status)) {
-    await waitForRunJob(runId, active.id);
+    await waitForRunJob(runId, active.id, {onUpdate: opts?.onUpdate});
     return;
   }
   if (params.forceRebuild) {
@@ -109,7 +112,7 @@ export async function waitForStudioBuild(
       force_rebuild: true,
       source: params.source || "legacy",
     });
-    await waitForRunJob(runId, job.id);
+    await waitForRunJob(runId, job.id, {onUpdate: opts?.onUpdate});
   }
 }
 

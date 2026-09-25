@@ -36,7 +36,7 @@
 | `frontend/src/hooks/useRunJobAttachment.ts` | Generic attach-to-active-job hook (fingerprint-guarded `sync` callback) |
 | `frontend/src/hooks/useVerifyJob.ts` | Verify job lifecycle (three live verify kinds; Authority verify is retired): poll/attach, upserts into `useRunJobs` for the global tray, hydrate from `progress.session_snapshot`, and roll back optimistic state when an enqueue request rejects |
 | `frontend/src/utils/fetchVerifySession.ts` | `jobVerifySessionSnapshot`, `fetchVerifySessionWithJobFallback` — multi-dyno session hydration |
-| `frontend/src/utils/waitForRunJob.ts`, `frontend/src/components/jobs/JobProgressInline.tsx` | Await-terminal helper + inline progress widget; renders a per-step strip + `(overall)` counter label when the job reports `steps[]` |
+| `frontend/src/utils/waitForRunJob.ts`, `frontend/src/components/jobs/JobProgressInline.tsx` | Await-terminal helper (incl. `waitForStudioBuild` progress streaming) + inline progress widget; renders a per-step strip + `(overall)` counter label when the job reports `steps[]` |
 | `frontend/src/components/jobs/JobTray.tsx` | Global tray; `wikidata_upload` uses `WikidataUploadSteps` for every `upload_target`; other `steps[]` jobs get `JobStepsStrip` + an `(overall)` counter label |
 | `backend/tests/unit/test_run_job_recovery.py` | Pins claiming, heartbeat, maintenance tick, and the create-race contract |
 
