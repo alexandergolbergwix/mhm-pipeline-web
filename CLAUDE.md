@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-258)
+## Architectural rules (W-1…W-259)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -70,6 +70,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-157** — A verdict judged without a conclusive duplicate answer MUST be re-judged
 - **W-158** — A judge failure MUST NOT persist as a substantive verdict, nor be cached
 - **W-258** — A verify pre-spawn failure MUST surface its real cause; missing provider keys must not read as "Verification complete"
+- **W-259** — Job sub-progress must never regress and every long phase must move or show an ETA: the re-enrich sweep counted visited entities, hit the full bar, then the match phase restarted at 0 (bar jumped 5295 → 323, 2026-09-24); later the serial DB-apply sat frozen at "5295/5295" for its whole duration because it emitted nothing. Numerators count only finished work (sweep = `skipped_fresh`, match = `skipped_fresh + matched_done`), and every long phase appends a per-phase ETA (`~14 min left`) via monotonic start stamps + `_estimate_remaining` — message text through the existing `sub_message` channel, no payload change — see [jobs-and-progress.md](docs/architecture/rules/jobs-and-progress.md)
 
 ### [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md) — Wikidata Studio (public projection + write path)
 
@@ -215,7 +216,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-233** — Verify stream `finally` blocks MUST never yield while closing (`generator_is_closing()`); a yield under `GeneratorExit` fails the cancelled job and skips verdict persistence
 - **W-234** — RDF graph builds MUST stream per-record subgraphs, checkpoint every 25 records, and run index/coverage post-processing in a subprocess — never accumulate a whole-corpus Graph
 - **W-235** — Heavy jobs (build/verify/upload slots) share one admission cap and execute on the worker dyno; web claims a queued heavy job only after the worker grace window
-- **W-236** — Cancelling a queued job MUST finalize it: the maintenance pass finalizes queued rows carrying `cancel_requested_at`, and the claim path refuses them. Running jobs finalize via in-loop cancel polling (`cancel_watcher` → `JobCancelledError`, ~1/s — Studio builds poll at phase + record boundaries), and the maintenance pass force-finalizes running rows whose flag exceeds `RUN_JOB_CANCEL_FORCE_AFTER_S` (300 s)
+- **W-236** — Cancelling a queued job MUST finalize it, and Cancel must show its effect immediately: `request_cancel` finalizes queued rows inline (still-queued conditional; claim path refuses flagged rows; tick sweep stays as race safety net — 2026-09-24: the 60 s tick made Cancel look like a no-op for a minute). Running jobs finalize via in-loop cancel polling (`cancel_watcher` → `JobCancelledError`, ~1/s — Studio builds poll at phase + record boundaries), the maintenance pass force-finalizes running rows whose flag exceeds `RUN_JOB_CANCEL_FORCE_AFTER_S` (300 s), and the cancel response snapshot is upserted at once + the tray shows `cancelling` while the flag is set (finalization is cooperative)
 - **W-237** — rdf_build / hmo_item_build may execute on Modal (mhm-jobs app, body-token auth, Postgres via Modal secret); dispatch failure or unset MODAL_JOBS_URL always degrades to the Heroku runner
 - **W-238** — A no-op authority refresh must hit the item fingerprint cache: `re_enrich_run` reports `content_changed`, and only that (or an explicit force_rebuild) triggers the RDF/item rebuild
 - **W-239** — "Build items" on an unchanged run short-circuits to the item cache (input-change check against `built_at`); a changed approval/NER row/override bypasses it

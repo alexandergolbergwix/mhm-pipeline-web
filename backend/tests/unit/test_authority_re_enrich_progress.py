@@ -54,10 +54,14 @@ async def test_re_enrich_run_reports_entity_progress(db_session, sample_run) -> 
 
     assert result["checked"] >= 1
     assert ticks, "expected at least first/last progress ticks"
-    assert ticks[0][0] == 1
+    assert ticks[0][0] == 0
     assert ticks[0][1] == result["checked"]
     assert ticks[-1][0] == ticks[-1][1]
-    assert "990001800310205171" in ticks[0][2]
+    # The numerator must never go backwards across phases (2026-09-24:
+    # the sweep counted `checked` and the match phase restarted at 0, so
+    # the UI bar jumped from full back to ~0 and read as a bug).
+    for prev, curr in zip(ticks, ticks[1:]):
+        assert curr[0] >= prev[0], f"progress regressed: {prev} -> {curr}"
 
 
 @pytest.mark.asyncio

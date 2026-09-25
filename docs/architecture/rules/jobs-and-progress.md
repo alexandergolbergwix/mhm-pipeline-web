@@ -502,13 +502,21 @@ process claims it — strictness never traps a job in `queued` forever. The
 worker entrypoint is `python -m app.jobs_worker` (Procfile `worker:`,
 scale with `heroku ps:scale worker=1`).
 
-### Rule W-236 — Cancel is cooperative, runners poll in-loop, and wedged rows are force-finalized (extended 2026-09-21)
+### Rule W-236 — Cancel is cooperative, runners poll in-loop, queued cancels finalize inline, and the UI shows the request (extended 2026-09-24)
 
-`request_cancel` only stamps `cancel_requested_at`; nothing force-kills a
-task. Three layers make Cancel actually terminate a job:
+`request_cancel` stamps `cancel_requested_at` (and, for queued rows,
+finalizes inline — see 1); nothing force-kills a task. Three layers make
+Cancel actually terminate a job, and the UI must reflect the request the
+moment it lands:
 
-1. **Queued rows** (no owner): the maintenance pass finalizes them
-   (`cancel_requested_queued_jobs`) and the claim path refuses them.
+1. **Queued rows** (no owner): `request_cancel` finalizes them **inline in
+   the cancel request** (conditional on the row still being queued; if a
+   claim won the race it falls through to the cooperative flag). The
+   maintenance tick's `cancel_requested_queued_jobs()` sweep remains as the
+   safety net for a cancel that raced a claim, and the claim path refuses
+   any queued row carrying the flag. (2026-09-24: the tick's 60 s cadence
+   left the tray showing "Waiting for capacity…" for up to a minute after
+   Cancel — the curator read it as a no-op.)
 2. **Running rows**: the owner polls the flag and finalizes itself. Long
    runners MUST poll **inside** their loops, not only at phase boundaries —
    the 2026-09-17 Modal build crawled 20+ minutes after Cancel because the
@@ -524,6 +532,13 @@ task. Three layers make Cancel actually terminate a job:
    runner finalizes in seconds; an older flag means the executor is stuck
    in a non-polling stretch or dead. `finish_job` refuses terminal rows
    (W-244), so a late zombie writer cannot resurrect the job.
+
+The cancel endpoint returns the post-cancel snapshot; `cancelJob` in
+`frontend/src/stores/runJobs.ts` upserts it immediately, and the tray
+renders `cancelling` (pill + "Cancelling…" line) while an active job
+carries `cancel_requested_at`. Running-job finalization stays cooperative,
+so the tray MUST show the in-between state instead of leaving
+RUNNING/QUEUED on screen after the click.
 
 ### Rule W-253 — Modal shard fan-out must fit the shared Postgres connection budget (added 2026-09-20)
 
@@ -584,3 +599,37 @@ Tests: `backend/tests/unit/test_modal_job_client.py`
 (`test_owner_heartbeat_does_not_mask_dead_executor`,
 `test_fresh_executor_heartbeat_blocks_redispatch`,
 `test_owner_heartbeat_does_not_extend_wait_past_budget`).
+
+### Rule W-259 — Sub-progress must never regress, and every long phase must show movement or an ETA (added 2026-09-24, extended 2026-09-24)
+
+The authority-refresh sub-bar of an `hmo_item_build` (W-113) jumped from
+the full total back to a small number mid-run: the sweep phase counted
+every *visited* entity (`checked`) as done — fresh-skips and to-be-matched
+alike — so the bar reached 5295/5295 in seconds; the concurrent match
+phase then restarted the numerator at `len(work) - len(pending)`, which
+is 0 when nothing is fresh, and the curator watched 5295 → 323 (2026-09-24,
+run on HmoStudio). A progress display that goes backwards reads as lost
+work, even though no work was lost.
+
+Therefore: inside one `processed/total` pair the numerator counts only
+entities whose work has actually finished. The sweep reports
+`skipped_fresh` (fresh skips are done; pending entities are not), and the
+match phase continues it with `skipped_fresh + matched_done`. Any future
+multi-phase counter MUST derive its numerator from a monotone
+"completed-work" total, never from "items visited so far".
+
+A display that freezes at `n/m` reads as stuck too — the same build sat
+at "Matching pending entities… 5295/5295" for the whole serial DB-apply
+because that phase emitted nothing. Therefore: every long phase inside
+one `processed/total` pair MUST either advance its numerator or append a
+fresh ETA to its message, at least once per second of wall time.
+`re_enrich_run` implements this as: per-phase `time.monotonic()` start
+stamps → `_estimate_remaining(done, total, elapsed)` (hidden until 3
+samples, capped at 24 h) → `_format_eta` appended to the phase message
+("… 323/5295 · ~14 min left"). The ETA is message text, so it flows
+through the existing `sub_message` channel with no payload-shape change.
+Any future long phase (serial apply, finalize hardening, export) MUST
+follow the same pattern: monotone counter + phase-scoped ETA. Test:
+`tests/unit/test_authority_re_enrich_progress.py`
+(`test_re_enrich_run_reports_entity_progress` asserts the ticks never
+decrease and the final tick reaches the total).

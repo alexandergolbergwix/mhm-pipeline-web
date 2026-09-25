@@ -176,6 +176,9 @@ async def execute_hmo_item_build(
         ).scalars().all()
 
         async def authority_sub(processed: int, total: int, message: str) -> None:
+            # The re-enrich message carries a trailing " · ~Nm left" when it
+            # has enough samples — surface it verbatim so the curator sees
+            # the phase ETA instead of a frozen "n/m" (W-113, 2026-09-24).
             await progress(
                 "authority",
                 1,

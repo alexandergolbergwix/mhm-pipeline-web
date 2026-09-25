@@ -1180,6 +1180,42 @@ async def request_cancel(db: AsyncSession, job_id: uuid.UUID) -> RunJob | None:
         return None
     if job.status not in ACTIVE_JOB_STATUSES:
         return job
+    if job.status == JOB_STATUS_QUEUED:
+        # A queued job has no owner to poll the flag — the maintenance pass
+        # used to finalize it, but only on its 60 s tick, so the tray showed
+        # "Waiting for capacity…" for up to a minute after Cancel
+        # (2026-09-24). Finalize in this request, conditional on still-queued:
+        # the claim path refuses cancel-flagged rows, and if a claim won the
+        # race the row is running — fall through to the cooperative flag
+        # instead of clobbering a freshly-claimed executor.
+        result = await db.execute(
+            update(RunJob)
+            .where(
+                RunJob.id == job_id,
+                RunJob.status == JOB_STATUS_QUEUED,
+            )
+            .values(
+                status=JOB_STATUS_CANCELLED,
+                error="Cancelled by user",
+                finished_at=_now(),
+                cancel_requested_at=_now(),
+            )
+        )
+        await db.commit()
+        if result.rowcount == 0:
+            job = await db.get(RunJob, job_id)
+            if job is None:
+                return None
+            if job.status in ACTIVE_JOB_STATUSES:
+                job.cancel_requested_at = _now()
+                await db.commit()
+                await db.refresh(job)
+            return job
+        await db.refresh(job)
+        return job
+    # Running: cancellation stays cooperative (Rule W-236) — the owner polls
+    # the flag and finalizes itself at a safe boundary; the flag reaching the
+    # DB immediately is what lets the UI show "Cancelling…" now.
     job.cancel_requested_at = _now()
     await db.commit()
     await db.refresh(job)

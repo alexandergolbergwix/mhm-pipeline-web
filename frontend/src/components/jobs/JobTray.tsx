@@ -84,6 +84,12 @@ export function JobTray() {
         const subPct =
           subTotal > 0 ? Math.min(100, Math.round((subProcessed / subTotal) * 100)) : 0;
         const label = JOB_KIND_LABELS[job.kind] ?? job.kind;
+        // The cancel flag is stamped the moment the curator clicks Cancel —
+        // finalization itself is cooperative (the runner stops at its next
+        // safe boundary), so show the in-between state instead of leaving
+        // RUNNING/QUEUED on screen (2026-09-24: Cancel looked like a no-op).
+        const cancelling =
+          isJobActive(job.status) && job.cancel_requested_at != null;
         const rawProgress = job.progress ?? {};
         const steps = (job.kind !== "wikidata_upload"
           && Array.isArray(rawProgress.steps) && rawProgress.steps.length > 0)
@@ -101,23 +107,25 @@ export function JobTray() {
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{label}</p>
-                {steps ? (
-                  <p className="text-xs muted truncate">
-                    <span title={OVERALL_PROGRESS_TITLE}>
-                      {processed} / {total}{unitSuffix}
-                      <span className="opacity-70"> (overall)</span>
-                    </span>
-                    {stepMessage && (
-                      <span title={STEP_ONLY_TITLE}> · {stepMessage}</span>
-                    )}
-                    {trayEtaSuffix(job)}
-                  </p>
-                ) : (
-                  <p className="text-xs muted truncate">{progressLabel(job)}{trayEtaSuffix(job)}</p>
-                )}
+                <p className="text-xs muted truncate">
+                  {cancelling ? "Cancelling…" : steps ? (
+                    <>
+                      <span title={OVERALL_PROGRESS_TITLE}>
+                        {processed} / {total}{unitSuffix}
+                        <span className="opacity-70"> (overall)</span>
+                      </span>
+                      {stepMessage && (
+                        <span title={STEP_ONLY_TITLE}> · {stepMessage}</span>
+                      )}
+                    </>
+                  ) : (
+                    progressLabel(job)
+                  )}
+                  {trayEtaSuffix(job)}
+                </p>
               </div>
               <GlassPill className="px-2 py-0.5 text-[10px] uppercase tracking-wide shrink-0">
-                {job.status}
+                {cancelling ? "cancelling" : job.status}
               </GlassPill>
             </div>
             {job.kind === "wikidata_upload" ? (

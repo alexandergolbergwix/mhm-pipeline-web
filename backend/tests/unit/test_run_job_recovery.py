@@ -751,7 +751,9 @@ async def test_cancel_finalizes_queued_job_without_owner(
     db_session, sample_run, monkeypatch,
 ) -> None:
     """R28 regression (2026-09-16): a queued job waiting for capacity has no
-    owner to poll the cancel flag — the maintenance pass must finalize it."""
+    owner to poll the cancel flag. 2026-09-24: request_cancel finalizes the
+    queued row inline — the 60 s maintenance tick left the tray showing
+    "Waiting for capacity…" for up to a minute after Cancel."""
     from app.pipeline.run_job_service import cancel_requested_queued_jobs
 
     monkeypatch.setenv("RUN_JOB_ROLE", "web")
@@ -765,13 +767,14 @@ async def test_cancel_finalizes_queued_job_without_owner(
     from app.pipeline.run_job_service import request_cancel
     await request_cancel(db_session, queued.id)
     await db_session.refresh(queued)
-    assert queued.status == JOB_STATUS_QUEUED  # flag only, until the tick
-
-    finalized = await cancel_requested_queued_jobs()
-    assert finalized == 1
-    await db_session.refresh(queued)
+    # Finalized inline in the cancel request — no owner, no poll delay.
     assert queued.status == "cancelled"
     assert queued.error == "Cancelled by user"
+    assert queued.cancel_requested_at is not None
+
+    # The maintenance pass is idempotent — nothing left to finalize.
+    finalized = await cancel_requested_queued_jobs()
+    assert finalized == 0
 
 
 @pytest.mark.asyncio
@@ -779,8 +782,9 @@ async def test_cancel_requested_queued_job_is_never_claimed(
     db_session, sample_run, monkeypatch,
     monkeypatch2=None,
 ) -> None:
-    """Even with all slots free, a queued job with a cancel request must
-    not be claimed (web role after grace, or worker role)."""
+    """A queued job that lost the cancel/claim race (claimed before the
+    cancel request landed) must never be re-claimed afterwards: the claim
+    path refuses rows with a cancel flag."""
     monkeypatch.setenv("RUN_JOB_WORKER_GRACE", "0")
 
     queued = await _add_job(
@@ -789,7 +793,22 @@ async def test_cancel_requested_queued_job_is_never_claimed(
         status=JOB_STATUS_QUEUED,
     )
     from app.pipeline.run_job_service import request_cancel
+    # Stamp the flag without the queued-inline finalize: simulate the flag
+    # landing after a claim already flipped the row to running-then-queued
+    # again (or force the flag-only path by pre-running the finalize).
+    from app.pipeline.run_job_service import cancel_requested_queued_jobs
     await request_cancel(db_session, queued.id)
+    await cancel_requested_queued_jobs()  # finalize inline pass (no-op now)
+    await db_session.refresh(queued)
+    assert queued.status == "cancelled"
+    await db_session.execute(
+        update(RunJob).where(RunJob.id == queued.id).values(
+            status=JOB_STATUS_QUEUED, finished_at=None,
+        )
+    )
+    await db_session.commit()
+    await db_session.refresh(queued)
+    assert queued.cancel_requested_at is not None
 
     claimed = await _try_claim_with_admission(
         db_session, queued.id, JOB_KIND_RDF_BUILD, status=JOB_STATUS_QUEUED,
