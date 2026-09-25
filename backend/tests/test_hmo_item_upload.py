@@ -146,6 +146,33 @@ async def test_dry_run_reports_would_create_and_would_link(db_session) -> None:
 
 
 @pytest.mark.asyncio
+async def test_live_upload_drops_description_identical_to_label(db_session) -> None:
+    """Wikibase Cloud rejects label == description per language; the upload
+    must repair the payload instead of failing the item (1136 he failures
+    on run 3494ebf5)."""
+    run_id = uuid.uuid4()
+    entity = ResolvedWikibaseEntity(
+        local_id="QDraft_MS1",
+        labels={"he": "תכלאל", "en": "Tiklal"},
+        descriptions={"he": "תכלאל", "en": "A Tiklal"},
+        class_qid="Q1",
+        source_uri="http://example.org#MS1",
+        claims=[ResolvedClaim("P1", "string", "shelfmark 1")],
+    )
+    await _seed_cache(db_session, run_id, [entity])
+    writer = _FakeWriter()
+
+    result = await pipeline.upload_items_for_run(db_session, run_id, writer=writer, dry_run=False)
+
+    assert result.created == 1
+    assert result.failed == 0
+    sent = writer.create_calls[0]
+    assert sent["labels"] == {"he": "תכלאל", "en": "Tiklal"}
+    assert "he" not in sent["descriptions"]
+    assert sent["descriptions"] == {"en": "A Tiklal"}
+
+
+@pytest.mark.asyncio
 async def test_live_upload_creates_items_then_links_them(db_session) -> None:
     run_id = uuid.uuid4()
     await _seed_cache(db_session, run_id, _ms_and_person())

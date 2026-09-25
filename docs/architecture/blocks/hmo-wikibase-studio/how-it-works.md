@@ -109,6 +109,11 @@ read as one number. Terminal succeed still silent-reloads.
 Scalar snak mismatches that Wikibase reports as ``expected string`` (including
 quantity→string drift on `max_nesting_depth` / P224) retry per-claim via the
 string-compatible fallback (Rule W-91 class).
+Wikibase Cloud rejects a write whose label equals its description in the same
+language (``modification-failed``); `drop_descriptions_equal_to_labels`
+(`hmo_item_shacl_gate.py`) repairs the payload at upload time by dropping the
+duplicated description (the builder falls back to the label when no real
+description exists), so the write becomes valid instead of failing the item.
 Pass 1: for each entity — already mapped → skip (or `update_item` merge when
 `update_existing=True`); unmapped → SPARQL reconcile by `hmo_source_uri`; a hit
 is **adopted** (mapping row recorded, no create); a miss → `create_item`. Every

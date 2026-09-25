@@ -64,3 +64,26 @@ def sanitize_wikibase_descriptions(descriptions: dict[str, str]) -> dict[str, st
             code = "en"
         out.setdefault(code, text)
     return out
+
+
+def drop_descriptions_equal_to_labels(
+    labels: dict[str, str], descriptions: dict[str, str],
+) -> tuple[dict[str, str], int]:
+    """Wikibase Cloud rejects a write whose label equals its description in
+    the same language (``modification-failed: Label and description for
+    language code X can not have the same value``). The builder falls back to
+    the label when no real description was generated, so identical pairs
+    reached the wiki and failed hundreds of writes on a large corpus.
+
+    Returns the filtered descriptions plus the dropped count; the label
+    carries the information and the write becomes valid.
+    """
+    out: dict[str, str] = {}
+    dropped = 0
+    for lang, value in descriptions.items():
+        text = str(value or "").strip()
+        if text and text == str(labels.get(lang) or "").strip():
+            dropped += 1
+            continue
+        out[lang] = value
+    return out, dropped

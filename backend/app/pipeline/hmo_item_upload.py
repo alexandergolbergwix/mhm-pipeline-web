@@ -50,6 +50,7 @@ from app.pipeline.hmo_item_reconcile import (
 )
 from app.pipeline.hmo_item_shacl_gate import (
     blocking_shacl_issues,
+    drop_descriptions_equal_to_labels,
     format_shacl_block_message,
     sanitize_wikibase_descriptions,
     sanitize_wikibase_labels,
@@ -515,10 +516,10 @@ async def _pass_one_create(
 def _prepare_entity_payload(
     entity: ResolvedWikibaseEntity,
 ) -> tuple[dict[str, str], dict[str, str]]:
-    return (
-        sanitize_wikibase_labels(dict(entity.labels)),
-        sanitize_wikibase_descriptions(dict(entity.descriptions)),
-    )
+    labels = sanitize_wikibase_labels(dict(entity.labels))
+    descriptions = sanitize_wikibase_descriptions(dict(entity.descriptions))
+    descriptions, _dropped = drop_descriptions_equal_to_labels(labels, descriptions)
+    return labels, descriptions
 
 
 async def push_single_item(

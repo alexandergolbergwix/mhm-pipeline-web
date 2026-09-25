@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.pipeline.hmo_item_shacl_gate import (
     blocking_shacl_issues,
+    drop_descriptions_equal_to_labels,
     format_shacl_block_message,
     sanitize_wikibase_labels,
 )
@@ -32,3 +33,22 @@ def test_sanitize_wikibase_labels_drops_und() -> None:
     labels = sanitize_wikibase_labels({"und": "1001", "en": "1001"})
     assert "und" not in labels
     assert labels["en"] == "1001"
+
+
+def test_drop_descriptions_equal_to_labels() -> None:
+    labels = {"he": "תכלאל", "en": "Tiklal"}
+    descriptions = {
+        "he": "תכלאל",       # identical to the he label — Wikibase rejects it
+        "en": "A Tiklal",     # distinct — stays
+    }
+    out, dropped = drop_descriptions_equal_to_labels(labels, descriptions)
+    assert dropped == 1
+    assert out == {"en": "A Tiklal"}
+
+
+def test_drop_descriptions_equal_to_labels_keeps_distinct() -> None:
+    labels = {"he": "מחזור"}
+    descriptions = {"he": "מחזור  לפי מנהג"}  # different after strip
+    out, dropped = drop_descriptions_equal_to_labels(labels, descriptions)
+    assert dropped == 0
+    assert out == descriptions
