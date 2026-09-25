@@ -171,6 +171,43 @@ async def test_job_reports_progress_and_succeeds(sample_run, db_session, monkeyp
     assert job.progress["phase"] == "done"
     # 3 items + 2 links, both passes counted against one shared total.
     assert job.progress["processed"] == job.progress["total"] == 5
+    steps = job.progress["steps"]
+    assert [s["id"] for s in steps] == ["upload_items", "add_links"]
+    assert all(s["status"] == "done" for s in steps)
+    assert steps[0]["processed"] == steps[0]["total"] == 3
+    assert steps[1]["processed"] == steps[1]["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_job_progress_carries_step_strip(sample_run, db_session, monkeypatch):
+    """Pass-1 ticks mark the items step running; pass-2 ticks flip to links."""
+    monkeypatch.setattr(job_module, "build_server_wikibase_writer", lambda: _FakeWriter())
+    job_id = await _seed(db_session, sample_run, _entities(3))
+    ticks: list[dict] = []
+
+    async def capture_progress(jid, progress):
+        ticks.append(dict(progress))
+
+    monkeypatch.setattr(job_module, "update_job_progress", capture_progress)
+
+    await job_module.run_hmo_item_upload_job(job_id)
+
+    item_ticks = [t for t in ticks if t.get("item_outcome")]
+    assert item_ticks, "pass-1 progress must stream item_outcome after each write"
+    first_item_tick = item_ticks[0]
+    assert first_item_tick["steps"][0]["status"] == "running"
+    assert first_item_tick["steps"][0]["total"] == 3
+    assert first_item_tick["steps"][1]["status"] == "pending"
+    link_ticks = [
+        t for t in ticks if not t.get("item_outcome") and t["message"].endswith("item links added")
+    ]
+    assert link_ticks, "pass-2 progress must stream the link message"
+    first_link_tick = link_ticks[0]
+    assert first_link_tick["steps"][0]["status"] == "done"
+    assert first_link_tick["steps"][0]["processed"] == 3
+    assert first_link_tick["steps"][1]["status"] == "running"
+    assert first_link_tick["steps"][1]["total"] == 2
+    assert first_link_tick["steps"][1]["processed"] >= 1
 
 
 @pytest.mark.asyncio
@@ -239,3 +276,6 @@ async def test_job_stops_when_cancelled(sample_run, db_session, monkeypatch):
     assert job.status == JOB_STATUS_CANCELLED
     assert job.result["created"] < 5
     assert job.progress["phase"] == "cancelled"
+    # Cancellation fired during pass 1, so both incomplete steps read skipped.
+    assert job.progress["steps"][0]["status"] == "skipped"
+    assert job.progress["steps"][1]["status"] == "skipped"

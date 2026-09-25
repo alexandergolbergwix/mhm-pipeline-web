@@ -65,6 +65,27 @@
       "expires": "2027-03-15"
     },
     {
+      "fingerprint": "sha256:0a5694ebc4183159fd19ffc222f3b4c7",
+      "path": "backend/app/pipeline/hmo_item_upload.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Identifier validate_authority_rows(authority_rows) — plain Python call, not a credential",
+      "expires": "2026-12-25"
+    },
+    {
+      "fingerprint": "sha256:0f5c4bafb7d50170dcef14f63336bbe5",
+      "path": "backend/app/pipeline/hmo_item_upload.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Call of live() read-back helper in canonical snapshot build — plain code, not a credential",
+      "expires": "2026-12-25"
+    },
+    {
+      "fingerprint": "sha256:618d8fe679a4def69e333e7772b11ddf",
+      "path": "backend/app/pipeline/hmo_item_upload.py",
+      "rule_id": "generic-assigned-secret",
+      "reason": "Positional argument named live (live read-back entity) — plain code, not a credential",
+      "expires": "2026-12-25"
+    },
+    {
       "fingerprint": "sha256:2a9852ae98d9c2d2c59157d4d8df6b9d",
       "path": "backend/app/pipeline/marc_llm_extract.py",
       "rule_id": "generic-assigned-secret",

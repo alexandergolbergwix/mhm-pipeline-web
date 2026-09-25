@@ -28,7 +28,9 @@
 - `backend/tests/test_hmo_studio_upload_manifests_router.py`,
   `test_hmo_studio_upload_items_router.py`, `test_hmo_item_upload_job.py` —
   publish jobs (W-107); per-item progress outcomes for mid-run table patches
-  (W-110).
+  (W-110); `test_job_progress_carries_step_strip` pins the `steps[]`
+  strip payload (upload items → add item links) next to the
+  write-proportional `(overall)` counter.
 - `backend/tests/unit/test_hmo_authority_gate.py`,
   `test_hmo_authority_conflicts_router.py` — conflict report + keep-one
   resolve (W-109).

@@ -736,7 +736,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `WikidataUploadSteps` (Step 1 Write items / Step 2 Add connections, Now,
     ETA) MUST render in the progress modal, the upload panel, and the job
     tray for every `upload_target`, including live. Title and badge still
-    follow frontend R19 (do not invent live). *Why:* live www.wikidata.org
+    follow frontend R19 (do not invent live). Per-step counters carry the
+    step-local scale tooltip (same contract as the HMO strip, frontend R15).
+    *Why:* live www.wikidata.org
     writes showed only the generic `JobProgressInline` bar while
     test.wikidata.org opened the two-step Now/ETA UI.
 99. **R99 — Catalog work CREATE skips to a unique allowlisted live title; titles are monolingualtext; implausible millimetres are omitted (Rule W-196).**

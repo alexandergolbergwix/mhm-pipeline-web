@@ -64,7 +64,7 @@
 - `backend/tests/unit/test_wikidata_upload_login_once.py` — shared uploader + auth abort (W-179 / R82).
 - `backend/tests/unit/test_wikidata_upload_is_bot.py` — `is_bot` kwarg (not `bot=`), default false, no retry on bot-right / permissiondenied; write-rights preflight (W-180 / W-181).
 - `backend/tests/unit/test_wikidata_upload_job_progress.py` — live progress rows include `label` / `entity_type` / `outcome_counts` + processing status shape (W-141 upload modal).
-- `frontend/tests/unit/wikidataUploadProgressModal.spec.ts` — sticky/test resolve of `upload_target` (no invented live; preferred target; frontend R19).
+- `frontend/tests/unit/wikidataUploadProgressModal.spec.ts` — sticky/test resolve of `upload_target` (no invented live; preferred target; frontend R19); `WikidataUploadSteps` two-bar rendering and per-step counter tooltips.
 - `frontend/tests/unit/runJobsStore.spec.ts` — active poll merges without wiping terminal upload snapshots; upsert preserves `upload_target` (frontend R19).
 - `frontend/tests/unit/studioUploadProgress.spec.ts` — processing → terminal status replace; Wikidata/HMO row patches.
 - `backend/tests/unit/test_studio_dict_to_native.py` — Studio-cache dict → native item (W-181 / R84).

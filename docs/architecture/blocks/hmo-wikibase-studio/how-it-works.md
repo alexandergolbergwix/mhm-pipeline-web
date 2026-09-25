@@ -99,7 +99,12 @@ still persist live canonical state; scoped retries do not.
 While a live `hmo_item_upload` job runs, pass-1 progress carries
 `item_outcome` / `recent_item_outcomes`; `ItemUploadPanel` patches only those
 rows in the review table so Publication status / Last publication move during
-the run without unmounting the table. Terminal succeed still silent-reloads.
+the run without unmounting the table. Every live emission also carries
+`step_id`/`step_processed`/`step_total`, which the job wrapper turns into a
+`steps[]` strip (`Upload items` → `Add item links`); `JobProgressInline`
+renders that strip, labels the right-hand counter `(overall)` (the bar spans
+items + links), and tooltips the pass-local message so the two scales never
+read as one number. Terminal succeed still silent-reloads.
 `upload_outcome === failed` surfaces as Publication status **failed**.
 Scalar snak mismatches that Wikibase reports as ``expected string`` (including
 quantity→string drift on `max_nesting_depth` / P224) retry per-claim via the

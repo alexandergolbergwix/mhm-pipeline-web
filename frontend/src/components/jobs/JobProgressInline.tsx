@@ -1,4 +1,9 @@
 import type {RunJobSnapshot} from "@/api/runJobs";
+import {
+  JobStepsStrip,
+  OVERALL_PROGRESS_TITLE,
+  STEP_ONLY_TITLE,
+} from "@/components/jobs/JobStepsStrip";
 
 interface JobProgressInlineProps {
   job: RunJobSnapshot;
@@ -26,6 +31,8 @@ export function JobProgressInline({job, labels}: JobProgressInlineProps) {
     sub_unit,
     sub_message,
   } = job.progress;
+  const steps = job.progress.steps;
+  const hasSteps = Boolean(steps && steps.length > 0);
   const pct = total && total > 0 ? Math.round(((processed ?? 0) / total) * 100) : 0;
   const subPct =
     sub_total && sub_total > 0
@@ -46,12 +53,18 @@ export function JobProgressInline({job, labels}: JobProgressInlineProps) {
              job.status === "cancelled" ? labels.cancelled :
              labels.running}
           </span>{" "}
-          {message && <span className="text-ink">{message}</span>}
+          {message && (
+            <span className="text-ink" title={hasSteps ? STEP_ONLY_TITLE : undefined}>{message}</span>
+          )}
         </p>
         {!done && total ? (
-          <span className="muted text-xs">{processed ?? 0} / {total}{unitSuffix}</span>
+          <span className="muted text-xs" title={OVERALL_PROGRESS_TITLE}>
+            {processed ?? 0} / {total}{unitSuffix}
+            {hasSteps && <span className="ml-1 opacity-70">(overall)</span>}
+          </span>
         ) : null}
       </div>
+      {hasSteps && <JobStepsStrip steps={steps ?? []} />}
       {!done && (
         <div className="h-1.5 w-full rounded-full bg-white/8 overflow-hidden">
           <div

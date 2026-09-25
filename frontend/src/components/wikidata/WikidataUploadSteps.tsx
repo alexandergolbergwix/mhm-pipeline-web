@@ -10,6 +10,10 @@ const DEFAULT_STEPS = [
   {id: "add_connections", label: "Step 2 — Add connections", unit: "links"},
 ];
 
+/** Same scale explanation as the JobProgressInline step tooltips (R15). */
+const STEP_COUNTS_TITLE =
+  "Counts this step's writes only — items written in step 1, links added in step 2.";
+
 function statusLabel(status: string | undefined, index: number): string {
   if (status === "running") return "In progress";
   if (status === "done") return "Done";
@@ -62,7 +66,7 @@ export function WikidataUploadSteps({progress}: WikidataUploadStepsProps) {
               <p className="text-sm font-medium text-ink">
                 {step.label || DEFAULT_STEPS[idx]?.label}
               </p>
-              <span className="muted text-xs shrink-0">
+              <span className="muted text-xs shrink-0" title={STEP_COUNTS_TITLE}>
                 {statusLabel(step.status, idx)}
                 {total > 0 ? ` · ${processed} / ${total}${unit}` : ""}
               </span>

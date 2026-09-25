@@ -18,8 +18,9 @@
 | `frontend/src/stores/theme.ts` | `useTheme` — color scheme, `initTheme()` |
 | `frontend/src/hooks/useApprovalStore.ts` | Polling entity store for AI Extraction (fast/slow poll + ETag + `mhm.entities.refreshed` listener) |
 | `frontend/src/hooks/useRunJobAttachment.ts` | Attach a page to an in-flight background job (attach-on-mount, fingerprint-guarded sync) |
-| `frontend/src/components/jobs/JobProgressInline.tsx` | Outer + nested progress bars for build/verify/upload jobs (Rules W-106 / W-113) |
-| `frontend/src/components/jobs/JobTray.tsx` | Global tray; nested sub-bar when `sub_total > 0` (W-113); `wikidata_upload` uses `WikidataUploadSteps` for every target |
+| `frontend/src/components/jobs/JobProgressInline.tsx` | Outer + nested progress bars for build/verify/upload jobs; per-step strip + `(overall)` label + tooltips when the payload carries `steps[]` (Rules W-106 / W-113) |
+| `frontend/src/components/jobs/JobStepsStrip.tsx` | Shared `steps[]` strip + tooltip texts for `JobProgressInline` and `JobTray` (frontend R15) |
+| `frontend/src/components/jobs/JobTray.tsx` | Global tray; nested sub-bar when `sub_total > 0` (W-113); `wikidata_upload` uses `WikidataUploadSteps` for every target; other `steps[]` jobs get the shared strip + `(overall)` counter label |
 | `frontend/src/hooks/useVerifyJob.ts` | Verify-job lifecycle: attach/poll/session hydration, global-tray upsert, rollback on enqueue reject, and Continue from resumable interrupt (W-130) |
 | `frontend/src/utils/verifyResume.ts` | `resumeOfferFromJob` / Continue button label (Rule W-130) |
 | `frontend/src/api/judgeModels.ts` | `GET /api/judge-models` — tier-1 judge list for verify modals |
@@ -34,7 +35,7 @@
 | `frontend/src/components/extraction/`, `authority/`, `wikidata/`, `hmo/` | Feature component families (Rule W-16 / W-31 review surfaces) |
 | `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Studio item drawer: labelled multilingual overrides, one-row Hebrew aliases, foreign-modify accept (W-99), push/reconcile, HMO Wikibase Item:Q link (W-122) |
 | `frontend/src/components/wikidata/WikidataItemTable.tsx` | Searchable result list with a labelled record search and direct item editor entry |
-| `frontend/src/components/wikidata/WikidataUploadSteps.tsx` | Two-step Wikidata upload bars (Now + ETA; Rule W-192) |
+| `frontend/src/components/wikidata/WikidataUploadSteps.tsx` | Two-step Wikidata upload bars (Now + ETA; Rule W-192); per-step counter tooltips explain the step-local scale |
 | `frontend/src/utils/formatJobEta.ts` | Shared remaining/elapsed time labels for job progress |
 | `frontend/src/api/wikidataStudio.ts` | Typed Wikidata Studio client incl. `accept_foreign_modify` override fields |
 | `frontend/src/api/publication.ts` | Typed Publication commands and cursor reads; a prepare response can contain a queued job before it contains a Release |

@@ -7,6 +7,11 @@ import {
   type RunJobSnapshot,
 } from "@/api/runJobs";
 import {Glass, GlassPill} from "@/components/glass";
+import {
+  JobStepsStrip,
+  OVERALL_PROGRESS_TITLE,
+  STEP_ONLY_TITLE,
+} from "@/components/jobs/JobStepsStrip";
 import {WikidataUploadSteps} from "@/components/wikidata/WikidataUploadSteps";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
 import {formatJobEtaShort} from "@/utils/formatJobEta";
@@ -79,13 +84,37 @@ export function JobTray() {
         const subPct =
           subTotal > 0 ? Math.min(100, Math.round((subProcessed / subTotal) * 100)) : 0;
         const label = JOB_KIND_LABELS[job.kind] ?? job.kind;
+        const rawProgress = job.progress ?? {};
+        const steps = (job.kind !== "wikidata_upload"
+          && Array.isArray(rawProgress.steps) && rawProgress.steps.length > 0)
+          ? rawProgress.steps
+          : null;
+        const unitSuffix =
+          typeof rawProgress.unit === "string" && rawProgress.unit.trim()
+            ? ` ${rawProgress.unit.trim()}`
+            : "";
+        const stepMessage =
+          typeof rawProgress.message === "string" ? rawProgress.message.trim() : "";
 
         return (
           <Glass key={job.id} variant="compact" className="p-3 space-y-2 shadow-lg">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{label}</p>
-                <p className="text-xs muted truncate">{progressLabel(job)}{trayEtaSuffix(job)}</p>
+                {steps ? (
+                  <p className="text-xs muted truncate">
+                    <span title={OVERALL_PROGRESS_TITLE}>
+                      {processed} / {total}{unitSuffix}
+                      <span className="opacity-70"> (overall)</span>
+                    </span>
+                    {stepMessage && (
+                      <span title={STEP_ONLY_TITLE}> · {stepMessage}</span>
+                    )}
+                    {trayEtaSuffix(job)}
+                  </p>
+                ) : (
+                  <p className="text-xs muted truncate">{progressLabel(job)}{trayEtaSuffix(job)}</p>
+                )}
               </div>
               <GlassPill className="px-2 py-0.5 text-[10px] uppercase tracking-wide shrink-0">
                 {job.status}
@@ -95,6 +124,7 @@ export function JobTray() {
               <WikidataUploadSteps progress={job.progress ?? {}} />
             ) : (
               <>
+                {steps && <JobStepsStrip steps={steps} />}
                 {total > 0 && (
                   <div className="h-1.5 rounded-full bg-black/10 overflow-hidden" aria-hidden>
                     <div

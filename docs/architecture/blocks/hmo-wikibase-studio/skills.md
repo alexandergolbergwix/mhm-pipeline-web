@@ -50,7 +50,9 @@
 4. Preview: `POST /runs/{id}/hmo-studio/upload-items` with `{"dry_run": true}`.
 5. Live: `{"dry_run": false}` (add `"update_existing": true` to refresh
    already-uploaded items) → background job; progress shows
-   `N/M items uploaded` then `N/M item links added`. Cancellation returns a
+   `N/M items uploaded` then `N/M item links added` (each counts its own
+   pass), a per-step strip (`Upload items` → `Add item links`), and the
+   `(overall)` counter + bar across both passes. Cancellation returns a
    partial result. Failures per item appear in `outcomes`/`link_outcomes` and
    the audit log.
 6. After a partial failure, use **Retry N failed** (sends `local_ids` of the

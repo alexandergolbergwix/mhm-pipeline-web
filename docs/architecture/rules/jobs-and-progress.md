@@ -286,6 +286,22 @@ Wikidata Studio **upload** uses the same outer/inner contract: `1/2` then
 `2/2` `steps` (write items, add connections) with `sub_unit=items|links`,
 plus `eta_seconds` / `steps[]` for the upload modal only (Rule W-192).
 
+**HMO item upload (2026-09).** The two-pass HMO upload keeps the outer
+`processed/total` write-proportional across both passes (items + deferred
+links) — a step-index denominator would make the bar jump 0% → 50% → 100%
+while 55k links run. Instead every live emission carries `step_id` /
+`step_processed` / `step_total`, and the job wrapper publishes a `steps[]`
+strip (`upload_items` items → `add_links` links, same shape as the Wikidata
+modal payload). `JobProgressInline` renders the strip, labels the right-hand
+counter `(overall)`, and tooltips the step-local message
+(`N/M item links added` counts pass 2 only). The job tray shows the same
+shared strip and labels (except `wikidata_upload`, which keeps its own
+`WikidataUploadSteps` widget). Tests:
+`backend/tests/test_hmo_item_upload_job.py`
+(`test_job_progress_carries_step_strip`),
+`frontend/tests/unit/jobProgressInline.spec.tsx`,
+`frontend/tests/unit/jobTray.spec.tsx`.
+
 ### Rule W-129 — Run jobs MUST pass admission control before claim (added 2026-07-27)
 
 Capacity review for 50 parallel curators found the real queue already

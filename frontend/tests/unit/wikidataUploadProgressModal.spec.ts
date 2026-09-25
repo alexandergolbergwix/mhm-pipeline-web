@@ -129,4 +129,38 @@ describe("WikidataUploadSteps", () => {
     expect(screen.getByTestId("wikidata-upload-step-2")).toHaveAttribute("data-status", "pending");
     expect(screen.getByTestId("wikidata-upload-step-1-now")).toHaveTextContent("work · MS Alpha");
   });
+
+  it("tooltips the per-step counters as step-local writes", () => {
+    render(createElement(WikidataUploadSteps, {progress: {
+      processed: 2,
+      total: 2,
+      unit: "steps",
+      steps: [
+        {
+          id: "write_items",
+          label: "Step 1 — Write items",
+          status: "done",
+          processed: 8,
+          total: 8,
+          unit: "items",
+          current_label: "Complete",
+        },
+        {
+          id: "add_connections",
+          label: "Step 2 — Add connections",
+          status: "running",
+          processed: 3,
+          total: 5,
+          unit: "links",
+          eta_seconds: 30,
+          current_label: "work · MS Beta",
+        },
+      ],
+    }}));
+    for (const counter of [/8 \/ 8 items/, /3 \/ 5 links/]) {
+      expect(screen.getByText(counter).getAttribute("title")).toMatch(
+        /this step's writes only/i,
+      );
+    }
+  });
 });

@@ -63,6 +63,11 @@ from converter.wikibase.resolved_models import ResolvedClaim, ResolvedWikibaseEn
 
 logger = logging.getLogger(__name__)
 
+# Progress step ids (mirrored by the job wrapper's ``steps[]`` strip):
+# pass 1 uploads items, pass 2 adds the deferred item-to-item links.
+STEP_UPLOAD_ITEMS = "upload_items"
+STEP_ADD_LINKS = "add_links"
+
 
 if TYPE_CHECKING:
     from app.services.wikibase_audit import WikibaseAuditContext
@@ -142,6 +147,11 @@ async def upload_items_for_run(
     passes. ``should_cancel()`` is polled before each write for
     cooperative cancellation — a partial result with ``cancelled=True``
     is returned, never an exception.
+
+    Every emission also carries ``step_id`` / ``step_processed`` /
+    ``step_total`` so the job wrapper can render a per-step strip next
+    to the write-proportional overall counter (pass 1 = ``upload_items``
+    items, pass 2 = ``add_links`` links).
     """
     cache_row = (
         await db.execute(
@@ -396,6 +406,9 @@ async def _pass_one_create(
                 "wikibase_id": outcome.wikibase_id,
                 "message": outcome.message,
             },
+            step_id=STEP_UPLOAD_ITEMS,
+            step_processed=len(outcomes),
+            step_total=len(entities),
         )
 
     for entity in entities:
@@ -730,6 +743,9 @@ async def _pass_two_link(
                 await on_progress(
                     processed_offset + seen_links, total,
                     f"{seen_links}/{total_links} item links added",
+                    step_id=STEP_ADD_LINKS,
+                    step_processed=seen_links,
+                    step_total=total_links,
                 )
             target_source_uri = link.target_source_uri or local_id_to_source_uri.get(link.target_local_id)
             target_qid = known_qids.get(target_source_uri) if target_source_uri else None
