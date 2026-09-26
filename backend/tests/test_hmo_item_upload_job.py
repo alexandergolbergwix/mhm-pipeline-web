@@ -79,6 +79,11 @@ def _entities(n: int = 2) -> list[ResolvedWikibaseEntity]:
 
 
 async def _seed_cache(db_session, sample_run, entities) -> None:
+    from sqlalchemy import delete
+
+    await db_session.execute(
+        delete(HmoStudioItemCache).where(HmoStudioItemCache.run_id == sample_run["run_id"])
+    )
     db_session.add(
         HmoStudioItemCache(
             run_id=sample_run["run_id"],
@@ -246,6 +251,14 @@ async def test_job_updates_existing_items_when_requested(sample_run, db_session,
     job_id = await _seed(db_session, sample_run, _entities(3))
     await job_module.run_hmo_item_upload_job(job_id)
 
+    # Changed payload — fingerprints no longer match, so the update pass
+    # re-writes instead of dedup-skipping.
+    rebuilt = []
+    for e in _entities(3):
+        data = e.to_dict()
+        data["labels"] = {"en": f"Renamed {e.local_id}"}
+        rebuilt.append(ResolvedWikibaseEntity.from_dict(data))
+    await _seed_cache(db_session, sample_run, rebuilt)
     second_job_id = await _seed_job(db_session, sample_run, params={"update_existing": True})
     await job_module.run_hmo_item_upload_job(second_job_id)
 
@@ -255,6 +268,25 @@ async def test_job_updates_existing_items_when_requested(sample_run, db_session,
     assert job.result["updated"] == 3
     assert job.result["failed"] == 0
     assert all(o["status"] == "updated" for o in job.result["outcomes"])
+
+
+@pytest.mark.asyncio
+async def test_job_dedup_skips_unchanged_updates(sample_run, db_session, monkeypatch):
+    """'Update published entries' with unchanged content skips the wiki
+    writes entirely (payload fingerprint matches the recorded one)."""
+    monkeypatch.setattr(job_module, "build_server_wikibase_writer", lambda: _FakeWriter())
+    job_id = await _seed(db_session, sample_run, _entities(3))
+    await job_module.run_hmo_item_upload_job(job_id)
+
+    second_job_id = await _seed_job(db_session, sample_run, params={"update_existing": True})
+    await job_module.run_hmo_item_upload_job(second_job_id)
+
+    job = await db_session.get(RunJob, second_job_id)
+    assert job.status == JOB_STATUS_SUCCEEDED
+    assert job.result["created"] == 0
+    assert job.result["updated"] == 0
+    assert job.result["failed"] == 0
+    assert all(o["status"] == "skipped" for o in job.result["outcomes"])
 
 
 @pytest.mark.asyncio

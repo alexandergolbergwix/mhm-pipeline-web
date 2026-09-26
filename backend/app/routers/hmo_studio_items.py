@@ -1122,6 +1122,20 @@ async def push_hmo_item(
         if cache_row is not None else []
     )
     label_overrides = await compute_label_overrides(db, run_id, cache_entities)
+    from app.models.wikibase_entity_mapping import (  # noqa: PLC0415
+        ENTITY_KIND_INSTANCE as _EK_INSTANCE,
+        WikibaseEntityMapping as _WbEntityMapping,
+    )
+    known_qids = {
+        uri: qid for uri, qid in (
+            await db.execute(
+                select(_WbEntityMapping.ontology_uri, _WbEntityMapping.wikibase_id).where(
+                    _WbEntityMapping.entity_kind == _EK_INSTANCE,
+                    _WbEntityMapping.run_id.is_not(None),
+                )
+            )
+        )
+    }
 
     # Close out the read transaction (run lookup, item fetch, pid lookup)
     # before the slow live Wikibase Cloud / SPARQL call below — never hold
@@ -1144,6 +1158,8 @@ async def push_hmo_item(
         allow_shacl_errors=allow_shacl_errors,
         shacl_issues=item.get("shacl_issues"),
         label_overrides=label_overrides,
+        # recorded_fingerprints intentionally omitted: a single push always writes.
+        known_qids=known_qids,
     )
     return HmoItemPushResponse(
         local_id=outcome.local_id,

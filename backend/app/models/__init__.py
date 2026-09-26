@@ -30,6 +30,7 @@ from app.models.event import (
 from app.models.extraction_approval import ExtractionApproval
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.hmo_coverage_cache import HmoCoverageCache
+from app.models.hmo_item_write_fingerprint import HmoItemWriteFingerprint
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.hmo_studio_item_override import HmoStudioItemOverride
 from app.models.hmo_studio_item_row import HmoStudioItemRow
@@ -115,6 +116,7 @@ __all__ = [
     "EntitySnapshot",
     "HmoCanonicalEntity",
     "HmoCoverageCache",
+    "HmoItemWriteFingerprint",
     "HmoStudioItemCache",
     "HmoStudioItemOverride",
     "HmoStudioItemRow",

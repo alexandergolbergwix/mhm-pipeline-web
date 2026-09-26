@@ -21,16 +21,19 @@ Two-pass, create-or-update:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
+from app.models.hmo_item_write_fingerprint import HmoItemWriteFingerprint
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.run import AuthorityMatch
 from app.models.wikibase_cloud_write import (
@@ -191,6 +194,7 @@ async def upload_items_for_run(
     # so every call (full upload, scoped retry, single-item push) yields the
     # same labels and later updates never trip uniqueness again.
     label_overrides = await compute_label_overrides(db, run_id, all_entities, existing=existing)
+    recorded_fingerprints = await _load_write_fingerprints(db, run_id)
 
     deferred_for_progress = 0
     for e in all_entities:
@@ -209,6 +213,7 @@ async def upload_items_for_run(
     # that pattern would reintroduce.
     reconcile_pid = None if dry_run else await resolve_source_uri_pid(db)
 
+    known_qids_for_pass = {**existing}
     (
         outcomes, created_this_call, created, skipped, failed, blocked, updated, cancelled,
     ) = await _pass_one_create(
@@ -220,6 +225,8 @@ async def upload_items_for_run(
         on_progress=on_progress, should_cancel=should_cancel, total=total,
         reconcile_pid=reconcile_pid,
         label_overrides=label_overrides,
+        known_qids=known_qids_for_pass,
+        recorded_fingerprints=recorded_fingerprints,
     )
     known_qids = {**existing, **created_this_call}
 
@@ -395,6 +402,8 @@ async def _pass_one_create(
     total: int = 0,
     reconcile_pid: str | None = None,
     label_overrides: dict[str, dict[str, str]] | None = None,
+    known_qids: dict[str, str] | None = None,
+    recorded_fingerprints: dict[str, str] | None = None,
 ) -> tuple[list[HmoItemUploadOutcome], dict[str, str], int, int, int, int, int, bool]:
     outcomes: list[HmoItemUploadOutcome] = []
     created_this_call: dict[str, str] = {}
@@ -480,10 +489,14 @@ async def _pass_one_create(
                     allow_shacl_errors=allow_shacl_errors,
                     shacl_issues=shacl_index.get(entity.local_id),
                     label_overrides=label_overrides,
+                    known_qids=known_qids,
+                    recorded_fingerprints=recorded_fingerprints,
                 )
                 outcomes.append(outcome)
                 if outcome.status == "updated":
                     updated += 1
+                elif outcome.status == "skipped":
+                    skipped += 1
                 elif outcome.status == "failed":
                     failed += 1
                 elif outcome.status == "blocked":
@@ -507,6 +520,8 @@ async def _pass_one_create(
                 allow_shacl_errors=allow_shacl_errors,
                 shacl_issues=shacl_index.get(entity.local_id),
                 label_overrides=label_overrides,
+                known_qids=known_qids,
+                recorded_fingerprints=recorded_fingerprints,
             )
             outcomes.append(outcome)
             if outcome.status in ("created", "adopted"):
@@ -551,6 +566,8 @@ async def push_single_item(
     allow_shacl_errors: bool = False,
     shacl_issues: list[dict[str, Any]] | None = None,
     label_overrides: dict[str, dict[str, str]] | None = None,
+    known_qids: dict[str, str] | None = None,
+    recorded_fingerprints: dict[str, str] | None = None,
 ) -> HmoItemUploadOutcome:
     """Create-or-update exactly one item on the live Wikibase Cloud, now.
 
@@ -597,6 +614,22 @@ async def push_single_item(
                 entity.local_id, entity.source_uri, "skipped", existing_qid,
             )
 
+        # Write-dedup: when the live item already carries exactly this
+        # payload (labels, descriptions, claim triples), a re-write would
+        # be a byte-for-byte no-op — skip the wiki call. Trust is
+        # per-content: any drift (build change, curator edit, other-run
+        # rename) changes the hash and the item re-writes.
+        resolved_qids = known_qids if known_qids is not None else {}
+        fingerprint = _payload_fingerprint(entity, labels, descriptions, resolved_qids)
+        if (
+            recorded_fingerprints is not None
+            and recorded_fingerprints.get(entity.local_id) == fingerprint
+        ):
+            return HmoItemUploadOutcome(
+                entity.local_id, entity.source_uri, "skipped", existing_qid,
+                message="content matches the last write (fingerprint)",
+            )
+
         wbi_claims = _build_live_wbi_claims(entity)
         result = await _bounded_writer_call(
             writer.update_item,
@@ -637,6 +670,9 @@ async def push_single_item(
                 target_key=entity.source_uri,
                 wikibase_id=existing_qid,
             )
+        await _record_write_fingerprint(
+            db, run_id, entity.local_id, existing_qid, fingerprint,
+        )
         return HmoItemUploadOutcome(
             entity.local_id, entity.source_uri, "updated", existing_qid,
         )
@@ -717,6 +753,10 @@ async def push_single_item(
             target_key=entity.source_uri,
             wikibase_id=result.entity_id,
         )
+    await _record_write_fingerprint(
+        db, run_id, entity.local_id, result.entity_id,
+        _payload_fingerprint(entity, labels, descriptions, known_qids or {}),
+    )
     return HmoItemUploadOutcome(
         entity.local_id, entity.source_uri, "created", result.entity_id,
     )
@@ -1072,6 +1112,104 @@ def _build_wbi_claim(claim: ResolvedClaim) -> Any:
     raise ValueError(f"unsupported claim datatype: {claim.datatype!r}")
 
 
+def _payload_fingerprint(
+    entity: ResolvedWikibaseEntity,
+    labels: dict[str, str],
+    descriptions: dict[str, str],
+    known_qids: dict[str, str],
+) -> str:
+    """Content hash of exactly what an update write would set: payload
+    labels/descriptions plus the resolved claim triples (deferred items
+    resolved to their live QIDs, booleans in wire format). Two payloads
+    with equal fingerprints produce identical wiki state, so a live item
+    whose recorded fingerprint matches needs no write at all."""
+    payload: list[list[str]] = []
+    for claim in entity.claims:
+        prepared = (
+            _string_compatible_claim(claim)
+            if claim.datatype == "boolean"
+            else claim
+        )
+        prepared = _sanitize_url_claim(prepared)
+        if prepared is None:
+            continue
+        value = prepared.value
+        if isinstance(value, dict):
+            value = str(sorted(value.items()))
+        payload.append([
+            prepared.property_id,
+            prepared.datatype,
+            str(known_qids.get(str(value), value)),
+        ])
+    blob = json.dumps(
+        {
+            "labels": dict(sorted(labels.items())),
+            "descriptions": dict(sorted(descriptions.items())),
+            "claims": sorted(payload),
+        },
+        sort_keys=True, ensure_ascii=False,
+    )
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def _live_entity_matches_payload(
+    live: dict[str, Any],
+    labels: dict[str, str],
+    descriptions: dict[str, str],
+    claims: list[dict[str, str]],
+) -> bool:
+    """True when the live read-back already carries exactly this payload's
+    labels, descriptions, and claim triples — i.e. a re-write would be a
+    byte-for-byte no-op."""
+    live_labels = {
+        str(lang): str(entry.get("value") or "")
+        for lang, entry in (live.get("labels") or {}).items()
+    }
+    if live_labels != {k: v for k, v in labels.items()}:
+        return False
+    live_descriptions = {
+        str(lang): str(entry.get("value") or "")
+        for lang, entry in (live.get("descriptions") or {}).items()
+    }
+    if live_descriptions != {k: v for k, v in descriptions.items()}:
+        return False
+    live_triples: set[tuple[str, str, str]] = set()
+    for property_id, statements in (live.get("claims") or {}).items():
+        for statement in statements:
+            mainsnak = statement.get("mainsnak") or {}
+            datavalue = mainsnak.get("datavalue") or {}
+            value = datavalue.get("value")
+            if isinstance(value, dict):
+                if "id" in value:
+                    rendered = str(value["id"])
+                elif "time" in value:
+                    rendered = str(value["time"])
+                elif "text" in value:
+                    rendered = str(value["text"])
+                elif "amount" in value:
+                    amount = value["amount"]
+                    rendered = str(int(float(amount))) if float(amount).is_integer() else str(amount)
+                else:
+                    rendered = str(sorted(value.items()))
+                datatype = "monolingualtext" if "text" in value else None
+                if datatype is None and "language" in value:
+                    datatype = "monolingualtext"
+            else:
+                rendered = str(value)
+                datatype = mainsnak.get("datatype")
+            if datatype is None:
+                datatype = {
+                    "string": "string", "url": "url",
+                    "external-id": "external-id", "quantity": "quantity",
+                    "time": "time", "monolingualtext": "monolingualtext",
+                }.get(str(mainsnak.get("datatype") or ""), str(mainsnak.get("datatype") or ""))
+            live_triples.add((str(property_id), str(datatype), rendered))
+    expected = {
+        (c["property_id"], c["datatype"], c["value"]) for c in claims
+    }
+    return live_triples == expected
+
+
 async def _load_foreign_mapped_entities(
     db: AsyncSession,
     run_id: uuid.UUID,
@@ -1121,6 +1259,51 @@ async def compute_label_overrides(
         for foreign in await _load_foreign_mapped_entities(db, run_id, foreign_uris):
             pre_claimed |= compute_payload_label_keys(foreign)
     return compute_disambiguated_labels(entities, pre_claimed=pre_claimed)
+
+
+async def _load_write_fingerprints(
+    db: AsyncSession, run_id: uuid.UUID,
+) -> dict[str, str]:
+    """local_id -> payload fingerprint recorded after the last successful
+    write. Lets an 'Update published entries' pass skip items whose live
+    content already equals the payload (a re-write would be a no-op)."""
+    rows = (
+        await db.execute(
+            select(HmoItemWriteFingerprint).where(
+                HmoItemWriteFingerprint.run_id == run_id,
+            )
+        )
+    ).scalars().all()
+    return {row.local_id: row.payload_fingerprint for row in rows}
+
+
+async def _record_write_fingerprint(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    local_id: str,
+    wikibase_id: str | None,
+    payload_fingerprint: str,
+) -> None:
+    row = (
+        await db.execute(
+            select(HmoItemWriteFingerprint).where(
+                HmoItemWriteFingerprint.run_id == run_id,
+                HmoItemWriteFingerprint.local_id == local_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        db.add(HmoItemWriteFingerprint(
+            run_id=run_id,
+            local_id=local_id,
+            wikibase_id=wikibase_id,
+            payload_fingerprint=payload_fingerprint,
+        ))
+    else:
+        row.wikibase_id = wikibase_id
+        row.payload_fingerprint = payload_fingerprint
+        row.written_at = func.now()
+    await db.commit()
 
 
 async def _load_run_instance_mappings(

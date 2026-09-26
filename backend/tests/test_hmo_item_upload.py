@@ -107,6 +107,19 @@ async def _seed_cache(
     await db_session.commit()
 
 
+async def _replace_cache(
+    db_session,
+    run_id,
+    entities: list[ResolvedWikibaseEntity],
+) -> None:
+    """Overwrite the run's cached build in place (a run has one cache row)."""
+    from sqlalchemy import delete
+
+    await db_session.execute(delete(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id))
+    await db_session.commit()
+    await _seed_cache(db_session, run_id, entities)
+
+
 def _ms_and_person() -> list[ResolvedWikibaseEntity]:
     person = ResolvedWikibaseEntity(
         local_id="QDraft_Person1",
@@ -438,6 +451,28 @@ async def test_update_existing_refreshes_already_uploaded_items(db_session) -> N
     first_writer = _FakeWriter()
     await pipeline.upload_items_for_run(db_session, run_id, writer=first_writer, dry_run=False)
 
+    # Changed payload — the recorded fingerprint no longer matches, so the
+    # update pass must re-write instead of dedup-skipping.
+    rebuilt = [
+        ResolvedWikibaseEntity(
+            local_id="QDraft_MS1",
+            labels={"en": "Renamed MS"},
+            descriptions={"en": "a manuscript"},
+            class_qid="Q1",
+            source_uri="http://example.org#MS1",
+            claims=[ResolvedClaim("P1", "time", {"time": "+1500-00-00T00:00:00Z", "precision": 9})],
+            deferred_links=[DeferredItemLink("QDraft_MS1", "P2", "QDraft_Person1")],
+        ),
+        ResolvedWikibaseEntity(
+            local_id="QDraft_Person1",
+            labels={"en": "Renamed Scribe"},
+            descriptions={"en": "a scribe"},
+            class_qid="Q2",
+            source_uri="http://example.org#Person1",
+        ),
+    ]
+    await _replace_cache(db_session, run_id, rebuilt)
+
     second_writer = _FakeWriter()
     result = await pipeline.upload_items_for_run(
         db_session, run_id, writer=second_writer, dry_run=False, update_existing=True,
@@ -458,8 +493,19 @@ async def test_update_existing_refreshes_already_uploaded_items(db_session) -> N
 async def test_update_existing_reports_failed_writes(db_session) -> None:
     run_id = uuid.uuid4()
     await _seed_cache(db_session, run_id, _ms_and_person())
+    # Different labels per pass so the second pass's payload fingerprint
+    # differs from the recorded one — the write-dedup must not mask a
+    # genuinely failing write.
     first_writer = _FakeWriter()
     await pipeline.upload_items_for_run(db_session, run_id, writer=first_writer, dry_run=False)
+    shifted = _ms_and_person()
+    shifted[0] = ResolvedWikibaseEntity(
+        **{**shifted[0].__dict__, "labels": {"en": "Renamed MS"}},
+    )
+    shifted[1] = ResolvedWikibaseEntity(
+        **{**shifted[1].__dict__, "labels": {"en": "Renamed Scribe"}},
+    )
+    await _replace_cache(db_session, run_id, shifted)
 
     failing_writer = _FakeWriter(fail_updates=True)
     result = await pipeline.upload_items_for_run(
@@ -469,6 +515,26 @@ async def test_update_existing_reports_failed_writes(db_session) -> None:
     assert result.updated == 0
     assert result.failed == 2
     assert all(o.status == "failed" for o in result.outcomes)
+
+
+@pytest.mark.asyncio
+async def test_update_existing_skips_items_whose_content_matches_last_write(db_session) -> None:
+    """Write-dedup: an 'Update published entries' pass must not re-write
+    items whose live content already equals the payload (fingerprint)."""
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    first_writer = _FakeWriter()
+    await pipeline.upload_items_for_run(db_session, run_id, writer=first_writer, dry_run=False)
+    assert len(first_writer.update_calls) == 0  # everything was a create
+
+    second_writer = _FakeWriter()
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=second_writer, dry_run=False, update_existing=True,
+    )
+
+    assert result.skipped == 2
+    assert result.updated == 0
+    assert len(second_writer.update_calls) == 0  # no wiki calls at all
 
 
 @pytest.mark.asyncio
