@@ -18,6 +18,10 @@ from sqlalchemy import select
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.run import AuthorityMatch
+from app.models.wikibase_entity_mapping import (
+    ENTITY_KIND_INSTANCE,
+    WikibaseEntityMapping,
+)
 from app.models.wikibase_cloud_write import (
     CHANNEL_ITEM_UPLOAD,
     OPERATION_ADOPT,
@@ -204,6 +208,55 @@ async def test_live_upload_disambiguates_duplicate_labels(db_session) -> None:
     sent_labels = [c["labels"] for c in writer.create_calls]
     assert {"en": "Mishnah"} in sent_labels
     assert {"en": "Mishnah — CN_B"} in sent_labels
+
+
+@pytest.mark.asyncio
+async def test_live_upload_disambiguates_against_foreign_run_labels(db_session) -> None:
+    """The wiki label space is global: an item mapped by ANOTHER run blocks
+    this corpus's colliding item even though it is the sorted-first here."""
+    other_run = uuid.uuid4()
+    foreign = ResolvedWikibaseEntity(
+        local_id="QDraft_Good",
+        labels={"en": "Good condition"},
+        descriptions={"en": "state of preservation"},
+        class_qid="Q9",
+        source_uri="http://example.org#Good_condition",
+        control_numbers=["CN_F"],
+    )
+    db_session.add(
+        HmoStudioItemCache(
+            run_id=other_run,
+            input_fingerprint="1" * 64,
+            resolved_entities=[foreign.to_dict()],
+            entity_count=1,
+            deferred_link_count=0,
+            skipped_statement_count=0,
+        )
+    )
+    db_session.add(WikibaseEntityMapping(
+        ontology_uri="http://example.org#Good_condition",
+        entity_kind=ENTITY_KIND_INSTANCE,
+        wikibase_id="Q3080",
+        run_id=other_run,
+        label="Good condition",
+    ))
+    run_id = uuid.uuid4()
+    newcomer = ResolvedWikibaseEntity(
+        local_id="QDraft_A_Good",
+        labels={"en": "Good condition"},
+        descriptions={"en": "state of preservation"},
+        class_qid="Q9",
+        source_uri="http://example.org#Good",
+        control_numbers=["CN_A"],
+    )
+    await _seed_cache(db_session, run_id, [newcomer])
+    writer = _FakeWriter()
+
+    result = await pipeline.upload_items_for_run(db_session, run_id, writer=writer, dry_run=False)
+
+    assert result.created == 1
+    assert result.failed == 0
+    assert writer.create_calls[0]["labels"] == {"en": "Good condition — CN_A"}
 
 
 @pytest.mark.asyncio

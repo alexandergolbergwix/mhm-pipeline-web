@@ -96,7 +96,27 @@ def _normalize_lang_code(lang: str) -> str:
     return "en" if code in _WIKIBASE_UNSUPPORTED_LANGS else code
 
 
-def compute_disambiguated_labels(entities: Iterable[Any]) -> dict[str, dict[str, str]]:
+def compute_payload_label_keys(entity: Any) -> set[tuple[str, str, str]]:
+    """The ``(language, label, description)`` keys one entity claims on the
+    wiki — final payload shape (sanitized languages, label-identical
+    descriptions dropped). Shared by the disambiguation pass and its
+    pre-claimed seed so every caller builds keys the same way."""
+    labels = sanitize_wikibase_labels(dict(entity.labels))
+    descriptions, _dropped = drop_descriptions_equal_to_labels(
+        labels,
+        sanitize_wikibase_descriptions(dict(entity.descriptions)),
+    )
+    keys: set[tuple[str, str, str]] = set()
+    for lang, text in labels.items():
+        code = _normalize_lang_code(lang)
+        keys.add((code, text.strip(), str(descriptions.get(code) or "").strip()))
+    return keys
+
+
+def compute_disambiguated_labels(
+    entities: Iterable[Any],
+    pre_claimed: set[tuple[str, str, str]] | None = None,
+) -> dict[str, dict[str, str]]:
     """Wikibase Cloud enforces unique ``(label, description)`` pairs per
     language. The build yields structural nodes (CanonRef / TextTradition /
     Expression / Work) that share a pair with another item of the same
@@ -109,12 +129,16 @@ def compute_disambiguated_labels(entities: Iterable[Any]) -> dict[str, dict[str,
     ``(language, label, description)`` key: the colliding language's label
     gains `` — <first control number>`` (falling back to the local_id).
 
+    ``pre_claimed`` seeds keys already held on the wiki by items OUTSIDE
+    this cache (other runs' mapped instances — the label space is global
+    across runs); colliding newcomers are suffixed even as sorted-first.
+
     Purely content-based — the same build cache always yields the same
     labels, so later ``update_item`` pushes stay consistent instead of
-    tripping uniqueness again. Mapped items may be renamed once if they are
-    not their group's first claimant; claims and source URIs never change.
+    tripping uniqueness again. A mapped item may be renamed once if it is
+    not its group's first claimant — claims and source URIs never change.
     """
-    claimed: set[tuple[str, str, str]] = set()
+    claimed: set[tuple[str, str, str]] = set(pre_claimed or set())
     overrides: dict[str, dict[str, str]] = {}
     for entity in sorted(entities, key=lambda e: str(e.local_id)):
         labels = sanitize_wikibase_labels(dict(entity.labels))

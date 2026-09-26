@@ -51,6 +51,7 @@ from app.pipeline.hmo_item_reconcile import (
 from app.pipeline.hmo_item_shacl_gate import (
     blocking_shacl_issues,
     compute_disambiguated_labels,
+    compute_payload_label_keys,
     drop_descriptions_equal_to_labels,
     format_shacl_block_message,
     sanitize_wikibase_descriptions,
@@ -189,7 +190,7 @@ async def upload_items_for_run(
     # Deterministic (label, description) disambiguation — purely content-based
     # so every call (full upload, scoped retry, single-item push) yields the
     # same labels and later updates never trip uniqueness again.
-    label_overrides = compute_disambiguated_labels(all_entities)
+    label_overrides = await compute_label_overrides(db, run_id, all_entities, existing=existing)
 
     deferred_for_progress = 0
     for e in all_entities:
@@ -1071,8 +1072,62 @@ def _build_wbi_claim(claim: ResolvedClaim) -> Any:
     raise ValueError(f"unsupported claim datatype: {claim.datatype!r}")
 
 
+async def _load_foreign_mapped_entities(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    foreign_uris: set[str],
+) -> list[ResolvedWikibaseEntity]:
+    """The resolved entities of OTHER runs' caches whose source URIs are
+    already mapped (uploaded) — the wiki label space is global across runs,
+    so their (label, description) keys must be pre-claimed before this
+    corpus's items try to claim them."""
+    if not foreign_uris:
+        return []
+    foreign: list[ResolvedWikibaseEntity] = []
+    rows = (
+        await db.execute(
+            select(HmoStudioItemCache).where(HmoStudioItemCache.run_id != run_id)
+        )
+    ).scalars().all()
+    for row in rows:
+        for raw in row.resolved_entities or []:
+            if raw.get("source_uri") in foreign_uris:
+                foreign.append(ResolvedWikibaseEntity.from_dict(raw))
+    return foreign
+
+
+async def compute_label_overrides(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    entities: list[ResolvedWikibaseEntity],
+    *,
+    existing: dict[str, str] | None = None,
+) -> dict[str, dict[str, str]]:
+    """Disambiguated payload labels for this corpus's items.
+
+    ``existing`` (optional) are the already-loaded global instance mappings
+    (source_uri -> QID); anything mapped that is NOT part of this cache
+    belongs to another run and pre-claims its (label, description) keys so
+    this corpus's colliding items are suffixed deterministically instead of
+    failing creation forever (run 3494ebf5's last item collided with the
+    other run's Q3080).
+    """
+    if existing is None:
+        existing = await _load_run_instance_mappings(db, run_id, include_global=True)
+    own_uris = {e.source_uri for e in entities}
+    foreign_uris = {uri for uri in existing if uri not in own_uris}
+    pre_claimed: set[tuple[str, str, str]] = set()
+    if foreign_uris:
+        for foreign in await _load_foreign_mapped_entities(db, run_id, foreign_uris):
+            pre_claimed |= compute_payload_label_keys(foreign)
+    return compute_disambiguated_labels(entities, pre_claimed=pre_claimed)
+
+
 async def _load_run_instance_mappings(
-    db: AsyncSession, run_id: uuid.UUID, *, include_global: bool = False,
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    *,
+    include_global: bool = False,
 ) -> dict[str, str]:
     """source_uri -> live Wikibase id for this run's already-uploaded instances."""
     rows = (

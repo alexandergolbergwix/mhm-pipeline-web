@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.pipeline.hmo_item_shacl_gate import (
     blocking_shacl_issues,
     compute_disambiguated_labels,
+    compute_payload_label_keys,
     drop_descriptions_equal_to_labels,
     format_shacl_block_message,
     sanitize_wikibase_labels,
@@ -95,3 +96,15 @@ def test_disambiguation_guards_against_cn_collisions() -> None:
     overrides = compute_disambiguated_labels([a, b, c])
     assert overrides["QDraft_B"] == {"en": "Mishnah — SAME_CN"}
     assert overrides["QDraft_C"] == {"en": "Mishnah — SAME_CN (2)"}
+
+
+def test_disambiguation_pre_claimed_keys_suffix_even_the_first() -> None:
+    """The wiki label space is global across runs: a key held by another
+    run's mapped item blocks every newcomer, even the sorted-first."""
+    foreign = _Entity("QDraft_Good", {"en": "Good condition"}, {"en": "state"}, ["CN_F"])
+    newcomer = _Entity("QDraft_Good_2", {"en": "Good condition"}, {"en": "state"}, ["CN_N"])
+    pre_claimed = compute_payload_label_keys(foreign)
+
+    overrides = compute_disambiguated_labels([newcomer], pre_claimed=pre_claimed)
+
+    assert overrides == {"QDraft_Good_2": {"en": "Good condition — CN_N"}}

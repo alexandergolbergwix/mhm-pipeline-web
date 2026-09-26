@@ -122,7 +122,12 @@ a pair with another corpus item failed creation identically on every retry
 and purely content-based: per ``(language, label, description)`` key the
 sorted-first item keeps the clean label and every later claimant gains
 `` — <first control number>`` (local_id fallback, numbered guard on
-residual collisions). The same cache always yields the same labels, so
+residual collisions). The wiki label space is **global across runs**:
+`compute_label_overrides` (`hmo_item_upload.py`) pre-claims the
+label keys of other runs' mapped instances (loaded from their caches via
+`_load_foreign_mapped_entities`) so a newcomer colliding with e.g. another
+run's Q3080 is suffixed instead of failing forever. The same cache always
+yields the same labels, so
 updates stay consistent and no rebuild is needed; a mapped item may be
 renamed once if it is not its group's first claimant — claims and source
 URIs never change.
