@@ -50,6 +50,7 @@ from app.pipeline.hmo_item_reconcile import (
 )
 from app.pipeline.hmo_item_shacl_gate import (
     blocking_shacl_issues,
+    compute_disambiguated_labels,
     drop_descriptions_equal_to_labels,
     format_shacl_block_message,
     sanitize_wikibase_descriptions,
@@ -185,6 +186,11 @@ async def upload_items_for_run(
     existing = await _load_run_instance_mappings(db, run_id, include_global=True)
     local_id_to_source_uri = {e.local_id: e.source_uri for e in all_entities}
 
+    # Deterministic (label, description) disambiguation — purely content-based
+    # so every call (full upload, scoped retry, single-item push) yields the
+    # same labels and later updates never trip uniqueness again.
+    label_overrides = compute_disambiguated_labels(all_entities)
+
     deferred_for_progress = 0
     for e in all_entities:
         for link in e.deferred_links:
@@ -212,6 +218,7 @@ async def upload_items_for_run(
         audit_ctx=audit_ctx,
         on_progress=on_progress, should_cancel=should_cancel, total=total,
         reconcile_pid=reconcile_pid,
+        label_overrides=label_overrides,
     )
     known_qids = {**existing, **created_this_call}
 
@@ -386,6 +393,7 @@ async def _pass_one_create(
     should_cancel: Callable[[], Awaitable[bool]] | None = None,
     total: int = 0,
     reconcile_pid: str | None = None,
+    label_overrides: dict[str, dict[str, str]] | None = None,
 ) -> tuple[list[HmoItemUploadOutcome], dict[str, str], int, int, int, int, int, bool]:
     outcomes: list[HmoItemUploadOutcome] = []
     created_this_call: dict[str, str] = {}
@@ -470,6 +478,7 @@ async def _pass_one_create(
                     existing_qid=existing_qid,
                     allow_shacl_errors=allow_shacl_errors,
                     shacl_issues=shacl_index.get(entity.local_id),
+                    label_overrides=label_overrides,
                 )
                 outcomes.append(outcome)
                 if outcome.status == "updated":
@@ -496,6 +505,7 @@ async def _pass_one_create(
                 existing_qid=None,
                 allow_shacl_errors=allow_shacl_errors,
                 shacl_issues=shacl_index.get(entity.local_id),
+                label_overrides=label_overrides,
             )
             outcomes.append(outcome)
             if outcome.status in ("created", "adopted"):
@@ -515,8 +525,13 @@ async def _pass_one_create(
 
 def _prepare_entity_payload(
     entity: ResolvedWikibaseEntity,
+    label_overrides: dict[str, dict[str, str]] | None = None,
 ) -> tuple[dict[str, str], dict[str, str]]:
     labels = sanitize_wikibase_labels(dict(entity.labels))
+    if label_overrides and entity.local_id in label_overrides:
+        labels = sanitize_wikibase_labels({
+            **labels, **label_overrides[entity.local_id],
+        })
     descriptions = sanitize_wikibase_descriptions(dict(entity.descriptions))
     descriptions, _dropped = drop_descriptions_equal_to_labels(labels, descriptions)
     return labels, descriptions
@@ -534,6 +549,7 @@ async def push_single_item(
     existing_qid: str | None,
     allow_shacl_errors: bool = False,
     shacl_issues: list[dict[str, Any]] | None = None,
+    label_overrides: dict[str, dict[str, str]] | None = None,
 ) -> HmoItemUploadOutcome:
     """Create-or-update exactly one item on the live Wikibase Cloud, now.
 
@@ -564,7 +580,7 @@ async def push_single_item(
             existing_qid, message=block_message,
         )
 
-    labels, descriptions = _prepare_entity_payload(entity)
+    labels, descriptions = _prepare_entity_payload(entity, label_overrides)
 
     if existing_qid is not None:
         if not update_existing:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 BLOCKING_SEVERITIES = frozenset({"Violation", "Error"})
@@ -67,7 +68,8 @@ def sanitize_wikibase_descriptions(descriptions: dict[str, str]) -> dict[str, st
 
 
 def drop_descriptions_equal_to_labels(
-    labels: dict[str, str], descriptions: dict[str, str],
+    labels: dict[str, str],
+    descriptions: dict[str, str],
 ) -> tuple[dict[str, str], int]:
     """Wikibase Cloud rejects a write whose label equals its description in
     the same language (``modification-failed: Label and description for
@@ -87,3 +89,58 @@ def drop_descriptions_equal_to_labels(
             continue
         out[lang] = value
     return out, dropped
+
+
+def _normalize_lang_code(lang: str) -> str:
+    code = str(lang or "").strip().lower()
+    return "en" if code in _WIKIBASE_UNSUPPORTED_LANGS else code
+
+
+def compute_disambiguated_labels(entities: Iterable[Any]) -> dict[str, dict[str, str]]:
+    """Wikibase Cloud enforces unique ``(label, description)`` pairs per
+    language. The build yields structural nodes (CanonRef / TextTradition /
+    Expression / Work) that share a pair with another item of the same
+    corpus — the second create fails with ``modification-failed: … already
+    has label …`` and retries identically forever (871 such items on run
+    3494ebf5).
+
+    Returns, per local_id, disambiguated payload labels for every item that
+    is not the first claimant (sorted by local_id) of its
+    ``(language, label, description)`` key: the colliding language's label
+    gains `` — <first control number>`` (falling back to the local_id).
+
+    Purely content-based — the same build cache always yields the same
+    labels, so later ``update_item`` pushes stay consistent instead of
+    tripping uniqueness again. Mapped items may be renamed once if they are
+    not their group's first claimant; claims and source URIs never change.
+    """
+    claimed: set[tuple[str, str, str]] = set()
+    overrides: dict[str, dict[str, str]] = {}
+    for entity in sorted(entities, key=lambda e: str(e.local_id)):
+        labels = sanitize_wikibase_labels(dict(entity.labels))
+        descriptions, _dropped = drop_descriptions_equal_to_labels(
+            labels,
+            sanitize_wikibase_descriptions(dict(entity.descriptions)),
+        )
+        new_labels = dict(labels)
+        changed = False
+        for lang, text in labels.items():
+            code = _normalize_lang_code(lang)
+            desc = str(descriptions.get(code) or "").strip()
+            key = (code, text.strip(), desc)
+            if key in claimed:
+                cn = next(iter(getattr(entity, "control_numbers", None) or []), "")
+                base = f"{text} — {str(cn).strip() or entity.local_id}"
+                candidate = base
+                n = 2
+                while (code, candidate.strip(), desc) in claimed:
+                    candidate = f"{base} ({n})"
+                    n += 1
+                new_labels[lang] = candidate
+                changed = True
+                claimed.add((code, candidate.strip(), desc))
+            else:
+                claimed.add(key)
+        if changed:
+            overrides[str(entity.local_id)] = new_labels
+    return overrides

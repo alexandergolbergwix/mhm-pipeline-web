@@ -41,6 +41,7 @@
   `test_unsupported_boolean_claims_are_serialized_before_live_write`,
   `test_url_claims_strip_marc_quote_wrappers_before_wbi` (W-111),
   `test_live_upload_drops_description_identical_to_label`,
+  `test_live_upload_disambiguates_duplicate_labels`,
   `test_live_upload_resolves_reconcile_pid_once_not_per_entity`,
   plus `frontend/tests/unit/hmoItemsRetryScope.spec.tsx` (corpus-wide retry
   scope) and `hmoFilteredPublish.spec.tsx` (filter-scoped publish button),

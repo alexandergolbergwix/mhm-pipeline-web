@@ -114,6 +114,18 @@ language (``modification-failed``); `drop_descriptions_equal_to_labels`
 (`hmo_item_shacl_gate.py`) repairs the payload at upload time by dropping the
 duplicated description (the builder falls back to the label when no real
 description exists), so the write becomes valid instead of failing the item.
+Wikibase also enforces unique ``(label, description)`` per language across the
+wiki: structural nodes (CanonRef / TextTradition / Expression / Work) sharing
+a pair with another corpus item failed creation identically on every retry
+(871 items on run 3494ebf5). `compute_disambiguated_labels`
+(`hmo_item_shacl_gate.py`) resolves this at payload time, deterministically
+and purely content-based: per ``(language, label, description)`` key the
+sorted-first item keeps the clean label and every later claimant gains
+`` — <first control number>`` (local_id fallback, numbered guard on
+residual collisions). The same cache always yields the same labels, so
+updates stay consistent and no rebuild is needed; a mapped item may be
+renamed once if it is not its group's first claimant — claims and source
+URIs never change.
 Pass 1: for each entity — already mapped → skip (or `update_item` merge when
 `update_existing=True`); unmapped → SPARQL reconcile by `hmo_source_uri`; a hit
 is **adopted** (mapping row recorded, no create); a miss → `create_item`. Every

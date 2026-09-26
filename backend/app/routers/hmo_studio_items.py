@@ -1105,6 +1105,25 @@ async def push_hmo_item(
     existing_qid = item.get("wikibase_id")
     reconcile_pid = None if existing_qid else await resolve_source_uri_pid(db)
 
+    # Same content-based label disambiguation as the bulk upload, so a
+    # single-item push cannot trip the (label, description) uniqueness the
+    # bulk path just repaired. Read before the transaction close below.
+    from app.models.hmo_studio_item_cache import HmoStudioItemCache  # noqa: PLC0415
+    from app.pipeline.hmo_item_shacl_gate import (  # noqa: PLC0415
+        compute_disambiguated_labels,
+    )
+
+    cache_row = (
+        await db.execute(
+            select(HmoStudioItemCache).where(HmoStudioItemCache.run_id == run_id)
+        )
+    ).scalar_one_or_none()
+    label_overrides = None
+    if cache_row is not None:
+        label_overrides = compute_disambiguated_labels(
+            [ResolvedWikibaseEntity.from_dict(e) for e in cache_row.resolved_entities or []]
+        )
+
     # Close out the read transaction (run lookup, item fetch, pid lookup)
     # before the slow live Wikibase Cloud / SPARQL call below — never hold
     # a DB transaction open across external I/O (Rule G5 / W-40).
@@ -1125,6 +1144,7 @@ async def push_hmo_item(
         existing_qid=existing_qid,
         allow_shacl_errors=allow_shacl_errors,
         shacl_issues=item.get("shacl_issues"),
+        label_overrides=label_overrides,
     )
     return HmoItemPushResponse(
         local_id=outcome.local_id,

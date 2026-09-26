@@ -173,6 +173,40 @@ async def test_live_upload_drops_description_identical_to_label(db_session) -> N
 
 
 @pytest.mark.asyncio
+async def test_live_upload_disambiguates_duplicate_labels(db_session) -> None:
+    """Wikibase Cloud enforces unique (label, description) per language; two
+    corpus items sharing a pair fail creation identically forever. The
+    upload must suffix the second claimant deterministically instead."""
+    run_id = uuid.uuid4()
+    first = ResolvedWikibaseEntity(
+        local_id="QDraft_A_Tradition",
+        labels={"en": "Mishnah"},
+        descriptions={"en": "tractate beraḵot"},
+        class_qid="Q3",
+        source_uri="http://example.org#TraditionA",
+        control_numbers=["CN_A"],
+    )
+    second = ResolvedWikibaseEntity(
+        local_id="QDraft_B_CanonRef",
+        labels={"en": "Mishnah"},
+        descriptions={"en": "tractate beraḵot"},
+        class_qid="Q3",
+        source_uri="http://example.org#CanonRefB",
+        control_numbers=["CN_B"],
+    )
+    await _seed_cache(db_session, run_id, [second, first])
+    writer = _FakeWriter()
+
+    result = await pipeline.upload_items_for_run(db_session, run_id, writer=writer, dry_run=False)
+
+    assert result.created == 2
+    assert result.failed == 0
+    sent_labels = [c["labels"] for c in writer.create_calls]
+    assert {"en": "Mishnah"} in sent_labels
+    assert {"en": "Mishnah — CN_B"} in sent_labels
+
+
+@pytest.mark.asyncio
 async def test_live_upload_creates_items_then_links_them(db_session) -> None:
     run_id = uuid.uuid4()
     await _seed_cache(db_session, run_id, _ms_and_person())
