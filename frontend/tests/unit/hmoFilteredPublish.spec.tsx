@@ -98,4 +98,18 @@ describe("<ItemUploadPanel> filtered publish", () => {
       expect(screen.queryByTestId("hmo-upload-filtered-submit")).toBeNull();
     });
   });
+
+  it("omits the filtered button when the scope exceeds the scoped-endpoint cap", async () => {
+    render(
+      <ItemUploadPanel
+        runId="run-1"
+        wikibaseConfigured
+        filteredScopeIds={Array.from({length: 5001}, (_, i) => `ID_${i}`)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("hmo-upload-filtered-submit")).toBeNull();
+    });
+  });
 });

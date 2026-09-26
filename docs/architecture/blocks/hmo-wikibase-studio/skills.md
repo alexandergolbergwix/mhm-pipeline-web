@@ -62,7 +62,9 @@
    pass 2 writes deferred links that touch those ids. With an active table
    filter the upload bar also offers **Publish filtered (N)** — it pushes
    exactly the filtered rows (e.g. a Publication-failed view) instead of the
-   whole corpus; the full-corpus button remains the only path that persists
+   whole corpus; the button hides when the scope exceeds the scoped
+   endpoint's 5000-id cap (near-corpus scopes only fit the full publish),
+   and the full-corpus button remains the only path that persists
    canonical state.
    pass 2 writes deferred links that touch those ids.
 

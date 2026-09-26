@@ -46,6 +46,9 @@ interface ItemUploadPanelProps {
   onUploadOutcomes?: (outcomes: StudioUploadProgressOutcome[]) => void;
 }
 
+/** Mirrors backend `MAX_BULK_APPROVE_IDS` — the scoped upload's local_ids cap. */
+const MAX_FILTERED_PUBLISH_IDS = 5000;
+
 function verdictOverall(ev: AgentEvent): string {
   const v = (ev.verdict ?? {}) as Record<string, unknown>;
   return String(v.overall ?? "not verified").toLowerCase();
@@ -287,7 +290,13 @@ const startPreVerify = useCallback(async (scope?: string[]) => {
   const canUpload = !!status?.build_present;
   // Table-filter scope: "Publish filtered (N)" pushes exactly the filtered
   // rows instead of the whole corpus (e.g. Publication-failed repairs).
-  const filteredScope = filteredScopeIds && filteredScopeIds.length > 0 ? filteredScopeIds : null;
+  // The scoped endpoint caps local_ids (bulk-approve cap); beyond it the
+  // scope is near-corpus anyway — only the full publish fits.
+  const filteredScope =
+    filteredScopeIds && filteredScopeIds.length > 0
+    && filteredScopeIds.length <= MAX_FILTERED_PUBLISH_IDS
+      ? filteredScopeIds
+      : null;
 
   const controls = (
     <>
