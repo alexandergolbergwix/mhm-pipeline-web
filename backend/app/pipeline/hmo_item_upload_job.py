@@ -83,6 +83,7 @@ def serialise_upload_result(result: pipeline.HmoItemUploadResult) -> dict:
         "blocked": result.blocked,
         "linked": result.linked,
         "unresolved_links": result.unresolved_links,
+        "unresolvable_links": result.unresolvable_links,
         "outcomes": [o.__dict__ for o in result.outcomes],
         "link_outcomes": [o.__dict__ for o in result.link_outcomes],
     }

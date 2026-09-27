@@ -6,6 +6,7 @@ import json
 import hashlib
 from collections import defaultdict
 from dataclasses import dataclass, replace
+from functools import lru_cache
 import re
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,7 @@ EXPORTER_VERSION = "2"
 _ONTOLOGY_TTL = Path(__file__).resolve().parents[2] / "ontology" / "hebrew-manuscripts.ttl"
 
 
+@lru_cache(maxsize=4)
 def _ontology_individual_index(
     ontology_path: Path | None = None,
 ) -> dict[str, OntologyIndividual]:

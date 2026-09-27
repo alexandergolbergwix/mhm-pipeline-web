@@ -583,6 +583,17 @@ function UploadResultSummary({
               <span className="text-warn">unresolved links {result.unresolved_links}</span>
             </>
           )}
+          {result.unresolvable_links > 0 && (
+            <>
+              {" · "}
+              <span
+                className="text-warn"
+                title="Targets that are not part of this build corpus (no draft, no mapping, not ontology-declared). They cannot be written until the build changes and do not block the canonical read-back."
+              >
+                unresolvable links {result.unresolvable_links}
+              </span>
+            </>
+          )}
           {result.failed > 0 && (
             <>
               {" · "}

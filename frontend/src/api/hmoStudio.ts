@@ -149,6 +149,7 @@ export interface HmoItemUploadResult {
   blocked: number;
   linked: number;
   unresolved_links: number;
+  unresolvable_links: number;
   outcomes: HmoItemUploadOutcome[];
   link_outcomes: HmoDeferredLinkOutcome[];
 }
@@ -227,6 +228,7 @@ export function itemUploadResultFromJob(job: RunJobSnapshot): HmoItemUploadResul
     blocked: Number((raw as {blocked?: unknown}).blocked ?? 0),
     linked: Number((raw as {linked?: unknown}).linked ?? 0),
     unresolved_links: Number((raw as {unresolved_links?: unknown}).unresolved_links ?? 0),
+    unresolvable_links: Number((raw as {unresolvable_links?: unknown}).unresolvable_links ?? 0),
     outcomes: outcomes as HmoItemUploadOutcome[],
     link_outcomes: Array.isArray(links) ? (links as HmoDeferredLinkOutcome[]) : [],
   };

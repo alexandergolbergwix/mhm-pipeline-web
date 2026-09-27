@@ -820,6 +820,17 @@ Invariant:
 4. Same-build label/pair uniqueness is deterministic (write-dedup +
    disambiguation are content-based), so the auto-drafted items upload once
    and every later update pass skips them by fingerprint.
+5. Upload-time companion (no rebuild required): `upload_items_for_run`
+   synthesizes the same minimal entities for deferred links whose target URI
+   is ontology-declared but has neither a draft nor a mapping
+   (`_synthesize_missing_vocab_entities`) — the vocab items join pass 1
+   directly from the ontology index. Targets with no draft, no mapping, and
+   no ontology declaration (e.g. truncated person URIs) are a distinct
+   outcome status `unresolvable` — reported in `unresolvable_links` and per
+   outcome, never blocking the canonical gate: they cannot exist until the
+   build changes, which is a corpus property, not an upload failure. An
+   in-batch local_id reference whose target failed to create stays
+   `unresolved` (retryable, gate-blocking).
 
 Tests: `backend/tests/unit/test_hmo_exporter_resolution.py`
 (`test_resolve_auto_drafts_ontology_declared_individuals`,

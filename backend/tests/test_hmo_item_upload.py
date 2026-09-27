@@ -31,6 +31,7 @@ from app.models.wikibase_cloud_write import (
 from app.pipeline import hmo_item_upload as pipeline
 from app.pipeline.hmo_item_reconcile import ReconcileOutcome, ReconciliationUnavailableError
 from app.services.wikibase_audit import WikibaseAuditContext
+from converter.config.namespaces import HM
 from converter.wikibase.cloud_client import EntityEditOutcome
 from converter.wikibase.resolved_models import (
     DeferredItemLink,
@@ -323,6 +324,68 @@ async def test_pass_two_skips_links_already_written(db_session, sample_run) -> N
     keys = await pipeline._load_written_claim_keys(db_session, run_id)
     assert "Q9|P9|Q9" not in keys
     assert "Q1|P2|Q2" in keys
+
+
+@pytest.mark.asyncio
+async def test_upload_synthesizes_vocab_targets_and_classifies_unresolvable(db_session) -> None:
+    """Rule W-260 upload-time companion, no rebuild needed:
+    a deferred link to an ontology-declared individual (hm:Certain) gets a
+    synthesized item (created in pass 1, link resolved in pass 2); a link
+    to an undeclared URI is `unresolvable` — reported, not gate-blocking —
+    so the canonical read-back persists without a rebuild."""
+    run_id = uuid.uuid4()
+    ms = ResolvedWikibaseEntity(
+        local_id="QDraft_MS1",
+        labels={"en": "Test MS"},
+        descriptions={"en": "a manuscript"},
+        class_qid="Q1",
+        source_uri="http://example.org#MS1",
+        claims=[ResolvedClaim("P1", "string", "shelfmark 1")],
+        deferred_links=[
+            DeferredItemLink(
+                "QDraft_MS1", "P177", target_local_id="",
+                target_source_uri=str(HM.Certain),
+            ),
+            DeferredItemLink(
+                "QDraft_MS1", "P50", target_local_id="",
+                target_source_uri="http://example.org#Person_unknown",
+            ),
+        ],
+    )
+    await _seed_cache(db_session, run_id, [ms])
+    # Schema mapping for the vocab individual's class (global row).
+    db_session.add(WikibaseEntityMapping(
+        ontology_uri=str(HM.CertaintyLevel),
+        entity_kind=ENTITY_KIND_INSTANCE,
+        wikibase_id="Q40",
+        run_id=None,
+        label="Certainty Level",
+    ))
+    await db_session.commit()
+    writer = _FakeWriter()
+
+    result = await pipeline.upload_items_for_run(db_session, run_id, writer=writer, dry_run=False)
+
+    assert result.created == 2  # MS1 + synthesized Certain
+    assert result.failed == 0
+    assert result.unresolved_links == 0
+    assert result.unresolvable_links == 1
+    by_id = {o.local_id: o for o in result.outcomes}
+    assert by_id["QDraft_Certain"].status == "created"
+    assert result.link_outcomes[0].status == "linked"
+    assert result.link_outcomes[1].status == "unresolvable"
+    certain_call = next(
+        c for c in writer.create_calls if c["labels"].get("en") == "Certain"
+    )
+    assert certain_call["labels"] == {"en": "Certain", "he": "וודאי"}
+    # The canonical read-back persisted — the gate passed despite the
+    # unresolvable link.
+    rows = (
+        await db_session.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
+        )
+    ).scalars().all()
+    assert {row.local_id for row in rows} >= {"QDraft_MS1", "QDraft_Certain"}
 
 
 @pytest.mark.asyncio

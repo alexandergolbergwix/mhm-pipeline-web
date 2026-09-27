@@ -123,6 +123,10 @@ class HmoItemUploadResult:
     link_outcomes: list[HmoDeferredLinkOutcome] = field(default_factory=list)
     cancelled: bool = False
     updated: int = 0
+    # Links whose target has no draft, no mapping, and no ontology
+    # declaration — not writable until the build changes; reported, never
+    # blocking the canonical gate (Rule W-260).
+    unresolvable_links: int = 0
 
 
 async def upload_items_for_run(
@@ -191,6 +195,7 @@ async def upload_items_for_run(
     shacl_by_local_id = cache_row.shacl_report or {}
     existing = await _load_run_instance_mappings(db, run_id, include_global=True)
     local_id_to_source_uri = {e.local_id: e.source_uri for e in all_entities}
+    reconcile_pid = None if dry_run else await resolve_source_uri_pid(db)
 
     # Deterministic (label, description) disambiguation — purely content-based
     # so every call (full upload, scoped retry, single-item push) yields the
@@ -198,6 +203,24 @@ async def upload_items_for_run(
     label_overrides = await compute_label_overrides(db, run_id, all_entities, existing=existing)
     recorded_fingerprints = await _load_write_fingerprints(db, run_id)
     written_claim_keys = await _load_written_claim_keys(db, run_id)
+
+    # Rule W-260 upload-time companion: deferred links whose target URI is an
+    # ontology-declared individual (hm:Certain, hm:CatalogInherited, …) but
+    # that no build draft covers get a minimal entity here — no rebuild
+    # needed. Targets with neither a draft, a mapping, nor an ontology
+    # declaration are classified `unresolvable` (reported, not gate-blocking).
+    auto_entities, unresolvable_target_uris = await _synthesize_missing_vocab_entities(
+        db,
+        all_entities,
+        existing,
+        reconcile_pid,
+    )
+    if auto_entities:
+        all_entities = [*all_entities, *auto_entities]
+        local_id_to_source_uri.update(
+            {e.local_id: e.source_uri for e in auto_entities}
+        )
+        entities = [*entities, *auto_entities]
 
     deferred_for_progress = 0
     for e in all_entities:
@@ -207,14 +230,6 @@ async def upload_items_for_run(
             ):
                 deferred_for_progress += 1
     total = len(entities) + deferred_for_progress
-
-    # Resolved once, not once per entity: the property id is schema-level
-    # and constant for the whole run, so re-querying it per item (up to
-    # ~7800 identical SELECTs on a large corpus) would only add redundant
-    # DB round trips ahead of each item's slow external Wikibase Cloud
-    # call — see reconcile_item's docstring for the idle-transaction risk
-    # that pattern would reintroduce.
-    reconcile_pid = None if dry_run else await resolve_source_uri_pid(db)
 
     known_qids_for_pass = {**existing}
     (
@@ -234,16 +249,30 @@ async def upload_items_for_run(
     known_qids = {**existing, **created_this_call}
 
     link_outcomes: list[HmoDeferredLinkOutcome] = []
-    linked = link_failed = unresolved = 0
+    linked = link_failed = unresolved = unresolvable = 0
     if not cancelled:
-        link_outcomes, linked, link_failed, unresolved, cancelled = await _pass_two_link(
-            db, all_entities, local_id_to_source_uri, known_qids,
-            writer=writer, dry_run=dry_run,
+        (
+            link_outcomes,
+            linked,
+            link_failed,
+            unresolved,
+            unresolvable,
+            cancelled,
+        ) = await _pass_two_link(
+            db,
+            all_entities,
+            local_id_to_source_uri,
+            known_qids,
+            writer=writer,
+            dry_run=dry_run,
             audit_ctx=audit_ctx,
-            on_progress=on_progress, should_cancel=should_cancel,
-            total=total, processed_offset=len(entities),
+            on_progress=on_progress,
+            should_cancel=should_cancel,
+            total=total,
+            processed_offset=len(entities),
             link_scope_local_ids=scope,
             written_claim_keys=written_claim_keys,
+            unresolvable_target_uris=unresolvable_target_uris,
         )
 
     # Canonical state must describe the complete two-pass upload. Persist only
@@ -276,6 +305,7 @@ async def upload_items_for_run(
         link_outcomes=link_outcomes,
         cancelled=cancelled,
         updated=updated,
+        unresolvable_links=unresolvable,
     )
 
 
@@ -781,9 +811,10 @@ async def _pass_two_link(
     processed_offset: int = 0,
     link_scope_local_ids: set[str] | None = None,
     written_claim_keys: set[str] | None = None,
-) -> tuple[list[HmoDeferredLinkOutcome], int, int, int, bool]:
+    unresolvable_target_uris: set[str] | None = None,
+) -> tuple[list[HmoDeferredLinkOutcome], int, int, int, int, bool]:
     outcomes: list[HmoDeferredLinkOutcome] = []
-    linked = failed = unresolved = 0
+    linked = failed = unresolved = unresolvable = 0
     cancelled = False
     seen_links = 0
     total_links = total - processed_offset
@@ -812,6 +843,34 @@ async def _pass_two_link(
                 )
             target_source_uri = link.target_source_uri or local_id_to_source_uri.get(link.target_local_id)
             target_qid = known_qids.get(target_source_uri) if target_source_uri else None
+
+            # A target with no draft, no mapping, and no ontology declaration
+            # cannot exist until the build changes — reported as
+            # `unresolvable` (not gate-blocking), never silently dropped.
+            # Only external URI targets (empty local_id) qualify: an
+            # in-batch local_id reference that failed to create stays
+            # `unresolved` (retryable).
+            if (
+                target_qid is None
+                and not link.target_local_id
+                and (
+                    not target_source_uri
+                    or (
+                        unresolvable_target_uris is not None
+                        and target_source_uri in unresolvable_target_uris
+                    )
+                )
+            ):
+                outcomes.append(
+                    HmoDeferredLinkOutcome(
+                        link.source_local_id,
+                        link.property_id,
+                        link.target_local_id,
+                        "unresolvable",
+                    )
+                )
+                unresolvable += 1
+                continue
 
             if source_qid is None or target_qid is None:
                 outcomes.append(
@@ -882,10 +941,12 @@ async def _pass_two_link(
                     wikibase_id=source_qid,
                 )
 
-    return outcomes, linked, failed, unresolved, cancelled
+    return outcomes, linked, failed, unresolved, unresolvable, cancelled
 
 
-async def _bounded_writer_call(method: Callable[..., Any], *args: Any, **kwargs: Any) -> EntityEditOutcome:
+async def _bounded_writer_call(
+    method: Callable[..., Any], *args: Any, **kwargs: Any
+) -> EntityEditOutcome:
     """Bound one Wikibase Integrator call so a stuck remote request cannot halt a run."""
     try:
         result = await asyncio.wait_for(asyncio.to_thread(method, *args, **kwargs), timeout=90.0)
@@ -1324,6 +1385,91 @@ async def _record_write_fingerprint(
         row.payload_fingerprint = payload_fingerprint
         row.written_at = func.now()
     await db.commit()
+
+
+async def _synthesize_missing_vocab_entities(
+    db: AsyncSession,
+    all_entities: list[ResolvedWikibaseEntity],
+    existing: dict[str, str],
+    reconcile_pid: str | None,
+) -> tuple[list[ResolvedWikibaseEntity], set[str]]:
+    """Rule W-260 upload-time companion (no rebuild required).
+
+    Deferred links may point at ontology-declared individuals
+    (``hm:Certain``, ``hm:CatalogInherited``, …) that no build draft covers
+    — the run graph references them without declaring them. Synthesize a
+    minimal entity per such target (ontology labels/descriptions, mapped
+    class, ``hmo_source_uri`` claim) so pass 1 creates it and pass 2
+    resolves the links. Targets with neither a draft, a mapping, nor an
+    ontology declaration are classified ``unresolvable`` — reported
+    separately, never blocking the canonical gate (they cannot exist until
+    the build changes).
+    """
+    from converter.wikibase._ids import local_name as _local_name  # noqa: PLC0415
+    from converter.wikibase.hmo_exporter import (  # noqa: PLC0415
+        _ontology_individual_index,
+    )
+
+    own_source_uris = {e.source_uri for e in all_entities}
+    candidates: set[str] = set()
+    for entity in all_entities:
+        for link in entity.deferred_links:
+            # Only external URI targets (empty local_id) are candidates.
+            # An in-batch local_id reference that failed to create stays
+            # `unresolved` — a retryable upload failure, gate-blocking.
+            if link.target_local_id:
+                continue
+            turi = link.target_source_uri
+            if turi and turi not in existing and turi not in own_source_uris:
+                candidates.add(turi)
+
+    index = _ontology_individual_index()
+    vocab_targets = {uri for uri in candidates if uri in index}
+    unresolvable_target_uris = candidates - vocab_targets
+    if not vocab_targets:
+        return [], unresolvable_target_uris
+
+    class_uris = {index[uri].class_uri for uri in vocab_targets}
+    schema_rows = (
+        await db.execute(
+            select(WikibaseEntityMapping).where(WikibaseEntityMapping.run_id.is_(None))
+        )
+    ).scalars().all()
+    class_qids = {
+        row.ontology_uri: row.wikibase_id
+        for row in schema_rows if row.ontology_uri in class_uris
+    }
+
+    existing_local_ids = {e.local_id for e in all_entities}
+    synthesized: list[ResolvedWikibaseEntity] = []
+    for uri in sorted(vocab_targets):
+        individual = index[uri]
+        class_qid = class_qids.get(individual.class_uri)
+        if not class_qid:
+            vocab_targets.discard(uri)
+            unresolvable_target_uris.add(uri)
+            continue
+        local_id = f"QDraft_{_local_name(uri)}"
+        if local_id in existing_local_ids:
+            continue
+        claims = (
+            [ResolvedClaim(reconcile_pid, "string", uri)] if reconcile_pid else []
+        )
+        synthesized.append(
+            ResolvedWikibaseEntity(
+                local_id=local_id,
+                labels=dict(individual.labels),
+                descriptions=dict(individual.descriptions),
+                class_qid=class_qid,
+                source_uri=uri,
+                entity_type=_local_name(individual.class_uri),
+                control_numbers=[],
+                claims=claims,
+                deferred_links=[],
+                skipped_statements=[],
+            )
+        )
+    return synthesized, unresolvable_target_uris
 
 
 async def _load_written_claim_keys(db: AsyncSession, run_id: uuid.UUID) -> set[str]:
