@@ -273,6 +273,59 @@ async def test_live_upload_disambiguates_against_foreign_run_labels(db_session) 
 
 
 @pytest.mark.asyncio
+async def test_pass_two_skips_links_already_written(db_session, sample_run) -> None:
+    """Link write-dedup: the audit log records every claim write; a re-run
+    must not re-attempt ~55k identical add_claim calls — already-written
+    links count `linked` with no wiki call, failed ones always retry."""
+    from app.models.wikibase_cloud_write import (
+        CHANNEL_ITEM_UPLOAD, OPERATION_CREATE, OPERATION_FAILED, TARGET_CLAIM,
+        WikibaseCloudWrite,
+    )
+    from app.services.wikibase_audit import WikibaseAuditContext
+
+    run_id = sample_run["run_id"]
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    audit = WikibaseAuditContext(
+        actor_user_id=sample_run["user_id"], channel=CHANNEL_ITEM_UPLOAD, run_id=run_id,
+    )
+    first_writer = _FakeWriter()
+    await pipeline.upload_items_for_run(
+        db_session, run_id, writer=first_writer, dry_run=False, audit_ctx=audit,
+    )
+    assert len(first_writer.claim_calls) == 1
+
+    audit_rows = (await db_session.execute(select(WikibaseCloudWrite))).scalars().all()
+    written_keys = {
+        r.target_key for r in audit_rows
+        if r.target_kind == TARGET_CLAIM and r.operation == OPERATION_CREATE
+    }
+    assert written_keys, "the first pass must record its claim writes"
+
+    second_writer = _FakeWriter()
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=second_writer, dry_run=False,
+    )
+
+    # update_existing=False → items skipped in pass 1; pass 2 dedup-skips
+    # the already-written link without any add_claim call.
+    assert result.linked == 1
+    assert len(second_writer.claim_calls) == 0
+    assert result.link_outcomes[0].message == "already on wiki (dedup)"
+
+    # Only successful claim writes enter the dedup set — a `failed` audit
+    # row never masks a link that must re-attempt.
+    await db_session.execute(WikibaseCloudWrite.__table__.insert().values(
+        actor_user_id=sample_run["user_id"], channel=CHANNEL_ITEM_UPLOAD,
+        operation=OPERATION_FAILED, target_kind=TARGET_CLAIM,
+        target_key="Q9|P9|Q9",
+    ))
+    await db_session.commit()
+    keys = await pipeline._load_written_claim_keys(db_session, run_id)
+    assert "Q9|P9|Q9" not in keys
+    assert "Q1|P2|Q2" in keys
+
+
+@pytest.mark.asyncio
 async def test_live_upload_creates_items_then_links_them(db_session) -> None:
     run_id = uuid.uuid4()
     await _seed_cache(db_session, run_id, _ms_and_person())

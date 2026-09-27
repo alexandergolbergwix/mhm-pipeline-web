@@ -138,6 +138,12 @@ Rule W-260) — the run graph references them without declaring them, so
 without this every such link stayed `unresolved` forever. The build
 fingerprint carries `EXPORTER_VERSION` (RDF bytes + schema version +
 exporter version), so the exporter-logic change invalidates cached builds.
+Both write paths dedup against the audit log: item updates skip when the
+payload fingerprint matches the last write (`hmo_item_write_fingerprints`,
+migration 0049), and pass 2 skips deferred links whose
+`source|property|target` key is already recorded as a successful claim
+write in `wikibase_cloud_writes` — a re-publish writes only drifted items
+and new links instead of re-attempting ~55k identical claims for hours.
 Pass 1: for each entity — already mapped → skip (or `update_item` merge when
 `update_existing=True`); unmapped → SPARQL reconcile by `hmo_source_uri`; a hit
 is **adopted** (mapping row recorded, no create); a miss → `create_item`. Every

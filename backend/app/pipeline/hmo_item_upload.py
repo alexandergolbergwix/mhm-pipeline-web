@@ -37,6 +37,7 @@ from app.models.hmo_item_write_fingerprint import HmoItemWriteFingerprint
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.run import AuthorityMatch
 from app.models.wikibase_cloud_write import (
+    CHANNEL_ITEM_UPLOAD,
     OPERATION_ADOPT,
     OPERATION_CREATE,
     OPERATION_FAILED,
@@ -44,6 +45,7 @@ from app.models.wikibase_cloud_write import (
     OPERATION_UPDATE,
     TARGET_CLAIM,
     TARGET_ITEM,
+    WikibaseCloudWrite,
 )
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.pipeline.hmo_item_reconcile import (
@@ -195,6 +197,7 @@ async def upload_items_for_run(
     # same labels and later updates never trip uniqueness again.
     label_overrides = await compute_label_overrides(db, run_id, all_entities, existing=existing)
     recorded_fingerprints = await _load_write_fingerprints(db, run_id)
+    written_claim_keys = await _load_written_claim_keys(db, run_id)
 
     deferred_for_progress = 0
     for e in all_entities:
@@ -240,6 +243,7 @@ async def upload_items_for_run(
             on_progress=on_progress, should_cancel=should_cancel,
             total=total, processed_offset=len(entities),
             link_scope_local_ids=scope,
+            written_claim_keys=written_claim_keys,
         )
 
     # Canonical state must describe the complete two-pass upload. Persist only
@@ -776,6 +780,7 @@ async def _pass_two_link(
     total: int = 0,
     processed_offset: int = 0,
     link_scope_local_ids: set[str] | None = None,
+    written_claim_keys: set[str] | None = None,
 ) -> tuple[list[HmoDeferredLinkOutcome], int, int, int, bool]:
     outcomes: list[HmoDeferredLinkOutcome] = []
     linked = failed = unresolved = 0
@@ -828,6 +833,21 @@ async def _pass_two_link(
                 linked += 1
                 continue
 
+            # Link write-dedup: the audit log already records every claim
+            # this channel wrote — a re-attempt would be a byte-for-byte
+            # no-op, so count it linked without a wiki call. Failed writes
+            # are recorded as `failed` and always re-attempted.
+            if written_claim_keys and (
+                f"{source_qid}|{link.property_id}|{target_qid}" in written_claim_keys
+            ):
+                outcomes.append(
+                    HmoDeferredLinkOutcome(
+                        link.source_local_id, link.property_id, link.target_local_id,
+                        "linked", message="already on wiki (dedup)",
+                    )
+                )
+                linked += 1
+                continue
             claim = _build_wbi_claim(ResolvedClaim(link.property_id, "wikibase-item", target_qid))
             result = await _bounded_writer_call(writer.add_claim, source_qid, claim)
             if result.status == "failed":
@@ -1304,6 +1324,22 @@ async def _record_write_fingerprint(
         row.payload_fingerprint = payload_fingerprint
         row.written_at = func.now()
     await db.commit()
+
+
+async def _load_written_claim_keys(db: AsyncSession, run_id: uuid.UUID) -> set[str]:
+    """``source_qid|property|target_qid`` keys of claim writes this run's
+    item-upload channel already completed. Pass 2 skips those links — the
+    audit log is the write-dedup evidence, so a full re-publish writes only
+    NEW links instead of re-attempting ~55k identical claims for hours."""
+    rows = await db.execute(
+        select(WikibaseCloudWrite.target_key).where(
+            WikibaseCloudWrite.run_id == run_id,
+            WikibaseCloudWrite.channel == CHANNEL_ITEM_UPLOAD,
+            WikibaseCloudWrite.target_kind == TARGET_CLAIM,
+            WikibaseCloudWrite.operation == OPERATION_CREATE,
+        )
+    )
+    return {key for (key,) in rows.all()}
 
 
 async def _load_run_instance_mappings(

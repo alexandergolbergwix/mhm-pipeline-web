@@ -44,6 +44,8 @@
   `test_live_upload_disambiguates_duplicate_labels`,
   `test_live_upload_disambiguates_against_foreign_run_labels`,
   `test_live_upload_resolves_reconcile_pid_once_not_per_entity`,
+  `test_pass_two_skips_links_already_written` (link write-dedup from the
+  `wikibase_cloud_writes` audit log),
   plus `backend/tests/unit/test_hmo_exporter_resolution.py`
   (`test_resolve_auto_drafts_ontology_declared_individuals`,
   `test_resolve_keeps_uri_link_when_individual_class_is_unmapped`,
