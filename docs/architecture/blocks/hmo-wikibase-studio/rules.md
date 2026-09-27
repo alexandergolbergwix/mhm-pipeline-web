@@ -379,3 +379,12 @@ when unconfirmed candidates remain, and its evidence carries
 verified. *Why:* run f4e8e4b3 flagged 'Rome (Italy)' as "8 live items carry
 this label — curator must confirm" even though the item already carried the
 approved Q220 link — the curated identity read as an unconfirmed duplicate.
+64. **R64 — Referenced ontology individuals MUST be draftable (Rule W-260).**
+    The exporter auto-drafts ontology-declared named individuals referenced
+    as wikibase-item targets (`resolve_against_mappings(..., ontology_index=…)`);
+    the build fingerprint carries `EXPORTER_VERSION`, so exporter-logic
+    changes invalidate cached builds. *Why:* ~3.9k deferred links to
+    never-drafted vocab nodes (`hm:Certain`, `hm:CatalogInherited`, …) on
+    run 3494ebf5 kept every retry failing identically and made the
+    `unresolved == 0` canonical gate unreachable — the Wikidata Studio
+    canonical build stayed blocked.

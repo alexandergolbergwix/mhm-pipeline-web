@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import hashlib
 from collections import defaultdict
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import re
 from pathlib import Path
 from typing import Any
@@ -59,6 +59,59 @@ EXPORT_SKIP_INSTANCE_TYPES: frozenset[URIRef] = frozenset(
 )
 
 HMO_SOURCE_URI = str(HM.hmo_source_uri)
+
+# Bumped whenever the export/resolve logic changes output shape, so cached
+# builds (keyed by RDF bytes + schema version) recompute. v2: auto-draft
+# ontology-declared individuals referenced as wikibase-item targets.
+EXPORTER_VERSION = "2"
+
+_ONTOLOGY_TTL = Path(__file__).resolve().parents[2] / "ontology" / "hebrew-manuscripts.ttl"
+
+
+def _ontology_individual_index(
+    ontology_path: Path | None = None,
+) -> dict[str, OntologyIndividual]:
+    """Named individuals declared in the ontology TTL (``hm:Certain``,
+    ``hm:CatalogInherited``, …): URI → (class_uri, labels, descriptions).
+
+    The run graph references these individuals as statement objects without
+    declaring them (no ``rdf:type`` / ``rdfs:label`` triples of their own),
+    so the typed-node draft pass never sees them — and every
+    wikibase-item statement pointing at one produced a deferred link that
+    could never resolve (3915 on run 3494ebf5). The index lets the
+    resolution step auto-draft them instead.
+    """
+    if ontology_path is None:
+        ontology_path = _ONTOLOGY_TTL
+    graph = Graph()
+    graph.parse(ontology_path, format="turtle")
+    index: dict[str, OntologyIndividual] = {}
+    for subject in sorted(set(graph.subjects(RDF.type, OWL.NamedIndividual)), key=str):
+        class_uris = [
+            str(cls) for cls in graph.objects(subject, RDF.type) if cls != OWL.NamedIndividual
+        ]
+        if not class_uris:
+            continue
+        labels: dict[str, str] = {}
+        for label in graph.objects(subject, RDFS.label):
+            labels[str(label.language or "en")] = str(label)
+        descriptions: dict[str, str] = {}
+        for desc in graph.objects(subject, RDFS.comment):
+            descriptions[str(desc.language or "en")] = str(desc)
+        index[str(subject)] = OntologyIndividual(
+            class_uri=class_uris[0],
+            labels=labels,
+            descriptions=descriptions,
+        )
+    return index
+
+
+def _node_local_name(graph: Graph, node: URIRef | BNode) -> str:
+    """Return a readable local name for a URI or blank node."""
+    if isinstance(node, BNode):
+        return f"BlankNode_{_blank_node_fingerprint(graph, node)}"
+    return local_name(node)
+
 
 PREFERRED_CLASS_ORDER: tuple[URIRef, ...] = (
     LRMOO.F4_Manifestation_Singleton,
@@ -497,11 +550,6 @@ def _literal_value(literal: Literal) -> tuple[StatementValue, str | None]:
     return str(value), datatype
 
 
-def _node_local_name(graph: Graph, node: URIRef | BNode) -> str:
-    """Return a readable local name for a URI or blank node."""
-    if isinstance(node, BNode):
-        return f"BlankNode_{_blank_node_fingerprint(graph, node)}"
-    return local_name(node)
 
 
 def _blank_node_fingerprint(graph: Graph, node: BNode) -> str:
@@ -524,9 +572,19 @@ def _blank_node_fingerprint(graph: Graph, node: BNode) -> str:
 # ── Phase 4: resolve drafts against the live schema ─────────────────────
 
 
+@dataclass(frozen=True)
+class OntologyIndividual:
+    """One ontology-declared named individual (class URI + labels/descriptions)."""
+    class_uri: str
+    labels: dict[str, str]
+    descriptions: dict[str, str]
+
+
 def resolve_against_mappings(
     drafts: list[WikibaseEntityDraft],
     schema_mappings: dict[str, SchemaMappingEntry],
+    *,
+    ontology_index: dict[str, OntologyIndividual] | None = None,
 ) -> list[ResolvedWikibaseEntity]:
     """Resolve offline drafts into real-PID/QID-shaped entities.
 
@@ -543,6 +601,10 @@ def resolve_against_mappings(
     """
     missing_uris: set[str] = set()
     resolved: list[ResolvedWikibaseEntity] = []
+    draft_source_uris = {d.source_uri for d in drafts}
+    # All draft local_ids (not just resolved-so-far) — an auto-draft must
+    # never collide with a typed node drafted later in the loop.
+    resolved_local_ids: set[str] = {d.local_id for d in drafts}
 
     for draft in drafts:
         class_entry = schema_mappings.get(draft.class_uri)
@@ -573,12 +635,42 @@ def resolve_against_mappings(
                 continue
 
             if stmt.value_type == "uri" and prop_entry.datatype == "wikibase-item":
+                target_uri = str(stmt.value)
+                # Auto-draft ontology-declared individuals referenced as
+                # item targets (Certain / CatalogInherited / …): without
+                # this the link could never resolve — no draft, no mapping.
+                extra_local_id: str | None = None
+                if (
+                    ontology_index is not None
+                    and target_uri in ontology_index
+                    and target_uri not in draft_source_uris
+                ):
+                    individual = ontology_index[target_uri]
+                    individual_class_entry = schema_mappings.get(individual.class_uri)
+                    if individual_class_entry is not None:
+                        extra_local_id = f"QDraft_{local_name(URIRef(target_uri))}"
+                        if extra_local_id not in resolved_local_ids:
+                            resolved.append(
+                                ResolvedWikibaseEntity(
+                                    local_id=extra_local_id,
+                                    labels=dict(individual.labels),
+                                    descriptions=dict(individual.descriptions),
+                                    class_qid=individual_class_entry.wikibase_id,
+                                    source_uri=target_uri,
+                                    entity_type=local_name(URIRef(individual.class_uri)),
+                                    control_numbers=[],
+                                    claims=[],
+                                    deferred_links=[],
+                                    skipped_statements=[],
+                                )
+                            )
+                            resolved_local_ids.add(extra_local_id)
                 deferred.append(
                     DeferredItemLink(
                         source_local_id=draft.local_id,
                         property_id=prop_entry.wikibase_id,
-                        target_local_id="",
-                        target_source_uri=str(stmt.value),
+                        target_local_id=extra_local_id or "",
+                        target_source_uri=target_uri,
                     )
                 )
                 continue

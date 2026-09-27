@@ -131,6 +131,13 @@ yields the same labels, so
 updates stay consistent and no rebuild is needed; a mapped item may be
 renamed once if it is not its group's first claimant — claims and source
 URIs never change.
+Ontology-declared named individuals referenced as wikibase-item targets
+(`hm:Certain`, `hm:CatalogInherited`, `hm:ComplexHierarchy`, …) are
+auto-drafted at resolve time (`resolve_against_mappings(..., ontology_index=…)`,
+Rule W-260) — the run graph references them without declaring them, so
+without this every such link stayed `unresolved` forever. The build
+fingerprint carries `EXPORTER_VERSION` (RDF bytes + schema version +
+exporter version), so the exporter-logic change invalidates cached builds.
 Pass 1: for each entity — already mapped → skip (or `update_item` merge when
 `update_existing=True`); unmapped → SPARQL reconcile by `hmo_source_uri`; a hit
 is **adopted** (mapping row recorded, no create); a miss → `create_item`. Every

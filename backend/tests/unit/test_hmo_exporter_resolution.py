@@ -11,6 +11,7 @@ from converter.config.namespaces import CIDOC, HM, LRMOO
 from converter.wikibase.hmo_exporter import (
     HMO_SOURCE_URI,
     HmoWikibaseExporter,
+    _ontology_individual_index,
     resolve_against_mappings,
 )
 from converter.wikibase.resolved_models import SchemaMappingEntry, UnmappedOntologyUriError
@@ -164,8 +165,8 @@ def test_draft_description_is_truncated_to_wikibase_limit() -> None:
     graph.add((ms, RDFS.comment, Literal(long_comment, lang="he")))
 
     drafts = HmoWikibaseExporter().from_graph(graph)
-    # Comment text normalises to the `en` slot regardless of source language.
-    description = drafts[0].descriptions["en"]
+    # W-69: Hebrew comments keep their language — never merged into `en`.
+    description = drafts[0].descriptions["he"]
     assert len(description) == 250
     assert description.endswith("…")
 
@@ -273,3 +274,70 @@ def test_resolve_skips_object_property_pointing_at_external_uri() -> None:
     assert resolved[0].claims[0].property_id == "P99"
     assert len(resolved[0].deferred_links) == 1
     assert resolved[0].deferred_links[0].target_source_uri == str(external)
+
+
+def test_resolve_auto_drafts_ontology_declared_individuals() -> None:
+    """A wikibase-item statement whose object is an ontology-declared
+    individual (hm:Certain …) that no draft covers must auto-draft the
+    individual instead of emitting a never-resolvable URI link (3915
+    unresolved links on run 3494ebf5)."""
+    graph = Graph()
+    ms = HM.MS1
+    graph.add((ms, RDF.type, HM.Codicological_Unit))
+    graph.add((ms, RDFS.label, Literal("Test MS", lang="en")))
+    graph.add((ms, HM.has_certainty, HM.Certain))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    mappings = {
+        str(HM.Codicological_Unit): SchemaMappingEntry("Q1"),
+        str(HM.has_certainty): SchemaMappingEntry("P177", "wikibase-item"),
+        str(HM.CertaintyLevel): SchemaMappingEntry("Q40"),
+        HMO_SOURCE_URI: SchemaMappingEntry("P99", "string"),
+    }
+
+    resolved = resolve_against_mappings(
+        drafts, mappings, ontology_index=_ontology_individual_index(),
+    )
+
+    vocab = [e for e in resolved if e.local_id == "QDraft_Certain"]
+    assert len(vocab) == 1, "hm:Certain must be auto-drafted"
+    certain = vocab[0]
+    assert certain.class_qid == "Q40"
+    assert certain.labels.get("en") == "Certain"
+    assert certain.source_uri == str(HM.Certain)
+
+    ms_entity = next(e for e in resolved if e.local_id.startswith("QDraft_MS"))
+    link = ms_entity.deferred_links[0]
+    assert link.property_id == "P177"
+    assert link.target_local_id == "QDraft_Certain"
+    assert link.target_source_uri == str(HM.Certain)
+
+
+def test_resolve_keeps_uri_link_when_individual_class_is_unmapped() -> None:
+    graph = Graph()
+    ms = HM.MS1
+    graph.add((ms, RDF.type, HM.Codicological_Unit))
+    graph.add((ms, HM.has_certainty, HM.Certain))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    mappings = {
+        str(HM.Codicological_Unit): SchemaMappingEntry("Q1"),
+        str(HM.has_certainty): SchemaMappingEntry("P177", "wikibase-item"),
+        # hm:CertaintyLevel deliberately unmapped — fail-safe fallback.
+        HMO_SOURCE_URI: SchemaMappingEntry("P99", "string"),
+    }
+
+    resolved = resolve_against_mappings(
+        drafts, mappings, ontology_index=_ontology_individual_index(),
+    )
+
+    assert all(e.local_id != "QDraft_Certain" for e in resolved)
+    assert resolved[0].deferred_links[0].target_local_id == ""
+    assert resolved[0].deferred_links[0].target_source_uri == str(HM.Certain)
+
+
+def test_ontology_index_declares_certain() -> None:
+    index = _ontology_individual_index()
+    assert str(HM.Certain) in index
+    assert index[str(HM.Certain)].labels.get("en") == "Certain"
+    assert index[str(HM.Certain)].labels.get("he") == "וודאי"

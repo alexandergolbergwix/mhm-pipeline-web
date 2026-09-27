@@ -26,7 +26,12 @@ from app.models.hmo_studio_item_cache import HmoStudioItemCache
 from app.models.wikibase_entity_mapping import WikibaseEntityMapping
 from app.pipeline.hmo_export_quality_gate import assert_export_quality
 from app.pipeline.hmo_item_shacl import build_shacl_report_for_items
-from converter.wikibase.hmo_exporter import HmoWikibaseExporter, resolve_against_mappings
+from converter.wikibase.hmo_exporter import (
+    EXPORTER_VERSION,
+    HmoWikibaseExporter,
+    _ontology_individual_index,
+    resolve_against_mappings,
+)
 from converter.wikibase.resolved_models import ResolvedWikibaseEntity, SchemaMappingEntry
 
 
@@ -42,10 +47,14 @@ class HmoItemBuildResult:
 
 
 async def compute_hmo_build_fingerprint(db: AsyncSession, ttl_path: Path) -> str:
-    """SHA-256 over the RDF TTL bytes AND the schema-mapping version."""
+    """SHA-256 over the RDF TTL bytes, the schema-mapping version, and the
+    exporter version — an exporter-logic change must invalidate cached
+    builds (e.g. v2 auto-drafts referenced ontology individuals)."""
     ttl_hash = await run_in_threadpool(_hash_file, ttl_path)
     schema_version = await _schema_mapping_version(db)
-    return hashlib.sha256(f"{ttl_hash}:{schema_version}".encode()).hexdigest()
+    return hashlib.sha256(
+        f"{ttl_hash}:{schema_version}:{EXPORTER_VERSION}".encode()
+    ).hexdigest()
 
 
 def _hash_file(path: Path) -> str:
@@ -144,7 +153,11 @@ async def build_items_for_run(
     drafts = await run_in_threadpool(HmoWikibaseExporter().from_ttl, ttl_path)
     await run_in_threadpool(assert_export_quality, drafts)
     await _stage(3, "Resolving entities against Wikibase mappings…")
-    resolved = await run_in_threadpool(resolve_against_mappings, drafts, schema_mappings)
+    resolved = await run_in_threadpool(
+        lambda: resolve_against_mappings(
+            drafts, schema_mappings, ontology_index=_ontology_individual_index(),
+        )
+    )
 
     deferred_count = sum(len(e.deferred_links) for e in resolved)
     skipped_count = sum(len(e.skipped_statements) for e in resolved)

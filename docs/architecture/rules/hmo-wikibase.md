@@ -785,3 +785,44 @@ Tests: `tests/test_rule_verify.py::test_api_rule_ownership_is_stable`,
 `::test_api_pass_merges_and_reports_per_rule_only`,
 `::test_api_pass_summary_merges_without_double_counting`,
 `::test_merge_api_rule_verdicts_replaces_stale_api_entries`.
+
+### Rule W-260 — Referenced ontology individuals MUST be draftable, or the build can never go clean (added 2026-09-26)
+
+Run 3494ebf5's item build emitted ~3.9k deferred wikibase-item links
+(`has_certainty` → `hm:Certain`, `attribution_source` → `hm:CatalogAttribution`,
+`has_epistemological_status` → `hm:CatalogInherited`, hierarchy-type links →
+`hm:ComplexHierarchy` / `hm:SimpleHierarchy`, plus data-category / date-format
+nodes) whose targets were **never drafted**: the graph builder references the
+ontology's named individuals as statement objects without declaring them
+(no `rdf:type` / `rdfs:label` in the run graph), and the exporter drafts only
+typed nodes. Pass 2 reported them `unresolved` forever; every retry failed
+identically; `unresolved == 0` (the canonical-persistence gate) was
+unreachable, so `hmo_canonical_entities` stayed empty and the Wikidata Studio
+canonical build stayed blocked with a red card.
+
+Invariant:
+
+1. A wikibase-item statement's object URI that no draft covers MUST be
+   auto-drafted when the ontology declares it: `_ontology_individual_index()`
+   (hmo_exporter.py) indexes the ontology's named individuals (class URI +
+   labels + comments) and `resolve_against_mappings(..., ontology_index=…)`,
+   drafts each referenced-but-undrafted individual once (local_id
+   `QDraft_<LocalName>`, class from the ontology, schema-mapped class_qid).
+   Its deferred links keep `target_source_uri`, so pass 2 resolves through
+   the created item's mapping.
+2. Fail-safe: an individual whose class has no schema mapping (or a URI the
+   ontology does not declare — e.g. truncated person URIs) stays a plain URI
+   deferred link; unresolvable ones keep reporting `unresolved` (never dropped).
+3. The build fingerprint covers the exporter version
+   (`compute_hmo_build_fingerprint` = RDF bytes + schema version +
+   `EXPORTER_VERSION`) — exporter-logic changes invalidate cached builds
+   (bump `EXPORTER_VERSION` with the change).
+4. Same-build label/pair uniqueness is deterministic (write-dedup +
+   disambiguation are content-based), so the auto-drafted items upload once
+   and every later update pass skips them by fingerprint.
+
+Tests: `backend/tests/unit/test_hmo_exporter_resolution.py`
+(`test_resolve_auto_drafts_ontology_declared_individuals`,
+`test_resolve_keeps_uri_link_when_individual_class_is_unmapped`,
+`test_ontology_index_declares_certain`),
+`backend/tests/test_hmo_item_upload.py::test_live_upload_disambiguates_against_foreign_run_labels`.

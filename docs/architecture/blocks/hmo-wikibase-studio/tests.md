@@ -44,6 +44,10 @@
   `test_live_upload_disambiguates_duplicate_labels`,
   `test_live_upload_disambiguates_against_foreign_run_labels`,
   `test_live_upload_resolves_reconcile_pid_once_not_per_entity`,
+  plus `backend/tests/unit/test_hmo_exporter_resolution.py`
+  (`test_resolve_auto_drafts_ontology_declared_individuals`,
+  `test_resolve_keeps_uri_link_when_individual_class_is_unmapped`,
+  `test_ontology_index_declares_certain` — Rule W-260),
   plus `frontend/tests/unit/hmoItemsRetryScope.spec.tsx` (corpus-wide retry
   scope) and `hmoFilteredPublish.spec.tsx` (filter-scoped publish button),
   `test_dry_run_never_resolves_reconcile_pid`,
