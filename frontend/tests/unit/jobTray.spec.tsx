@@ -101,6 +101,27 @@ describe("<JobTray>", () => {
     expect(screen.getByTestId("wikidata-upload-steps")).toBeInTheDocument();
   });
 
+  it("shows nested sub-progress counters next to the frozen overall during the persist", () => {
+    const j = job();
+    j.progress = {
+      processed: 74135,
+      total: 74135,
+      message: "Persisting canonical read-back: 2500/18512…",
+      sub_processed: 2500,
+      sub_total: 18512,
+      sub_unit: "items",
+      sub_message: "Persisting canonical read-back: 2500/18512…",
+      steps: UPLOAD_STEPS.map((s) => ({...s, status: "done"})),
+    };
+    renderTray([j]);
+
+    const overall = screen.getByText(/74135 \/ 74135/);
+    expect(overall.textContent).toContain("(overall)");
+    // The nested persist counters must be visible in the label line —
+    // 2500/18512, not just the truncated message.
+    expect(screen.getByText(/2500 \/ 18512 items/)).toBeInTheDocument();
+  });
+
   it("keeps the plain label for jobs without a steps plan", () => {
     const j = job({kind: "rdf_build"});
     j.progress = {processed: 3, total: 5, message: "3/5 items uploaded"};

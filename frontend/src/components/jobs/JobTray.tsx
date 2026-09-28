@@ -101,20 +101,32 @@ export function JobTray() {
             : "";
         const stepMessage =
           typeof rawProgress.message === "string" ? rawProgress.message.trim() : "";
+        const subTotalNum = subTotal;
+        const subProcessedNum = subProcessed;
+        const subUnit =
+          typeof rawProgress.sub_unit === "string" && rawProgress.sub_unit.trim()
+            ? ` ${rawProgress.sub_unit.trim()}`
+            : "";
 
         return (
           <Glass key={job.id} variant="compact" className="p-3 space-y-2 shadow-lg">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{label}</p>
-                <p className="text-xs muted truncate">
+<p className="text-xs muted truncate">
                   {cancelling ? "Cancelling…" : steps ? (
                     <>
                       <span title={OVERALL_PROGRESS_TITLE}>
                         {processed} / {total}{unitSuffix}
                         <span className="opacity-70"> (overall)</span>
                       </span>
-                      {stepMessage && (
+                      {subTotalNum > 0 && (
+                        <span title={STEP_ONLY_TITLE}>
+                          {" · "}
+                          {subProcessedNum} / {subTotalNum}{subUnit}
+                        </span>
+                      )}
+                      {stepMessage && subTotalNum <= 0 && (
                         <span title={STEP_ONLY_TITLE}> · {stepMessage}</span>
                       )}
                     </>
