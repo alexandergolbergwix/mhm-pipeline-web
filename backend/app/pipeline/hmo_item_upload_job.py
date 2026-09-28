@@ -51,8 +51,16 @@ def _upload_steps(
         step1_status = "done" if (items_total > 0 and items_done >= items_total) else "skipped"
         step2_status = "done" if (links_total > 0 and links_done >= links_total) else "skipped"
     else:
-        step1_status = "running" if step_no == 1 else ("done" if step_no == 2 else "pending")
-        step2_status = "running" if step_no == 2 else "pending"
+        # Counter-based: a step whose counter reached its total is done —
+        # during the canonical persist the strip must read both steps done.
+        step1_status = (
+            "done" if items_total > 0 and items_done >= items_total
+            else "running" if step_no == 1 else "pending"
+        )
+        step2_status = (
+            "done" if links_total > 0 and links_done >= links_total
+            else "running" if step_no == 2 else "pending"
+        )
     return [
         {
             "id": STEP_UPLOAD_ITEMS,
@@ -121,6 +129,8 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
     })
 
     last_seen_total = 0
+    last_processed = 0
+    persist_outer: tuple[int, int] | None = None
     recent_item_outcomes: list[dict] = []
     current_step: str | None = None
     items_done = items_total = links_done = links_total = 0
@@ -143,11 +153,38 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         step_id: str | None = None,
         step_processed: int | None = None,
         step_total: int | None = None,
+        persist_scope: bool = False,
     ) -> None:
-        nonlocal last_seen_total, current_step, items_done, items_total, links_done, links_total
+        nonlocal last_seen_total, last_processed, persist_outer
+        nonlocal current_step, items_done, items_total, links_done, links_total
+        if persist_scope:
+            # The canonical persist's read-back loop is its own progress
+            # scope (nested sub_* bar, Rule W-113) — the outer counter
+            # freezes at the upload's final state so the tray/inline
+            # "(overall)" label stays honest.
+            if persist_outer is None:
+                persist_outer = (last_processed, last_seen_total)
+            await update_job_progress(job_id, {
+                "phase": "running",
+                "processed": persist_outer[0],
+                "total": persist_outer[1],
+                "message": message,
+                "sub_processed": processed,
+                "sub_total": total,
+                "sub_unit": "items",
+                "sub_message": message,
+                "steps": _upload_steps(
+                    current_step=current_step,
+                    items_done=items_done,
+                    items_total=items_total,
+                    links_done=links_done,
+                    links_total=links_total,
+                ),
+            })
+            return
+        last_processed = processed
         # Only step-tagged (upload pass) emissions carry the whole-job
-        # denominator — the canonical persist emits its own read-back
-        # scope (N/M items) and must not corrupt the terminal total.
+        # denominator — a persist emission must not corrupt the terminal total.
         if step_id:
             last_seen_total = total
         if step_id:

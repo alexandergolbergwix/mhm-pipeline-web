@@ -448,10 +448,10 @@ async def test_canonical_persist_records_write_fingerprints_and_streams_progress
     run_id = uuid.uuid4()
     await _seed_cache(db_session, run_id, _ms_and_person())
     writer = _FakeWriter()
-    ticks: list[tuple[int, int, str]] = []
+    ticks: list[tuple[int, int, str, dict]] = []
 
     async def capture(processed, total, message, **_kw):
-        ticks.append((processed, total, message))
+        ticks.append((processed, total, message, _kw))
 
     result = await pipeline.upload_items_for_run(
         db_session, run_id, writer=writer, dry_run=False, on_progress=capture,
@@ -469,7 +469,9 @@ async def test_canonical_persist_records_write_fingerprints_and_streams_progress
     ).scalars().all()
     assert {row.local_id for row in rows} == {"QDraft_MS1", "QDraft_Person1"}
     assert ticks, "the persist must stream progress"
-    persist_ticks = [t for t in ticks if "Persisting canonical read-back" in t[2]]
+    persist_ticks = [
+        t for t in ticks if t[3].get("persist_scope") is True
+    ]
     assert persist_ticks, "the persist's own progress ticks must stream"
     assert persist_ticks[-1][0] == persist_ticks[-1][1] == 2
     assert "Persisting canonical read-back" in persist_ticks[-1][2]

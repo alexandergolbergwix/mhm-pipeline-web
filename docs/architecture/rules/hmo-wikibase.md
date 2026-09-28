@@ -846,7 +846,11 @@ Invariant:
    persists/updates. On 2026-09-28 the persist died with asyncpg
    `connection is closed` after pass 2 had already written everything
    (idle session, 18.5k read-backs). Persist emissions stream progress in
-   their own read-back scope and never touch the job's terminal total.
+   their own read-back scope and never touch the job's terminal total:
+   the job wrapper routes them to the nested `sub_*` bar (Rule W-113) and
+   freezes the outer counter at the upload's final state, so the
+   tray/inline `(overall)` label stays honest; the step strip reads both
+   steps done during the persist (counter-based statuses).
 
 Tests: `backend/tests/unit/test_hmo_exporter_resolution.py`
 (`test_resolve_auto_drafts_ontology_declared_individuals`,

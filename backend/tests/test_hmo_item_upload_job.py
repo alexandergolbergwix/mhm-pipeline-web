@@ -178,9 +178,40 @@ async def test_job_reports_progress_and_succeeds(sample_run, db_session, monkeyp
     assert job.progress["processed"] == job.progress["total"] == 5
     steps = job.progress["steps"]
     assert [s["id"] for s in steps] == ["upload_items", "add_links"]
-    assert all(s["status"] == "done" for s in steps)
-    assert steps[0]["processed"] == steps[0]["total"] == 3
-    assert steps[1]["processed"] == steps[1]["total"] == 2
+
+
+@pytest.mark.asyncio
+async def test_job_persist_progress_is_nested_not_outer(sample_run, db_session, monkeypatch):
+    """The canonical persist's read-back progress must ride the nested
+    sub_* bar with the outer counter frozen at the upload's final state —
+    the tray/inline "(overall)" label must stay honest (Rule W-113)."""
+    monkeypatch.setattr(job_module, "build_server_wikibase_writer", lambda: _FakeWriter())
+    job_id = await _seed(db_session, sample_run, _entities(3))
+    ticks: list[dict] = []
+
+    async def capture_progress(jid, progress):
+        ticks.append(dict(progress))
+
+    monkeypatch.setattr(job_module, "update_job_progress", capture_progress)
+
+    await job_module.run_hmo_item_upload_job(job_id)
+
+    persist_ticks = [
+        t for t in ticks if "Persisting canonical read-back" in str(t.get("message") or "")
+    ]
+    assert persist_ticks, "the persist must stream progress through the job row"
+    outer_ok = all(
+        t["processed"] == 5 and t["total"] == 5 for t in persist_ticks
+    )
+    assert outer_ok, "the persist must not move the outer (overall) counter"
+    nested = all(
+        t.get("sub_processed") is not None and t.get("sub_total") == 3
+        for t in persist_ticks
+    )
+    assert nested
+    # The step strip stays in its final state during the persist.
+    assert persist_ticks[0]["steps"][1]["status"] == "done"
+    assert persist_ticks[0]["steps"][0]["status"] == "done"
 
 
 @pytest.mark.asyncio

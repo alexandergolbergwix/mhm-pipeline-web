@@ -434,9 +434,13 @@ async def _persist_live_canonical_state(
         if on_progress is not None and (
             processed % 100 == 0 or processed == len(entities)
         ):
+            # persist_scope: the read-back loop is NOT the upload's overall
+            # counter — the job wrapper routes it to the nested sub_* bar
+            # and freezes the outer counter at the upload's final state.
             await on_progress(
                 processed, len(entities),
                 f"Persisting canonical read-back: {processed}/{len(entities)}…",
+                persist_scope=True,
             )
     if missing_local_ids:
         examples = ", ".join(missing_local_ids[:10])
