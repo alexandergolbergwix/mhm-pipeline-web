@@ -389,6 +389,57 @@ async def test_upload_synthesizes_vocab_targets_and_classifies_unresolvable(db_s
 
 
 @pytest.mark.asyncio
+async def test_upload_dedupes_duplicate_local_ids_and_persists_canonical(db_session) -> None:
+    """The builder's ASCII normalization can collapse two distinct
+    Hebrew-named works onto one local_id (run 3494ebf5 cached two
+    QDraft_Work_60 entities, both live and mapped). The upload must rename
+    the second deterministically so the canonical assert passes and BOTH
+    works reach the canonical store."""
+    run_id = uuid.uuid4()
+    work_a = ResolvedWikibaseEntity(
+        local_id="QDraft_Work_60",
+        labels={"en": "60 derushim"},
+        descriptions={"en": "a work"},
+        class_qid="Q3",
+        source_uri="http://example.org#Work_60_derushim",
+    )
+    work_b = ResolvedWikibaseEntity(
+        local_id="QDraft_Work_60",
+        labels={"en": "Din beit din"},
+        descriptions={"en": "a work"},
+        class_qid="Q3",
+        source_uri="http://example.org#Work_din_beit_din",
+    )
+    await _seed_cache(db_session, run_id, [work_a, work_b])
+    for uri, qid in (
+        ("http://example.org#Work_60_derushim", "Q28051"),
+        ("http://example.org#Work_din_beit_din", "Q28053"),
+    ):
+        db_session.add(WikibaseEntityMapping(
+            ontology_uri=uri,
+            entity_kind=ENTITY_KIND_INSTANCE,
+            wikibase_id=qid,
+            run_id=run_id,
+            label=qid,
+        ))
+    await db_session.commit()
+    writer = _FakeWriter()
+
+    result = await pipeline.upload_items_for_run(db_session, run_id, writer=writer, dry_run=False)
+
+    assert result.skipped == 2
+    assert result.failed == 0
+    assert result.unresolved_links == 0
+    rows = (
+        await db_session.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
+        )
+    ).scalars().all()
+    assert {row.local_id for row in rows} == {"QDraft_Work_60", "QDraft_Work_60_2"}
+    assert {row.wikibase_id for row in rows} == {"Q28051", "Q28053"}
+
+
+@pytest.mark.asyncio
 async def test_live_upload_creates_items_then_links_them(db_session) -> None:
     run_id = uuid.uuid4()
     await _seed_cache(db_session, run_id, _ms_and_person())
@@ -498,7 +549,12 @@ async def test_duplicate_readback_qid_blocks_canonical_replacement(db_session) -
 
 
 @pytest.mark.asyncio
-async def test_duplicate_local_id_blocks_canonical_replacement(db_session) -> None:
+async def test_duplicate_local_id_is_renamed_and_both_canonical(db_session) -> None:
+    """The builder's ASCII normalization can give two distinct entities the
+    same local_id (run 3494ebf5: two Hebrew-named works as QDraft_Work_60,
+    both live and mapped). The upload renames subsequent occurrences
+    deterministically instead of failing the whole canonical persist —
+    identity is carried by the source URI, never by the local_id."""
     run_id = uuid.uuid4()
     entities = _ms_and_person()
     duplicate = ResolvedWikibaseEntity(
@@ -510,17 +566,23 @@ async def test_duplicate_local_id_blocks_canonical_replacement(db_session) -> No
     )
     await _seed_cache(db_session, run_id, [*entities, duplicate])
 
-    with pytest.raises(ValueError, match="duplicate canonical HMO local_id"):
-        await pipeline.upload_items_for_run(
-            db_session, run_id, writer=_FakeWriter(), dry_run=False,
-        )
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=_FakeWriter(), dry_run=False,
+    )
 
+    assert result.created == 3
+    assert result.failed == 0
     rows = (
         await db_session.execute(
             select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
         )
     ).scalars().all()
-    assert rows == []
+    assert {row.local_id for row in rows} == {
+        "QDraft_MS1", "QDraft_Person1", "QDraft_Person1_2",
+    }
+    by_local = {row.local_id: row for row in rows}
+    assert by_local["QDraft_Person1"].source_uri == "http://example.org#Person1"
+    assert by_local["QDraft_Person1_2"].source_uri == "http://example.org#Person2"
 
 
 @pytest.mark.asyncio

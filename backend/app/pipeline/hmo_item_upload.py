@@ -21,6 +21,7 @@ Two-pass, create-or-update:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import hashlib
 import json
 import logging
@@ -181,6 +182,30 @@ async def upload_items_for_run(
         raise RuntimeError(format_authority_gate_error(authority_gate))
 
     all_entities = [ResolvedWikibaseEntity.from_dict(e) for e in cache_row.resolved_entities]
+
+    # Deterministic local_id dedup: the builder's ASCII normalization can
+    # collapse two distinct Hebrew-named entities onto one local_id (run
+    # 3494ebf5 cached two different works as QDraft_Work_60). The canonical
+    # assert rejects duplicates — rename subsequent occurrences with the
+    # builder's own `_2` scheme; the first claimant keeps the base id for
+    # deferred-link resolution.
+    seen_local_ids: dict[str, int] = {}
+    deduped_entities: list[ResolvedWikibaseEntity] = []
+    for entity in all_entities:
+        count = seen_local_ids.get(entity.local_id, 0) + 1
+        seen_local_ids[entity.local_id] = count
+        if count == 1:
+            deduped_entities.append(entity)
+            continue
+        n = count
+        candidate = f"{entity.local_id}_{n}"
+        while candidate in seen_local_ids:
+            n += 1
+            candidate = f"{entity.local_id}_{n}"
+        seen_local_ids[candidate] = 1
+        deduped_entities.append(dataclasses.replace(entity, local_id=candidate))
+    all_entities = deduped_entities
+
     scope: set[str] | None = None
     if local_ids is not None:
         scope = {str(x).strip() for x in local_ids if str(x).strip()}

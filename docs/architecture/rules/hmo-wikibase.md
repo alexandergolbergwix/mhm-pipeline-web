@@ -831,6 +831,14 @@ Invariant:
    build changes, which is a corpus property, not an upload failure. An
    in-batch local_id reference whose target failed to create stays
    `unresolved` (retryable, gate-blocking).
+6. Duplicate local_ids in a build cache are renamed deterministically at
+   upload time, never fail the persist: the builder's ASCII normalization
+   can collapse two distinct Hebrew-named entities onto one local_id (run
+   3494ebf5 cached two different works as `QDraft_Work_60`, both live and
+   mapped). Identity is carried by the source URI, never by the local_id —
+   the first claimant keeps the base id (deferred links resolve to it),
+   subsequent occurrences get `<local_id>_2`, `_3`, … via
+   `dataclasses.replace`, and both reach the canonical store.
 
 Tests: `backend/tests/unit/test_hmo_exporter_resolution.py`
 (`test_resolve_auto_drafts_ontology_declared_individuals`,
