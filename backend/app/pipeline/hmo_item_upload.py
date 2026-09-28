@@ -381,7 +381,30 @@ async def _persist_live_canonical_state(
         raise ValueError(
             "duplicate canonical HMO source_uri: " + ", ".join(duplicate_source_uris[:10])
         )
+        missing_local_ids: list[str] = []
     missing_local_ids: list[str] = []
+    resume_rows = (
+        (
+            await db.execute(
+                select(HmoItemWriteFingerprint).where(
+                    HmoItemWriteFingerprint.run_id == cache_row.run_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # local_id -> (fingerprint, verified snapshot) — a stored snapshot whose
+    # fingerprint still matches the current payload was verified by a
+    # previous persist pass (possibly killed mid-loop): reuse it instead of
+    # re-reading the wiki. This makes the persist resumable across dyno
+    # restarts (Rule W-260 keep-alive).
+    verified: dict[str, tuple[str, dict[str, Any]]] = {
+        row.local_id: (row.payload_fingerprint, row.canonical_snapshot)
+        for row in resume_rows
+        if row.canonical_snapshot is not None
+    }
+    resumed = 0
     for entity in entities:
         # Upload mappings are keyed by source URI, not the local display id.
         qid = known_qids.get(entity.source_uri)
@@ -389,39 +412,51 @@ async def _persist_live_canonical_state(
             missing_local_ids.append(entity.local_id)
             continue
         try:
-            live = await asyncio.wait_for(
-                asyncio.to_thread(writer.get_entity, qid), timeout=90.0,
-            )
+            labels, descriptions = _prepare_entity_payload(entity, label_overrides)
+            fingerprint = _payload_fingerprint(entity, labels, descriptions, known_qids)
+            verified_snapshot = verified.get(entity.local_id)
+            if verified_snapshot is not None and verified_snapshot[0] == fingerprint:
+                # Resume checkpoint: this exact payload was already verified
+                # by a previous persist pass — reuse its snapshot.
+                snapshot = dict(verified_snapshot[1])
+                resumed += 1
+            else:
+                live = await asyncio.wait_for(
+                    asyncio.to_thread(writer.get_entity, qid),
+                    timeout=90.0,
+                )
+                if not live:
+                    logger.warning("canonical HMO read-back missing for %s (%s)", entity.local_id, qid)
+                    missing_local_ids.append(entity.local_id)
+                    continue
+                live_id = str(live.get("id") or "").strip()
+                if live_id and live_id != qid:
+                    raise RuntimeError(
+                        f"HMO canonical read-back identity mismatch for {entity.local_id}: "
+                        f"mapped {qid}, received {live_id}"
+                    )
+                snapshot = canonical_snapshot_from_wikibase(
+                    live,
+                    local_id=entity.local_id,
+                    source_uri=entity.source_uri,
+                    authority_evidence=list(entity.authority_evidence),
+                    entity_type=entity.entity_type,
+                    control_numbers=list(entity.control_numbers),
+                    property_uris=property_uris,
+                    target_uris=target_uris,
+                )
+                snapshot["wikibase_id"] = qid
         except asyncio.TimeoutError:
-            live = None
-        if not live:
-            logger.warning("canonical HMO read-back missing for %s (%s)", entity.local_id, qid)
             missing_local_ids.append(entity.local_id)
             continue
-        live_id = str(live.get("id") or "").strip()
-        if live_id and live_id != qid:
-            raise RuntimeError(
-                f"HMO canonical read-back identity mismatch for {entity.local_id}: "
-                f"mapped {qid}, received {live_id}"
-            )
-        snapshot = canonical_snapshot_from_wikibase(
-            live,
-            local_id=entity.local_id,
-            source_uri=entity.source_uri,
-            authority_evidence=list(entity.authority_evidence),
-            entity_type=entity.entity_type,
-            control_numbers=list(entity.control_numbers),
-            property_uris=property_uris,
-            target_uris=target_uris,
-        )
-        snapshot["wikibase_id"] = qid
         snapshots[entity.local_id] = snapshot
         # Record the write fingerprint right after the verified read-back:
         # one DB commit per item keeps the session alive across this
         # multi-hour read-back loop (an idle connection would be dropped —
         # 2026-09-28: the persist died on `connection is closed` after pass
         # 2 had already written everything), and the next update pass skips
-        # these items without re-writing or re-reading.
+        # these items without re-writing or re-reading. The verified
+        # snapshot rides along as the persist's resume checkpoint.
         payload_labels, payload_descriptions = _prepare_entity_payload(
             entity,
             label_overrides,
@@ -429,6 +464,7 @@ async def _persist_live_canonical_state(
         await _record_write_fingerprint(
             db, cache_row.run_id, entity.local_id, qid,
             _payload_fingerprint(entity, payload_labels, payload_descriptions, known_qids),
+            snapshot,
         )
         processed = len(snapshots)
         if on_progress is not None and (
@@ -442,6 +478,8 @@ async def _persist_live_canonical_state(
                 f"Persisting canonical read-back: {processed}/{len(entities)}…",
                 persist_scope=True,
             )
+    if resumed:
+        logger.info("canonical persist resumed %d verified snapshots", resumed)
     if missing_local_ids:
         examples = ", ".join(missing_local_ids[:10])
         suffix = "" if len(missing_local_ids) <= 10 else f" (+{len(missing_local_ids) - 10} more)"
@@ -1428,6 +1466,7 @@ async def _record_write_fingerprint(
     local_id: str,
     wikibase_id: str | None,
     payload_fingerprint: str,
+    canonical_snapshot: dict[str, Any] | None = None,
 ) -> None:
     row = (
         await db.execute(
@@ -1443,10 +1482,12 @@ async def _record_write_fingerprint(
             local_id=local_id,
             wikibase_id=wikibase_id,
             payload_fingerprint=payload_fingerprint,
+            canonical_snapshot=canonical_snapshot,
         ))
     else:
         row.wikibase_id = wikibase_id
         row.payload_fingerprint = payload_fingerprint
+        row.canonical_snapshot = canonical_snapshot
         row.written_at = func.now()
     await db.commit()
 

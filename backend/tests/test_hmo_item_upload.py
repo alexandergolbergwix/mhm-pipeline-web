@@ -478,6 +478,51 @@ async def test_canonical_persist_records_write_fingerprints_and_streams_progress
 
 
 @pytest.mark.asyncio
+async def test_canonical_persist_resumes_from_stored_snapshots(db_session) -> None:
+    """A killed persist attempt must not re-read items it already verified:
+    a stored snapshot whose fingerprint matches the current payload is
+    reused (no wiki read) and both items reach the canonical store."""
+    run_id = uuid.uuid4()
+    ms = ResolvedWikibaseEntity(
+        local_id="QDraft_MS1",
+        labels={"en": "Test MS"},
+        descriptions={"en": "a manuscript"},
+        class_qid="Q1",
+        source_uri="http://example.org#MS1",
+    )
+    person = ResolvedWikibaseEntity(
+        local_id="QDraft_Person1",
+        labels={"en": "Test Scribe"},
+        descriptions={"en": "a scribe"},
+        class_qid="Q2",
+        source_uri="http://example.org#Person1",
+    )
+    await _seed_cache(db_session, run_id, [ms, person])
+
+    # Attempt 1 (killed): persist normally — this verifies + stores both
+    # snapshots with their fingerprints.
+    await pipeline.upload_items_for_run(db_session, run_id, writer=_FakeWriter(), dry_run=False)
+
+    # Attempt 2 (resumed): a writer whose get_entity CRASHES if called —
+    # every item has a stored snapshot, so the resume must not read.
+    class _NoReadWriter(_FakeWriter):
+        def get_entity(self, entity_id):
+            raise AssertionError("resumed persist must not re-read verified items")
+
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=_NoReadWriter(), dry_run=False, update_existing=True,
+    )
+
+    assert result.failed == 0
+    rows = (
+        await db_session.execute(
+            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
+        )
+    ).scalars().all()
+    assert {row.local_id for row in rows} == {"QDraft_MS1", "QDraft_Person1"}
+
+
+@pytest.mark.asyncio
 async def test_live_upload_creates_items_then_links_them(db_session) -> None:
     run_id = uuid.uuid4()
     await _seed_cache(db_session, run_id, _ms_and_person())

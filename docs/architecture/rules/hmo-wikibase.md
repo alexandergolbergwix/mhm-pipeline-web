@@ -851,6 +851,13 @@ Invariant:
    freezes the outer counter at the upload's final state, so the
    tray/inline `(overall)` label stays honest; the step strip reads both
    steps done during the persist (counter-based statuses).
+8. The persist is resumable: the verified snapshot rides in the fingerprint
+   row (`canonical_snapshot`, migration 0050) and a re-run reuses every
+   stored snapshot whose fingerprint still matches the current payload —
+   only unverified items get read back. Web-dyno deploys/restarts kill
+   in-dyno upload tasks (twice during run 3494ebf5's 2026-09-28 publish);
+   with the checkpoint a restart costs only the remaining read-backs, not
+   the whole 18.5k loop.
 
 Tests: `backend/tests/unit/test_hmo_exporter_resolution.py`
 (`test_resolve_auto_drafts_ontology_declared_individuals`,

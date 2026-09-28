@@ -48,6 +48,8 @@
   `wikibase_cloud_writes` audit log),
   `test_canonical_persist_records_write_fingerprints_and_streams_progress`
   (persist keep-alive + progress scope),
+  `test_canonical_persist_resumes_from_stored_snapshots` (resume checkpoint,
+  migration 0050),
   plus `backend/tests/unit/test_hmo_exporter_resolution.py`
   (`test_resolve_auto_drafts_ontology_declared_individuals`,
   `test_resolve_keeps_uri_link_when_individual_class_is_unmapped`,

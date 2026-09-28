@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import CHAR, DateTime, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, _new_uuid
@@ -35,4 +36,9 @@ class HmoItemWriteFingerprint(Base):
     payload_fingerprint: Mapped[str] = mapped_column(CHAR(64), nullable=False)
     written_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+    # The verified canonical snapshot from the item's last live read-back —
+    # the canonical persist's resume checkpoint (Rule W-260, keep-alive).
+    canonical_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True, default=None,
     )
