@@ -145,7 +145,11 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         step_total: int | None = None,
     ) -> None:
         nonlocal last_seen_total, current_step, items_done, items_total, links_done, links_total
-        last_seen_total = total
+        # Only step-tagged (upload pass) emissions carry the whole-job
+        # denominator — the canonical persist emits its own read-back
+        # scope (N/M items) and must not corrupt the terminal total.
+        if step_id:
+            last_seen_total = total
         if step_id:
             current_step = step_id
             if step_id == STEP_UPLOAD_ITEMS:

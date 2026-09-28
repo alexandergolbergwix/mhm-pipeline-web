@@ -440,6 +440,42 @@ async def test_upload_dedupes_duplicate_local_ids_and_persists_canonical(db_sess
 
 
 @pytest.mark.asyncio
+async def test_canonical_persist_records_write_fingerprints_and_streams_progress(db_session) -> None:
+    """The persist's multi-hour read-back loop must keep the DB session
+    alive (one fingerprint commit per item — an idle connection was dropped
+    on run 3494ebf5's 2026-09-28 publish after pass 2 had finished) and
+    stream progress."""
+    run_id = uuid.uuid4()
+    await _seed_cache(db_session, run_id, _ms_and_person())
+    writer = _FakeWriter()
+    ticks: list[tuple[int, int, str]] = []
+
+    async def capture(processed, total, message, **_kw):
+        ticks.append((processed, total, message))
+
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=writer, dry_run=False, on_progress=capture,
+    )
+
+    assert result.failed == 0
+    from app.models.hmo_item_write_fingerprint import HmoItemWriteFingerprint
+
+    rows = (
+        await db_session.execute(
+            select(HmoItemWriteFingerprint).where(
+                HmoItemWriteFingerprint.run_id == run_id,
+            )
+        )
+    ).scalars().all()
+    assert {row.local_id for row in rows} == {"QDraft_MS1", "QDraft_Person1"}
+    assert ticks, "the persist must stream progress"
+    persist_ticks = [t for t in ticks if "Persisting canonical read-back" in t[2]]
+    assert persist_ticks, "the persist's own progress ticks must stream"
+    assert persist_ticks[-1][0] == persist_ticks[-1][1] == 2
+    assert "Persisting canonical read-back" in persist_ticks[-1][2]
+
+
+@pytest.mark.asyncio
 async def test_live_upload_creates_items_then_links_them(db_session) -> None:
     run_id = uuid.uuid4()
     await _seed_cache(db_session, run_id, _ms_and_person())

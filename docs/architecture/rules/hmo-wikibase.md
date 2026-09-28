@@ -839,6 +839,14 @@ Invariant:
    the first claimant keeps the base id (deferred links resolve to it),
    subsequent occurrences get `<local_id>_2`, `_3`, … via
    `dataclasses.replace`, and both reach the canonical store.
+7. The canonical persist must never idle the DB connection: it read-backs
+   every entity (multi-hour loop) — after each verified read-back it
+   records the item's write fingerprint (one commit per item, Rule W-260's
+   dedup contract), which keeps the session alive AND shrinks future
+   persists/updates. On 2026-09-28 the persist died with asyncpg
+   `connection is closed` after pass 2 had already written everything
+   (idle session, 18.5k read-backs). Persist emissions stream progress in
+   their own read-back scope and never touch the job's terminal total.
 
 Tests: `backend/tests/unit/test_hmo_exporter_resolution.py`
 (`test_resolve_auto_drafts_ontology_declared_individuals`,

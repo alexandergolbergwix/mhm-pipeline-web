@@ -316,7 +316,16 @@ async def upload_items_for_run(
         and unresolved == 0
         and scope is None
     ):
-        await _persist_live_canonical_state(db, cache_row, all_entities, known_qids, writer)
+        await _persist_live_canonical_state(
+            db,
+            cache_row,
+            all_entities,
+            known_qids,
+            writer,
+            label_overrides=label_overrides,
+            recorded_fingerprints=recorded_fingerprints,
+            on_progress=on_progress,
+        )
 
     return HmoItemUploadResult(
         dry_run=dry_run,
@@ -340,6 +349,10 @@ async def _persist_live_canonical_state(
     entities: list[ResolvedWikibaseEntity],
     known_qids: dict[str, str],
     writer: Any,
+    *,
+    label_overrides: dict[str, dict[str, str]] | None = None,
+    recorded_fingerprints: dict[str, str] | None = None,
+    on_progress: Callable[..., Awaitable[None]] | None = None,
 ) -> None:
     # Audit writes commit/rollback on the shared session. Refresh the cache
     # after that boundary before reading ORM attributes, because a rollback
@@ -403,6 +416,28 @@ async def _persist_live_canonical_state(
         )
         snapshot["wikibase_id"] = qid
         snapshots[entity.local_id] = snapshot
+        # Record the write fingerprint right after the verified read-back:
+        # one DB commit per item keeps the session alive across this
+        # multi-hour read-back loop (an idle connection would be dropped —
+        # 2026-09-28: the persist died on `connection is closed` after pass
+        # 2 had already written everything), and the next update pass skips
+        # these items without re-writing or re-reading.
+        payload_labels, payload_descriptions = _prepare_entity_payload(
+            entity,
+            label_overrides,
+        )
+        await _record_write_fingerprint(
+            db, cache_row.run_id, entity.local_id, qid,
+            _payload_fingerprint(entity, payload_labels, payload_descriptions, known_qids),
+        )
+        processed = len(snapshots)
+        if on_progress is not None and (
+            processed % 100 == 0 or processed == len(entities)
+        ):
+            await on_progress(
+                processed, len(entities),
+                f"Persisting canonical read-back: {processed}/{len(entities)}…",
+            )
     if missing_local_ids:
         examples = ", ".join(missing_local_ids[:10])
         suffix = "" if len(missing_local_ids) <= 10 else f" (+{len(missing_local_ids) - 10} more)"
