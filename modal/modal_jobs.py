@@ -263,6 +263,14 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                 from app.pipeline.hmo_item_build_job import run_hmo_item_build_job
 
                 await run_hmo_item_build_job(job_id)
+            elif kind == "hmo_item_upload":
+                # W-249 sibling: the two-pass upload + 18.5k-item canonical
+                # read-back hold the whole corpus (plus snapshot blobs) in
+                # memory — the 512 MB web dyno thrashed (128 × R14 → crash)
+                # on run 3494ebf5; the 8 GB container finishes it.
+                from app.pipeline.hmo_item_upload_job import run_hmo_item_upload_job
+
+                await run_hmo_item_upload_job(job_id)
             elif kind == "hmo_item_verify":
                 # W-249: the eval-agent subprocess + 18k-item scope need the
                 # container's 8 GB — the 512 MB web dyno thrashed (R14).
