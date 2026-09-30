@@ -58,7 +58,16 @@ def _ssl_connect_args(url: str) -> dict[str, Any]:
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
-    return {"ssl": ctx, "server_settings": server_settings}
+    # Client-side per-statement timeout: Heroku's essential tier can drop a
+    # connection WITHOUT a TCP reset, and the next statement then hangs for
+    # the OS-level TCP timeout (~1h) instead of erroring — the canonical
+    # build wedged mid-stream at 13501/18524 that way. A hung statement now
+    # raises after 5 min and the callers' retry/pool_pre_ping take over.
+    return {
+        "ssl": ctx,
+        "server_settings": server_settings,
+        "command_timeout": 300.0,
+    }
 
 
 def _make_engine():
