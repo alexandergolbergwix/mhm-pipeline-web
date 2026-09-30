@@ -130,44 +130,54 @@ async def _canonical_entities_for_run(
 ) -> list[Any]:
     """All durable canonical entities for the run, normalized.
 
-    Streams the snapshot column through a server-side cursor in batches so
-    the job publisher can report X/Y progress while the 18.5k-entity
-    read-back loads. The stream keeps the connection actively used (the
-    essential-tier Postgres silently kills connections), and the read is
-    retried on a fresh session — three builds of run 3494ebf5 died to a
-    dropped connection here or at the assembly boundary.
+    Keyset-paginated reads, one disposable session per batch: a checkout
+    through pool_pre_ping always starts from a proven-live connection, and a
+    mid-batch drop retries that batch instead of killing the build. The
+    essential-tier Postgres kills any transaction idle past 120 s and
+    silently drops others mid-stream, so nothing here holds a session longer
+    than one batch (run 3494ebf5 lost five builds to this).
     """
     from sqlalchemy import func  # noqa: PLC0415
 
-    base = select(HmoCanonicalEntity.snapshot).where(
-        HmoCanonicalEntity.run_id == run_id,
-    )
+    from app.db import session_scope  # noqa: PLC0415
+
     total = int(await db.scalar(
         select(func.count()).select_from(HmoCanonicalEntity).where(
             HmoCanonicalEntity.run_id == run_id,
         ),
     ) or 0)
-    last_exc: Exception | None = None
-    for _attempt in range(3):
-        entities: list[Any] = []
-        try:
-            result = await db.stream(
-                base.execution_options(yield_per=_CANONICAL_LOAD_BATCH),
-            )
-            done = 0
-            async for partition in result.partitions():
-                entities.extend(
-                    normalize_live_entity(row[0]) for row in partition
-                )
-                done += len(partition)
-                if on_progress is not None:
-                    on_progress(done, total)
-            return entities
-        except Exception as exc:  # noqa: BLE001 — read-only stream, retry once per drop
-            last_exc = exc
-            await db.close()
-    assert last_exc is not None
-    raise last_exc
+    entities: list[Any] = []
+    last_id: uuid.UUID | str = ""
+    while True:
+        rows: list[Any] = []
+        for attempt in range(3):
+            try:
+                async with session_scope() as batch_db:
+                    rows = (
+                        await batch_db.execute(
+                            select(HmoCanonicalEntity.snapshot, HmoCanonicalEntity.id)
+                            .where(
+                                HmoCanonicalEntity.run_id == run_id,
+                                HmoCanonicalEntity.id > last_id,
+                            )
+                            .order_by(HmoCanonicalEntity.id)
+                            .limit(_CANONICAL_LOAD_BATCH),
+                        )
+                    ).all()
+                break
+            except Exception:  # noqa: BLE001 — read-only batch, retry on drop
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(2)
+        if not rows:
+            break
+        last_id = rows[-1][1]
+        entities.extend(normalize_live_entity(row[0]) for row in rows)
+        if on_progress is not None:
+            on_progress(len(entities), total)
+        if len(rows) < _CANONICAL_LOAD_BATCH:
+            break
+    return entities
 
 
 # Stable prefixes the frontend matches on — never reword them casually.
