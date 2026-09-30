@@ -919,3 +919,19 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    It never retains a foreign update without consent.
    It assesses only blocked actions with two independent AI checks.
    *Why:* an AI review of every already-safe item delayed a small blocked-item decision.
+
+131. **R131 — A studio GET on a cache miss enqueues and answers 409 without fingerprint work.**
+   The full `GET /{run_id}/wikidata-studio` endpoint checks the cache row first.
+   On a miss (or force_rebuild) it enqueues the build job and raises the 409
+   build-in-progress detail immediately. It never loads the 18.5k canonical
+   snapshots or the MARC rows just to log a fingerprint — that ran on every
+   polling page load and R14-crashed the 512MB web dyno while a Modal build
+   was running (run 3494ebf5).
+
+132. **R132 — Build progress carries a per-phase `steps[]` plan with honest sub-progress.**
+   `wikidata_studio_build_job._build_progress` emits one `steps` entry per
+   phase (`done`/`running`/`pending`); only the running phase carries record
+   counts, and a phase change resets the record counters so a CPU-bound
+   phase (assembling canonical projection) never shows a stale
+   "record N of N". The steps strip renders a per-step bar; phases without a
+   record callback show an indeterminate pulse.

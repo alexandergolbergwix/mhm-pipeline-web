@@ -29,6 +29,7 @@ import {
 } from "@/utils/throttledProgressRefresh";
 import {patchWikidataItemsFromUploadOutcomes} from "@/utils/studioUploadProgress";
 import {ensureRunJob, loadStudioBuild, studioBuildJobIdFromConflict} from "@/utils/waitForRunJob";
+import {WIKIDATA_BUILD_PHASE_HINTS} from "@/lib/wikidataBuildPhases";
 import {useLabelStore} from "@/api/wikidataLabels";
 
 export interface WikidataItemsPanelProps {
@@ -79,6 +80,11 @@ export function WikidataItemsPanel({
   const [approveJob, setApproveJob] = useState<RunJobSnapshot | null>(null);
   const [approveFeedback, setApproveFeedback] = useState<string | null>(null);
   const [studioBuildJob, setStudioBuildJob] = useState<RunJobSnapshot | null>(null);
+  const [buildOverlayHidden, setBuildOverlayHidden] = useState(false);
+  const buildInProgress = studioBuildJob != null && isJobActive(studioBuildJob.status);
+  useEffect(() => {
+    if (!loading) setBuildOverlayHidden(false);
+  }, [loading]);
   const [publicationActive, setPublicationActive] = useState(true);
   const importRef = useRef<HTMLInputElement>(null);
   const labelStore = useLabelStore();
@@ -387,8 +393,14 @@ export function WikidataItemsPanel({
   const buildPresent = (build?.summary.total_items ?? 0) > 0;
   return (
     <Glass as="section" className="p-6 space-y-4 relative" data-testid="wikidata-items-panel">
-      {loading && (
-        <LoadingOverlay message="Loading Wikidata items…" detail={buildProgress} className="rounded-xl z-30" />
+      {loading && !buildOverlayHidden && (
+        <LoadingOverlay
+          message="Loading Wikidata items…"
+          detail={buildProgress}
+          className="rounded-xl z-30"
+          onDismiss={() => setBuildOverlayHidden(true)}
+          dismissLabel="Hide — progress shows below and in the job tray"
+        />
       )}
 
       {/* Zone A — Review */}
@@ -397,8 +409,9 @@ export function WikidataItemsPanel({
           <div className="kicker">Wikidata Items</div>
           <h3 className="text-lg font-medium">Review records</h3>
           <p className="muted text-sm mt-1" data-testid="wikidata-review-status">
-            {build?.summary.total_items ?? 0} items · {build?.approved_item_count ?? 0} approved
-            {" · "}{attentionCount} need attention
+            {buildInProgress && (build?.summary.total_items ?? 0) === 0
+              ? "Build in progress — records appear here when the build finishes. Large runs take ~25–40 min; watch the steps below or in the job tray (bottom-right)."
+              : `${build?.summary.total_items ?? 0} items · ${build?.approved_item_count ?? 0} approved · ${attentionCount} need attention`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2" data-testid="wikidata-item-lifecycle-bar">
@@ -477,6 +490,7 @@ export function WikidataItemsPanel({
         {studioBuildJob && (
           <JobProgressInline
             job={studioBuildJob}
+            phaseHints={WIKIDATA_BUILD_PHASE_HINTS}
             labels={{
               running: "Building Wikidata items…",
               succeeded: "Build complete:",

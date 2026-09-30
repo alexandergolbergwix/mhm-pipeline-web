@@ -32,10 +32,16 @@ export function LoadingOverlay({
   message,
   detail,
   className = "",
+  onDismiss,
+  dismissLabel,
 }: {
   message: string;
   detail?: string | null;
   className?: string;
+  /** Long waits (e.g. studio builds) stay useful in the job tray — let the
+   *  curator hide the frosted overlay and watch the inline progress instead. */
+  onDismiss?: () => void;
+  dismissLabel?: string;
 }) {
   return (
     <div
@@ -49,6 +55,15 @@ export function LoadingOverlay({
         <div className="text-sm text-ink">{message}</div>
         {detail ? <div className="muted text-[11px]">{detail}</div> : null}
         <ProgressBar />
+        {onDismiss && (
+          <button
+            type="button"
+            className="button-ghost text-[11px]"
+            onClick={onDismiss}
+          >
+            {dismissLabel ?? "Hide"}
+          </button>
+        )}
       </GlassPill>
     </div>
   );

@@ -1,9 +1,11 @@
+import {useEffect, useState} from "react";
 import type {RunJobSnapshot} from "@/api/runJobs";
 import {
   JobStepsStrip,
   OVERALL_PROGRESS_TITLE,
   STEP_ONLY_TITLE,
 } from "@/components/jobs/JobStepsStrip";
+import type {BuildPhaseHint} from "@/lib/wikidataBuildPhases";
 
 interface JobProgressInlineProps {
   job: RunJobSnapshot;
@@ -14,13 +16,38 @@ interface JobProgressInlineProps {
     failed: string;
     cancelled: string;
   };
+  /** Human guide per phase label (e.g. Wikidata Studio build phases): what
+   *  the phase does and how long it usually takes. Matched on
+   *  job.progress.phase; unknown phases render no hint. */
+  phaseHints?: Record<string, BuildPhaseHint>;
+}
+
+function formatElapsed(ms: number): string {
+  const minutes = Math.floor(ms / 60000);
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
+/** Ticking elapsed readout while the job runs; null before start / when done. */
+function useElapsed(startedAt: string | null, active: boolean): string | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active || !startedAt) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [active, startedAt]);
+  if (!active || !startedAt) return null;
+  const start = Date.parse(startedAt);
+  if (!Number.isFinite(start)) return null;
+  return formatElapsed(Math.max(0, now - start));
 }
 
 /**
  * Inline progress line + bar for a background run job, rendered inside the
  * panel that started it (the JobTray shows the same job globally).
  */
-export function JobProgressInline({job, labels}: JobProgressInlineProps) {
+export function JobProgressInline({job, labels, phaseHints}: JobProgressInlineProps) {
   const {
     processed,
     total,
@@ -42,6 +69,8 @@ export function JobProgressInline({job, labels}: JobProgressInlineProps) {
   const unitSuffix = unit ? ` ${unit}` : "";
   const subUnitSuffix = sub_unit ? ` ${sub_unit}` : "";
   const showSub = !done && Boolean(sub_total && sub_total > 0);
+  const elapsed = useElapsed(job.started_at, !done);
+  const phaseHint = !done ? phaseHints?.[job.progress.phase ?? ""] : undefined;
 
   return (
     <div className="border-t border-white/5 pt-3 space-y-2">
@@ -61,9 +90,17 @@ export function JobProgressInline({job, labels}: JobProgressInlineProps) {
           <span className="muted text-xs" title={OVERALL_PROGRESS_TITLE}>
             {processed ?? 0} / {total}{unitSuffix}
             {hasSteps && <span className="ml-1 opacity-70">(overall)</span>}
+            {elapsed && <span className="ml-2 opacity-80">· elapsed {elapsed}</span>}
           </span>
+        ) : elapsed ? (
+          <span className="muted text-xs">elapsed {elapsed}</span>
         ) : null}
       </div>
+      {phaseHint && (
+        <p className="muted text-xs">
+          {phaseHint.detail} · typically {phaseHint.expected}
+        </p>
+      )}
       {hasSteps && <JobStepsStrip steps={steps ?? []} />}
       {!done && (
         <div className="h-1.5 w-full rounded-full bg-white/8 overflow-hidden">

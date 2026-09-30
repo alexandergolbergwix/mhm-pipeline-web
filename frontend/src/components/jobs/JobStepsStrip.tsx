@@ -23,6 +23,7 @@ export function JobStepsStrip({steps}: {steps: ProgressStep[]}) {
         const total = Number(step.total ?? 0);
         const processed = Number(step.processed ?? 0);
         const counts = total > 0 ? ` · ${processed}/${total}${step.unit ? ` ${step.unit}` : ""}` : "";
+        const pct = total > 0 ? Math.min(100, Math.max(2, Math.round((processed / total) * 100))) : 0;
         const tone =
           status === "running" ? "text-biu-sky font-medium"
             : status === "skipped" ? "text-warn"
@@ -31,12 +32,28 @@ export function JobStepsStrip({steps}: {steps: ProgressStep[]}) {
         return (
           <span
             key={step.id ?? i}
-            className={`inline-flex items-center gap-1 ${tone}`}
+            className={`inline-flex flex-col gap-0.5 min-w-[8rem] ${tone}`}
             data-status={status}
             title={STEP_CHIP_TITLE}
           >
-            <span aria-hidden>{marker}</span>
-            <span>{step.label ?? `Step ${i + 1}`}{counts}</span>
+            <span className="inline-flex items-center gap-1">
+              <span aria-hidden>{marker}</span>
+              <span>{step.label ?? `Step ${i + 1}`}{counts}</span>
+            </span>
+            {status === "running" && (
+              <span className="block h-0.5 w-full rounded-full bg-white/8 overflow-hidden">
+                {total > 0 ? (
+                  <span
+                    className="block h-full bg-biu-sky transition-[width] duration-300"
+                    style={{width: `${pct}%`}}
+                  />
+                ) : (
+                  // CPU-bound phase with no per-record callback: show alive,
+                  // stay honest about not knowing the fraction.
+                  <span className="block h-full w-1/3 bg-biu-sky/70 animate-pulse" />
+                )}
+              </span>
+            )}
           </span>
         );
       })}

@@ -1136,6 +1136,28 @@ async def build_studio(
     if source == "legacy" and get_settings().canonical_first_for_run(run_id):
         source = "canonical"
 
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
+    if cached is None or force_rebuild:
+        # Cache miss: enqueue + 409 immediately. The fingerprint comparisons
+        # below only matter against an existing cache row — computing them on
+        # a miss loaded all 18.5k canonical snapshots + 897 MARC records onto
+        # the 512MB web dyno on every polling page load and R14-crashed it
+        # while a Modal build was running (run 3494ebf5, Rule W-15 class).
+        logger.debug("wikidata-studio cache miss for run %s", run_id)
+        job_id = await _enqueue_studio_build_job(
+            db,
+            project_id=run.project_id,
+            run_id=run_id,
+            approved_only=approved_only,
+            source=source,
+            force_rebuild=force_rebuild,
+            user_id=auth.user.id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=_studio_build_in_progress_detail(job_id),
+        )
+
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
         db, run_id,
     )
@@ -1148,54 +1170,26 @@ async def build_studio(
         hmo_instance_qids,
     )
 
-    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
-
     cache_fingerprint = (
         await _canonical_cache_fingerprint(db, run_id)
         if source == "canonical"
         else fingerprint
     )
 
-    if not force_rebuild and cached is not None:
-        if cached.input_fingerprint == cache_fingerprint:
-            logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
-            merged = await fetch_merged_wikidata_items(
-                db, run_id, approved_only=approved_only, source=source,
+    if cached.input_fingerprint == cache_fingerprint:
+        logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
+        merged = await fetch_merged_wikidata_items(
+            db, run_id, approved_only=approved_only, source=source,
+        )
+        cache_shape_stale = (
+            studio_cache_has_non_public_items(cached.result_items, source=source)
+            or wikidata_studio.studio_cache_has_stale_validation(
+                cached.result_items,
             )
-            cache_shape_stale = (
-                studio_cache_has_non_public_items(cached.result_items, source=source)
-                or wikidata_studio.studio_cache_has_stale_validation(
-                    cached.result_items,
-                )
-            )
-            return _studio_response_from_cache(
-                cached,
-                merged,
-                approved_only=approved_only,
-                entity_type=entity_type,
-                q=q,
-                upload_outcome=upload_outcome,
-                sort=sort,
-                sort_dir=sort_dir,
-                page=page,
-                page_size=page_size,
-                cache_stale=cache_shape_stale,
-                list_view=list_view,
-            )
-        # Stale cache: serve the last good build immediately. Do not auto-start
-        # a background job — passive page loads should not surface a job-tray
-        # banner while the curator is already reviewing cached items.
-        logger.debug(
-            "wikidata-studio stale cache for run %s (cached=%s current=%s)",
-            run_id,
-            (cached.input_fingerprint or "")[:8],
-            cache_fingerprint[:8],
         )
         return _studio_response_from_cache(
             cached,
-            await fetch_merged_wikidata_items(
-                db, run_id, approved_only=approved_only, source=source,
-            ),
+            merged,
             approved_only=approved_only,
             entity_type=entity_type,
             q=q,
@@ -1204,23 +1198,33 @@ async def build_studio(
             sort_dir=sort_dir,
             page=page,
             page_size=page_size,
-            cache_stale=True,
+            cache_stale=cache_shape_stale,
             list_view=list_view,
         )
-
-    logger.debug("wikidata-studio cache miss for run %s (fp=%s)", run_id, fingerprint[:8])
-    job_id = await _enqueue_studio_build_job(
-        db,
-        project_id=run.project_id,
-        run_id=run_id,
-        approved_only=approved_only,
-        source=source,
-        force_rebuild=force_rebuild,
-        user_id=auth.user.id,
+    # Stale cache: serve the last good build immediately. Do not auto-start
+    # a background job — passive page loads should not surface a job-tray
+    # banner while the curator is already reviewing cached items.
+    logger.debug(
+        "wikidata-studio stale cache for run %s (cached=%s current=%s)",
+        run_id,
+        (cached.input_fingerprint or "")[:8],
+        cache_fingerprint[:8],
     )
-    raise HTTPException(
-        status_code=status.HTTP_409_CONFLICT,
-        detail=_studio_build_in_progress_detail(job_id),
+    return _studio_response_from_cache(
+        cached,
+        await fetch_merged_wikidata_items(
+            db, run_id, approved_only=approved_only, source=source,
+        ),
+        approved_only=approved_only,
+        entity_type=entity_type,
+        q=q,
+        upload_outcome=upload_outcome,
+        sort=sort,
+        sort_dir=sort_dir,
+        page=page,
+        page_size=page_size,
+        cache_stale=True,
+        list_view=list_view,
     )
 
 

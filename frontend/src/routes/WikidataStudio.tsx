@@ -11,6 +11,7 @@ import {Runs} from "@/api/runs";
 import {RunJobs} from "@/api/runJobs";
 import {useRunJobs, isJobActive} from "@/stores/runJobs";
 import {JobProgressInline} from "@/components/jobs/JobProgressInline";
+import {WIKIDATA_BUILD_PHASE_HINTS} from "@/lib/wikidataBuildPhases";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {
   loadStudioBuild,
@@ -376,6 +377,7 @@ export default function WikidataStudio() {
         {studioBuildJob && (
           <JobProgressInline
             job={studioBuildJob}
+            phaseHints={WIKIDATA_BUILD_PHASE_HINTS}
             labels={{
               running: "Building Wikidata items…",
               succeeded: "Build complete:",

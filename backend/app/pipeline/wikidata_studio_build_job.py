@@ -54,18 +54,39 @@ def _phase_plan(source: str) -> tuple[str, ...]:
 
 
 def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[str, object]:
-    """Outer progress is 1-based phases; the record loop nests underneath."""
+    """Outer progress is 1-based phases; the record loop nests underneath.
+
+    ``steps`` carries the full phase plan so the UI can render a per-step
+    bar: done phases show a tick, the running phase shows its record counts
+    (or an indeterminate marker for the CPU-bound assembly phase that has no
+    per-record progress), pending phases stay hollow.
+    """
     label = str(state.get("phase") or phases[0])
     step = (phases.index(label) + 1) if label in phases else 1
     total = len(phases)
+    done, records = int(state.get("done") or 0), int(state.get("records") or 0)
+    steps: list[dict[str, object]] = []
+    for index, phase in enumerate(phases, start=1):
+        entry: dict[str, object] = {"id": f"phase-{index}", "label": phase}
+        if index < step:
+            entry["status"] = "done"
+        elif index == step:
+            entry["status"] = "running"
+            if records:
+                entry["processed"] = min(done + 1, records)
+                entry["total"] = records
+                entry["unit"] = "records"
+        else:
+            entry["status"] = "pending"
+        steps.append(entry)
     progress: dict[str, object] = {
         "phase": label,
         "processed": step,
         "total": total,
         "unit": "steps",
         "message": f"Step {step} of {total}: {label}",
+        "steps": steps,
     }
-    done, records = int(state.get("done") or 0), int(state.get("records") or 0)
     if records:
         progress.update(
             sub_processed=min(done + 1, records),
@@ -264,6 +285,9 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
 
     def on_phase(label: str) -> None:
         state["phase"] = label
+        # The record counters belong to the phase that emitted them — stale
+        # "record 897 of 897" under a CPU-bound phase read as fake progress.
+        state["done"], state["records"] = 0, 0
 
     publisher = asyncio.create_task(_publish_build_progress(job_id, state, phases))
 
