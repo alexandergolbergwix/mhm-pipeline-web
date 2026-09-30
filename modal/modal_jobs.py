@@ -31,7 +31,6 @@ import os
 import subprocess
 import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 import modal
@@ -285,7 +284,30 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                 # Sharded fan-out (batch-build parity with rdf_build):
                 # parallel item-builder containers; the claimed container
                 # merges, finishes the corpus, and owns terminal state.
-                await _run_wikidata_studio_build_sharded(job_id)
+                # canonical-source builds assemble from durable HMO
+                # canonical entities and hold the full projection in
+                # memory — run the Heroku runner directly in this 8GB
+                # container instead of the legacy-shard fan-out (run
+                # 3494ebf5 OOMed the 512MB web dyno at this step).
+                async with session_scope() as db:
+                    from sqlalchemy import select
+
+                    from app.models.run_job import RunJob as _RunJob
+
+                    job_row = (
+                        await db.execute(
+                            select(_RunJob).where(_RunJob.id == _uuid.UUID(job_id))
+                        )
+                    ).scalar_one_or_none()
+                    source = str((job_row.params or {}).get("source") or "legacy") if job_row else "legacy"
+                if source == "canonical":
+                    from app.pipeline.wikidata_studio_build_job import (
+                        run_wikidata_studio_build_job,
+                    )
+
+                    await run_wikidata_studio_build_job(job_id)
+                else:
+                    await _run_wikidata_studio_build_sharded(job_id)
             else:
                 raise ValueError(f"kind {kind!r} has no Modal executor")
         except Exception as exc:  # noqa: BLE001
@@ -912,8 +934,6 @@ def run(request_body: dict) -> dict:
     """
     from fastapi import HTTPException
 
-    from starlette.requests import Request as StarletteRequest
-
     assert isinstance(request_body, dict)
 
     # fastapi_endpoint injects no Request by default — auth comes from the body
@@ -924,8 +944,8 @@ def run(request_body: dict) -> dict:
     job_id = str(request_body.get("job_id") or "")
     kind = str(request_body.get("kind") or "")
     if not job_id or kind not in (
-        "rdf_build", "hmo_item_build", "hmo_item_verify", "hmo_rule_verify",
-        "wikidata_studio_build",
+        "rdf_build", "hmo_item_build", "hmo_item_upload", "hmo_item_verify",
+        "hmo_rule_verify", "wikidata_studio_build",
     ):
         raise HTTPException(status_code=422, detail="job_id and kind required")
 

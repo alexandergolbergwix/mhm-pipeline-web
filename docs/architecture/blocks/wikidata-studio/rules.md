@@ -752,7 +752,14 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     Persons without an identity PID stay `unsure`. Never UPDATE Q2873224 /
     Q2740944. *Why:* live job `8dbc4090` failed 23 string titles, wrote
     5180 mm, and CREATEd Av HaRachamim beside Q2873224.
-
+100. **R100 — Canonical-source Studio builds run in the 8GB Modal container (Rule W-249 sibling).**
+    The canonical assembler holds all ~18.5k durable HMO canonical entities
+    plus the full projection in memory — the 512MB web dyno OOM-crashed
+    (R14/R15) at "Step 5 of 6: assembling canonical projection" on run
+    3494ebf5, killing the build with "Job interrupted" on every attempt.
+    `run_job_service` no longer excludes canonical builds from Modal
+    dispatch, and the Modal runner executes the canonical assembler
+    directly (no legacy shard fan-out) when `source=canonical`.
 100. **R100 — Transliteration prewarm MUST isolate cache sessions from the build session (Rule W-197).**
     `execute_studio_build` snapshots MARC dictionaries before prewarm. Prewarm
     reads and writes use short-lived bulk sessions, while external label calls
