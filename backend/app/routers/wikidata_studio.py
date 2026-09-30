@@ -17,6 +17,7 @@ import json
 import logging
 import threading
 import uuid
+from datetime import timedelta
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any, Literal
@@ -25,7 +26,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
@@ -46,6 +47,8 @@ from app.models.run_job import (
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_WIKIDATA_VERIFY,
+    JOB_STATUS_CANCELLED,
+    JOB_STATUS_FAILED,
     JOB_STATUS_SUCCEEDED,
     RunJob,
 )
@@ -127,29 +130,44 @@ async def _canonical_entities_for_run(
 ) -> list[Any]:
     """All durable canonical entities for the run, normalized.
 
-    Loads in id batches so the job publisher can report X/Y progress while
-    the 18.5k-entity read-back streams in — a single silent select read as a
-    stuck phase in the UI (run 3494ebf5).
+    Streams the snapshot column through a server-side cursor in batches so
+    the job publisher can report X/Y progress while the 18.5k-entity
+    read-back loads. The stream keeps the connection actively used (the
+    essential-tier Postgres silently kills connections), and the read is
+    retried on a fresh session — three builds of run 3494ebf5 died to a
+    dropped connection here or at the assembly boundary.
     """
-    id_rows = (
-        await db.execute(
-            select(HmoCanonicalEntity.id).where(HmoCanonicalEntity.run_id == run_id),
-        )
-    ).scalars().all()
-    total = len(id_rows)
-    rows: list[HmoCanonicalEntity] = []
-    for start in range(0, total, _CANONICAL_LOAD_BATCH):
-        chunk = (
-            await db.execute(
-                select(HmoCanonicalEntity).where(
-                    HmoCanonicalEntity.id.in_(id_rows[start:start + _CANONICAL_LOAD_BATCH]),
-                ),
+    from sqlalchemy import func  # noqa: PLC0415
+
+    base = select(HmoCanonicalEntity.snapshot).where(
+        HmoCanonicalEntity.run_id == run_id,
+    )
+    total = int(await db.scalar(
+        select(func.count()).select_from(HmoCanonicalEntity).where(
+            HmoCanonicalEntity.run_id == run_id,
+        ),
+    ) or 0)
+    last_exc: Exception | None = None
+    for _attempt in range(3):
+        entities: list[Any] = []
+        try:
+            result = await db.stream(
+                base.execution_options(yield_per=_CANONICAL_LOAD_BATCH),
             )
-        ).scalars().all()
-        rows.extend(chunk)
-        if on_progress is not None:
-            on_progress(min(start + _CANONICAL_LOAD_BATCH, total), total)
-    return [normalize_live_entity(row.snapshot) for row in rows]
+            done = 0
+            async for partition in result.partitions():
+                entities.extend(
+                    normalize_live_entity(row[0]) for row in partition
+                )
+                done += len(partition)
+                if on_progress is not None:
+                    on_progress(done, total)
+            return entities
+        except Exception as exc:  # noqa: BLE001 — read-only stream, retry once per drop
+            last_exc = exc
+            await db.close()
+    assert last_exc is not None
+    raise last_exc
 
 
 # Stable prefixes the frontend matches on — never reword them casually.
@@ -1177,6 +1195,34 @@ async def build_studio(
         # the 512MB web dyno on every polling page load and R14-crashed it
         # while a Modal build was running (run 3494ebf5, Rule W-15 class).
         logger.debug("wikidata-studio cache miss for run %s", run_id)
+        if not force_rebuild:
+            # A passive page load must not auto-requeue a build that just
+            # failed — the curator's browser polling spawned doomed build
+            # after doomed build against a dropped-connection Postgres
+            # (run 3494ebf5). Surface the failure instead; the explicit
+            # Rebuild button (force_rebuild) bypasses this guard.
+            recent_failed = (
+                (
+                    await db.execute(
+                        select(RunJob)
+                        .where(
+                            RunJob.run_id == run_id,
+                            RunJob.kind == JOB_KIND_WIKIDATA_STUDIO_BUILD,
+                            RunJob.status.in_([JOB_STATUS_FAILED, JOB_STATUS_CANCELLED]),
+                            RunJob.finished_at > func.now() - timedelta(minutes=15),
+                        )
+                        .order_by(RunJob.finished_at.desc())
+                        .limit(1),
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if recent_failed is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=_studio_build_in_progress_detail(recent_failed.id),
+                )
         job_id = await _enqueue_studio_build_job(
             db,
             project_id=run.project_id,
