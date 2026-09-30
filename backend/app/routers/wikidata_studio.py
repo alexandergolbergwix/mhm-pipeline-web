@@ -118,14 +118,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
 
 
+_CANONICAL_LOAD_BATCH = 500
+
+
 async def _canonical_entities_for_run(
     db: AsyncSession, run_id: uuid.UUID,
+    *, on_progress: Callable[[int, int], None] | None = None,
 ) -> list[Any]:
-    rows = (
+    """All durable canonical entities for the run, normalized.
+
+    Loads in id batches so the job publisher can report X/Y progress while
+    the 18.5k-entity read-back streams in — a single silent select read as a
+    stuck phase in the UI (run 3494ebf5).
+    """
+    id_rows = (
         await db.execute(
-            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id),
+            select(HmoCanonicalEntity.id).where(HmoCanonicalEntity.run_id == run_id),
         )
     ).scalars().all()
+    total = len(id_rows)
+    rows: list[HmoCanonicalEntity] = []
+    for start in range(0, total, _CANONICAL_LOAD_BATCH):
+        chunk = (
+            await db.execute(
+                select(HmoCanonicalEntity).where(
+                    HmoCanonicalEntity.id.in_(id_rows[start:start + _CANONICAL_LOAD_BATCH]),
+                ),
+            )
+        ).scalars().all()
+        rows.extend(chunk)
+        if on_progress is not None:
+            on_progress(min(start + _CANONICAL_LOAD_BATCH, total), total)
     return [normalize_live_entity(row.snapshot) for row in rows]
 
 
@@ -787,7 +810,9 @@ async def _execute_studio_build(
 
     if source == "canonical":
         phase("loading canonical entities")
-        canonical = await _canonical_entities_for_run(db, run_id)
+        canonical = await _canonical_entities_for_run(
+            db, run_id, on_progress=progress_cb,
+        )
         if not canonical:
             raise ValueError(await _canonical_missing_detail(db, run_id))
         await check_cancel()
