@@ -147,7 +147,8 @@ async def _canonical_entities_for_run(
         ),
     ) or 0)
     entities: list[Any] = []
-    last_id: uuid.UUID | str = ""
+    # Zero UUID sorts before every real id — the keyset start sentinel.
+    last_id: uuid.UUID = uuid.UUID(int=0)
     while True:
         rows: list[Any] = []
         for attempt in range(3):
