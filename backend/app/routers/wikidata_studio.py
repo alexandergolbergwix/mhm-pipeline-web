@@ -888,6 +888,16 @@ async def _execute_studio_build(
 
         from converter.wikidata import hebrew_translit  # noqa: PLC0415
 
+        # Release the pooled connection across the CPU-bound tail of the
+        # build (transliterations, per-record item build, canonical assembly
+        # — ~40 min on run 3494ebf5). The session sits idle while that work
+        # runs and Heroku Postgres drops the idle TCP connection;
+        # pool_recycle/pre_ping only act at checkout, so the next statement on
+        # the held session died with "connection is closed" (three builds
+        # lost). Every input is already extracted into plain structures above,
+        # and the next DB use checks out a fresh pooled connection.
+        await db.close()
+
         phase("preparing transliterations")
         prewarmed = await _prewarm_transliterations(
             marc_records=marc_records, user_id=run_user_id,
@@ -911,14 +921,6 @@ async def _execute_studio_build(
             hebrew_translit.set_sync_network_disabled(False)
             hebrew_translit.clear_prewarmed_labels()
         await check_cancel()
-
-        # Release the pooled connection across the CPU-bound assembly: the
-        # session sits idle for the whole multi-pass projection build (~30 min
-        # on run 3494ebf5) and Heroku Postgres drops the idle TCP connection —
-        # pool_recycle/pre_ping only act at checkout, so the next statement on
-        # the held session died with "connection is closed" at Step 6. Closing
-        # returns the connection; the next DB use checks out a fresh one.
-        await db.close()
 
         phase("assembling canonical projection")
         result = await run_in_threadpool(
