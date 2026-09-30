@@ -67,6 +67,16 @@ def _make_engine():
         settings.database_url,
         echo=False,
         pool_pre_ping=True,
+        # pool_recycle: Heroku Postgres's shared essential tier drops
+        # connections silently after ~5 min of idleness — a long CPU-bound
+        # stretch (the canonical assembler's threadpool work) left the
+        # session's pooled connection dead, and the next commit failed with
+        # "cannot call Transaction.rollback(): the underlying connection is
+        # closed" (run 3494ebf5 canonical build, repeatedly). Recycle at
+        # 4 min < the server-side kill window so a pooled connection is
+        # always younger than the drop threshold; pool_pre_ping guards the
+        # residual race.
+        pool_recycle=240,
         pool_size=5,
         max_overflow=10,
         connect_args=_ssl_connect_args(settings.database_url),
