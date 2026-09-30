@@ -8,6 +8,8 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable
 
+from sqlalchemy import text
+
 from app.db import session_scope
 from app.models.run_job import (
     JOB_STATUS_CANCELLED,
@@ -264,6 +266,22 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         state["phase"] = label
 
     publisher = asyncio.create_task(_publish_build_progress(job_id, state, phases))
+
+    async def _heartbeat_updated_at() -> None:
+        while True:
+            try:
+                from app.db import session_scope as _ss  # noqa: PLC0415
+
+                async with _ss() as hb:
+                    await hb.execute(text(
+                        "UPDATE run_jobs SET updated_at = now() "
+                        "WHERE id = :jid AND status = 'running'"
+                    ), {"jid": job_id})
+            except Exception:  # noqa: BLE001 — keep-alive is best-effort
+                pass
+            await asyncio.sleep(60)
+
+    hb_task = asyncio.create_task(_heartbeat_updated_at())
     try:
         from app.routers.wikidata_studio import execute_studio_build  # noqa: PLC0415
 
@@ -307,6 +325,9 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         publisher.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await publisher
+        hb_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await hb_task
 
     if await is_cancel_requested(job_id):
         await finish_job(job_id, status=JOB_STATUS_CANCELLED)
