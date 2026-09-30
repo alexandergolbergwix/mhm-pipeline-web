@@ -894,6 +894,14 @@ async def _execute_studio_build(
             hebrew_translit.clear_prewarmed_labels()
         await check_cancel()
 
+        # Release the pooled connection across the CPU-bound assembly: the
+        # session sits idle for the whole multi-pass projection build (~30 min
+        # on run 3494ebf5) and Heroku Postgres drops the idle TCP connection —
+        # pool_recycle/pre_ping only act at checkout, so the next statement on
+        # the held session died with "connection is closed" at Step 6. Closing
+        # returns the connection; the next DB use checks out a fresh one.
+        await db.close()
+
         phase("assembling canonical projection")
         result = await run_in_threadpool(
             build_canonical_studio_result,
