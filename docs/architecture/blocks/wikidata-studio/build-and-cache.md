@@ -56,6 +56,15 @@ Heroku claims the row; the claimed container orchestrates (Rule W-237):
   job: the canonical assembler consumes the legacy native items as input, so
   the sharded path implements `legacy` semantics only (dispatch gate in
   `run_job_service._execute_job`).
+- The canonical job commits the read transaction before it loads entities
+  (Rule W-261). A dropped connection retries from the last finished batch,
+  at most 3 times. The resume object keeps the entities, the transliteration
+  cache, and a finished item build. A new process still reads the entities
+  again from `hmo_canonical_entities`, because that list is not written to
+  Postgres until the cache upsert.
+- The Modal function and the web wait budget are both 24 hours. Long CPU
+  phases run in a worker thread so the heartbeat keeps flowing. Entity-load
+  statements do not use the 5-minute client cap.
 
 ### Per-item rows read model (cursor pagination + streaming export)
 

@@ -633,3 +633,35 @@ follow the same pattern: monotone counter + phase-scoped ETA. Test:
 `tests/unit/test_authority_re_enrich_progress.py`
 (`test_re_enrich_run_reports_entity_progress` asserts the ticks never
 decrease and the final tick reaches the total).
+
+### Rule W-261 — A Wikidata Studio build must release its read transaction and resume a dropped connection (added 2026-10-01)
+
+Run 3494ebf5 job `5964799c` died in "loading canonical entities" after the
+read had reached 18524/18524. The tray sat on 10001 for minutes. Postgres
+closed the connection (`ConnectionDoesNotExistError: connection was closed
+in the middle of operation`). The parent build session stayed in a
+transaction for the whole entity read. That idle transaction exceeds the
+120 s limit in `app/db.py` (Rule W-240). The progress publisher had no
+error handler, so one failed progress write froze the counter. The loaded
+entities lived only in that process, and the job had no retry.
+
+Therefore: `_execute_studio_build` commits the read transaction before the
+canonical entity read and before the fingerprint. Each entity batch still
+uses its own session. The batch cursor (`entities`, `last_id`) stays on the
+in-memory resume object. `run_wikidata_studio_build_job` retries a failed
+attempt from that cursor at most 3 times. A cancel and a missing-canonical
+`ValueError` do not retry. The record counter reports finished records
+(10000 stays 10000). A failed progress write is logged and retried on the
+next tick. It must not stop the publisher.
+
+The same build must be able to run for 24 hours. `run_modal_job_detached`
+and the Wikidata Studio shard function use `timeout=86400`. The web wait
+budget `_WAIT_BUDGET_S` is the same 86400 seconds, so the poller does not
+start a second local build while the container is still allowed to run.
+Fingerprint, entity normalize, item build, and assembly run in a worker
+thread, so the heartbeat task keeps the event loop alive for that whole
+window. Entity-load statements clear the 5-minute client cap on their own
+connection. The engine cap stays for web requests. The 120-second idle
+transaction limit stays: the build commits that transaction before the long
+work, and an idle transaction must not pin a pooled connection for a day.
+Tests: `tests/unit/test_wikidata_studio_build_job.py`.

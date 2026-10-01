@@ -28,6 +28,10 @@ from app.pipeline.run_job_service import (
 logger = logging.getLogger(__name__)
 
 PROGRESS_INTERVAL_SECONDS = 1.5
+PROGRESS_WRITE_TIMEOUT_SECONDS = 15.0
+# One run, then at most three resumes from the last finished batch.
+MAX_BUILD_RETRIES = 3
+BUILD_RETRY_SLEEP_SECONDS = 5.0
 
 # Ordered build phases. The item loop is only one of them — reporting just that
 # loop left the bar on 0/1 for every slow stage that precedes it (Rule W-112).
@@ -65,6 +69,10 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
     step = (phases.index(label) + 1) if label in phases else 1
     total = len(phases)
     done, records = int(state.get("done") or 0), int(state.get("records") or 0)
+    retry = int(state.get("retry") or 0)
+    retry_max = int(state.get("retry_max") or 0)
+    retry_note = f" (retry {retry} of {retry_max})" if retry else ""
+    finished = min(done, records) if records else 0
     steps: list[dict[str, object]] = []
     for index, phase in enumerate(phases, start=1):
         entry: dict[str, object] = {"id": f"phase-{index}", "label": phase}
@@ -72,8 +80,10 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
             entry["status"] = "done"
         elif index == step:
             entry["status"] = "running"
+            if retry_note:
+                entry["label"] = f"{phase}{retry_note}"
             if records:
-                entry["processed"] = min(done + 1, records)
+                entry["processed"] = finished
                 entry["total"] = records
                 entry["unit"] = "records"
         else:
@@ -84,15 +94,15 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
         "processed": step,
         "total": total,
         "unit": "steps",
-        "message": f"Step {step} of {total}: {label}",
+        "message": f"Step {step} of {total}: {label}{retry_note}",
         "steps": steps,
     }
     if records:
         progress.update(
-            sub_processed=min(done + 1, records),
+            sub_processed=finished,
             sub_total=records,
             sub_unit="records",
-            sub_message=f"record {min(done + 1, records)} of {records}",
+            sub_message=f"record {finished} of {records}{retry_note}",
         )
     return progress
 
@@ -109,14 +119,27 @@ async def _publish_build_progress(
     this task owns every DB write (Rule W-112 outer steps, Rule W-113 nested
     sub-progress, Rule W-128 light polls on the web dyno).
     """
-    last: tuple[object, int] | None = None
+    last: tuple[object, int, int] | None = None
     while True:
         await asyncio.sleep(PROGRESS_INTERVAL_SECONDS)
-        fingerprint = (state.get("phase"), int(state.get("done") or 0))
+        fingerprint = (
+            state.get("phase"),
+            int(state.get("done") or 0),
+            int(state.get("retry") or 0),
+        )
         if fingerprint == last:
             continue
+        try:
+            await asyncio.wait_for(
+                update_job_progress(job_id, _build_progress(state, phases)),
+                timeout=PROGRESS_WRITE_TIMEOUT_SECONDS,
+            )
+        except Exception:  # noqa: BLE001 — a dropped progress write must not freeze the counter
+            logger.warning(
+                "wikidata studio build progress write failed for %s", job_id, exc_info=True,
+            )
+            continue
         last = fingerprint
-        await update_job_progress(job_id, _build_progress(state, phases))
 
 
 async def _persist_mined_items(
@@ -271,7 +294,13 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         source = str(params.get("source") or "legacy")
 
     phases = _phase_plan(source)
-    state: dict[str, object] = {"phase": phases[0], "done": 0, "records": 0}
+    # Survives a failed attempt so the next attempt continues the entity
+    # cursor, the transliteration cache, and a finished item build.
+    resume: dict[str, object] = {}
+    state: dict[str, object] = {
+        "phase": phases[0], "done": 0, "records": 0,
+        "retry": 0, "retry_max": MAX_BUILD_RETRIES,
+    }
     await update_job_progress(job_id, _build_progress(state, phases))
 
     if await is_cancel_requested(job_id):
@@ -284,7 +313,29 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         state["done"], state["records"] = done, total
 
     def on_phase(label: str) -> None:
+        current = str(state.get("phase") or "")
+        # A retry re-enters the build at "loading records". Keep the step
+        # that already failed so the bar does not jump backwards.
+        if (
+            int(state.get("retry") or 0) > 0
+            and current in phases
+            and label in phases
+            and phases.index(label) < phases.index(current)
+        ):
+            return
         state["phase"] = label
+        saved = resume.get("entities")
+        # A retry of the entity read must keep the last finished count.
+        # Resetting it to 0 reads as lost work (Rule W-259).
+        if (
+            label == "loading canonical entities"
+            and isinstance(saved, list)
+            and saved
+            and not resume.get("entities_complete")
+        ):
+            state["done"] = len(saved)
+            state["records"] = int(resume.get("entity_total") or 0)
+            return
         # The record counters belong to the phase that emitted them — stale
         # "record 897 of 897" under a CPU-bound phase read as fake progress.
         state["done"], state["records"] = 0, 0
@@ -309,42 +360,66 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
     try:
         from app.routers.wikidata_studio import execute_studio_build  # noqa: PLC0415
 
-        try:
-            async with session_scope() as db:
-                cached = await execute_studio_build(
-                    db,
-                    run_id=run_id,
-                    approved_only=approved_only,
-                    force_rebuild=force_rebuild,
-                    run_user_id=run_user_id,
-                    source=source,
-                    # Never WDQS-reconcile the full corpus on the build path (Rule W-119).
-                    # Reconcile runs on upload / gated QS / the preview endpoint only.
-                    reconcile=False,
-                    progress_cb=on_record,
-                    phase_cb=on_phase,
-                    should_cancel=should_cancel,
+        cached = None
+        for attempt in range(MAX_BUILD_RETRIES + 1):
+            state["retry"] = attempt
+            try:
+                async with session_scope() as db:
+                    cached = await execute_studio_build(
+                        db,
+                        run_id=run_id,
+                        approved_only=approved_only,
+                        force_rebuild=force_rebuild,
+                        run_user_id=run_user_id,
+                        source=source,
+                        # Never WDQS-reconcile the full corpus on the build path (Rule W-119).
+                        # Reconcile runs on upload / gated QS / the preview endpoint only.
+                        reconcile=False,
+                        progress_cb=on_record,
+                        phase_cb=on_phase,
+                        should_cancel=should_cancel,
+                        resume=resume,
+                    )
+                break
+            except JobCancelledError:
+                # Rule R28: finalize at the record/phase boundary where the flag
+                # was seen — not after the whole build crawled to its end.
+                await finish_job(
+                    job_id,
+                    status=JOB_STATUS_CANCELLED,
+                    error="Cancelled by user",
+                    progress={
+                        "phase": "cancelled",
+                        "processed": min(int(state.get("done") or 0) + 1, len(phases)),
+                        "total": len(phases),
+                        "unit": "steps",
+                        "message": "Cancelled by user",
+                    },
                 )
-        except JobCancelledError:
-            # Rule R28: finalize at the record/phase boundary where the flag
-            # was seen — not after the whole build crawled to its end.
-            await finish_job(
-                job_id,
-                status=JOB_STATUS_CANCELLED,
-                error="Cancelled by user",
-                progress={
-                    "phase": "cancelled",
-                    "processed": min(int(state.get("done") or 0) + 1, len(phases)),
-                    "total": len(phases),
-                    "unit": "steps",
-                    "message": "Cancelled by user",
-                },
-            )
+                return
+            except ValueError as exc:
+                # A missing canonical corpus is a curator error, not a dropped
+                # connection. Another attempt cannot invent the rows.
+                await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc)[:2000])
+                return
+            except Exception as exc:  # noqa: BLE001
+                if attempt >= MAX_BUILD_RETRIES or await is_cancel_requested(job_id):
+                    logger.exception("wikidata studio build job failed for %s", run_id)
+                    note = f" (stopped after {attempt} retries)" if attempt else ""
+                    await finish_job(
+                        job_id, status=JOB_STATUS_FAILED, error=f"{exc}{note}"[:2000],
+                    )
+                    return
+                logger.warning(
+                    "wikidata studio build %s failed (%s) — retry %s of %s from the saved cursor",
+                    run_id, str(exc)[:160], attempt + 1, MAX_BUILD_RETRIES,
+                )
+                await asyncio.sleep(BUILD_RETRY_SLEEP_SECONDS)
+                if await is_cancel_requested(job_id):
+                    await finish_job(job_id, status=JOB_STATUS_CANCELLED, error="Cancelled by user")
+                    return
+        if cached is None:
             return
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("wikidata studio build job failed for %s", run_id)
-        await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
-        return
     finally:
         publisher.cancel()
         with contextlib.suppress(asyncio.CancelledError):

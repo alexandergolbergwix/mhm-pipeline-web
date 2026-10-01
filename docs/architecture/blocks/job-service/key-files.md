@@ -22,7 +22,7 @@
 | `backend/app/pipeline/rdf_build_shard.py` | `rdf_build` shard runner + orchestrator consumer (R24); shared `persist_rdf_artifact_and_bust_caches` |
 | `backend/app/pipeline/rdf_coverage_reports.py` | Child-process graph index + coverage reports (`python -m app.pipeline.rdf_coverage_reports`) |
 | `backend/app/pipeline/modal_job_client.py` + `modal/modal_jobs.py` | Optional Modal execution for `rdf_build` / `hmo_item_build` (W-237): dispatch + poll, local fallback always kept; `rdf_build` fans out shard containers (`run_rdf_build_shard` + `_run_rdf_build_sharded`) |
-| `backend/app/pipeline/wikidata_studio_build_job.py` | `wikidata_studio_build` worker |
+| `backend/app/pipeline/wikidata_studio_build_job.py` | `wikidata_studio_build` worker; resumes a dropped connection from the saved cursor, 3 retries max (W-261) |
 | `backend/app/pipeline/wikidata_upload_job.py` | `wikidata_upload` worker; two-pass deferred links; `steps` / `eta_seconds` for tray View modal (W-141 / W-192); dry-run/test/live all render `WikidataUploadSteps` |
 | `backend/app/pipeline/wikidata_publication_prepare_job.py` | Builds a sealed Publication Release as a build-class job; job parameters contain only source selection and actor ID |
 | `backend/app/pipeline/wikidata_publication_execution_job.py` | Resumes one queued Publication Execution as an upload-class job; credentials resolve in the worker from a reference; worker failures pause the durable Execution (W-227) |

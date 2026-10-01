@@ -59,8 +59,10 @@ MODAL_JOB_KINDS = frozenset({
 
 # Modal web endpoint: dispatch must be quick (it only spawns).
 _DISPATCH_TIMEOUT_S = 20.0
-# The detached Modal function runs with timeout=14400 (4 h).
-_WAIT_BUDGET_S = 15000.0
+# The detached Modal function runs with timeout=86400 (24 h).
+# Past this budget, only a live container heartbeat keeps the wait alive.
+# Keep this equal to modal/modal_jobs.py _TIMEOUT_S.
+_WAIT_BUDGET_S = 86400.0
 # Safety-net row check while waiting for the completion webhook.
 _SAFETY_TICK_S = 60.0
 _TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})

@@ -12,6 +12,7 @@ import pytest
 from app.models.run_job import (
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
     JOB_STATUS_CANCELLED,
+    JOB_STATUS_FAILED,
     JOB_STATUS_SUCCEEDED,
     RunJob,
 )
@@ -309,6 +310,197 @@ def test_progress_falls_back_to_the_first_step_for_an_unknown_phase() -> None:
     assert "sub_total" not in progress
 
 
+def test_record_progress_counts_finished_records() -> None:
+    """The tray must show the last finished batch, not one past it.
+
+    A count of 10000 was displayed as 10001, so a paused read looked one
+    record ahead of the cursor the retry would resume.
+    """
+    progress = _build_progress(
+        {"phase": "loading canonical entities", "done": 10000, "records": 18524},
+        BUILD_PHASES,
+    )
+    assert progress["sub_processed"] == 10000
+    assert progress["sub_message"] == "record 10000 of 18524"
+    running = next(step for step in progress["steps"] if step["status"] == "running")
+    assert running["processed"] == 10000
+    assert running["label"] == "loading canonical entities"
+
+
+def test_retry_progress_names_the_attempt_and_keeps_the_phase() -> None:
+    progress = _build_progress(
+        {
+            "phase": "loading canonical entities",
+            "done": 10000,
+            "records": 18524,
+            "retry": 2,
+            "retry_max": 3,
+        },
+        BUILD_PHASES,
+    )
+    assert progress["phase"] == "loading canonical entities"
+    assert "retry 2 of 3" in str(progress["message"])
+    assert "retry 2 of 3" in str(progress["sub_message"])
+
+
+def _running_build_job(db_session, job_id: uuid.UUID, run_id: uuid.UUID) -> None:
+    db_session.add(
+        RunJob(
+            id=job_id,
+            project_id=uuid.uuid4(),
+            run_id=run_id,
+            kind=JOB_KIND_WIKIDATA_STUDIO_BUILD,
+            status="running",
+            params={"approved_only": True, "source": "canonical"},
+            progress={},
+            created_by=uuid.uuid4(),
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_build_job_resumes_the_same_cursor_after_a_dropped_connection(
+    db_session, monkeypatch,
+) -> None:
+    """A dropped connection retries, and the next attempt sees the saved cursor."""
+    run_id, job_id = uuid.uuid4(), uuid.uuid4()
+    _running_build_job(db_session, job_id, run_id)
+    await db_session.commit()
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_studio_build_job.BUILD_RETRY_SLEEP_SECONDS", 0,
+    )
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_studio_build_job.PROGRESS_INTERVAL_SECONDS", 0,
+    )
+    cached = SimpleNamespace(
+        result_items=[{"local_id": "ms1"}],
+        summary={},
+        record_count=1,
+        approved_match_count=0,
+    )
+    seen: list[dict[str, object]] = []
+
+    async def fake_build(_db, **kwargs):
+        resume = kwargs["resume"]
+        phase, record = kwargs["phase_cb"], kwargs["progress_cb"]
+        seen.append(resume)
+        if len(seen) == 1:
+            phase("loading canonical entities")
+            record(10000, 18524)
+            resume["entities"] = ["kept"]
+            resume["last_id"] = uuid.UUID(int=10000)
+            resume["entity_total"] = 18524
+            await asyncio.sleep(0)
+            raise ConnectionError("connection was closed in the middle of operation")
+        assert resume.get("entities") == ["kept"]
+        assert resume.get("last_id") == uuid.UUID(int=10000)
+        phase("loading records")
+        await asyncio.sleep(0)
+        phase("building items")
+        await asyncio.sleep(0)
+        return cached
+
+    with (
+        patch("app.routers.wikidata_studio.execute_studio_build", new=fake_build),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.is_cancel_requested",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job._mine_provenance_prose",
+            new=AsyncMock(),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.finish_job",
+            new=AsyncMock(),
+        ) as finish,
+        patch(
+            "app.pipeline.wikidata_studio_build_job.update_job_progress",
+            new=AsyncMock(),
+        ) as progress,
+    ):
+        await run_wikidata_studio_build_job(job_id)
+
+    assert len(seen) == 2
+    assert seen[0] is seen[1]
+    assert finish.await_args.kwargs["status"] == JOB_STATUS_SUCCEEDED
+    published = [call.args[1]["phase"] for call in progress.await_args_list]
+    assert "loading canonical entities" in published
+    assert "building items" in published
+    canonical_at = published.index("loading canonical entities")
+    assert "loading records" not in published[canonical_at:]
+
+
+@pytest.mark.asyncio
+async def test_build_job_stops_after_three_retries(db_session, monkeypatch) -> None:
+    run_id, job_id = uuid.uuid4(), uuid.uuid4()
+    _running_build_job(db_session, job_id, run_id)
+    await db_session.commit()
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_studio_build_job.BUILD_RETRY_SLEEP_SECONDS", 0,
+    )
+    attempts = 0
+
+    async def fake_build(_db, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        raise ConnectionError("connection was closed in the middle of operation")
+
+    with (
+        patch("app.routers.wikidata_studio.execute_studio_build", new=fake_build),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.is_cancel_requested",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.finish_job",
+            new=AsyncMock(),
+        ) as finish,
+        patch(
+            "app.pipeline.wikidata_studio_build_job.update_job_progress",
+            new=AsyncMock(),
+        ),
+    ):
+        await run_wikidata_studio_build_job(job_id)
+
+    assert attempts == 4
+    assert finish.await_args.kwargs["status"] == JOB_STATUS_FAILED
+    assert "stopped after 3 retries" in finish.await_args.kwargs["error"]
+
+
+@pytest.mark.asyncio
+async def test_build_job_does_not_retry_a_missing_canonical_corpus(db_session) -> None:
+    run_id, job_id = uuid.uuid4(), uuid.uuid4()
+    _running_build_job(db_session, job_id, run_id)
+    await db_session.commit()
+    attempts = 0
+
+    async def fake_build(_db, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        raise ValueError("no durable HMO canonical entities for run")
+
+    with (
+        patch("app.routers.wikidata_studio.execute_studio_build", new=fake_build),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.is_cancel_requested",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.finish_job",
+            new=AsyncMock(),
+        ) as finish,
+        patch(
+            "app.pipeline.wikidata_studio_build_job.update_job_progress",
+            new=AsyncMock(),
+        ),
+    ):
+        await run_wikidata_studio_build_job(job_id)
+
+    assert attempts == 1
+    assert finish.await_args.kwargs["status"] == JOB_STATUS_FAILED
+
+
 class TestMiningReadsMarcProse:
     """Rule W-140: built items carry no MARC, so mining must load it itself.
 
@@ -365,3 +557,114 @@ class TestMiningReadsMarcProse:
         await job._attach_prose_context(uuid.uuid4(), items, ["provenance"])
         assert called is False
         assert "_marc_context" not in items[0]
+
+
+def _snapshot(number: int) -> dict[str, object]:
+    return {
+        "local_id": f"Q{number}",
+        "source_uri": f"https://example.org/{number}",
+        "wikibase_id": f"Q{number}",
+        "entity_type": "manuscript",
+        "labels": {},
+        "descriptions": {},
+        "aliases": {},
+        "claims": [],
+        "authority_evidence": [],
+    }
+
+
+def _keyset_cursor(stmt: object, run_id: uuid.UUID) -> uuid.UUID:
+    from sqlalchemy.sql import visitors
+    from sqlalchemy.sql.elements import BindParameter
+
+    found: list[uuid.UUID] = []
+
+    def visit_bind(bind: BindParameter) -> None:
+        if isinstance(bind.value, uuid.UUID):
+            found.append(bind.value)
+
+    visitors.traverse(stmt, {}, {"bindparam": visit_bind})
+    cursors = [value for value in found if value != run_id]
+    assert len(cursors) == 1
+    return cursors[0]
+
+
+@pytest.mark.asyncio
+async def test_canonical_entity_load_continues_after_the_last_saved_id(monkeypatch) -> None:
+    """A failed batch keeps the earlier entities. The next call reads the rest."""
+    from contextlib import asynccontextmanager
+
+    from app.routers import wikidata_studio as router
+
+    run_id = uuid.uuid4()
+    rows = [
+        (_snapshot(number), uuid.UUID(int=number))
+        for number in (1, 2, 3)
+    ]
+    executes = {"n": 0}
+
+    class _Page:
+        def __init__(self, page: list[tuple[dict[str, object], uuid.UUID]]) -> None:
+            self._page = page
+
+        def all(self) -> list[tuple[dict[str, object], uuid.UUID]]:
+            return self._page
+
+    class _BatchDB:
+        async def scalar(self, _stmt: object) -> int:
+            return len(rows)
+
+        async def execute(self, stmt: object) -> _Page:
+            executes["n"] += 1
+            if executes["n"] in (2, 3, 4):
+                raise ConnectionError("connection was closed in the middle of operation")
+            cursor = _keyset_cursor(stmt, run_id)
+            page = [row for row in rows if row[1] > cursor][:1]
+            return _Page(page)
+
+    @asynccontextmanager
+    async def _scope():
+        yield _BatchDB()
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(router, "_CANONICAL_LOAD_BATCH", 1)
+    monkeypatch.setattr("app.db.session_scope", _scope)
+    monkeypatch.setattr(router.asyncio, "sleep", _no_sleep)
+
+    resume: dict[str, object] = {}
+    with pytest.raises(ConnectionError):
+        await router._canonical_entities_for_run(
+            AsyncMock(), run_id, resume=resume,
+        )
+
+    assert [entity.local_id for entity in resume["entities"]] == ["Q1"]
+    assert resume["last_id"] == uuid.UUID(int=1)
+    assert resume.get("entities_complete") is not True
+
+    loaded = await router._canonical_entities_for_run(
+        AsyncMock(), run_id, resume=resume,
+    )
+    assert [entity.local_id for entity in loaded] == ["Q1", "Q2", "Q3"]
+    assert resume["entities_complete"] is True
+
+
+def test_statement_cap_is_cleared_on_one_connection_only() -> None:
+    from collections import namedtuple
+
+    from app.routers.wikidata_studio import _without_statement_cap
+
+    Config = namedtuple("Config", ["command_timeout", "other"])
+
+    class _Driver:
+        def __init__(self) -> None:
+            self._config = Config(300.0, "keep")
+
+    driver = _Driver()
+    _without_statement_cap(driver)
+    assert driver._config.command_timeout is None
+    assert driver._config.other == "keep"
+
+    untouched = object()
+    _without_statement_cap(untouched)

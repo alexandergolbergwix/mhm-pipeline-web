@@ -137,7 +137,12 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
   `execute_studio_build` finalizes the job `cancelled` at the boundary it was
   seen; a cancel landing during the mining tail finalizes `cancelled`, never
   `succeeded`; `execute_studio_build` raises before any work when cancelled
-  pre-start (W-236).
+  pre-start (W-236). A dropped connection retries the same resume cursor and
+  stops after 3 retries; a missing-canonical `ValueError` does not retry; the
+  entity loader continues after `last_id`; finished record counts are not
+  incremented by one. The Modal wait budget is 24 hours
+  (`test_modal_wait_budget_matches_a_24_hour_build`). Entity-load
+  connections clear the 5-minute statement cap (W-261 / R133).
 - `backend/tests/unit/test_wikidata_studio_build_gate.py` — the build snapshots
   MARC before transliteration cache work and uses bulk cache sessions (W-197).
 - `backend/tests/unit/test_wikidata_studio_list_view.py` — `list_view` trim,

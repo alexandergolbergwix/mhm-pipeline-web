@@ -38,7 +38,7 @@ import modal
 logger = logging.getLogger(__name__)
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
-_TIMEOUT_S = 43200  # 12 h — verify of an 18k scope at 4-way parallel needs it
+_TIMEOUT_S = 86400  # 24 h — a Studio build may run this long; keep equal to modal_job_client._WAIT_BUDGET_S
 
 
 def _materialize_committed_tree() -> str:
@@ -812,7 +812,7 @@ _WIKIDATA_BUILD_SHARD_SIZE = 500
     image=image,
     cpu=2,
     memory=8192,
-    timeout=7200,
+    timeout=86400,
     secrets=[modal.Secret.from_name("mhm-jobs2")],
 )
 def run_wikidata_studio_build_shard(

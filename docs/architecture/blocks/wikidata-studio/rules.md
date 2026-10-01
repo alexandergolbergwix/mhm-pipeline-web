@@ -935,3 +935,14 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    phase (assembling canonical projection) never shows a stale
    "record N of N". The steps strip renders a per-step bar; phases without a
    record callback show an indeterminate pulse.
+
+133. **R133 — A canonical Studio build resumes a dropped connection from the last finished batch (Rule W-261).**
+   The build commits its read transaction before the entity read. Each batch
+   keeps `entities` and `last_id` on the job resume object. The job retries
+   that cursor at most 3 times. A cancel and a missing-canonical `ValueError`
+   do not retry. The record counter shows finished records. A failed progress
+   write does not stop the publisher. The Modal function and the web wait
+   budget are 24 hours, and CPU phases run in a worker thread so the
+   heartbeat continues. *Why:* run 3494ebf5 job `5964799c`
+   died at 18524/18524 while the tray stayed on 10001, and the loaded
+   entities were only in process memory.

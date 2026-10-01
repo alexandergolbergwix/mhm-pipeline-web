@@ -71,6 +71,9 @@ Heavy run-jobs execute on the separate `mhm-jobs` app
 (`modal deploy modal_jobs.py`, Rule W-237) — every change to job-runner
 code MUST land with that deploy in the same change (Rule W-243), because
 the detached container executes its own copy of `backend/`.
+`run_modal_job_detached` and the Wikidata Studio shard use a 24-hour
+timeout (`_TIMEOUT_S = 86400`). The web poller waits the same budget
+(`modal_job_client._WAIT_BUDGET_S`) before a local fallback (Rule W-261).
 
 **One-time data imports.** Mazal (~2.5 M authorities → ~600 MB Postgres) and
 KIMA (48 K places) are imported from local SQLite into Heroku Postgres by

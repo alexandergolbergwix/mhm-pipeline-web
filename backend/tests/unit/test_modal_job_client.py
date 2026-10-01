@@ -368,3 +368,8 @@ async def test_owner_heartbeat_does_not_extend_wait_past_budget(
     assert await run_on_modal(job.id, sample_run["run_id"], JOB_KIND_RDF_BUILD) is False, (
         "the wait must expire when the executor heartbeat is dead"
     )
+
+
+def test_modal_wait_budget_matches_a_24_hour_build() -> None:
+    """A live Studio build must not fall back to the web dyno before 24 hours."""
+    assert modal_job_client._WAIT_BUDGET_S == 86400.0

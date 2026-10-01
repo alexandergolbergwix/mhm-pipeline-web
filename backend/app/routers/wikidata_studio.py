@@ -124,9 +124,65 @@ router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
 _CANONICAL_LOAD_BATCH = 500
 
 
+def _without_statement_cap(driver: object) -> None:
+    """Clear asyncpg's per-statement cap on one connection.
+
+    The engine sets ``command_timeout=300`` so a dropped web request cannot
+    sit for the OS TCP timeout. A Studio build batch may need longer. The
+    namedtuple config is replaced; the engine default stays in place for
+    every other connection.
+    """
+    config = getattr(driver, "_config", None)
+    replace = getattr(config, "_replace", None)
+    if not callable(replace):
+        return
+    try:
+        driver._config = replace(command_timeout=None)  # type: ignore[attr-defined]
+    except TypeError:
+        return
+
+
+async def _allow_long_statements(db: AsyncSession) -> None:
+    """Let this session's statements run without the 5-minute client cap."""
+    try:
+        conn = await db.connection()
+        raw = await conn.get_raw_connection()
+    except Exception:  # noqa: BLE001 — a missing raw connection keeps the cap
+        logger.warning("studio build could not lift the statement cap", exc_info=True)
+        return
+    driver = getattr(raw, "driver_connection", raw)
+    _without_statement_cap(driver)
+
+
+async def _release_read_transaction(db: AsyncSession) -> None:
+    """End the build's read transaction before a long phase.
+
+    Postgres kills a transaction that stays idle for 120 s. The canonical
+    entity read and the later CPU work both outlast that limit. A commit
+    here returns the connection. ``expire_on_commit`` is false, so the
+    loaded rows stay usable. A dead connection must not fail the build:
+    the inputs are already in memory.
+    """
+    try:
+        opened = db.in_transaction()
+        # A test double may return a coroutine. Production returns a bool.
+        if asyncio.iscoroutine(opened):
+            opened.close()
+            opened = True
+        if opened:
+            await db.commit()
+    except Exception:  # noqa: BLE001 — the next phase opens its own sessions
+        logger.warning("studio build could not release its read transaction", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:  # noqa: BLE001 — the connection is already gone
+            logger.warning("studio build rollback after a dead connection failed", exc_info=True)
+
+
 async def _canonical_entities_for_run(
     db: AsyncSession, run_id: uuid.UUID,
     *, on_progress: Callable[[int, int], None] | None = None,
+    resume: dict[str, Any] | None = None,
 ) -> list[Any]:
     """All durable canonical entities for the run, normalized.
 
@@ -136,24 +192,48 @@ async def _canonical_entities_for_run(
     essential-tier Postgres kills any transaction idle past 120 s and
     silently drops others mid-stream, so nothing here holds a session longer
     than one batch (run 3494ebf5 lost five builds to this).
+
+    ``db`` is the parent build session. This function does not use it.
+    Each batch opens and closes its own session. ``resume`` keeps the
+    entities already read, so a later attempt continues after ``last_id``.
     """
+    del db
     from sqlalchemy import func  # noqa: PLC0415
 
     from app.db import session_scope  # noqa: PLC0415
 
-    total = int(await db.scalar(
-        select(func.count()).select_from(HmoCanonicalEntity).where(
-            HmoCanonicalEntity.run_id == run_id,
-        ),
-    ) or 0)
-    entities: list[Any] = []
+    if resume is not None and resume.get("entities_complete"):
+        stored = resume.get("entities")
+        entities = list(stored) if isinstance(stored, list) else []
+        total = int(resume.get("entity_total") or len(entities))
+        if on_progress is not None and entities:
+            on_progress(len(entities), total)
+        return entities
+
+    async with session_scope() as count_db:
+        await _allow_long_statements(count_db)
+        total = int(await count_db.scalar(
+            select(func.count()).select_from(HmoCanonicalEntity).where(
+                HmoCanonicalEntity.run_id == run_id,
+            ),
+        ) or 0)
+    if resume is not None and isinstance(resume.get("entities"), list):
+        entities = resume["entities"]
+    else:
+        entities = []
+        if resume is not None:
+            resume["entities"] = entities
+    stored_id = resume.get("last_id") if resume is not None else None
     # Zero UUID sorts before every real id — the keyset start sentinel.
-    last_id: uuid.UUID = uuid.UUID(int=0)
+    last_id: uuid.UUID = stored_id if isinstance(stored_id, uuid.UUID) else uuid.UUID(int=0)
+    if on_progress is not None and entities:
+        on_progress(len(entities), total)
     while True:
         rows: list[Any] = []
         for attempt in range(3):
             try:
                 async with session_scope() as batch_db:
+                    await _allow_long_statements(batch_db)
                     rows = (
                         await batch_db.execute(
                             select(HmoCanonicalEntity.snapshot, HmoCanonicalEntity.id)
@@ -172,12 +252,29 @@ async def _canonical_entities_for_run(
                 await asyncio.sleep(2)
         if not rows:
             break
+        from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
+        batch_rows = rows
+
+        def _normalize_batch() -> list[Any]:
+            return [normalize_live_entity(row[0]) for row in batch_rows]
+
+        normalized = await run_in_threadpool(_normalize_batch)
         last_id = rows[-1][1]
-        entities.extend(normalize_live_entity(row[0]) for row in rows)
+        entities.extend(normalized)
+        if resume is not None:
+            resume["entities"] = entities
+            resume["last_id"] = last_id
+            resume["entity_total"] = total
+            resume["phase"] = "loading canonical entities"
+            resume["done"] = len(entities)
+            resume["records"] = total
         if on_progress is not None:
             on_progress(len(entities), total)
         if len(rows) < _CANONICAL_LOAD_BATCH:
             break
+    if resume is not None and entities:
+        resume["entities_complete"] = True
     return entities
 
 
@@ -737,6 +834,7 @@ async def execute_studio_build(
     progress_cb: Callable[[int, int], None] | None = None,
     phase_cb: Callable[[str], None] | None = None,
     should_cancel: Callable[[], Awaitable[None]] | None = None,
+    resume: dict[str, Any] | None = None,
 ) -> WikidataStudioCache:
     """Run the full item builder and upsert the Postgres cache.
 
@@ -797,6 +895,7 @@ async def execute_studio_build(
             phase_cb=phase_cb,
             check_cancel=check_cancel,
             sync_cancel=sync_cancel if should_cancel is not None else None,
+            resume=resume,
         )
     finally:
         if watcher is not None:
@@ -816,6 +915,7 @@ async def _execute_studio_build(
     phase_cb: Callable[[str], None] | None,
     check_cancel: Callable[[], Awaitable[None]],
     sync_cancel: Callable[[], None] | None,
+    resume: dict[str, Any] | None = None,
 ) -> WikidataStudioCache:
     def phase(label: str) -> None:
         if phase_cb is not None:
@@ -830,28 +930,46 @@ async def _execute_studio_build(
     hmo_instance_qids = await wikidata_studio.hmo_instance_qids_for_run(
         db, run_id, [r.control_number for r in records],
     )
-    fingerprint = wikidata_studio.compute_build_fingerprint(
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
+    await check_cancel()
+    # The entity read and the fingerprint both outlast the 120 s idle
+    # transaction limit. End the read transaction before either one.
+    await _release_read_transaction(db)
+    from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
+    fingerprint = await run_in_threadpool(
+        wikidata_studio.compute_build_fingerprint,
         records, all_matches, entity_rows, override_rows, approved_only,
         hmo_instance_qids,
     )
-    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
-    await check_cancel()
 
     if source == "canonical":
-        phase("loading canonical entities")
-        canonical = await _canonical_entities_for_run(
-            db, run_id, on_progress=progress_cb,
-        )
+        if resume is not None and resume.get("entities_complete"):
+            stored_entities = resume.get("entities")
+            canonical = list(stored_entities) if isinstance(stored_entities, list) else []
+            if progress_cb is not None and canonical:
+                progress_cb(len(canonical), int(resume.get("entity_total") or len(canonical)))
+        else:
+            phase("loading canonical entities")
+            canonical = await _canonical_entities_for_run(
+                db, run_id, on_progress=progress_cb, resume=resume,
+            )
         if not canonical:
             raise ValueError(await _canonical_missing_detail(db, run_id))
         await check_cancel()
-        enrichment_fp = wikidata_studio.compute_build_fingerprint(
-            records, all_matches, entity_rows, override_rows, approved_only,
-            hmo_instance_qids,
-        )
-        canonical_fp = canonical_wikidata_fingerprint(
-            canonical, enrichment_fingerprint=enrichment_fp,
-        )
+        enrichment_fp = fingerprint
+        if resume is not None and resume.get("canonical_fp"):
+            canonical_fp = str(resume["canonical_fp"])
+        else:
+            from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
+            canonical_fp = await run_in_threadpool(
+                canonical_wikidata_fingerprint,
+                canonical,
+                enrichment_fingerprint=enrichment_fp,
+            )
+            if resume is not None:
+                resume["canonical_fp"] = canonical_fp
         if (
             not force_rebuild
             and cached is not None
@@ -899,38 +1017,45 @@ async def _execute_studio_build(
 
         from converter.wikidata import hebrew_translit  # noqa: PLC0415
 
-        # Release the pooled connection across the CPU-bound tail of the
-        # build (transliterations, per-record item build, canonical assembly
-        # — ~40 min on run 3494ebf5). The session sits idle while that work
-        # runs and Heroku Postgres drops the idle TCP connection;
-        # pool_recycle/pre_ping only act at checkout, so the next statement on
-        # the held session died with "connection is closed" (three builds
-        # lost). Every input is already extracted into plain structures above,
-        # and the next DB use checks out a fresh pooled connection.
-        await db.close()
+        # The read transaction is already closed. Release again in case a
+        # later read reopened one, then keep the session usable for the
+        # cache upsert. db.close() would expunge the cached row.
+        await _release_read_transaction(db)
 
-        phase("preparing transliterations")
-        prewarmed = await _prewarm_transliterations(
-            marc_records=marc_records, user_id=run_user_id,
-        )
-        await check_cancel()
-        phase("building items")
-        hebrew_translit.set_prewarmed_labels(prewarmed)
-        hebrew_translit.set_sync_network_disabled(True)
-        try:
-            legacy_result = await wikidata_studio.build_items_for_run(
-                marc_records=marc_records,
-                approved_matches=approved_matches,
-                entities_by_cn=entities_by_cn,
-                overrides=overrides,
-                return_native=True,
-                hmo_instance_qids=hmo_instance_qids,
-                progress_cb=progress_cb,
-                should_cancel=sync_cancel,
-            )
-        finally:
-            hebrew_translit.set_sync_network_disabled(False)
-            hebrew_translit.clear_prewarmed_labels()
+        saved_legacy = resume.get("legacy_result") if resume is not None else None
+        if isinstance(saved_legacy, dict):
+            legacy_result = saved_legacy
+        else:
+            phase("preparing transliterations")
+            if resume is not None and resume.get("prewarm_complete"):
+                prewarmed = resume.get("prewarmed") or {}
+            else:
+                prewarmed = await _prewarm_transliterations(
+                    marc_records=marc_records, user_id=run_user_id,
+                )
+                if resume is not None:
+                    resume["prewarmed"] = prewarmed
+                    resume["prewarm_complete"] = True
+            await check_cancel()
+            phase("building items")
+            hebrew_translit.set_prewarmed_labels(prewarmed)
+            hebrew_translit.set_sync_network_disabled(True)
+            try:
+                legacy_result = await wikidata_studio.build_items_for_run(
+                    marc_records=marc_records,
+                    approved_matches=approved_matches,
+                    entities_by_cn=entities_by_cn,
+                    overrides=overrides,
+                    return_native=True,
+                    hmo_instance_qids=hmo_instance_qids,
+                    progress_cb=progress_cb,
+                    should_cancel=sync_cancel,
+                )
+            finally:
+                hebrew_translit.set_sync_network_disabled(False)
+                hebrew_translit.clear_prewarmed_labels()
+            if resume is not None:
+                resume["legacy_result"] = legacy_result
         await check_cancel()
 
         phase("assembling canonical projection")
