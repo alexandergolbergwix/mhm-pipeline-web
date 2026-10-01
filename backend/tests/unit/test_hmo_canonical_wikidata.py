@@ -63,6 +63,7 @@ def test_wikidata_projection_filters_unaccepted_evidence_and_maps_entity_type() 
 def test_assembly_meter_names_each_pass_without_moving_backwards() -> None:
     calls: list[tuple[int, int, str]] = []
     labels = (
+        "preparing entities",
         "native items",
         "merging records",
         "claims",
@@ -72,11 +73,11 @@ def test_assembly_meter_names_each_pass_without_moving_backwards() -> None:
     )
     meter = _AssemblyProgress(12, labels, lambda done, total, detail: calls.append((done, total, detail)))
     meter.report(0, 12)
-    assert calls[0] == (0, 12, "native items")
+    assert calls[0] == (0, 12, "preparing entities")
     for _label in labels:
         meter.report(12, 12)
         meter.finish_pass()
-    assert [detail for _done, _total, detail in calls] == ["native items", *labels]
+    assert [detail for _done, _total, detail in calls] == ["preparing entities", *labels]
     assert calls[-1] == (12, 12, "serialising")
     assert all(later[0] >= earlier[0] for earlier, later in zip(calls, calls[1:]))
 
@@ -166,9 +167,20 @@ def test_canonical_assembly_reports_a_rising_item_count() -> None:
         on_progress=on_progress,
     )
     assert calls
-    assert calls[0][2] == "native items"
+    assert calls[0][2] == "preparing entities"
     assert calls[-1][0] == calls[-1][1] == 1
-    assert all(later[0] >= earlier[0] for earlier, later in zip(calls, calls[1:]))
+    # Sub-activity labels after the assembly meter (writing QuickStatements)
+    # restart their own counter at 0 by design; only the meter passes are
+    # held to the never-backwards rule (Rule W-259).
+    meter_labels = {
+        "preparing entities", "native items", "merging records", "claims",
+        "local references", "validation", "serialising",
+    }
+    assembly_calls = [c for c in calls if c[2] in meter_labels]
+    assert all(
+        later[0] >= earlier[0]
+        for earlier, later in zip(assembly_calls, assembly_calls[1:])
+    )
     assert all(total == 1 for _done, total, _detail in calls)
 
 

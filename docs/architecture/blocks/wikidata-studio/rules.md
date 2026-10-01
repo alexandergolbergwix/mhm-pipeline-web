@@ -945,7 +945,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    counts, and a phase change resets the record counters so the next phase
    never shows a stale "record N of N".    After the entity load, "fingerprinting canonical entities" counts the
    entities while the fingerprint is built. Assembling the canonical projection
-   reports one rising item count across six passes (native items, merging
+   reports one rising item count across seven passes (preparing entities,
+   native items, merging
    records, claims, local references, validation, serialising). The step
    sends `0/N items` as soon as assembly starts. When that count finishes,
    the step names the next activity and starts that count at 0: writing

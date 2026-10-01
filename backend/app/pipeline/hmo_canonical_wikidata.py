@@ -365,10 +365,13 @@ def canonical_wikidata_fingerprint(
 
 def uploadable_entities_from_hmo(
     entities: Iterable[CanonicalHmoEntity],
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[CanonicalHmoEntity]:
     """Keep only HMO classes that map to public Wikidata items."""
+    all_entities = list(entities)
+    total = len(all_entities)
     uploadable: list[CanonicalHmoEntity] = []
-    for entity in entities:
+    for index, entity in enumerate(all_entities, start=1):
         wd_type = _wikidata_entity_type(entity)
         if not wd_type:
             continue
@@ -379,6 +382,8 @@ def uploadable_entities_from_hmo(
         if wd_type == "person" and not _person_has_upload_identifier(entity):
             continue
         uploadable.append(entity)
+        if on_progress is not None and (index == total or index % 25 == 0):
+            on_progress(index, total)
     return uploadable
 
 
@@ -494,7 +499,7 @@ def native_items_from_hmo(
 ) -> list[WikidataItem]:
     """Adapt live HMO snapshots to the guarded Wikidata upload model."""
     all_entities = list(entities)
-    materialized = uploadable_entities_from_hmo(all_entities)
+    materialized = uploadable_entities_from_hmo(all_entities, on_progress=on_progress)
     assert_canonical_entities(materialized)
     entities_by_cn = _index_entities_by_control_number(all_entities)
     items: list[WikidataItem] = []
@@ -1056,6 +1061,7 @@ def build_canonical_studio_result(
     meter = _AssemblyProgress(
         len(materialized),
         (
+            "preparing entities",
             "native items",
             "merging records",
             "claims",
@@ -1066,8 +1072,13 @@ def build_canonical_studio_result(
         on_progress,
     )
     meter.report(0, max(len(materialized), 1))
-    uploadable = uploadable_entities_from_hmo(materialized)
-    rollup_stats = _rollup_summary_stats(materialized, uploadable)
+    uploadable = uploadable_entities_from_hmo(
+        materialized, on_progress=meter.observer(),
+    )
+    rollup_stats = _rollup_summary_stats(
+        materialized, uploadable, on_progress=meter.observer(),
+    )
+    meter.finish_pass()
     native_items = native_items_from_hmo(
         materialized, context=context, on_progress=meter.observer(),
     )
@@ -1830,18 +1841,30 @@ def _rollup_sources_for(
 def _rollup_summary_stats(
     materialized: list[CanonicalHmoEntity],
     uploadable: list[CanonicalHmoEntity],
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, int]:
     entities_by_cn = _index_entities_by_control_number(materialized)
     rolled_up_ids: set[str] = set()
     summarized_nodes = 0
+    scan_total = len(materialized) + len(uploadable)
+    scanned = 0
+
+    def _tick() -> None:
+        nonlocal scanned
+        scanned += 1
+        if on_progress is not None and (scanned == scan_total or scanned % 25 == 0):
+            on_progress(scanned, scan_total)
+
     for entity in materialized:
         strategy = _projection_strategy(entity)
         if strategy and strategy.projection_status == "summarized_in_wikidata":
             summarized_nodes += 1
+        _tick()
     for entity in uploadable:
         wd_type = _wikidata_entity_type(entity) or ""
         for source in _rollup_sources_for(entity, wd_type, materialized, entities_by_cn):
             rolled_up_ids.add(source.local_id)
+        _tick()
     return {
         "rolled_up_entities": len(rolled_up_ids),
         "summarized_hmo_nodes": summarized_nodes,

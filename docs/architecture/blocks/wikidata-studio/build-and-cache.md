@@ -74,9 +74,10 @@ Heroku claims the row; the claimed container orchestrates (Rule W-237):
 - After the entity load, the job starts "fingerprinting canonical entities"
   and counts those entities. The load counter stays at its last value only
   until that step starts (Rule W-259).
-- Assembly reports one rising item count. The count covers native items,
-  merging records, claims, local references, validation, and serialising.
-  The count never moves backwards (Rule W-259 / R132). The page and the
+- Assembly reports one rising item count. The count covers preparing
+  entities, native items, merging records, claims, local references,
+  validation, and serialising. The count never moves backwards
+  (Rule W-259 / R132). The page and the
   job tray show that pass name and the item count on the running step.
   The step sends `0/N items` as soon as assembly starts, before the first
   batch finishes. When that count finishes, the step names the next activity
