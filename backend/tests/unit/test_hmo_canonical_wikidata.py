@@ -71,10 +71,12 @@ def test_assembly_meter_names_each_pass_without_moving_backwards() -> None:
         "serialising",
     )
     meter = _AssemblyProgress(12, labels, lambda done, total, detail: calls.append((done, total, detail)))
+    meter.report(0, 12)
+    assert calls[0] == (0, 12, "native items")
     for _label in labels:
         meter.report(12, 12)
         meter.finish_pass()
-    assert [detail for _done, _total, detail in calls] == list(labels)
+    assert [detail for _done, _total, detail in calls] == ["native items", *labels]
     assert calls[-1] == (12, 12, "serialising")
     assert all(later[0] >= earlier[0] for earlier, later in zip(calls, calls[1:]))
 

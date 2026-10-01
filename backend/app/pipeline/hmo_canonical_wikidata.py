@@ -502,7 +502,7 @@ def native_items_from_hmo(
 
     def _tick(index: int) -> None:
         if on_progress is not None and entity_total and (
-            index == entity_total or index % 25 == 0
+            index == 1 or index == entity_total or index % 25 == 0
         ):
             on_progress(index, entity_total)
 
@@ -989,6 +989,7 @@ class _AssemblyProgress:
         self.callback = callback
         self.pass_index = 0
         self.shown = 0
+        self.opened = False
 
     def observer(self) -> Callable[[int, int], None]:
         def _on(done: int, total: int) -> None:
@@ -1010,8 +1011,9 @@ class _AssemblyProgress:
         if shown < self.shown:
             shown = self.shown
         label = self.labels[min(self.pass_index, self.passes - 1)]
-        if shown == self.shown:
+        if shown == self.shown and self.opened:
             return
+        self.opened = True
         self.shown = shown
         self.callback(shown, self.item_count, label)
 
@@ -1063,6 +1065,7 @@ def build_canonical_studio_result(
         ),
         on_progress,
     )
+    meter.report(0, max(len(materialized), 1))
     uploadable = uploadable_entities_from_hmo(materialized)
     rollup_stats = _rollup_summary_stats(materialized, uploadable)
     native_items = native_items_from_hmo(

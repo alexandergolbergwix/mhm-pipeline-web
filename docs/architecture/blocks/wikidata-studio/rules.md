@@ -941,7 +941,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    never shows a stale "record N of N".    After the entity load, "fingerprinting canonical entities" counts the
    entities while the fingerprint is built. Assembling the canonical projection
    reports one rising item count across six passes (native items, merging
-   records, claims, local references, validation, serialising). Every step
+   records, claims, local references, validation, serialising). The step
+   sends `0/N items` as soon as assembly starts. Every step
    carries a short description of its work. Loading records, transliteration,
    and provenance mining each report a rising count (Rule W-259). The count
    never moves backwards (Rule W-259). A phase with no callback still shows
