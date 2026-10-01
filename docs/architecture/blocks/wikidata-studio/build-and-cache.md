@@ -65,6 +65,18 @@ Heroku claims the row; the claimed container orchestrates (Rule W-237):
 - The Modal function and the web wait budget are both 24 hours. Long CPU
   phases run in a worker thread so the heartbeat keeps flowing. Entity-load
   statements do not use the 5-minute client cap.
+- Two catalog records that really share one MARC shelfmark get the catalog
+  id on the designation label. A shelfmark that does not match the source
+  record stays unchanged, and the quality gate still blocks it (Rule W-137).
+- A holder name is resolved, explicitly abstained, or the build fails
+  (Rule W-161). A `Family, Given` name abstains as a private collector.
+- After the entity load, the job starts "fingerprinting canonical entities"
+  and counts those entities. The load counter stays at its last value only
+  until that step starts (Rule W-259).
+- Assembly reports one rising item count. The count covers native items,
+  merging records, claims, local references, validation, and serialising.
+  The count never moves backwards (Rule W-259 / R132). The page and the
+  job tray show that pass name and the item count on the running step.
 
 ### Per-item rows read model (cursor pagination + streaming export)
 

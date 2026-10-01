@@ -78,9 +78,61 @@ describe("waitForRunJob", () => {
     });
     await expect(waitForRunJob("r1", "j1", {timeoutMs: 1000})).rejects.toThrow("boom");
   });
+
+  it("keeps polling a running job past the old 20 minute page limit", async () => {
+    const running = {
+      id: "j1",
+      project_id: "p1",
+      run_id: "r1",
+      kind: "wikidata_studio_build",
+      status: "running",
+      progress: {message: "Step 5 of 6: assembling canonical projection"},
+      params: {},
+      result: null,
+      error: null,
+      created_by: null,
+      started_at: null,
+      finished_at: null,
+      cancel_requested_at: null,
+      created_at: null,
+      updated_at: null,
+    } as RunJobSnapshot;
+    let calls = 0;
+    vi.spyOn(RunJobs, "get").mockImplementation(async () => {
+      calls += 1;
+      return calls < 3 ? running : {...running, status: "succeeded"};
+    });
+    const realNow = Date.now();
+    let now = realNow;
+    vi.spyOn(Date, "now").mockImplementation(() => {
+      now += 21 * 60_000;
+      return now;
+    });
+    vi.spyOn(window, "setTimeout").mockImplementation((fn) => {
+      if (typeof fn === "function") fn();
+      return 0;
+    });
+    try {
+      await expect(waitForRunJob("r1", "j1")).resolves.toMatchObject({status: "succeeded"});
+    } finally {
+      vi.mocked(Date.now).mockRestore();
+      vi.mocked(window.setTimeout).mockRestore();
+    }
+  });
 });
 
 describe("studioBuildJobIdFromConflict", () => {
+  it("reads the job id from the 409 payload when the detail is only the message", () => {
+    expect(studioBuildJobIdFromConflict(
+      "Wikidata Studio build is running in the background.",
+      {
+        code: "studio_build_in_progress",
+        job_id: "job-1",
+        message: "Wikidata Studio build is running in the background.",
+      },
+    )).toBe("job-1");
+  });
+
   it("extracts job_id from structured 409 detail", () => {
     const detail = JSON.stringify({
       code: "studio_build_in_progress",
@@ -156,7 +208,25 @@ describe("loadStudioBuild", () => {
       .mockResolvedValueOnce(buildPayload);
     const progress: string[] = [];
 
-    vi.spyOn(RunJobs, "get").mockResolvedValue({
+    vi.spyOn(RunJobs, "get")
+      .mockResolvedValueOnce({
+        id: jobId,
+        project_id: "p1",
+        run_id: "r1",
+        kind: "wikidata_studio_build",
+        status: "running",
+        progress: {message: "Step 6 of 7: assembling canonical projection"},
+        params: {},
+        result: null,
+        error: null,
+        created_by: null,
+        started_at: null,
+        finished_at: null,
+        cancel_requested_at: null,
+        created_at: null,
+        updated_at: null,
+      })
+      .mockResolvedValue({
       id: jobId,
       project_id: "p1",
       run_id: "r1",
@@ -181,6 +251,42 @@ describe("loadStudioBuild", () => {
     ).resolves.toBe(buildPayload);
     expect(fetchBuild).toHaveBeenCalledTimes(2);
     expect(progress.some((m) => m.includes("Built 120 items"))).toBe(true);
+  });
+
+  it("surfaces a failed build instead of the running-in-background sentence", async () => {
+    const conflict = new ApiError(
+      409,
+      "Wikidata Studio build is running in the background.",
+      {
+        code: "studio_build_in_progress",
+        job_id: "job-9",
+        message: "Wikidata Studio build is running in the background.",
+      },
+    );
+    vi.spyOn(RunJobs, "get").mockResolvedValue({
+      id: "job-9",
+      project_id: "p1",
+      run_id: "r1",
+      kind: "wikidata_studio_build",
+      status: "failed",
+      progress: {},
+      params: {},
+      result: null,
+      error: "export quality gate",
+      created_by: null,
+      started_at: null,
+      finished_at: null,
+      cancel_requested_at: null,
+      created_at: null,
+      updated_at: null,
+    });
+    const fetchBuild = vi.fn().mockRejectedValue(conflict);
+    await expect(loadStudioBuild("r1", fetchBuild)).rejects.toMatchObject({
+      status: 409,
+      detail: "export quality gate",
+      payload: {code: "studio_build_failed", job_id: "job-9"},
+    });
+    expect(fetchBuild).toHaveBeenCalledTimes(1);
   });
 });
 

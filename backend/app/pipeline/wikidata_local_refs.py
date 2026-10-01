@@ -19,7 +19,7 @@ than asserting a relation we cannot name (Rule W-138).
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
@@ -100,7 +100,10 @@ def _intended_title(statement: WikidataStatement, target_id: str) -> str:
     return target_id.split(":", 1)[-1].replace("_", " ").strip()
 
 
-def resolve_local_references(items: list[WikidataItem]) -> dict[str, int]:
+def resolve_local_references(
+    items: list[WikidataItem],
+    on_progress: Callable[[int, int], None] | None = None,
+) -> dict[str, int]:
     """Rewrite or drop every ``__LOCAL:`` target that no built item provides.
 
     Returns a count per action for the build summary — a silent rewrite would
@@ -111,8 +114,9 @@ def resolve_local_references(items: list[WikidataItem]) -> dict[str, int]:
     degraded = 0
     dropped = 0
     relinked = 0
+    item_total = len(items)
 
-    for item in items:
+    for index, item in enumerate(items, start=1):
         kept: list[WikidataStatement] = []
         for statement in item.statements or []:
             target = _local_target(statement.value)
@@ -155,6 +159,10 @@ def resolve_local_references(items: list[WikidataItem]) -> dict[str, int]:
                     continue
                 qualifiers.append(qualifier)
             statement.qualifiers = qualifiers
+        if on_progress is not None and item_total and (
+            index == item_total or index % 25 == 0
+        ):
+            on_progress(index, item_total)
 
     if relinked:
         logger.info("resolved local references: %d relinked to a built work", relinked)

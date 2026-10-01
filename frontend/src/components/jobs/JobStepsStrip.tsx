@@ -22,6 +22,9 @@ export function JobStepsStrip({steps}: {steps: ProgressStep[]}) {
         const status = step.status ?? "pending";
         const total = Number(step.total ?? 0);
         const processed = Number(step.processed ?? 0);
+        const pass = status === "running" && step.current_label
+          ? ` · ${step.current_label}`
+          : "";
         const counts = total > 0 ? ` · ${processed}/${total}${step.unit ? ` ${step.unit}` : ""}` : "";
         const pct = total > 0 ? Math.min(100, Math.max(2, Math.round((processed / total) * 100))) : 0;
         const tone =
@@ -38,7 +41,7 @@ export function JobStepsStrip({steps}: {steps: ProgressStep[]}) {
           >
             <span className="inline-flex items-center gap-1">
               <span aria-hidden>{marker}</span>
-              <span>{step.label ?? `Step ${i + 1}`}{counts}</span>
+              <span>{step.label ?? `Step ${i + 1}`}{pass}{counts}</span>
             </span>
             {status === "running" && (
               <span className="block h-0.5 w-full rounded-full bg-white/8 overflow-hidden">

@@ -287,7 +287,8 @@ async def test_build_job_reports_phase_steps_and_nested_records(db_session, monk
     assert building[-1]["sub_total"] == 3
     assert building[-1]["sub_unit"] == "records"
     assert "3 of 3" in building[-1]["sub_message"]
-    assert building[-1]["message"] == f"Step 4 of {len(BUILD_PHASES)}: building items"
+    build_step = BUILD_PHASES.index("building items") + 1
+    assert building[-1]["message"] == f"Step {build_step} of {len(BUILD_PHASES)}: building items"
 
     done_progress = finish.await_args.kwargs["progress"]
     assert done_progress["processed"] == 2
@@ -299,8 +300,29 @@ def test_legacy_source_omits_the_canonical_phases() -> None:
     assert _phase_plan("canonical") == BUILD_PHASES
     legacy = _phase_plan("legacy")
     assert "loading canonical entities" not in legacy
+    assert "fingerprinting canonical entities" not in legacy
     assert "assembling canonical projection" not in legacy
     assert legacy[0] == "loading records"
+
+
+def test_assembly_progress_names_the_pass_and_counts_items() -> None:
+    progress = _build_progress(
+        {
+            "phase": "assembling canonical projection",
+            "done": 1200,
+            "records": 18524,
+            "unit": "items",
+            "detail": "merging records",
+        },
+        BUILD_PHASES,
+    )
+    running = next(step for step in progress["steps"] if step["status"] == "running")
+    assert running["processed"] == 1200
+    assert running["total"] == 18524
+    assert running["unit"] == "items"
+    assert running["current_label"] == "merging records"
+    assert progress["sub_message"] == "merging records: 1200 of 18524"
+    assert progress["sub_unit"] == "items"
 
 
 def test_progress_falls_back_to_the_first_step_for_an_unknown_phase() -> None:

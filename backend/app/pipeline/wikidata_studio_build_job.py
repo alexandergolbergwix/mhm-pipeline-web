@@ -38,12 +38,16 @@ BUILD_RETRY_SLEEP_SECONDS = 5.0
 BUILD_PHASES: tuple[str, ...] = (
     "loading records",
     "loading canonical entities",
+    "fingerprinting canonical entities",
     "preparing transliterations",
     "building items",
     "assembling canonical projection",
     "mining provenance prose",
 )
-_LEGACY_ONLY_PHASE = "loading canonical entities"
+_LEGACY_ONLY_PHASES = (
+    "loading canonical entities",
+    "fingerprinting canonical entities",
+)
 
 
 def _phase_plan(source: str) -> tuple[str, ...]:
@@ -53,7 +57,7 @@ def _phase_plan(source: str) -> tuple[str, ...]:
     return tuple(
         phase
         for phase in BUILD_PHASES
-        if phase not in (_LEGACY_ONLY_PHASE, "assembling canonical projection")
+        if phase not in (*_LEGACY_ONLY_PHASES, "assembling canonical projection")
     )
 
 
@@ -61,14 +65,17 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
     """Outer progress is 1-based phases; the record loop nests underneath.
 
     ``steps`` carries the full phase plan so the UI can render a per-step
-    bar: done phases show a tick, the running phase shows its record counts
-    (or an indeterminate marker for the CPU-bound assembly phase that has no
-    per-record progress), pending phases stay hollow.
+    bar. Done phases show a tick. The running phase shows its count.
+    Assembly reports one rising item count across its passes. A phase with
+    no callback leaves the record fields empty, and the strip shows a pulse.
+    Pending phases stay hollow.
     """
     label = str(state.get("phase") or phases[0])
     step = (phases.index(label) + 1) if label in phases else 1
     total = len(phases)
     done, records = int(state.get("done") or 0), int(state.get("records") or 0)
+    unit = str(state.get("unit") or "records")
+    detail = str(state.get("detail") or "")
     retry = int(state.get("retry") or 0)
     retry_max = int(state.get("retry_max") or 0)
     retry_note = f" (retry {retry} of {retry_max})" if retry else ""
@@ -85,7 +92,9 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
             if records:
                 entry["processed"] = finished
                 entry["total"] = records
-                entry["unit"] = "records"
+                entry["unit"] = unit
+            if detail:
+                entry["current_label"] = detail
         else:
             entry["status"] = "pending"
         steps.append(entry)
@@ -98,11 +107,16 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
         "steps": steps,
     }
     if records:
+        if detail:
+            sub_message = f"{detail}: {finished} of {records}{retry_note}"
+        else:
+            noun = "item" if unit == "items" else "record"
+            sub_message = f"{noun} {finished} of {records}{retry_note}"
         progress.update(
             sub_processed=finished,
             sub_total=records,
-            sub_unit="records",
-            sub_message=f"record {finished} of {records}{retry_note}",
+            sub_unit=unit,
+            sub_message=sub_message,
         )
     return progress
 
@@ -126,6 +140,7 @@ async def _publish_build_progress(
             state.get("phase"),
             int(state.get("done") or 0),
             int(state.get("retry") or 0),
+            state.get("detail"),
         )
         if fingerprint == last:
             continue
@@ -309,8 +324,14 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
 
     should_cancel = cancel_watcher(job_id)
 
-    def on_record(done: int, total: int) -> None:
+    def on_record(done: int, total: int, detail: str = "") -> None:
         state["done"], state["records"] = done, total
+        if detail:
+            state["detail"] = detail
+            state["unit"] = "items"
+        else:
+            state.pop("detail", None)
+            state["unit"] = "records"
 
     def on_phase(label: str) -> None:
         current = str(state.get("phase") or "")
@@ -336,9 +357,10 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
             state["done"] = len(saved)
             state["records"] = int(resume.get("entity_total") or 0)
             return
-        # The record counters belong to the phase that emitted them — stale
-        # "record 897 of 897" under a CPU-bound phase read as fake progress.
+        # The record counters belong to the phase that emitted them.
         state["done"], state["records"] = 0, 0
+        state.pop("detail", None)
+        state["unit"] = "records"
 
     publisher = asyncio.create_task(_publish_build_progress(job_id, state, phases))
 

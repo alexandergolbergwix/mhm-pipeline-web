@@ -170,4 +170,11 @@ failure mode. These invariants prevent recurrence:
 
 Shared helpers: ``frontend/src/utils/renderStable.ts``.
 
+### Rule W-263 — A page that waits on a run job polls until the job row is terminal (added 2026-10-01)
+
+`waitForRunJob` has no default deadline.
+A caller passes `timeoutMs` only for a bounded test.
+The Wikidata Studio page showed "Background job timed out" after 20 minutes while job `e87334c3` was still running.
+The job tray stayed on RUNNING because the job row was not terminal.
+
 ---

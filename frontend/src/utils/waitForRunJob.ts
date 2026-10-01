@@ -2,7 +2,6 @@ import {ApiError} from "@/api/client";
 import {RunJobs, type RunJobKind, type RunJobSnapshot} from "@/api/runJobs";
 import {isJobActive} from "@/stores/runJobs";
 
-const DEFAULT_TIMEOUT_MS = 20 * 60_000;
 const POLL_MS = 2_000;
 
 /** Progress message when a job is queued behind the dyno concurrency gate. */
@@ -53,8 +52,10 @@ export async function waitForRunJob(
     onUpdate?: (job: RunJobSnapshot) => void;
   },
 ): Promise<RunJobSnapshot> {
-  const deadline = Date.now() + (opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  while (Date.now() < deadline) {
+  // A studio build may run for hours. The page polls until the job row
+  // is terminal. Callers pass timeoutMs only for a bounded test.
+  const deadline = opts?.timeoutMs == null ? null : Date.now() + opts.timeoutMs;
+  while (deadline == null || Date.now() < deadline) {
     const job = await RunJobs.get(runId, jobId);
     opts?.onUpdate?.(job);
     if (job.status === "succeeded") return job;
@@ -67,7 +68,15 @@ export async function waitForRunJob(
 }
 
 /** Parse ``job_id`` out of a 409 ``{code, message, job_id}`` response body. */
-export function jobIdFromConflict(detail: string, expectedCode: string): string | null {
+export function jobIdFromConflict(
+  detail: string,
+  expectedCode: string,
+  payload?: unknown,
+): string | null {
+  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    const row = payload as {code?: string; job_id?: string};
+    if (row.code === expectedCode && row.job_id) return row.job_id;
+  }
   try {
     const parsed = JSON.parse(detail) as {code?: string; job_id?: string};
     if (parsed.code === expectedCode && parsed.job_id) {
@@ -80,8 +89,13 @@ export function jobIdFromConflict(detail: string, expectedCode: string): string 
 }
 
 /** Parse ``job_id`` from a 409 ``studio_build_in_progress`` response body. */
-export function studioBuildJobIdFromConflict(detail: string): string | null {
-  return jobIdFromConflict(detail, "studio_build_in_progress");
+export function studioBuildJobIdFromConflict(detail: string, payload?: unknown): string | null {
+  return jobIdFromConflict(detail, "studio_build_in_progress", payload);
+}
+
+/** Parse ``job_id`` from a 409 for a build that already failed. */
+export function studioBuildFailureJobId(detail: string, payload?: unknown): string | null {
+  return jobIdFromConflict(detail, "studio_build_failed", payload);
 }
 
 function studioBuildProgressMessage(job: RunJobSnapshot): string {
@@ -126,9 +140,22 @@ export async function loadStudioBuild(
   } catch (e) {
     if (!(e instanceof ApiError) || e.status !== 409) throw e;
     const jobId =
-      studioBuildJobIdFromConflict(e.detail)
+      studioBuildJobIdFromConflict(e.detail, e.payload)
+      ?? studioBuildFailureJobId(e.detail, e.payload)
       ?? (await findActiveRunJob(runId, "wikidata_studio_build"))?.id;
     if (!jobId) throw e;
+    const existing = await RunJobs.get(runId, jobId);
+    if (existing.status === "failed" || existing.status === "cancelled") {
+      throw new ApiError(
+        409,
+        existing.error || "Wikidata Studio build failed.",
+        {
+          code: "studio_build_failed",
+          job_id: existing.id,
+          message: existing.error || "Wikidata Studio build failed.",
+        },
+      );
+    }
     opts?.onProgress?.("Building Wikidata items in the background…");
     await waitForRunJob(runId, jobId, {
       onUpdate: (job) => { opts?.onProgress?.(studioBuildProgressMessage(job)); },
@@ -157,7 +184,7 @@ export async function loadWithJobFallback<T>(
   } catch (e) {
     if (!(e instanceof ApiError) || e.status !== 409) throw e;
     const jobId =
-      jobIdFromConflict(e.detail, conflictCode)
+      jobIdFromConflict(e.detail, conflictCode, e.payload)
       ?? (await findActiveRunJob(runId, jobKind))?.id;
     if (!jobId) throw e;
     opts?.onProgress?.("Building in the background…");

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 import hashlib
 import json
 import logging
@@ -303,14 +303,18 @@ def canonical_studio_context(
 
 def wikidata_candidates_from_hmo(
     entities: Iterable[CanonicalHmoEntity],
+    *,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Return projection records grounded exclusively in HMO state."""
     all_entities = list(entities)
     materialized = uploadable_entities_from_hmo(all_entities)
     assert_canonical_entities(materialized)
     entities_by_cn = _index_entities_by_control_number(all_entities)
-    return [
-        {
+    candidates: list[dict[str, Any]] = []
+    total = len(materialized)
+    for index, entity in enumerate(materialized, start=1):
+        candidates.append({
             "local_id": entity.local_id,
             "source_uri": entity.source_uri,
             "hmo_wikibase_id": entity.wikibase_id,
@@ -334,17 +338,19 @@ def wikidata_candidates_from_hmo(
             "source_fingerprint": entity.source_fingerprint,
             "entity_type": _wikidata_entity_type(entity),
             "control_numbers": list(entity.control_numbers),
-        }
-        for entity in materialized
-    ]
+        })
+        if on_progress is not None and total and (index == total or index % 25 == 0):
+            on_progress(index, total)
+    return candidates
 
 
 def canonical_wikidata_fingerprint(
     entities: Iterable[CanonicalHmoEntity],
     *,
     enrichment_fingerprint: str | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> str:
-    candidates = wikidata_candidates_from_hmo(entities)
+    candidates = wikidata_candidates_from_hmo(entities, on_progress=on_progress)
     payload = json.dumps(candidates, ensure_ascii=False, sort_keys=True, default=str)
     # v9: MARC/authority enrichment merge (Rule W-125) participates in the salt.
     # v10 — Rule W-137 (manuscript identity scoping, one catalog id per
@@ -484,6 +490,7 @@ def native_items_from_hmo(
     entities: Iterable[CanonicalHmoEntity],
     *,
     context: CanonicalStudioContext | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[WikidataItem]:
     """Adapt live HMO snapshots to the guarded Wikidata upload model."""
     all_entities = list(entities)
@@ -491,7 +498,15 @@ def native_items_from_hmo(
     assert_canonical_entities(materialized)
     entities_by_cn = _index_entities_by_control_number(all_entities)
     items: list[WikidataItem] = []
-    for entity in materialized:
+    entity_total = len(materialized)
+
+    def _tick(index: int) -> None:
+        if on_progress is not None and entity_total and (
+            index == entity_total or index % 25 == 0
+        ):
+            on_progress(index, entity_total)
+
+    for index, entity in enumerate(materialized, start=1):
         wd_type = _wikidata_entity_type(entity) or ""
         assert wd_type in PUBLIC_WIKIDATA_ENTITY_TYPES
         existing_qid = _accepted_wikidata_qid(entity)
@@ -541,6 +556,7 @@ def native_items_from_hmo(
             and not existing_qid
             and not any(row.get("accepted") is True for row in work_evidence)
         ):
+            _tick(index)
             continue
         items.append(WikidataItem(
             labels=labels,
@@ -557,6 +573,7 @@ def native_items_from_hmo(
             ],
             work_candidate_evidence=work_evidence,
         ))
+        _tick(index)
     return items
 
 
@@ -678,6 +695,16 @@ def _context_work_author_evidence(
             content_title, _folio, _sequence, source_text, _source_field = (
                 _contents_row_fields(content, parse_contents_entry)
             )
+            from converter.wikidata.content_projection import (  # noqa: PLC0415
+                structured_work_attribution,
+            )
+
+            entry = content if isinstance(content, Mapping) else {"title": content}
+            attribution = structured_work_attribution(entry)
+            if title_matches(getattr(attribution, "title", "")) and getattr(
+                attribution, "author_name", "",
+            ):
+                add_name(attribution.author_name)
             if not title_matches(content_title):
                 continue
             if isinstance(content, Mapping):
@@ -686,6 +713,12 @@ def _context_work_author_evidence(
             _title, embedded_author = _split_work_title_author(source_text)
             if embedded_author and _PERSON_NAME_SIGNALS_RE.search(embedded_author):
                 add_name(embedded_author)
+        if title_matches(record.get("title")):
+            for author in record.get("authors") or []:
+                if isinstance(author, Mapping):
+                    add_name(author.get("name") or author.get("heading"))
+                else:
+                    add_name(author)
 
         entities = [
             entity for entity in record.get("entities") or []
@@ -776,6 +809,84 @@ def _work_title_candidates_from_item(item: WikidataItem) -> list[str]:
     return candidates
 
 
+def _norm_designation_shelfmark(text: str) -> str:
+    return re.sub(r"[\s.]+", "", str(text or "")).upper()
+
+
+def _disambiguate_shared_manuscript_labels(
+    items: list[WikidataItem],
+    context: CanonicalStudioContext | None,
+) -> None:
+    """Keep two real catalog records that share one shelfmark distinct.
+
+    The designation is the holder plus the shelfmark. When each record's own
+    MARC shelfmark is that shelfmark and each item has its own catalog id,
+    append the catalog id. A shelfmark copied from another record stays
+    unchanged, and the quality gate still blocks that collision (Rule W-137).
+    """
+    if context is None:
+        return
+    groups: dict[tuple[str, str], list[WikidataItem]] = {}
+    for item in items:
+        if str(item.entity_type or "").strip().lower() != "manuscript":
+            continue
+        label = str((item.labels or {}).get("en") or (item.labels or {}).get("he") or "").strip()
+        shelfmarks = [
+            str(statement.value or "").strip()
+            for statement in item.statements or []
+            if statement.property_id == "P217" and str(statement.value or "").strip()
+        ]
+        if not label or not shelfmarks:
+            continue
+        key = (label.casefold(), _norm_designation_shelfmark(shelfmarks[0]))
+        groups.setdefault(key, []).append(item)
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        rows: list[tuple[WikidataItem, str]] = []
+        distinct = True
+        for item in group:
+            record = None
+            for raw_cn in item.records or []:
+                record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)))
+                if record:
+                    break
+            catalog_ids = [
+                str(statement.value or "").strip()
+                for statement in item.statements or []
+                if statement.property_id == "P3959" and str(statement.value or "").strip()
+            ]
+            projected = next(
+                (
+                    _norm_designation_shelfmark(str(statement.value or ""))
+                    for statement in item.statements or []
+                    if statement.property_id == "P217"
+                ),
+                "",
+            )
+            source_shelf = _norm_designation_shelfmark(
+                str((record or {}).get("shelfmark") or ""),
+            )
+            if (
+                record is None
+                or len(catalog_ids) != 1
+                or not source_shelf
+                or source_shelf != projected
+            ):
+                distinct = False
+                break
+            rows.append((item, catalog_ids[0]))
+        if not distinct or len({catalog_id for _item, catalog_id in rows}) != len(rows):
+            continue
+        for item, catalog_id in rows:
+            labels = dict(item.labels or {})
+            for language in ("en", "he"):
+                current = str(labels.get(language) or "").strip()
+                if current and catalog_id not in current:
+                    labels[language] = f"{current} · {catalog_id}"
+            item.labels = labels
+
+
 def _sanitize_work_authors_against_context(
     items: list[WikidataItem],
     context: CanonicalStudioContext | None,
@@ -859,6 +970,58 @@ def _sanitize_work_authors_against_context(
     return changed
 
 
+class _AssemblyProgress:
+    """Map several full passes onto one rising item count.
+
+    The tray reads ``done`` of ``item_count``. A later pass must not move
+    that count backwards (Rule W-259).
+    """
+
+    def __init__(
+        self,
+        item_count: int,
+        labels: tuple[str, ...],
+        callback: Callable[[int, int, str], None] | None,
+    ) -> None:
+        self.item_count = max(int(item_count), 1)
+        self.labels = labels
+        self.passes = len(labels)
+        self.callback = callback
+        self.pass_index = 0
+        self.shown = 0
+
+    def observer(self) -> Callable[[int, int], None]:
+        def _on(done: int, total: int) -> None:
+            self.report(done, total)
+        return _on
+
+    def report(self, done: int, total: int) -> None:
+        if self.callback is None or self.passes == 0:
+            return
+        span = max(int(total), 1)
+        done_in_pass = min(max(int(done), 0), span)
+        if self.pass_index >= self.passes:
+            shown = self.item_count
+        else:
+            numer = self.pass_index * span + done_in_pass
+            denom = self.passes * span
+            shown = (numer * self.item_count + denom - 1) // denom
+            shown = min(self.item_count, shown)
+        if shown < self.shown:
+            shown = self.shown
+        label = self.labels[min(self.pass_index, self.passes - 1)]
+        if shown == self.shown:
+            return
+        self.shown = shown
+        self.callback(shown, self.item_count, label)
+
+    def finish_pass(self) -> None:
+        self.report(1, 1)
+        self.pass_index += 1
+        if self.pass_index >= self.passes:
+            self.report(1, 1)
+
+
 def build_canonical_studio_result(
     entities: Iterable[CanonicalHmoEntity],
     *,
@@ -867,6 +1030,7 @@ def build_canonical_studio_result(
     reconcile: bool = True,
     context: CanonicalStudioContext | None = None,
     legacy_native_items: list[Any] | None = None,
+    on_progress: Callable[[int, int, str], None] | None = None,
 ) -> dict[str, Any]:
     """Build serialised Wikidata Studio items from durable HMO snapshots.
 
@@ -887,11 +1051,32 @@ def build_canonical_studio_result(
     from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
 
     materialized = list(entities)
+    meter = _AssemblyProgress(
+        len(materialized),
+        (
+            "native items",
+            "merging records",
+            "claims",
+            "local references",
+            "validation",
+            "serialising",
+        ),
+        on_progress,
+    )
     uploadable = uploadable_entities_from_hmo(materialized)
     rollup_stats = _rollup_summary_stats(materialized, uploadable)
-    native_items = native_items_from_hmo(materialized, context=context)
+    native_items = native_items_from_hmo(
+        materialized, context=context, on_progress=meter.observer(),
+    )
+    meter.finish_pass()
     if legacy_native_items:
-        native_items = merge_legacy_into_canonical(native_items, list(legacy_native_items))
+        native_items = merge_legacy_into_canonical(
+            native_items,
+            list(legacy_native_items),
+            on_progress=meter.observer(),
+        )
+    meter.finish_pass()
+    _disambiguate_shared_manuscript_labels(native_items, context)
     _sanitize_work_authors_against_context(native_items, context)
     entities_by_local_id = {entity.local_id: entity for entity in materialized}
 
@@ -906,8 +1091,12 @@ def build_canonical_studio_result(
             if outcome.existing_qid and not item.existing_qid:
                 item.existing_qid = outcome.existing_qid
 
-    for item in native_items:
+    claim_total = max(len(native_items), 1)
+    claim_progress = meter.observer()
+    for index, item in enumerate(native_items, start=1):
         recover_person_identifiers_from_evidence(item)
+        if index == claim_total or index % 25 == 0:
+            claim_progress(index, claim_total)
 
     dropped_person_ids = [
         item.local_id
@@ -979,6 +1168,7 @@ def build_canonical_studio_result(
     _align_person_p1559_to_hebrew_label(native_items)
     _scrub_person_aliases(native_items)
     normalize_work_author_claims(native_items)
+    meter.finish_pass()
 
     # Apply overrides before resolving placeholders. A curator statement edit
     # may itself add a __LOCAL target, and the resolver must see the final item
@@ -989,12 +1179,17 @@ def build_canonical_studio_result(
         resolve_local_references,
     )
 
-    local_ref_stats = resolve_local_references(native_items)
+    local_ref_stats = resolve_local_references(
+        native_items, on_progress=meter.observer(),
+    )
+    meter.finish_pass()
     drop_orphan_significant_person_claims(native_items)
     drop_redundant_unknown_text_exemplars(native_items)
 
     per_item_issues: list[list[dict[str, Any]]] = []
-    for item in native_items:
+    validate_total = max(len(native_items), 1)
+    validate_progress = meter.observer()
+    for index, item in enumerate(native_items, start=1):
         issue_dicts: list[dict[str, Any]] = []
         for issue in validate_item(item):
             sev = issue.severity if hasattr(issue, "severity") else str(issue)
@@ -1004,9 +1199,16 @@ def build_canonical_studio_result(
             log_fn("validate_item [%s] %s: %s", sev.upper(), code, msg)
             issue_dicts.append({"code": code, "severity": sev, "message": msg})
         per_item_issues.append(issue_dicts)
+        if index == validate_total or index % 25 == 0:
+            validate_progress(index, validate_total)
+    meter.finish_pass()
 
     serialised = [wikidata_studio._serialise_item(item) for item in native_items]
-    for item_dict, item, issues in zip(serialised, native_items, per_item_issues, strict=True):
+    serial_total = max(len(native_items), 1)
+    serial_progress = meter.observer()
+    for index, (item_dict, item, issues) in enumerate(
+        zip(serialised, native_items, per_item_issues, strict=True), start=1,
+    ):
         public_type = str(item_dict.get("entity_type") or "")
         if public_type not in PUBLIC_WIKIDATA_ENTITY_TYPES:
             raise ValueError(
@@ -1023,12 +1225,16 @@ def build_canonical_studio_result(
             "source_fingerprint": entity.source_fingerprint if entity else None,
             "validation_issues": issues,
         })
+        if index == serial_total or index % 25 == 0:
+            serial_progress(index, serial_total)
 
     exporter = QuickStatementsExporter()
+    quickstatements = exporter.export(native_items)
+    meter.finish_pass()
     return {
         "items": serialised,
         "native_items": native_items if return_native else None,
-        "quickstatements": exporter.export(native_items),
+        "quickstatements": quickstatements,
         "summary": {
             "total_items": len(serialised),
             "manuscripts": sum(1 for item in native_items if item.entity_type == "manuscript"),

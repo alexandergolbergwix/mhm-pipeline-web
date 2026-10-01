@@ -28,7 +28,7 @@ import {
   jobProcessedCount,
 } from "@/utils/throttledProgressRefresh";
 import {patchWikidataItemsFromUploadOutcomes} from "@/utils/studioUploadProgress";
-import {ensureRunJob, loadStudioBuild, studioBuildJobIdFromConflict} from "@/utils/waitForRunJob";
+import {ensureRunJob, loadStudioBuild, studioBuildFailureJobId, studioBuildJobIdFromConflict} from "@/utils/waitForRunJob";
 import {WIKIDATA_BUILD_PHASE_HINTS} from "@/lib/wikidataBuildPhases";
 import {useLabelStore} from "@/api/wikidataLabels";
 
@@ -80,6 +80,7 @@ export function WikidataItemsPanel({
   const [approveJob, setApproveJob] = useState<RunJobSnapshot | null>(null);
   const [approveFeedback, setApproveFeedback] = useState<string | null>(null);
   const [studioBuildJob, setStudioBuildJob] = useState<RunJobSnapshot | null>(null);
+  const [conflictJobId, setConflictJobId] = useState<string | null>(null);
   const [buildOverlayHidden, setBuildOverlayHidden] = useState(false);
   const buildInProgress = studioBuildJob != null && isJobActive(studioBuildJob.status);
   useEffect(() => {
@@ -147,10 +148,23 @@ export function WikidataItemsPanel({
       onBuildLoaded?.(result);
       setRefreshToken((t) => t + 1);
     } catch (e) {
-      // An in-flight studio build is progress, not an error: the attachment
-      // above tracks the job and renders JobProgressInline; a raw 409 leak
-      // here would paint red text while the tray shows the build running.
-      if (e instanceof ApiError && e.status === 409 && studioBuildJobIdFromConflict(e.detail)) {
+      // A studio build conflict stays on this page. The step progress
+      // renders below. The page must not collapse to one red sentence.
+      const runningId = e instanceof ApiError
+        ? studioBuildJobIdFromConflict(e.detail, e.payload)
+        : null;
+      const failedId = e instanceof ApiError
+        ? studioBuildFailureJobId(e.detail, e.payload)
+        : null;
+      const jobId = runningId ?? failedId;
+      if (jobId) {
+        setConflictJobId(jobId);
+        if (failedId) {
+          const job = await RunJobs.get(runId, failedId);
+          upsertJob(job);
+          setStudioBuildJob(job);
+          setError(job.error ?? "Wikidata Studio build failed.");
+        }
         return;
       }
       setError(e instanceof ApiError ? e.detail : String(e));
@@ -179,6 +193,12 @@ export function WikidataItemsPanel({
       setLoading(false);
     }
   });
+
+  useEffect(() => {
+    if (!conflictJobId) return;
+    setStudioBuildTrackedId(conflictJobId);
+    ensureStudioBuildPolling();
+  }, [conflictJobId, ensureStudioBuildPolling, setStudioBuildTrackedId]);
 
   const refresh = useCallback(async (opts?: {nextForceRebuild?: boolean}) => {
     const force = opts?.nextForceRebuild ?? forceRebuild;

@@ -135,6 +135,93 @@ _INSTITUTIONS: dict[str, tuple[str, tuple[str, ...]]] = {
     )),
     # Verified label is "Archives of the Jewish People"; the MARC form is a
     # recorded alias on the item, along with CAHJP.
+    # Verified 2026-10-01 via wbsearchentities + wbgetentities.
+    "Q2324644": ("Hamburg State and University Library Carl von Ossietzky", (
+        "the hamburg state and university library carl von ossietzky",
+        "hamburg state and university library carl von ossietzky",
+    )),
+    "Q267566": ("National Library of Russia", (
+        "the national library of russia",
+        "national library of russia",
+    )),
+    "Q12409378": ("Bar-Ilan University Libraries and Information Division", (
+        "bar-ilan university library",
+        "the bar-ilan university library",
+    )),
+    "Q213678": ("Vatican Library", (
+        "vatican library",
+        "the vatican library",
+    )),
+    "Q856452": ("Ets Haim library", (
+        "ets haim library",
+        "the ets haim library",
+    )),
+    "Q856435": ("Bibliotheca Rosenthaliana", (
+        "bibliotheca rosenthaliana",
+    )),
+    "Q170109": ("Berlin State Library", (
+        "state library of berlin",
+        "the state library of berlin",
+    )),
+    "Q2901252": ("Biblioteca Palatina di Parma", (
+        "the palatina library",
+        "palatina library",
+    )),
+    "Q193563": ("Bibliothèque nationale de France", (
+        "the national library of france",
+        "national library of france",
+    )),
+    "Q190260": ("Zentralbibliothek Zürich", (
+        "zürich central library",
+        "zurich central library",
+    )),
+    "Q219555": ("New York Public Library", (
+        "new york public library",
+        "the new york public library",
+    )),
+    "Q630461": ("Bibliothèque nationale et universitaire de Strasbourg", (
+        "the national and university library of strasbourg",
+        "national and university library of strasbourg",
+    )),
+    "Q815611": ("Biblioteca Ambrosiana", (
+        "ambrosian library",
+        "the ambrosian library",
+    )),
+    "Q773989": ("University of Manchester Library", (
+        "the university of manchester library",
+        "university of manchester library",
+    )),
+    "Q867885": ("Royal Danish Library", (
+        "the royal danish library",
+        "royal danish library",
+    )),
+    "Q256507": ("Bavarian State Library", (
+        "bavarian state library",
+        "the bavarian state library",
+    )),
+    "Q638395": ("Leiden University Library", (
+        "leiden university libraries",
+        "leiden university library",
+    )),
+    "Q3232931": ("Harvard Library", (
+        "harvard university library",
+        "harvard library",
+    )),
+    "Q1219443": ("Biblioteca Estense Universitaria", (
+        "estense university library",
+    )),
+    "Q856419": ("Biblioteca Medicea Laurenziana", (
+        "laurentian library",
+        "the laurentian library",
+    )),
+    "Q304037": ("Austrian National Library", (
+        "austrian national library",
+        "the austrian national library",
+    )),
+    "Q213322": ("Victoria and Albert Museum", (
+        "victoria and albert museum",
+        "the victoria and albert museum",
+    )),
     "Q2893584": ("Archives of the Jewish People", (
         "central archives for the history of the jewish people",
         "archives of the jewish people",
@@ -164,6 +251,58 @@ ABSTAINED_INSTITUTIONS: dict[str, str] = {
     "victor klagsbald": "a named private collector, not an institution",
     "library of the admor of karlin-stolin, ha-rav shochet": (
         "a named private/communal holder with no Wikidata item"
+    ),
+    # Checked 2026-10-01. The live search did not return one library item
+    # whose English label and description match the MARC name.
+    "rabbinical school of france": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "the schocken institute for jewish research": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "jewish community of mantua": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "the beth din & beth hamidrash library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "shuvi nafshi": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "national central library of florence": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "hekhal shlomo": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "talmud tora library of livorno": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "the jewish museum in prague": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "uppsala university library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "merseyside county museum": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "trinity college library": "several colleges share this name",
+    "university of california library": "the name does not name one campus library",
+    "inguimbertine library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "wellcome institute for the history of medicine": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "the jewish museum berlin": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "hebrew union college-jewish institute of religion": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "christ church library": "several colleges share this name",
+    "umberto nahon museum of italian jewish art": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "society of manuscripts of french insurers": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "library passerini-landi": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "lower saxony state archives of hannover": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "duchess anna amalia library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "university library of erlangen-nürnberg": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "university library of erlangen-nurnberg": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "the national library of the czech republic": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "basel university library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "johns hopkins university library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "library of geneva": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "the university of haifa library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "scientific city library": "the name does not identify one library",
+    "alei teiman": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "library of mans": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "library of the santa maria de montserrat abbey": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "hebrew theological college libraries": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "jewish community of copenhagen": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "karaite community in israel": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "national széchényi library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "national szechényi library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "chabad lubavitch library": "no unambiguous Wikidata item confirmed on 2026-10-01",
+    "jewish historical museum": "the name does not name one museum",
+    "spertus institute for jewish learning and leadership": (
+        "the Wikidata item describes a building, not the manuscript collection"
+    ),
+    "ישועות משיחו (ישיבה)": "a yeshiva name with no confirmed Wikidata item on 2026-10-01",
+    "ורונה": "a place name, not a holding institution",
+    "city and provincial archives": "the name does not identify one archive",
+    "archives of jewish traditions and customs benvenuto and alessandro terracini": (
+        "no unambiguous Wikidata item confirmed on 2026-10-01"
     ),
 }
 
@@ -238,6 +377,11 @@ def resolve_holder(name: str) -> HolderResolution:
             name=text, qid=None, label=None, status=STATUS_ABSTAINED,
             reason=abstained,
         )
+    if _looks_like_private_holder(text):
+        return HolderResolution(
+            name=text, qid=None, label=None, status=STATUS_ABSTAINED,
+            reason="a named private collector, not an institution",
+        )
     return HolderResolution(
         name=text, qid=None, label=None, status=STATUS_UNKNOWN,
         reason=(
@@ -283,6 +427,22 @@ def institution_label(qid: str) -> str | None:
 def abstention_reason(name: str) -> str | None:
     """Why this institution is deliberately unresolved, if it is."""
     return ABSTAINED_INSTITUTIONS.get(_normalise(name))
+
+
+_INSTITUTION_WORDS = (
+    "library", "libraries", "museum", "archive", "archives", "university",
+    "college", "institute", "school", "community", "synagogue", "yeshiva",
+    "abbey", "beth din", "bibliotheca", "biblioteca", "ספרי", "מוזיאון",
+)
+
+
+def _looks_like_private_holder(name: str) -> bool:
+    """A 'Family, Given' holder is a person, not a P195 institution."""
+    text = " ".join(str(name or "").split()).strip()
+    if "," not in text:
+        return False
+    lowered = text.casefold()
+    return not any(word in lowered for word in _INSTITUTION_WORDS)
 
 
 def _normalise(name: str) -> str:

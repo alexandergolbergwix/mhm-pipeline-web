@@ -23,7 +23,7 @@
 
 ## Tests pinning this block
 
-- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `wikidataUploadProgressModal.spec.ts`, `useVerifyJob.spec.ts`, `verifyResume.spec.ts`, `throttledProgressRefresh.spec.ts`, `studioUploadProgress.spec.ts`, `jobProgressInline.spec.tsx`, `jobTray.spec.tsx`, `canvasState.spec.ts`, `ResearchChat.spec.tsx` — R1–R4, R11, R13–R23 plus Research Assistant AG-UI canvas reducer, chat wait dots, and pydantic-ai retry humanize.
+- `frontend/tests/unit/renderStable.spec.ts`, `useReportDerivedIds.spec.ts`, `runJobsStore.spec.ts`, `wikidataUploadProgressModal.spec.ts`, `useVerifyJob.spec.ts`, `verifyResume.spec.ts`, `throttledProgressRefresh.spec.ts`, `studioUploadProgress.spec.ts`, `jobProgressInline.spec.tsx`, `jobTray.spec.tsx`, `waitForRunJob.spec.ts`, `canvasState.spec.ts`, `ResearchChat.spec.tsx` — R1–R4, R11, R13–R25 plus Research Assistant AG-UI canvas reducer, chat wait dots, and pydantic-ai retry humanize. A studio-build 409 keeps the job id from the response payload (R25).
 - `frontend/e2e/wikidata-upload-panel.spec.ts` — compatibility dry-run/test
   radios and historic live two-step progress modal + job tray.
 - `frontend/e2e/wikidata-studio-theme.spec.ts` — light/dark theming of the
@@ -33,7 +33,7 @@
   controls do not render beside compatibility upload controls. It also checks
   that **Resolve N items with AI** requests blocked-only automatic resolution.
 - `frontend/tests/unit/liquidGlassMath.spec.ts`, `glassMapCache.spec.ts` — glass math, `glassSafeInset` (R21), map memoisation.
-- `frontend/tests/unit/clientCache.spec.ts`, `entityApi.test.ts`, `verifySession.spec.ts`, `waitForRunJob.spec.ts` — cache tiers, API mapping, job/session lifecycles; `waitForStudioBuild` progress streaming + studio-build 409 copy.
+- `frontend/tests/unit/clientCache.spec.ts`, `entityApi.test.ts`, `verifySession.spec.ts`, `waitForRunJob.spec.ts` — cache tiers, API mapping, job/session lifecycles; `waitForStudioBuild` progress streaming + studio-build 409 copy; a running job is polled past 20 minutes (R24).
 - `frontend/e2e/extraction-review.spec.ts`, `authority-*.spec.ts`, `wikidata-studio.spec.ts`, `hmo-wikibase-items.spec.ts`, `history-timeline.spec.ts`, `stage-rdf.spec.ts`, `access-request.spec.ts`, `admin-panel.spec.ts`, `linked-data-explorer.spec.ts`, `smoke.spec.ts` — the R8/R9 click-path layer.
 - `yarn typecheck` (strict tsc) gates every build.
 

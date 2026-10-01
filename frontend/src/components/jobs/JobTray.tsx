@@ -107,6 +107,8 @@ export function JobTray() {
           typeof rawProgress.sub_unit === "string" && rawProgress.sub_unit.trim()
             ? ` ${rawProgress.sub_unit.trim()}`
             : "";
+        const subMessage =
+          typeof rawProgress.sub_message === "string" ? rawProgress.sub_message.trim() : "";
 
         return (
           <Glass key={job.id} variant="compact" className="p-3 space-y-2 shadow-lg">
@@ -126,9 +128,11 @@ export function JobTray() {
                           {subProcessedNum} / {subTotalNum}{subUnit}
                         </span>
                       )}
-                      {stepMessage && subTotalNum <= 0 && (
+                      {subMessage ? (
+                        <span title={STEP_ONLY_TITLE}> · {subMessage}</span>
+                      ) : stepMessage && subTotalNum <= 0 ? (
                         <span title={STEP_ONLY_TITLE}> · {stepMessage}</span>
-                      )}
+                      ) : null}
                     </>
                   ) : (
                     progressLabel(job)

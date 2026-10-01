@@ -74,6 +74,18 @@ class TestResolveHolder:
         assert r.attested is True
         assert r.display_name == "The Montefiore Library"
 
+    def test_a_personal_name_abstains_as_a_private_collector(self) -> None:
+        resolution = resolve_holder("Wallach, Isaac")
+        assert resolution.status == STATUS_ABSTAINED
+        assert resolution.qid is None
+        assert "private collector" in resolution.reason
+
+    def test_a_verified_library_resolves_to_its_live_qid(self) -> None:
+        resolution = resolve_holder("Vatican Library")
+        assert resolution.status == STATUS_RESOLVED
+        assert resolution.qid == "Q213678"
+        assert resolution.label == "Vatican Library"
+
     def test_a_placeholder_attests_no_holder_at_all(self) -> None:
         r = resolve_holder("Unknown Library")
         assert r.status == STATUS_PLACEHOLDER

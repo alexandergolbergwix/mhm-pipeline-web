@@ -4,7 +4,11 @@
  */
 
 export class ApiError extends Error {
-  constructor(public status: number, public detail: string) {
+  constructor(
+    public status: number,
+    public detail: string,
+    public payload: unknown = null,
+  ) {
     super(detail);
     this.name = "ApiError";
   }
@@ -44,13 +48,15 @@ async function request<T>(
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let payload: unknown = null;
     try {
-      const data = (await res.json()) as { detail?: unknown };
+      const data = (await res.json()) as {detail?: unknown};
+      payload = data?.detail ?? null;
       detail = coerceErrorDetail(data?.detail, res.statusText);
     } catch {
       /* response wasn't JSON — keep statusText */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, payload);
   }
   if (res.status === 204) return undefined as T;
   // Guard against the FastAPI SPA-fallback "200 HTML" pathology: if a

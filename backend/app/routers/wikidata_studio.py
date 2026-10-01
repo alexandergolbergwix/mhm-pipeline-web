@@ -963,11 +963,16 @@ async def _execute_studio_build(
         else:
             from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
 
-            canonical_fp = await run_in_threadpool(
-                canonical_wikidata_fingerprint,
-                canonical,
-                enrichment_fingerprint=enrichment_fp,
-            )
+            phase("fingerprinting canonical entities")
+
+            def _fingerprint() -> str:
+                return canonical_wikidata_fingerprint(
+                    canonical,
+                    enrichment_fingerprint=enrichment_fp,
+                    on_progress=progress_cb,
+                )
+
+            canonical_fp = await run_in_threadpool(_fingerprint)
             if resume is not None:
                 resume["canonical_fp"] = canonical_fp
         if (
@@ -1067,6 +1072,7 @@ async def _execute_studio_build(
             reconcile=reconcile,
             legacy_native_items=legacy_result.get("native_items") or [],
             return_native=True,
+            on_progress=progress_cb,
         )
         await check_cancel()
         items = result["items"]
@@ -1220,6 +1226,17 @@ def _studio_build_in_progress_detail(job_id: uuid.UUID) -> dict[str, str]:
     }
 
 
+def _studio_build_failed_detail(job_id: uuid.UUID, error: str | None) -> dict[str, str]:
+    text = (error or "The last Wikidata Studio build failed.").strip()
+    if len(text) > 500:
+        text = text[:500] + "…"
+    return {
+        "code": "studio_build_failed",
+        "message": text,
+        "job_id": str(job_id),
+    }
+
+
 def _studio_response_from_cache(
     cached: WikidataStudioCache,
     merged_items: list[dict[str, Any]],
@@ -1359,7 +1376,7 @@ async def build_studio(
             if recent_failed is not None:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=_studio_build_in_progress_detail(recent_failed.id),
+                    detail=_studio_build_failed_detail(recent_failed.id, recent_failed.error),
                 )
         job_id = await _enqueue_studio_build_job(
             db,

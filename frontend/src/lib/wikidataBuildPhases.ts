@@ -17,6 +17,10 @@ export const WIKIDATA_BUILD_PHASE_HINTS: Record<string, BuildPhaseHint> = {
     detail: "Loading the durable HMO read-back entities that anchor the projection",
     expected: "~1 min",
   },
+  "fingerprinting canonical entities": {
+    detail: "Building the canonical fingerprint. The entity count rises while this step runs",
+    expected: "~10 min",
+  },
   "preparing transliterations": {
     detail: "Preparing Hebrew/Latin name transliterations",
     expected: "~1 min",
@@ -26,7 +30,7 @@ export const WIKIDATA_BUILD_PHASE_HINTS: Record<string, BuildPhaseHint> = {
     expected: "~3 min",
   },
   "assembling canonical projection": {
-    detail: "Deduplicating and cross-referencing all entities in memory. This is the longest phase, and it has no per-record progress — the bar stays still while it works",
+    detail: "Deduplicating and cross-referencing all entities. The item count rises through native items, merge, claims, local references, validation, and serialising",
     expected: "~15–25 min",
   },
   "mining provenance prose": {

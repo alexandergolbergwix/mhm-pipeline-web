@@ -3,6 +3,7 @@ from unittest.mock import patch
 from app.pipeline.hmo_canonical import normalize_live_entity
 from app.pipeline.hmo_canonical_wikidata import (
     PUBLIC_WIKIDATA_ENTITY_TYPES,
+    _AssemblyProgress,
     build_canonical_studio_result,
     canonical_studio_context,
     canonical_wikidata_fingerprint,
@@ -57,6 +58,116 @@ def test_wikidata_projection_filters_unaccepted_evidence_and_maps_entity_type() 
     assert result[0]["projection_source"] == "hmo_wikibase"
     assert result[0]["entity_type"] == "person"
     assert [row["identifier"] for row in result[0]["authority_evidence"]] == ["Q42"]
+
+
+def test_assembly_meter_names_each_pass_without_moving_backwards() -> None:
+    calls: list[tuple[int, int, str]] = []
+    labels = (
+        "native items",
+        "merging records",
+        "claims",
+        "local references",
+        "validation",
+        "serialising",
+    )
+    meter = _AssemblyProgress(12, labels, lambda done, total, detail: calls.append((done, total, detail)))
+    for _label in labels:
+        meter.report(12, 12)
+        meter.finish_pass()
+    assert [detail for _done, _total, detail in calls] == list(labels)
+    assert calls[-1] == (12, 12, "serialising")
+    assert all(later[0] >= earlier[0] for earlier, later in zip(calls, calls[1:]))
+
+
+def test_shared_shelfmark_labels_keep_the_catalog_id() -> None:
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+    from app.pipeline.hmo_canonical_wikidata import (
+        CanonicalStudioContext,
+        _disambiguate_shared_manuscript_labels,
+    )
+
+    def manuscript(local_id: str, cn: str) -> WikidataItem:
+        return WikidataItem(
+            local_id=local_id,
+            entity_type="manuscript",
+            labels={"en": "Wallach, Isaac, F 25878"},
+            records=[cn],
+            statements=[
+                WikidataStatement(property_id="P217", value="F 25878", value_type="string"),
+                WikidataStatement(property_id="P3959", value=cn, value_type="external-id"),
+            ],
+        )
+
+    first = manuscript("A", "990000633940205171")
+    second = manuscript("B", "990034232700205171")
+    context = CanonicalStudioContext(marc_by_cn={
+        "990000633940205171": {"shelfmark": "F 25878"},
+        "990034232700205171": {"shelfmark": "F 25878"},
+    })
+    _disambiguate_shared_manuscript_labels([first, second], context)
+    assert first.labels["en"].endswith("990000633940205171")
+    assert second.labels["en"].endswith("990034232700205171")
+    assert first.labels["en"] != second.labels["en"]
+
+
+def test_a_work_keeps_the_record_author_when_the_title_matches() -> None:
+    from converter.wikidata.item_models import WikidataItem
+
+    from app.pipeline.hmo_canonical_wikidata import (
+        CanonicalStudioContext,
+        _sanitize_work_authors_against_context,
+    )
+
+    work = WikidataItem(
+        local_id="QDraft_Work",
+        entity_type="work",
+        labels={"en": "שלחן מלכים"},
+        records=["990000633940205171"],
+        statements=[],
+    )
+    context = CanonicalStudioContext(marc_by_cn={
+        "990000633940205171": {
+            "title": "שלחן מלכים",
+            "authors": [{"name": "Moshe ben Yosef", "role": "author"}],
+        },
+    })
+    _sanitize_work_authors_against_context([work], context)
+    author_claims = [
+        statement for statement in work.statements
+        if statement.property_id == "P2093"
+    ]
+    assert author_claims
+    assert "moshe ben yosef" in str(author_claims[0].value).casefold()
+
+
+def test_canonical_fingerprint_reports_each_entity() -> None:
+    calls: list[tuple[int, int]] = []
+    canonical_wikidata_fingerprint(
+        [_manuscript_entity(), _person_entity()],
+        on_progress=lambda done, total: calls.append((done, total)),
+    )
+    assert calls
+    assert calls[-1] == (calls[-1][1], calls[-1][1])
+    assert all(later[0] >= earlier[0] for earlier, later in zip(calls, calls[1:]))
+
+
+def test_canonical_assembly_reports_a_rising_item_count() -> None:
+    calls: list[tuple[int, int, str]] = []
+
+    def on_progress(done: int, total: int, detail: str) -> None:
+        calls.append((done, total, detail))
+
+    build_canonical_studio_result(
+        [_manuscript_entity()],
+        reconcile=False,
+        on_progress=on_progress,
+    )
+    assert calls
+    assert calls[0][2] == "native items"
+    assert calls[-1][0] == calls[-1][1] == 1
+    assert all(later[0] >= earlier[0] for earlier, later in zip(calls, calls[1:]))
+    assert all(total == 1 for _done, total, _detail in calls)
 
 
 def test_canonical_build_merges_legacy_marc_claims() -> None:

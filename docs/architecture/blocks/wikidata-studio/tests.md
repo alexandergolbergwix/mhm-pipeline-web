@@ -189,7 +189,9 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — final canonical
   assembly recovers evidence IDs before the W-154 drop; name-only people
   still omitted (Rules W-154 / W-188 / R70 / R90).
-- `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical HMO claim filtering, fingerprints, and native Wikidata projection.
+- `backend/tests/unit/test_hmo_canonical_wikidata.py` — canonical HMO claim filtering, fingerprints, and native Wikidata projection. The fingerprint step and assembly each report a rising item count (Rule W-259 / R132). A shared shelfmark keeps the catalog id on the label. A matching work title keeps the record author as P2093.
+- `backend/tests/unit/test_holding_institutions.py` — a private `Family, Given` name abstains, and a verified library resolves to its live QID (R32).
+- `backend/tests/unit/test_wikidata_studio_build_job.py` — assembly progress names the pass and counts items (R132).
 - `backend/tests/unit/test_hmo_canonical_wikidata.py` — post-filter local-reference resolution, authority-date conflict omission, `(MS …)` person-label cleanup, broad-subject removal, and work-evidence source-record provenance (Rule W-155).
 - `backend/tests/unit/test_wikidata_verdict_cache.py` — slim-persist ↔ full-item fingerprint parity, evidence-free verdict survival, and subset-verify evidence drift retention (Rules W-136 / R64).
 - `backend/tests/unit/test_wikidata_verify_scope_cache.py` — verify scope uses curator override-merged items before fingerprinting (R65).

@@ -18,6 +18,7 @@ import {
   waitForRunJob,
   waitForStudioBuild,
   studioBuildJobIdFromConflict,
+  studioBuildFailureJobId,
   studioBuildProgressMessage,
 } from "@/utils/waitForRunJob";
 import {useLabelStore} from "@/api/wikidataLabels";
@@ -134,7 +135,7 @@ export default function WikidataStudio() {
   // (JobProgressInline) instead of collapsing the page into an error card.
   // The modern panel tracks the same job itself; only the legacy view acts
   // on the sync here.
-  const {activeJob: studioBuildJob} = useRunJobAttachment(
+  const {activeJob: studioBuildJob, setTrackedJobId: setStudioBuildTrackedId} = useRunJobAttachment(
     runId,
     "wikidata_studio_build",
     (j) => {
@@ -197,11 +198,22 @@ export default function WikidataStudio() {
       }
     }
     catch (e) {
-      // An in-flight studio build is progress, not an error (frontend R15
-      // parity with HMO Studio): the 409 conflict must never collapse the
-      // page into the danger card while the job runs — the attachment
-      // surface above renders the live step progress instead.
-      if (e instanceof ApiError && e.status === 409 && studioBuildJobIdFromConflict(e.detail)) {
+      // A studio build conflict is the job, not a page error. The progress
+      // widget stays on the page. A bare red sentence must not replace it.
+      const runningId = e instanceof ApiError
+        ? studioBuildJobIdFromConflict(e.detail, e.payload)
+        : null;
+      const failedId = e instanceof ApiError
+        ? studioBuildFailureJobId(e.detail, e.payload)
+        : null;
+      const jobId = runningId ?? failedId;
+      if (jobId) {
+        setStudioBuildTrackedId(jobId);
+        if (runningId) setBuildProgress("Building Wikidata items…");
+      } else if (
+        e instanceof ApiError
+        && e.detail.includes("Wikidata Studio build is running in the background")
+      ) {
         setBuildProgress("Building Wikidata items…");
       } else {
         setError(e instanceof ApiError ? e.detail : String(e));
@@ -212,10 +224,11 @@ export default function WikidataStudio() {
 
   // Filter/sort changes reset pagination; page-1 loads happen here.
   useEffect(() => {
+    if (reviewMode === "modern") return;
     setPage(1);
     void refresh({nextPage: 1});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runId, approvedOnly, projectionSource, entityFilter, debouncedQuery, sortKey, sortDesc]);
+  }, [runId, approvedOnly, projectionSource, entityFilter, debouncedQuery, sortKey, sortDesc, reviewMode]);
 
   // Page > 1 only — page 1 is covered by the effect above (avoids double fetch on mount).
   useEffect(() => {
@@ -312,26 +325,6 @@ export default function WikidataStudio() {
       });
   }, [build, existFilter, minStmts]);
 
-  if (error) {
-    const canonicalMissing = error.includes("no durable HMO canonical entities");
-    const builtNotUploaded = error.includes("built but not yet uploaded to HMO Wikibase");
-    const noHmoBuild = error.includes("no HMO Studio item build exists");
-    return (
-      <Layout>
-        <Glass as="section" className="p-6 space-y-3">
-          <p className="text-danger text-sm">{error}</p>
-          {canonicalMissing && runId && (
-            <CanonicalMissingHelp
-              runId={runId}
-              builtNotUploaded={builtNotUploaded}
-              noHmoBuild={noHmoBuild}
-            />
-          )}
-        </Glass>
-      </Layout>
-    );
-  }
-
   if (reviewMode === "modern" && runId) {
     return (
       <Layout>
@@ -358,6 +351,29 @@ export default function WikidataStudio() {
             onBuildLoaded={setBuild}
           />
         </div>
+      </Layout>
+    );
+  }
+
+  const backgroundOnly = Boolean(
+    error?.includes("Wikidata Studio build is running in the background"),
+  );
+  if (error && !backgroundOnly) {
+    const canonicalMissing = error.includes("no durable HMO canonical entities");
+    const builtNotUploaded = error.includes("built but not yet uploaded to HMO Wikibase");
+    const noHmoBuild = error.includes("no HMO Studio item build exists");
+    return (
+      <Layout>
+        <Glass as="section" className="p-6 space-y-3">
+          <p className="text-danger text-sm">{error}</p>
+          {canonicalMissing && runId && (
+            <CanonicalMissingHelp
+              runId={runId}
+              builtNotUploaded={builtNotUploaded}
+              noHmoBuild={noHmoBuild}
+            />
+          )}
+        </Glass>
       </Layout>
     );
   }

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any
+from typing import Any, Callable
 
 from app.pipeline.marc_verify_context import (
     canonical_control_number,
@@ -384,6 +384,7 @@ def _keep_merged_item(item: WikidataItem) -> bool:
 def merge_legacy_into_canonical(
     canonical_items: list[WikidataItem],
     legacy_items: list[WikidataItem],
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[WikidataItem]:
     """Enrich canonical items with legacy MARC/authority claims.
 
@@ -408,6 +409,17 @@ def merge_legacy_into_canonical(
     local_id_aliases: dict[str, str] = {}
 
     merged: list[WikidataItem] = []
+    merge_total = len(canonical_items) + len(legacy_items)
+    seen = 0
+
+    def _tick() -> None:
+        nonlocal seen
+        seen += 1
+        if on_progress is not None and merge_total and (
+            seen == merge_total or seen % 25 == 0
+        ):
+            on_progress(seen, merge_total)
+
     for item in canonical_items:
         et = (item.entity_type or "").strip().lower()
         legacy: WikidataItem | None = None
@@ -435,6 +447,7 @@ def merge_legacy_into_canonical(
             candidate = _with_canonical_titles(_with_scoped_records(item))
             if _keep_merged_item(candidate):
                 merged.append(candidate)
+        _tick()
 
     for legacy in legacy_items:
         lid = legacy.local_id or ""
@@ -450,6 +463,7 @@ def merge_legacy_into_canonical(
             candidate = _with_canonical_titles(legacy)
             if _keep_merged_item(candidate):
                 merged.append(candidate)
+        _tick()
     rewritten = _rewrite_local_reference_aliases(merged, local_id_aliases)
     if rewritten:
         logger.info(

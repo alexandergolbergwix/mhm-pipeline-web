@@ -100,6 +100,42 @@ describe("<JobProgressInline>", () => {
     expect(screen.getByText("3/5 items uploaded").getAttribute("title")).toBeNull();
   });
 
+  it("shows the assembly pass name and the item count on the running step", () => {
+    const j = job({kind: "wikidata_studio_build"});
+    j.progress = {
+      processed: 6,
+      total: 7,
+      unit: "steps",
+      phase: "assembling canonical projection",
+      message: "Step 6 of 7: assembling canonical projection",
+      sub_processed: 1200,
+      sub_total: 18524,
+      sub_unit: "items",
+      sub_message: "merging records: 1200 of 18524",
+      steps: [
+        {id: "phase-5", label: "building items", status: "done"},
+        {
+          id: "phase-6",
+          label: "assembling canonical projection",
+          status: "running",
+          processed: 1200,
+          total: 18524,
+          unit: "items",
+          current_label: "merging records",
+        },
+      ],
+    };
+    render(<JobProgressInline job={j} labels={LABELS} />);
+
+    const runningStep = screen.getByTestId("job-progress-steps").querySelector(
+      '[data-status="running"]',
+    );
+    expect(runningStep?.textContent).toContain("assembling canonical projection");
+    expect(runningStep?.textContent).toContain("merging records");
+    expect(runningStep?.textContent).toContain("1200/18524 items");
+    expect(screen.getByText("merging records: 1200 of 18524")).toBeInTheDocument();
+  });
+
   it("shows completed steps after the job succeeds", () => {
     const j = job();
     j.status = "succeeded";

@@ -2846,3 +2846,14 @@ The automatic worker runs at most three items at once, with separate database se
 The coordinator saves each completed result and preserves a deterministic report order.
 Cancellation and failures cancel and await all outstanding tasks.
 Each item still requires both identity assessments and the same publication checks.
+
+## Rule W-262 — The export quality gate must see audited holders and distinct records
+
+Run 3494ebf5 job `89a2decf` failed `assert_wikidata_export_quality` with 317 findings.
+86 holder names were `STATUS_UNKNOWN`. Two works had no P50 and no P2093. Two manuscripts shared one label and one shelfmark.
+A holder name is resolved from a live Wikidata item, listed in `ABSTAINED_INSTITUTIONS`, or the build fails (Rule W-161).
+A `Family, Given` name abstains as a private collector.
+A QID enters `_INSTITUTIONS` only after `wbgetentities` confirms a library, museum, or archive.
+Two manuscripts that each carry their own MARC shelfmark and a distinct P3959 receive that catalog id on the designation label.
+A copied shelfmark whose source record disagrees stays unchanged, and Rule W-137 still blocks it.
+A work whose title matches the record title keeps that record's author as P2093 when no P50 exists.

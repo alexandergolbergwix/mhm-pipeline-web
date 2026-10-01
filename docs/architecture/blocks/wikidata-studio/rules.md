@@ -148,8 +148,11 @@ lossy omission and one manuscript/facsimile type failure.
 Unknown-library catalog placeholders are omitted from public descriptions,
 authority names retain inverted and Latin forms as aliases, and partial or
 chapter-qualified work titles never inherit a canonical QID unless the exact
-title is verified. *Why:* the sixth verdict export still contained placeholder
+title is verified. A `Family, Given` holder name abstains as a private
+collector. A library name stays unknown until a live Wikidata item is
+confirmed, or it has an explicit abstention. *Why:* the sixth verdict export still contained placeholder
 institution text, incomplete person names, and an unsafe Mishneh Torah match.
+Run 3494ebf5 then failed the export gate on 86 unaudited holder names.
 
 33. **R33 — Verification exports MUST expose semantic refinements and local-target context.**
 Printed facsimiles retain the stable manuscript entity type for upload but
@@ -926,15 +929,21 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    build-in-progress detail immediately. It never loads the 18.5k canonical
    snapshots or the MARC rows just to log a fingerprint — that ran on every
    polling page load and R14-crashed the 512MB web dyno while a Modal build
-   was running (run 3494ebf5).
+   was running (run 3494ebf5). A build that failed in the last 15 minutes
+   returns `studio_build_failed` with that job id. The page keeps the
+   studio view and shows the job. It must not replace the page with the
+   sentence "Wikidata Studio build is running in the background."
 
 132. **R132 — Build progress carries a per-phase `steps[]` plan with honest sub-progress.**
    `wikidata_studio_build_job._build_progress` emits one `steps` entry per
    phase (`done`/`running`/`pending`); only the running phase carries record
-   counts, and a phase change resets the record counters so a CPU-bound
-   phase (assembling canonical projection) never shows a stale
-   "record N of N". The steps strip renders a per-step bar; phases without a
-   record callback show an indeterminate pulse.
+   counts, and a phase change resets the record counters so the next phase
+   never shows a stale "record N of N".    After the entity load, "fingerprinting canonical entities" counts the
+   entities while the fingerprint is built. Assembling the canonical projection
+   reports one rising item count across six passes (native items, merging
+   records, claims, local references, validation, serialising). The count
+   never moves backwards (Rule W-259). A phase with no callback still shows
+   an indeterminate pulse.
 
 133. **R133 — A canonical Studio build resumes a dropped connection from the last finished batch (Rule W-261).**
    The build commits its read transaction before the entity read. Each batch
@@ -946,3 +955,11 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    heartbeat continues. *Why:* run 3494ebf5 job `5964799c`
    died at 18524/18524 while the tray stayed on 10001, and the loaded
    entities were only in process memory.
+
+134. **R134 — The export quality gate must see audited holders and distinct records (Rule W-262).**
+   A holder name is resolved, explicitly abstained, or the build fails.
+   A `Family, Given` name abstains as a private collector.
+   Two manuscripts that each own the same MARC shelfmark and a distinct
+   catalog id keep that id on the designation label.
+   A work whose title matches the record title keeps the record author as
+   P2093. *Why:* run 3494ebf5 job `89a2decf` failed with 317 gate findings.

@@ -120,6 +120,40 @@ describe("<JobTray>", () => {
     // The nested persist counters must be visible in the label line —
     // 2500/18512, not just the truncated message.
     expect(screen.getByText(/2500 \/ 18512 items/)).toBeInTheDocument();
+    expect(screen.getByText(/Persisting canonical read-back: 2500\/18512…/)).toBeInTheDocument();
+  });
+
+  it("shows the assembly pass on the running step and in the tray line", () => {
+    const j = job({kind: "wikidata_studio_build"});
+    j.progress = {
+      processed: 6,
+      total: 7,
+      unit: "steps",
+      message: "Step 6 of 7: assembling canonical projection",
+      sub_processed: 1200,
+      sub_total: 18524,
+      sub_unit: "items",
+      sub_message: "merging records: 1200 of 18524",
+      steps: [
+        {
+          id: "phase-6",
+          label: "assembling canonical projection",
+          status: "running",
+          processed: 1200,
+          total: 18524,
+          unit: "items",
+          current_label: "merging records",
+        },
+      ],
+    };
+    renderTray([j]);
+
+    const strip = screen.getByTestId("job-progress-steps");
+    expect(strip.textContent).toContain("merging records");
+    expect(strip.textContent).toContain("1200/18524 items");
+    expect(screen.getByText(/merging records: 1200 of 18524/).getAttribute("title")).toBe(
+      STEP_ONLY_TITLE,
+    );
   });
 
   it("keeps the plain label for jobs without a steps plan", () => {
