@@ -266,7 +266,12 @@ Work projection uses `work_candidates.assess_work_candidate`: clean Hebrew
 MARC 505 titles are structural contents evidence; MARC 500 titles require the
 semantically anchored named-work parser; rejected NER stays rejected; Latin-only
 505 headings require authority/QID evidence. Accepted and rejected decisions
-retain source field/text, folio, sequence, and reason. Embedded authors are
+retain source field/text, folio, sequence, and reason. Two shape guards close
+the degenerate 500 classes (Rule W-264): a title with fewer than 3 letters plus
+a digit is `folio_range_title`, and a 500 candidate with at least 2 standalone
+`בן`/`בר`/`ב"ר` connectors and no work-noun head is `person_name_not_work` —
+the genealogy guard never touches curator-approved, known-QID, or 505/245
+paths. Embedded authors are
 removed from public labels and used only for exact author linking; works do not
 inherit manuscript P407. Hebrew work labels receive English only from trusted
 catalog romanization. Other R21 authority/person/manuscript semantic gates remain

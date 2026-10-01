@@ -172,7 +172,7 @@ Any new external-write path or reconcile change MUST extend
 
 - `backend/tests/unit/test_wikidata_builder_modules.py` — public builder API retains the shared models and all extracted projection methods.
 
-- `backend/tests/unit/test_wikidata_work_candidates.py` — source-aware 500/505 decisions, catalogue-prose rejection, authority overrides, and sanitation.
+- `backend/tests/unit/test_wikidata_work_candidates.py` — source-aware 500/505 decisions, catalogue-prose rejection, folio-range (`folio_range_title`) and person-genealogy (`person_name_not_work`) guards (Rule W-264), authority overrides, and sanitation.
 - `backend/tests/unit/test_wikidata_studio_fingerprint.py` — MARC JSON changes invalidate the durable Studio build cache.
 - `backend/tests/unit/test_wikidata_phase1_projection.py` — Phase 1 evidence gates for P136/P31, canonical-holder P195, verified Masorah P921, MARC-100 work chains, facsimile typing, P1684, P127, and descriptions.
 - `backend/tests/unit/test_hebrew_date_parse.py` — Hebrew geresh/gershayim century parsing, BCE production-year boundaries, and mixed century/year fallback; malformed date tokens must not abort a record.

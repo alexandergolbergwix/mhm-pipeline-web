@@ -23,6 +23,17 @@ _PROSE_PREFIX_RE = re.compile(
     r"מערב\s+אירופה|לכבוד\s|הדוכס\s|השר(?:ית|\s)|הר[\"״]?ר\s)",
     re.IGNORECASE,
 )
+_FOLIO_TITLE_LETTER_RE = re.compile(r"[^\u0590-\u05ffA-Za-z]")
+_DIGIT_RE = re.compile(r"\d")
+_GENEOLOGY_CONNECTOR_RE = re.compile(
+    r'(?:^|(?<=[\s,()"׳״]))ב["״]?ר(?=$|[\s,()"׳״])'
+    r'|(?:^|(?<=[\s,()"׳״]))בן(?=$|[\s,()"׳״])'
+)
+_WORK_NOUN_RE = re.compile(
+    r"פרוש|תשוב|ספר|קונטרס|מגיל|דרש|פיוט|תפל|תפיל|ברכ|נוסח|הגד|מחזור|סדר|"
+    r"תיקון|שיר|קינ|סליח|לוח|שמות|קבל|חשב|ליקוט|תוצ|שער|מאמר|ענין|עניין|"
+    r"הלכ|מנהג|כתב|עתק|תרגום|מדרש|תלמוד|משנ|גמר|מסכת|תולדות|ביאור|קובץ|אגר"
+)
 
 
 @dataclass(frozen=True)
@@ -78,6 +89,8 @@ def assess_work_candidate(
 
     if not cleaned or len(re.sub(r"[^\w\u0590-\u05ff]", "", cleaned)) < 3:
         return decision(False, "empty_or_too_short")
+    if len(_FOLIO_TITLE_LETTER_RE.sub("", cleaned)) < 3 and _DIGIT_RE.search(cleaned):
+        return decision(False, "folio_range_title")
     if is_descriptive_content_title(cleaned):
         return decision(False, "descriptive_note")
     if _BIBLIOGRAPHIC_FRAGMENT_RE.search(cleaned):
@@ -93,6 +106,11 @@ def assess_work_candidate(
     if source == "500":
         if kind != "named_work":
             return decision(False, "unstructured_500_note")
+        if (
+            len(_GENEOLOGY_CONNECTOR_RE.findall(cleaned)) >= 2
+            and not _WORK_NOUN_RE.search(cleaned)
+        ):
+            return decision(False, "person_name_not_work")
         return decision(True, "named_work_in_500")
     if source == "505":
         return decision(True, "named_work_in_505")

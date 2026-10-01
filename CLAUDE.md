@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-263)
+## Architectural rules (W-1…W-264)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -117,6 +117,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-160** — A capped probe MUST be distinguishable from an unattempted one
 - **W-161** — A holder name is either audited or the build fails; labels never default to NLI
 - **W-262** — The export quality gate must see audited holders, distinct catalog ids on a real shared shelfmark, and a record-backed work author (run 3494ebf5 job 89a2decf, 317 findings) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
+- **W-264** — Work candidates MUST NOT be folio-range or person-name strings: a quoted 500 folio parenthetical (`([147]א-[154]א)`) passed the digit-counting length check and a translator genealogy chain was accepted as a work title; `assess_work_candidate` now returns `folio_range_title` (<3 letters plus a digit) and `person_name_not_work` (≥2 standalone `בן`/`בר`/`ב"ר` connectors, no work-noun head, 500 branch only — curator-approved/known-QID/505/245 paths untouched) (run 3494ebf5: 1 partial + 1 fail of 183 judged works, re-assessment rejected exactly 2 of 1,151 accepted candidates) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 - **W-162** — Every PID a projection can emit has a channel row; "unsupported" names its cause
 - **W-163** — The export-quality gate runs in the build path, on both sources
 - **W-164** — A manuscript's label is a designation; its inception is the audited year

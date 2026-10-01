@@ -102,9 +102,14 @@
     rejection; Latin-only 505 headings require authority/QID evidence. Every
     decision retains source field/text, folio, sequence, reason, and acceptance.
     Rebuilds recompute persisted 500 derivations, work labels exclude embedded
-    authors, and works never inherit manuscript P407. *Why:* the authority-only
+    authors, and works never inherit manuscript P407. Candidates that are
+    folio-range strings (fewer than 3 letters plus a digit →
+    `folio_range_title`) or person genealogy chains (≥2 standalone
+    `בן`/`בר`/`ב"ר` connectors, no work-noun head, 500 branch only →
+    `person_name_not_work`) are rejected (Rule W-264). *Why:* the authority-only
     gate cut 228 items to 131, while the real defects were catalogue prose
-    emitted by the old broad 500 regex.
+    emitted by the old broad 500 regex; on run 3494ebf5 a folio parenthetical
+    and a translator's name reached AI verify as work rows (1 partial + 1 fail).
 23. **R23 — Work identity, author evidence, and export review fields MUST be explicit.**
     Exact aliases preserve QIDs; authors become P50/local/P2093; Hebrew names stay out of English descriptions; gershayim/P1476 survive. Exports distinguish `approved_only` from item approval and retain verdict JSON. *Why:* the export showed 52 null QIDs, 20 Hebrew descriptions, 8 lost marks, and no review fields.*
 24. **R24 — Content-level work metadata MUST be consumed.** Projection reads approved content QIDs and contents-NER author fields, validates QIDs, and carries unresolved authors as P50/local/P2093. *Why:* enrichment already persisted these fields, but ignoring them produced authorless duplicate work items.

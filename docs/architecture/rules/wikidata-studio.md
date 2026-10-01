@@ -2857,3 +2857,14 @@ A QID enters `_INSTITUTIONS` only after `wbgetentities` confirms a library, muse
 Two manuscripts that each carry their own MARC shelfmark and a distinct P3959 receive that catalog id on the designation label.
 A copied shelfmark whose source record disagrees stays unchanged, and Rule W-137 still blocks it.
 A work whose title matches the record title keeps that record's author as P2093 when no P50 exists.
+
+## Rule W-264 — Work candidates MUST NOT be folio-range or person-name strings (added 2026-10-01)
+
+The AI verify batch on run `3494ebf5-ceb0-4702-a94e-c8f10be7f251` judged 183 approved works (`typesafe/jev-1.13.0`): 181 full, 1 partial, 1 fail. Both non-full verdicts traced to the same root cause — degenerate `named_work_in_500` candidates that the generic filters never covered:
+
+- `work:(_א-_א)` (partial, `name_ok=partial`, p=0.32): the quoted folio-range parenthetical `([147]א-[154]א)` passed the min-length check because digits count as word characters, then normalized into the bare label `( א- א)`.
+- `work:שמואל_ב_ר_בנבנשת_בר_שמואל_ז_ל_בן_בנבנשת` (fail, `type_ok=no`, p=0.21): the quoted translator's personal name from the note "משל המתרגם ..." was accepted as a work title. The underlying work is Boethius (P2093), so the row was a person genealogy typed as a written work.
+
+`assess_work_candidate` now rejects both shapes. A candidate with fewer than 3 letters (digits excluded) plus a digit is `folio_range_title`. A 500 `named_work` with at least 2 standalone `בן`/`בר`/`ב"ר` connectors and no work-noun head is `person_name_not_work`. The genealogy guard is scoped to the 500 branch, so `curator_approved_work`, `known_wikidata_work`, and 505/245 paths stay untouched — real titles such as `פרוש התורה ליפת בן עלי (במדבר)` survive.
+
+Re-assessment of all 1,151 previously accepted candidates in the run export rejected exactly the 2 degenerate candidates with zero false positives. The judge flags were true positives: fail-closed review held (neither item had an `existing_qid`, so nothing wrong could upload). Rebuilds recompute 500 candidates from raw MARC, so no data migration is needed. Verdict-cache salts stay unchanged because the surviving items' prompt-visible evidence is identical. Tests: `test_wikidata_work_candidates.py`.

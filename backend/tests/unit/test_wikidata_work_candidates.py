@@ -39,6 +39,34 @@ def test_unstructured_500_fragment_is_rejected() -> None:
     assert decision.reason == "unstructured_500_note"
 
 
+def test_folio_range_only_title_is_rejected() -> None:
+    decision = assess_work_candidate(
+        "([147]א-[154]א)", source_field="500", candidate_kind="named_work"
+    )
+    assert not decision.accepted
+    assert decision.reason == "folio_range_title"
+
+
+def test_person_genealogy_chain_in_500_is_rejected() -> None:
+    decision = assess_work_candidate(
+        'שמואל ב"ר בנבנשת בר שמואל ז"ל בן בנבנשת',
+        source_field="500",
+        candidate_kind="named_work",
+    )
+    assert not decision.accepted
+    assert decision.reason == "person_name_not_work"
+
+
+def test_work_title_with_author_genealogy_stays_accepted() -> None:
+    decision = assess_work_candidate(
+        "פרוש התורה ליפת בן עלי (במדבר)",
+        source_field="500",
+        candidate_kind="named_work",
+    )
+    assert decision.accepted
+    assert decision.reason == "named_work_in_500"
+
+
 def test_bibliographic_citation_is_rejected() -> None:
     decision = assess_work_candidate(
         "תשובות הרמבם, מהדורת פריימאן, ירושלים, סי' סז",
