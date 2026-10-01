@@ -465,8 +465,26 @@ async def _get_wikidata_items(
     run_id: uuid.UUID,
     approved_only: bool = True,
 ) -> list[dict[str, Any]]:
-    """Return cached build items, rebuilding from scratch on miss."""
-    # Try cache first
+    """Return cached build items, rebuilding from scratch on miss.
+
+    The fingerprint and rebuild inputs MUST match the canonical sharded
+    Studio build (``match_to_build_payload`` + ``_group_entity_rows`` +
+    ``hmo_instance_qids``), otherwise the export silently drops persons,
+    NER-anchored works, and HMO P2888/P973 links that the Studio table
+    carries (run 3494ebf5: export returned 1406 items vs the canonical
+    1856, losing all 105 persons).
+    """
+    from app.pipeline.wikidata_studio_batches import (  # noqa: PLC0415
+        compute_build_fingerprint_streamed,
+        hmo_instance_qids_for_run,
+        list_run_control_numbers,
+    )
+    from app.routers.wikidata_studio import (  # noqa: PLC0415
+        _group_entity_rows,
+        match_to_build_payload,
+    )
+
+    # Try cache first — the same fingerprint the canonical build stored
     records = (
         await db.execute(
             select(RunRecord).where(RunRecord.run_id == run_id)
@@ -489,8 +507,8 @@ async def _get_wikidata_items(
         )
     ).scalars().all()
 
-    fingerprint = ws_pipeline.compute_build_fingerprint(
-        records, list(all_matches), entity_rows, override_rows, approved_only,
+    fingerprint = await compute_build_fingerprint_streamed(
+        db, run_id, approved_only=approved_only,
     )
     cached = (
         await db.execute(
@@ -504,35 +522,13 @@ async def _get_wikidata_items(
     if cached is not None and cached.input_fingerprint == fingerprint:
         return _attach_item_review_metadata(cached.result_items, override_rows)
 
-    # Cache miss — full build
+    # Cache miss — full build with canonical-shape inputs
     matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
     marc_records = [dict(r.marc) for r in records]
-    approved_matches = [
-        {
-            "id": str(m.id),
-            "control_number": m.control_number,
-            "entity_text": m.entity_text,
-            "role": m.role,
-            "matched_name": m.matched_name,
-            "mazal_id": m.mazal_id,
-            "viaf_id": m.viaf_id,
-            "wikidata_qid": m.wikidata_qid,
-            "confidence": m.confidence,
-            "source": m.source,
-            "payload": m.payload or {},
-        }
-        for m in matches
-    ]
-    entities_by_cn: dict[str, list[dict[str, Any]]] = {}
-    for e in entity_rows:
-        if approved_only and not e.approved:
-            continue
-        entities_by_cn.setdefault(e.control_number, []).append({
-            "text": e.override_text or e.text,
-            "type": e.override_type or e.type,
-            "role": e.override_role or e.role,
-            "source": e.source,
-        })
+    approved_matches = [match_to_build_payload(m) for m in matches]
+    entities_by_cn = _group_entity_rows(entity_rows, approved_only)
+    control_numbers = await list_run_control_numbers(db, run_id)
+    hmo_instance_qids = await hmo_instance_qids_for_run(db, run_id, control_numbers)
     result = await ws_pipeline.build_items_for_run(
         marc_records=marc_records,
         approved_matches=approved_matches,
@@ -545,6 +541,7 @@ async def _get_wikidata_items(
             "remove_statements": r.remove_statements,
             "statement_edits": r.statement_edits,
         } for r in override_rows},
+        hmo_instance_qids=hmo_instance_qids,
     )
     return _attach_item_review_metadata(result.get("items", []), override_rows)
 

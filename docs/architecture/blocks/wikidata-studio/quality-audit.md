@@ -82,7 +82,13 @@ cd backend
 The report emits counts plus only the relevant row evidence. It currently checks
 work identity/author claims, Hebrew leakage in English descriptions, lost Hebrew
 gershayim, validator errors/warnings, and whether item approval/verdict fields
-are present. A section export may legitimately report
+are present. It also runs three LOD gates (Rule W-266):
+`person_without_external_identifier` (blocking — an identifierless person is an
+island), `manuscript_missing_catalog_id` (blocking — P3959 is the source
+attestation), and `work_without_external_entity_link` (informational — the work
+carries only its P31 class; fixed by P50/P2888/P973 minting, and a row with
+`existing_qid` is itself the external entity). A section export may legitimately
+report
 `authority-approved-only`: that flag is not item approval and does not mean AI
 verification passed.
 

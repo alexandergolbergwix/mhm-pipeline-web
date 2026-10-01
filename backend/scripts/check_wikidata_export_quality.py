@@ -273,10 +273,41 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
             )
             if not has_dates:
                 checks.append("person_dates_without_authority_evidence")
+        # LOD gate — a person without an external identifier is an island: the
+        # notability rule attaches VIAF/NLI/P2888 to every person the builder
+        # keeps, so an identifierless row here means a projection regression.
+        has_external_identifier = any(
+            s.get("value_type") == "external-id"
+            or str(s.get("property_id") or s.get("property") or "") in ("P214", "P3959", "P8189")
+            for s in statements
+        ) or bool(_values(statements, "P2888"))
+        if not has_external_identifier:
+            checks.append("person_without_external_identifier")
 
     if entity_type == "work":
         if len(_values(statements, "P1476")) > 1:
             checks.append("work_multiple_p1476")
+        # LOD gate — a work whose only external link is its P31 class hangs off
+        # the ontology, not the data graph (run 3494ebf5: all 509 approved-export
+        # works). An author item (P50), an exact-match work QID (P2888), an
+        # described-at URL (P973), any external identifier, or any item-QID
+        # claim beyond the class counts as a real external entity link; a row
+        # that already carries an existing_qid IS the external entity.
+        work_has_external_link = bool(
+            _values(statements, "P50")
+            or _values(statements, "P2888")
+            or _values(statements, "P973")
+        ) or any(
+            s.get("value_type") == "external-id"
+            or (
+                s.get("value_type") == "item"
+                and re.match(r"^Q\d+$", str(s.get("value") or ""))
+                and str(s.get("property_id") or s.get("property") or "") != "P31"
+            )
+            for s in statements
+        )
+        if not work_has_external_link and not existing_qid:
+            checks.append("work_without_external_entity_link")
         # A description may only cite what the item's own evidence carries.
         description = _description_en(row)
         record_ids = row.get("record_ids") or row.get("records") or []
@@ -305,6 +336,8 @@ def _check_row(row: dict[str, Any]) -> dict[str, Any] | None:
             checks.append("work_boilerplate_description")
 
     if entity_type == "manuscript":
+        if not _values(statements, "P3959"):
+            checks.append("manuscript_missing_catalog_id")
         language_slice = str(marc_slice.get("languages") or "")
         if language_slice and "P407" not in pids:
             checks.append("missing_p407_with_language_evidence")
@@ -433,6 +466,9 @@ _INFORMATIONAL_CHECKS = frozenset({
     # The channel exists; this record's field is empty. Blocking here would make
     # a sparse but valid catalogue record unbuildable (Rule W-162).
     "claim_channel_empty",
+    # LOD enrichment gap: the work publishes correctly but only carries its
+    # P31 class link. Fixed by P50/P2888/P973 minting, not by blocking (W-266).
+    "work_without_external_entity_link",
 })
 
 

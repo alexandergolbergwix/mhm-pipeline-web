@@ -253,6 +253,102 @@ class TestWikibaseExport:
         assert len(rows) >= 1
 
 
+# ── Wikidata Studio export parity ─────────────────────────────────────
+
+
+class TestWikidataStudioExportParity:
+    """The Studio export must serve the canonical build's cache, not an
+    ad-hoc legacy-shape rebuild that drops persons and HMO links."""
+
+    @pytest_asyncio.fixture
+    async def canonical_cache(self, run_ctx, db_session):
+        from app.models.wikidata_studio_cache import WikidataStudioCache
+        from app.pipeline.wikidata_studio_batches import (
+            compute_build_fingerprint_streamed,
+        )
+
+        run_id = run_ctx["run_id"]
+        fingerprint = await compute_build_fingerprint_streamed(
+            db_session, run_id, approved_only=True,
+        )
+        person_item = {
+            "local_id": "person:rashi", "entity_type": "person",
+            "labels": {"he": "רש\"י"}, "descriptions": {"en": "Author"},
+            "records": ["cn-1"], "statements": [],
+            "authority_evidence": [{"viaf_id": "1234"}],
+            "existing_qid": None,
+        }
+        db_session.add(WikidataStudioCache(
+            run_id=run_id, approved_only=True, source="canonical",
+            input_fingerprint=fingerprint, result_items=[person_item],
+            summary={}, record_count=1,
+        ))
+        await db_session.commit()
+        return run_ctx
+
+    @pytest.mark.asyncio
+    async def test_export_serves_canonical_cache_without_rebuild(
+        self, canonical_cache, db_session, monkeypatch,
+    ):
+        from app.pipeline import wikidata_studio as ws_pipeline
+
+        ctx = canonical_cache
+
+        async def _fail_build(*args, **kwargs):
+            raise AssertionError("export must reuse the canonical cache, not rebuild")
+
+        monkeypatch.setattr(ws_pipeline, "build_items_for_run", _fail_build)
+        r = await ctx["client"].get(
+            f"/api/runs/{ctx['run_id']}/wikidata-studio/export?format=json",
+        )
+        body = json.loads(r.content)
+        types = {i["entity_type"] for i in body["items"]}
+        assert "person" in types, body["items"]
+
+    @pytest.mark.asyncio
+    async def test_export_rebuild_uses_canonical_input_shapes(
+        self, run_ctx, db_session, monkeypatch,
+    ):
+        from app.models.item_override import WikidataItemOverride
+        from app.models.wikidata_studio_cache import WikidataStudioCache
+        from app.pipeline import wikidata_studio as ws_pipeline
+
+        ctx = run_ctx
+        run_id = ctx["run_id"]
+        db_session.add(WikidataItemOverride(
+            run_id=run_id, local_id="work:1", approved=None,
+        ))
+        await db_session.commit()
+        db_session.add(WikidataStudioCache(
+            run_id=run_id, approved_only=True, source="legacy",
+            input_fingerprint="stale-fingerprint", result_items=[],
+            summary={}, record_count=1,
+        ))
+        await db_session.commit()
+
+        captured: dict[str, object] = {}
+
+        async def _fake_build(*args, **kwargs):
+            captured.update(kwargs)
+            return {"items": [{
+                "local_id": "work:1", "entity_type": "work",
+                "labels": {"he": "ספר"}, "statements": [],
+            }]}
+
+        monkeypatch.setattr(ws_pipeline, "build_items_for_run", _fake_build)
+        r = await ctx["client"].get(
+            f"/api/runs/{run_id}/wikidata-studio/export?format=json",
+        )
+        assert r.status_code == 200
+        assert "hmo_instance_qids" in captured, captured
+        matches = captured.get("approved_matches") or []
+        if matches:
+            assert "entity_kind" in matches[0]
+            assert "field" in matches[0]
+        body = json.loads(r.content)
+        assert body["items"][0]["approved"] is None
+
+
 def test_wikidata_section_csv_row_preserves_review_and_source_evidence() -> None:
     from app.routers.section_export import _wikidata_csv_row
 

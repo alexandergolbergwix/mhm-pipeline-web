@@ -274,3 +274,67 @@ class TestDuplicateCoverageChecks:
             "duplicate_check": {"status": "absent"},
         })
         assert "author_name_string_beside_author_item" not in (row or {}).get("checks", [])
+
+
+def test_audit_flags_a_person_without_external_identifier(tmp_path: Path) -> None:
+    source = tmp_path / "person-island.json"
+    source.write_text(json.dumps({"items": [{
+        "local_id": "person:1", "entity_type": "person",
+        "labels": {"he": "מחבר"}, "statements": [
+            {"property_id": "P31", "value": "Q5", "value_type": "item"},
+        ],
+    }]}))
+
+    assert audit(source)["blocking_counts"]["person_without_external_identifier"] == 1
+
+
+def test_audit_accepts_a_person_with_nli_identifier(tmp_path: Path) -> None:
+    source = tmp_path / "person-grounded.json"
+    source.write_text(json.dumps({"items": [{
+        "local_id": "person:1", "entity_type": "person",
+        "labels": {"he": "מחבר"}, "statements": [
+            {"property_id": "P8189", "value": "987007300794605171",
+             "value_type": "external-id"},
+        ],
+    }]}))
+
+    assert "person_without_external_identifier" not in audit(source)["blocking_counts"]
+
+
+def test_audit_flags_a_work_hanging_only_off_its_class(tmp_path: Path) -> None:
+    source = tmp_path / "work-island.json"
+    source.write_text(json.dumps({"items": [{
+        "local_id": "work:1", "entity_type": "work",
+        "labels": {"he": "ספר"}, "statements": [
+            {"property_id": "P31", "value": "Q47461344", "value_type": "item"},
+        ],
+    }]}))
+
+    report = audit(source)
+    assert report["informational_counts"]["work_without_external_entity_link"] == 1
+    assert "work_without_external_entity_link" not in report["blocking_counts"]
+
+
+def test_audit_accepts_a_work_with_an_author_item_link(tmp_path: Path) -> None:
+    source = tmp_path / "work-linked.json"
+    source.write_text(json.dumps({"items": [{
+        "local_id": "work:1", "entity_type": "work",
+        "labels": {"he": "ספר"}, "statements": [
+            {"property_id": "P31", "value": "Q47461344", "value_type": "item"},
+            {"property_id": "P50", "value": "Q29575507", "value_type": "item"},
+        ],
+    }]}))
+
+    assert "work_without_external_entity_link" not in audit(source)["counts"]
+
+
+def test_audit_flags_a_manuscript_without_catalog_id(tmp_path: Path) -> None:
+    source = tmp_path / "ms-ungrounded.json"
+    source.write_text(json.dumps({"items": [{
+        "local_id": "ms:1", "entity_type": "manuscript",
+        "labels": {"he": "כתב יד"}, "statements": [
+            {"property_id": "P31", "value": "Q87167", "value_type": "item"},
+        ],
+    }]}))
+
+    assert audit(source)["blocking_counts"]["manuscript_missing_catalog_id"] == 1

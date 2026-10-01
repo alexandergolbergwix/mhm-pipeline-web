@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-265)
+## Architectural rules (W-1…W-266)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -119,6 +119,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-262** — The export quality gate must see audited holders, distinct catalog ids on a real shared shelfmark, and a record-backed work author (run 3494ebf5 job 89a2decf, 317 findings) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 - **W-264** — Work candidates MUST NOT be folio-range or person-name strings: a quoted 500 folio parenthetical (`([147]א-[154]א)`) passed the digit-counting length check and a translator genealogy chain was accepted as a work title; `assess_work_candidate` now returns `folio_range_title` (<3 letters plus a digit) and `person_name_not_work` (≥2 standalone `בן`/`בר`/`ב"ר` connectors, no work-noun head, 500 branch only — curator-approved/known-QID/505/245 paths untouched) (run 3494ebf5: 1 partial + 1 fail of 183 judged works, re-assessment rejected exactly 2 of 1,151 accepted candidates) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 - **W-265** — Claim support uncertainty MUST NOT cap a verified claim-set at partial: wikidata_item claim checks treated noul in [0.4, 0.7) as a defect and dragged gold-full works with bridge claims (P2888/P973/P217) to partial; `overall_from_answers` now caps only on an actually-unsupported claim (`fail`), and the `type_ok` prompt defers span length to `name_ok` (single given name / surname-only span is still a person) — closes both known over-strict classes from shadow cycle 1 — see [ai-verify.md](docs/architecture/rules/ai-verify.md)
+- **W-266** — The Studio export MUST serve the canonical build's cache with canonical input shapes: the section export recomputed its fingerprint WITHOUT `hmo_instance_qids` (never matching the canonical row) and rebuilt with hand-rolled legacy shapes (no `entity_kind`/`field` on matches, no `start`/`end` on NER entities), silently dropping all 105 persons, 345 works, and the HMO P2888/P973 links from run 3494ebf5's export (1406 vs 1856 items); the export now uses `compute_build_fingerprint_streamed` + `match_to_build_payload` + `_group_entity_rows` + `hmo_instance_qids`, and the quality checker gains 3 LOD gates (`person_without_external_identifier`, `manuscript_missing_catalog_id` blocking; `work_without_external_entity_link` informational) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 - **W-162** — Every PID a projection can emit has a channel row; "unsupported" names its cause
 - **W-163** — The export-quality gate runs in the build path, on both sources
 - **W-164** — A manuscript's label is a designation; its inception is the audited year
