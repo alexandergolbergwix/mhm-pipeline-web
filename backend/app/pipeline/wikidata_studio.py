@@ -139,6 +139,7 @@ def compute_build_fingerprint(
     override_rows: list["WikidataItemOverride"],
     approved_only: bool,
     hmo_instance_qids: dict[str, str] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> str:
     """SHA-256 fingerprint of everything that feeds the Wikidata item builder.
 
@@ -155,38 +156,57 @@ def compute_build_fingerprint(
             json.dumps(strip_volatile_metadata(obj), sort_keys=True, default=str).encode()
         ).hexdigest()[:16]
 
+    total = max(
+        len(records) + len(all_matches) + len(entity_rows) + len(override_rows),
+        1,
+    )
+    seen = 0
+
+    def tick() -> None:
+        nonlocal seen
+        seen += 1
+        if on_progress is not None and (seen == total or seen % 25 == 0):
+            on_progress(min(seen, total), total)
+
+    record_parts: list[tuple[str, str]] = []
+    for record in records:
+        record_parts.append((record.control_number, _h(record.marc or {})))
+        tick()
+    match_parts: list[tuple[str, bool | None, str, str, str, str]] = []
+    for match in all_matches:
+        match_parts.append((
+            str(match.id), match.approved, match.wikidata_qid or "",
+            match.viaf_id or "", match.mazal_id or "", _h(match.payload or {}),
+        ))
+        tick()
+    entity_parts: list[tuple[str, bool, str, str, str]] = []
+    for entity in entity_rows:
+        entity_parts.append((
+            str(entity.id), bool(entity.approved),
+            entity.override_text or "", entity.override_type or "",
+            entity.override_role or "",
+        ))
+        tick()
+    override_parts: list[tuple[str, str, bool | None, str]] = []
+    for override in override_rows:
+        override_parts.append((
+            str(override.id), override.local_id, override.approved,
+            _h({
+                "labels": override.labels, "descriptions": override.descriptions,
+                "aliases": override.aliases, "add_statements": override.add_statements,
+                "remove_statements": override.remove_statements,
+                "statement_edits": override.statement_edits,
+            }),
+        ))
+        tick()
     parts = {
         "build_schema": WIKIDATA_STUDIO_BUILD_SCHEMA,
         "approved_only": approved_only,
-        "records": sorted((r.control_number, _h(r.marc or {})) for r in records),
+        "records": sorted(record_parts),
         "hmo_instance_qids": sorted((hmo_instance_qids or {}).items()),
-        "matches": sorted(
-            (
-                str(m.id), m.approved, m.wikidata_qid or "", m.viaf_id or "",
-                m.mazal_id or "", _h(m.payload or {}),
-            )
-            for m in all_matches
-        ),
-        "entities": sorted(
-            (
-                str(e.id), bool(e.approved),
-                e.override_text or "", e.override_type or "", e.override_role or "",
-            )
-            for e in entity_rows
-        ),
-        "overrides": sorted(
-            (
-                str(o.id), o.local_id,
-                o.approved,  # item-level approval affects QS/upload filters
-                _h({
-                    "labels": o.labels, "descriptions": o.descriptions,
-                    "aliases": o.aliases, "add_statements": o.add_statements,
-                    "remove_statements": o.remove_statements,
-                    "statement_edits": o.statement_edits,
-                }),
-            )
-            for o in override_rows
-        ),
+        "matches": sorted(match_parts),
+        "entities": sorted(entity_parts),
+        "overrides": sorted(override_parts),
     }
     return hashlib.sha256(
         json.dumps(parts, sort_keys=True, default=str).encode()

@@ -321,6 +321,7 @@ def test_assembly_progress_names_the_pass_and_counts_items() -> None:
     assert running["total"] == 18524
     assert running["unit"] == "items"
     assert running["current_label"] == "merging records"
+    assert "Merge records" in str(running["description"])
     assert progress["sub_message"] == "merging records: 1200 of 18524"
     assert progress["sub_unit"] == "items"
 

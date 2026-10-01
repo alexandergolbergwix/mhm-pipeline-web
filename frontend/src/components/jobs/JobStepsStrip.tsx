@@ -43,6 +43,9 @@ export function JobStepsStrip({steps}: {steps: ProgressStep[]}) {
               <span aria-hidden>{marker}</span>
               <span>{step.label ?? `Step ${i + 1}`}{pass}{counts}</span>
             </span>
+            {step.description ? (
+              <span className="muted pl-4">{step.description}</span>
+            ) : null}
             {status === "running" && (
               <span className="block h-0.5 w-full rounded-full bg-white/8 overflow-hidden">
                 {total > 0 ? (

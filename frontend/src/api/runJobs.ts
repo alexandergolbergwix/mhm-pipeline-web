@@ -55,6 +55,7 @@ export interface RunJobProgress {
     unit?: string;
     eta_seconds?: number | null;
     current_label?: string;
+    description?: string;
   }>;
   current_entity?: string;
   current_control_number?: string;

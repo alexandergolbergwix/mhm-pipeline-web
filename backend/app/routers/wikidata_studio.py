@@ -651,6 +651,7 @@ async def _prewarm_transliterations(
     marc_records: list[dict[str, Any]],
     user_id: uuid.UUID | None,
     concurrency: int = 12,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, str | None]:
     """Concurrently compute every Hebrew→Latin label the build needs.
 
@@ -687,6 +688,7 @@ async def _prewarm_transliterations(
 
     labels: dict[str, str | None] = {}
     missing: list[str] = []
+    total = len(candidates)
     for raw, summary in zip(candidates, summaries, strict=True):
         query_hash = canonical_hash(summary)
         if query_hash in cached_by_hash:
@@ -695,6 +697,9 @@ async def _prewarm_transliterations(
                 labels[raw] = cached_label
                 continue
         missing.append(raw)
+    done = len(labels)
+    if on_progress is not None and total:
+        on_progress(done, total)
 
     if not missing:
         return labels
@@ -711,13 +716,19 @@ async def _prewarm_transliterations(
                 label = None
         return raw, label
 
-    results = dict(await asyncio.gather(*(_one(raw) for raw in missing)))
-    labels.update(results)
+    fresh: set[str] = set()
+    for finished in asyncio.as_completed([_one(raw) for raw in missing]):
+        raw, label = await finished
+        labels[raw] = label
+        fresh.add(raw)
+        done += 1
+        if on_progress is not None:
+            on_progress(done, total)
 
     entries = [
         (summary, labels[raw])
         for raw, summary in zip(candidates, summaries, strict=True)
-        if raw in results and labels[raw] is not None
+        if raw in fresh and labels[raw] is not None
     ]
     if entries:
         try:
@@ -938,9 +949,10 @@ async def _execute_studio_build(
     from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
 
     fingerprint = await run_in_threadpool(
-        wikidata_studio.compute_build_fingerprint,
-        records, all_matches, entity_rows, override_rows, approved_only,
-        hmo_instance_qids,
+        lambda: wikidata_studio.compute_build_fingerprint(
+            records, all_matches, entity_rows, override_rows, approved_only,
+            hmo_instance_qids, on_progress=progress_cb,
+        ),
     )
 
     if source == "canonical":
@@ -1037,6 +1049,7 @@ async def _execute_studio_build(
             else:
                 prewarmed = await _prewarm_transliterations(
                     marc_records=marc_records, user_id=run_user_id,
+                    on_progress=progress_cb,
                 )
                 if resume is not None:
                     resume["prewarmed"] = prewarmed
@@ -1124,6 +1137,7 @@ async def _execute_studio_build(
     phase("preparing transliterations")
     prewarmed = await _prewarm_transliterations(
         marc_records=marc_records, user_id=run_user_id,
+        on_progress=progress_cb,
     )
     await check_cancel()
     phase("building items")

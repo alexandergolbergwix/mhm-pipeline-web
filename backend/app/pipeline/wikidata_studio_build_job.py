@@ -44,10 +44,58 @@ BUILD_PHASES: tuple[str, ...] = (
     "assembling canonical projection",
     "mining provenance prose",
 )
+# unit, then the sentence the tray shows for that step.
+PHASE_GUIDE: dict[str, tuple[str, str]] = {
+    "loading records": (
+        "records",
+        "Load the MARC records and the authority matches",
+    ),
+    "loading canonical entities": (
+        "entities",
+        "Load the saved HMO entities",
+    ),
+    "fingerprinting canonical entities": (
+        "entities",
+        "Hash each entity for the cache check",
+    ),
+    "preparing transliterations": (
+        "names",
+        "Prepare a Latin name for each Hebrew label",
+    ),
+    "building items": (
+        "records",
+        "Build one Wikidata item for each record",
+    ),
+    "assembling canonical projection": (
+        "items",
+        "Merge records, claims, and local references",
+    ),
+    "mining provenance prose": (
+        "manuscripts",
+        "Read provenance prose for each manuscript",
+    ),
+}
+_UNIT_NOUN = {
+    "records": "record",
+    "entities": "entity",
+    "names": "name",
+    "items": "item",
+    "manuscripts": "manuscript",
+}
 _LEGACY_ONLY_PHASES = (
     "loading canonical entities",
     "fingerprinting canonical entities",
 )
+
+
+def _phase_unit(label: str) -> str:
+    guide = PHASE_GUIDE.get(label)
+    return guide[0] if guide else "records"
+
+
+def _phase_description(label: str) -> str:
+    guide = PHASE_GUIDE.get(label)
+    return guide[1] if guide else ""
 
 
 def _phase_plan(source: str) -> tuple[str, ...]:
@@ -82,7 +130,11 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
     finished = min(done, records) if records else 0
     steps: list[dict[str, object]] = []
     for index, phase in enumerate(phases, start=1):
-        entry: dict[str, object] = {"id": f"phase-{index}", "label": phase}
+        entry: dict[str, object] = {
+            "id": f"phase-{index}",
+            "label": phase,
+            "description": _phase_description(phase),
+        }
         if index < step:
             entry["status"] = "done"
         elif index == step:
@@ -110,7 +162,7 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
         if detail:
             sub_message = f"{detail}: {finished} of {records}{retry_note}"
         else:
-            noun = "item" if unit == "items" else "record"
+            noun = _UNIT_NOUN.get(unit, "record")
             sub_message = f"{noun} {finished} of {records}{retry_note}"
         progress.update(
             sub_processed=finished,
@@ -262,6 +314,7 @@ async def _mine_provenance_prose(
 
     state["phase"] = "mining provenance prose"
     state["done"], state["records"] = 0, 0
+    state["unit"] = _phase_unit("mining provenance prose")
 
     def on_progress(done: int, total: int) -> None:
         state["done"], state["records"] = done, total
@@ -328,10 +381,9 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         state["done"], state["records"] = done, total
         if detail:
             state["detail"] = detail
-            state["unit"] = "items"
         else:
             state.pop("detail", None)
-            state["unit"] = "records"
+        state["unit"] = _phase_unit(str(state.get("phase") or ""))
 
     def on_phase(label: str) -> None:
         current = str(state.get("phase") or "")
@@ -356,11 +408,12 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         ):
             state["done"] = len(saved)
             state["records"] = int(resume.get("entity_total") or 0)
+            state["unit"] = _phase_unit(label)
             return
         # The record counters belong to the phase that emitted them.
         state["done"], state["records"] = 0, 0
         state.pop("detail", None)
-        state["unit"] = "records"
+        state["unit"] = _phase_unit(label)
 
     publisher = asyncio.create_task(_publish_build_progress(job_id, state, phases))
 
