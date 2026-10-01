@@ -20,7 +20,11 @@ from app.pipeline.marc_verify_context import (
 # presentation labels out of cache keys, non-passing verify default.
 # Prior: w174_v1 (catalogue P973 gate + Hebrew brackets + holder gloss).
 WIKIDATA_VERDICT_SCHEMA = "w175_v1"
-WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v6"
+# v7: the W-265 judge change (claim-uncertainty no longer caps, type_ok defers
+# span length to name_ok) altered the prompt and the gate — verdicts judged
+# under the old contract must re-judge. Full verdicts stick via W-171 (the old
+# gates were stricter, so an old full is still a full); partial/fail re-judge.
+WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v7"
 
 
 FINGERPRINT_STATEMENT_LIMIT = 40
