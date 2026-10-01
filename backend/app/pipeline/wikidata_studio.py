@@ -48,7 +48,9 @@ logger = logging.getLogger(__name__)
 # v6: designation labels, audited holders, anchored works, corrected P/Q constants
 # (Rules W-161 … W-166) — every cached Studio row predates them.
 # v8: source-specific work authors, person-language suppression, and fuzzy-QID guard.
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v8"
+# v9: folio-range and person-genealogy work-candidate guards (Rule W-264) —
+# cached rows still carrying those degenerate 500 works must not upload.
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v9"
 
 
 def studio_cache_has_stale_validation(
