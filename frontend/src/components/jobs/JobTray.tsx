@@ -56,8 +56,16 @@ function progressLabel(job: RunJobSnapshot): string {
 }
 
 function trayEtaSuffix(job: RunJobSnapshot): string {
-  const short = formatJobEtaShort(job.progress?.eta_seconds);
-  return short ? ` · ${short}` : "";
+  const progress = job.progress ?? {};
+  const step = formatJobEtaShort(progress.eta_seconds);
+  if (progress.process_eta_seconds !== undefined) {
+    const all = formatJobEtaShort(progress.process_eta_seconds);
+    const parts: string[] = [];
+    if (step) parts.push(`step ${step}`);
+    if (all) parts.push(`all ${all}`);
+    return parts.length ? ` · ${parts.join(" · ")}` : "";
+  }
+  return step ? ` · ${step}` : "";
 }
 
 export function JobTray() {

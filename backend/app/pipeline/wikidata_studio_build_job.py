@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 
@@ -82,6 +83,14 @@ _UNIT_NOUN = {
     "items": "item",
     "manuscripts": "manuscript",
 }
+# Whole canonical build for run 3494ebf5, job 536c0b8c: 18524 entities, 1 h 26 min.
+_MEASURED_ENTITIES = 18524
+_MEASURED_PROCESS_SECONDS = 85 * 60 + 56
+_ETA_MIN_SAMPLES = 3
+_PROCESS_TOTAL_PHASES = (
+    "loading canonical entities",
+    "fingerprinting canonical entities",
+)
 _LEGACY_ONLY_PHASES = (
     "loading canonical entities",
     "fingerprinting canonical entities",
@@ -109,6 +118,60 @@ def _phase_plan(source: str) -> tuple[str, ...]:
     )
 
 
+def _format_build_eta(seconds: int) -> str:
+    late = seconds < 0
+    whole = abs(int(seconds))
+    tail = "over" if late else "left"
+    if whole < 60:
+        return f"{whole}s {tail}"
+    minutes = max(1, round(whole / 60))
+    if minutes < 60:
+        return f"{minutes} min {tail}"
+    hours = max(1, round(minutes / 60))
+    return f"{hours} h {tail}"
+
+
+def _refresh_eta(state: dict[str, object], now: float) -> tuple[int | None, int | None]:
+    """Lock a step deadline from the first samples. Later work may run past it.
+
+    The whole-build deadline scales the measured 1 h 26 min run by the entity total.
+    """
+    phase = str(state.get("phase") or "")
+    detail = str(state.get("detail") or "")
+    key = f"{phase}\n{detail}"
+    done = int(state.get("done") or 0)
+    total = int(state.get("records") or 0)
+    if state.get("activity_key") != key or done < int(state.get("activity_done") or 0):
+        state["activity_key"] = key
+        state["activity_started"] = now
+        state["activity_origin"] = done
+        state["activity_deadline"] = None
+    state["activity_done"] = done
+    started = float(state.get("activity_started") or now)
+    origin = int(state.get("activity_origin") or 0)
+    elapsed = max(0.0, now - started)
+    samples = done - origin
+    deadline = state.get("activity_deadline")
+    if deadline is None and samples >= _ETA_MIN_SAMPLES and total > 0 and elapsed > 0:
+        rate = elapsed / samples
+        deadline = now + max(0, total - done) * rate
+        state["activity_deadline"] = deadline
+    step_left = int(float(deadline) - now) if isinstance(deadline, (int, float)) else None
+
+    if (
+        state.get("process_budget") is None
+        and phase in _PROCESS_TOTAL_PHASES
+        and total > 0
+    ):
+        state["process_budget"] = _MEASURED_PROCESS_SECONDS * (total / _MEASURED_ENTITIES)
+    process_budget = state.get("process_budget")
+    job_started = state.get("job_started")
+    process_left = None
+    if isinstance(process_budget, (int, float)) and isinstance(job_started, (int, float)):
+        process_left = int(float(process_budget) - (now - float(job_started)))
+    return step_left, process_left
+
+
 def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[str, object]:
     """Outer progress is 1-based phases; the record loop nests underneath.
 
@@ -128,6 +191,8 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
     retry_max = int(state.get("retry_max") or 0)
     retry_note = f" (retry {retry} of {retry_max})" if retry else ""
     finished = min(done, records) if records else 0
+    now = float(state["now"]) if isinstance(state.get("now"), (int, float)) else time.monotonic()
+    step_left, process_left = _refresh_eta(state, now)
     steps: list[dict[str, object]] = []
     for index, phase in enumerate(phases, start=1):
         entry: dict[str, object] = {
@@ -147,16 +212,28 @@ def _build_progress(state: dict[str, object], phases: tuple[str, ...]) -> dict[s
                 entry["unit"] = unit
             if detail:
                 entry["current_label"] = detail
+            if step_left is not None:
+                entry["eta_seconds"] = step_left
         else:
             entry["status"] = "pending"
         steps.append(entry)
+    message = f"Step {step} of {total}: {label}{retry_note}"
+    clock: list[str] = []
+    if step_left is not None:
+        clock.append(f"step {_format_build_eta(step_left)}")
+    if process_left is not None:
+        clock.append(f"all {_format_build_eta(process_left)}")
+    if clock:
+        message = f"{message} · {' · '.join(clock)}"
     progress: dict[str, object] = {
         "phase": label,
         "processed": step,
         "total": total,
         "unit": "steps",
-        "message": f"Step {step} of {total}: {label}{retry_note}",
+        "message": message,
         "steps": steps,
+        "eta_seconds": step_left,
+        "process_eta_seconds": process_left,
     }
     if records:
         if detail:
@@ -188,17 +265,22 @@ async def _publish_build_progress(
     last: tuple[object, int, int] | None = None
     while True:
         await asyncio.sleep(PROGRESS_INTERVAL_SECONDS)
+        now = time.monotonic()
+        state["now"] = now
+        progress = _build_progress(state, phases)
         fingerprint = (
             state.get("phase"),
             int(state.get("done") or 0),
             int(state.get("retry") or 0),
             state.get("detail"),
+            None if progress.get("eta_seconds") is None else int(progress["eta_seconds"]) // 5,
+            None if progress.get("process_eta_seconds") is None else int(progress["process_eta_seconds"]) // 5,
         )
         if fingerprint == last:
             continue
         try:
             await asyncio.wait_for(
-                update_job_progress(job_id, _build_progress(state, phases)),
+                update_job_progress(job_id, progress),
                 timeout=PROGRESS_WRITE_TIMEOUT_SECONDS,
             )
         except Exception:  # noqa: BLE001 — a dropped progress write must not freeze the counter
@@ -368,6 +450,7 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
     state: dict[str, object] = {
         "phase": phases[0], "done": 0, "records": 0,
         "retry": 0, "retry_max": MAX_BUILD_RETRIES,
+        "job_started": time.monotonic(),
     }
     await update_job_progress(job_id, _build_progress(state, phases))
 
@@ -384,6 +467,7 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         else:
             state.pop("detail", None)
         state["unit"] = _phase_unit(str(state.get("phase") or ""))
+        _refresh_eta(state, time.monotonic())
 
     def on_phase(label: str) -> None:
         current = str(state.get("phase") or "")
@@ -409,11 +493,13 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
             state["done"] = len(saved)
             state["records"] = int(resume.get("entity_total") or 0)
             state["unit"] = _phase_unit(label)
+            _refresh_eta(state, time.monotonic())
             return
         # The record counters belong to the phase that emitted them.
         state["done"], state["records"] = 0, 0
         state.pop("detail", None)
         state["unit"] = _phase_unit(label)
+        _refresh_eta(state, time.monotonic())
 
     publisher = asyncio.create_task(_publish_build_progress(job_id, state, phases))
 

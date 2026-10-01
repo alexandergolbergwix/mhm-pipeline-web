@@ -14,7 +14,8 @@ from __future__ import annotations
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -26,6 +27,38 @@ from converter.wikidata.semantic_policy import (
 )
 
 logger = logging.getLogger(__name__)
+
+_Progress = Callable[[int, int, str], None]
+_gate_slot: ContextVar[tuple[_Progress, str, int] | None] = ContextVar(
+    "wikidata_gate_progress",
+    default=None,
+)
+
+
+def _begin_check(on_progress: _Progress | None, label: str, total: int) -> None:
+    span = max(int(total), 1)
+    if on_progress is None:
+        _gate_slot.set(None)
+        return
+    on_progress(0, span, label)
+    _gate_slot.set((on_progress, label, span))
+
+
+def _tick_item(index: int) -> None:
+    slot = _gate_slot.get()
+    if slot is None:
+        return
+    on_progress, label, span = slot
+    if index == 1 or index == span or index % 25 == 0:
+        on_progress(min(index, span), span, label)
+
+
+def _finish_check() -> None:
+    slot = _gate_slot.get()
+    if slot is None:
+        return
+    on_progress, label, span = slot
+    on_progress(span, span, label)
 
 
 class FindingSeverity(StrEnum):
@@ -96,7 +129,8 @@ def _manuscript_identity_errors(items: list[Any]) -> list[str]:
     """
     errors: list[str] = []
     by_identity: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for item in items:
+    for index, item in enumerate(items, start=1):
+        _tick_item(index)
         if str(getattr(item, "entity_type", "") or "").strip().lower() != "manuscript":
             continue
         local_id = str(getattr(item, "local_id", "") or "")
@@ -150,7 +184,8 @@ def _label_text(item: Any) -> str:
 def _work_title_errors(items: list[Any]) -> list[str]:
     """A work carries one title claim — its own (Rule W-138)."""
     errors: list[str] = []
-    for item in items:
+    for index, item in enumerate(items, start=1):
+        _tick_item(index)
         if str(getattr(item, "entity_type", "") or "").strip().lower() != "work":
             continue
         titles = _statement_values(item, "P1476")
@@ -209,7 +244,8 @@ def _work_missing_author_claim_errors(
 
     by_cn = index_marc_records(marc_records)
     errors: list[str] = []
-    for item in items:
+    for index, item in enumerate(items, start=1):
+        _tick_item(index)
         if str(getattr(item, "entity_type", "") or "").strip().lower() != "work":
             continue
         author_claims = _statement_values(item, "P50") + _statement_values(item, "P2093")
@@ -245,7 +281,8 @@ def _work_missing_author_claim_errors(
 def _work_evidence_missing_author_claim_errors(items: list[Any]) -> list[str]:
     """Block a work that lost an author already retained in its evidence."""
     errors: list[str] = []
-    for item in items:
+    for index, item in enumerate(items, start=1):
+        _tick_item(index)
         if str(getattr(item, "entity_type", "") or "").strip().lower() != "work":
             continue
         if _statement_values(item, "P50") or _statement_values(item, "P2093"):
@@ -319,7 +356,8 @@ def _holder_findings(
     informational: list[str] = []
     by_cn = index_marc_records(marc_records or []) if marc_records else {}
 
-    for item in items:
+    for index, item in enumerate(items, start=1):
+        _tick_item(index)
         if str(getattr(item, "entity_type", "") or "").strip().lower() != "manuscript":
             continue
         local_id = str(getattr(item, "local_id", "") or "")
@@ -414,7 +452,8 @@ def _claim_provenance_findings(
     probe = deepcopy(serialised_items)
     enrich_items_with_verify_evidence(probe, marc_records)
 
-    for item in probe:
+    for index, item in enumerate(probe, start=1):
+        _tick_item(index)
         local_id = str(item.get("local_id") or item.get("_local_id") or "")
         claim_sources = (item.get("verify_evidence") or {}).get("claim_sources") or {}
         emitted = {
@@ -489,7 +528,8 @@ def _work_identity_findings(items: list[Any]) -> list[str]:
     sourced from 990001253400205171 — three sources, three answers.
     """
     errors: list[str] = []
-    for item in items:
+    for index, item in enumerate(items, start=1):
+        _tick_item(index)
         if str(getattr(item, "entity_type", "") or "").strip().lower() != "work":
             continue
         local_id = str(getattr(item, "local_id", "") or "")
@@ -541,7 +581,8 @@ def _identifier_shape_errors(items: list[Any]) -> list[str]:
     )
 
     errors: list[str] = []
-    for item in items:
+    for index, item in enumerate(items, start=1):
+        _tick_item(index)
         local_id = str(getattr(item, "local_id", "") or "")
         for pid, register in _IDENTIFIER_SHAPE_PIDS.items():
             for value in _statement_values(item, pid):
@@ -567,7 +608,8 @@ def _person_heading_findings(items: list[Any]) -> list[str]:
     a clean run confirms the comparator is not over-refusing.
     """
     findings: list[str] = []
-    for item in items:
+    for index, item in enumerate(items, start=1):
+        _tick_item(index)
         if str(getattr(item, "entity_type", "") or "").strip().lower() != "person":
             continue
         local_id = str(getattr(item, "local_id", "") or "")
@@ -630,6 +672,7 @@ def wikidata_export_quality_findings(
     serialised_items: list[dict[str, Any]] | None = None,
     marc_records: list[dict[str, Any]] | None = None,
     policy: SemanticQualityPolicy = DEFAULT_SEMANTIC_POLICY,
+    on_progress: _Progress | None = None,
 ) -> list[Finding]:
     """Return every deterministic gate result as a typed Finding."""
     corpus = list(items)
@@ -640,6 +683,7 @@ def wikidata_export_quality_findings(
         corpus,
         serialised_items=serialised_items,
         marc_records=marc_records,
+        on_progress=on_progress,
     )
     known_entity_ids = {
         str(getattr(item, "local_id", "") or "") for item in corpus
@@ -673,6 +717,7 @@ def _wikidata_export_quality_messages(
     *,
     serialised_items: list[dict[str, Any]] | None = None,
     marc_records: list[dict[str, Any]] | None = None,
+    on_progress: _Progress | None = None,
 ) -> dict[str, list[str]]:
     """Audit built items and split findings into blocking / informational.
 
@@ -682,37 +727,80 @@ def _wikidata_export_quality_messages(
     """
     from app.pipeline.wikidata_local_refs import dangling_local_references  # noqa: PLC0415
 
-    blocking: list[str] = _manuscript_identity_errors(items)
+    def _run(label: str, total: int, call: Callable[[], Any]) -> Any:
+        _begin_check(on_progress, label, total)
+        try:
+            return call()
+        finally:
+            _finish_check()
+
+    item_total = len(items)
+    blocking: list[str] = _run(
+        "checking manuscript identity",
+        item_total,
+        lambda: _manuscript_identity_errors(items),
+    )
     informational: list[str] = []
 
-    blocking.extend(
-        f"DANGLING_LOCAL_REFERENCE {ref}: two-pass upload placeholder names an "
-        "item this build did not produce"
-        for ref in dangling_local_references(items)
-    )
-    blocking.extend(_work_title_errors(items))
-    blocking.extend(_work_identity_findings(items))
-    blocking.extend(_work_evidence_missing_author_claim_errors(items))
-    blocking.extend(_identifier_shape_errors(items))
-    informational.extend(_person_heading_findings(items))
-    for item in items:
-        local_id = str(getattr(item, "local_id", "") or "")
-        if not _label_text(item):
-            blocking.append(f"MISSING_LABEL {local_id}: item has no label")
-        for issue in validate_item(item):
-            if issue.severity != "error":
-                continue
-            blocking.append(f"{issue.code} {local_id}: {issue.message}")
+    def _dangling() -> list[str]:
+        return [
+            f"DANGLING_LOCAL_REFERENCE {ref}: two-pass upload placeholder names an "
+            "item this build did not produce"
+            for ref in dangling_local_references(items)
+        ]
+
+    blocking.extend(_run("checking local references", item_total, _dangling))
+    blocking.extend(_run("checking work titles", item_total, lambda: _work_title_errors(items)))
+    blocking.extend(_run("checking work identity", item_total, lambda: _work_identity_findings(items)))
+    blocking.extend(_run(
+        "checking work evidence",
+        item_total,
+        lambda: _work_evidence_missing_author_claim_errors(items),
+    ))
+    blocking.extend(_run(
+        "checking identifier shape",
+        item_total,
+        lambda: _identifier_shape_errors(items),
+    ))
+    informational.extend(_run(
+        "checking person headings",
+        item_total,
+        lambda: _person_heading_findings(items),
+    ))
+
+    def _labels_and_validation() -> None:
+        for index, item in enumerate(items, start=1):
+            _tick_item(index)
+            local_id = str(getattr(item, "local_id", "") or "")
+            if not _label_text(item):
+                blocking.append(f"MISSING_LABEL {local_id}: item has no label")
+            for issue in validate_item(item):
+                if issue.severity != "error":
+                    continue
+                blocking.append(f"{issue.code} {local_id}: {issue.message}")
+
+    _run("checking each item", item_total, _labels_and_validation)
 
     if marc_records is not None:
-        blocking.extend(_work_missing_author_claim_errors(items, marc_records))
-        holder_blocking, holder_informational = _holder_findings(items, marc_records)
+        blocking.extend(_run(
+            "checking work authors",
+            item_total,
+            lambda: _work_missing_author_claim_errors(items, marc_records),
+        ))
+        holder_blocking, holder_informational = _run(
+            "checking holders",
+            item_total,
+            lambda: _holder_findings(items, marc_records),
+        )
         blocking.extend(holder_blocking)
         informational.extend(holder_informational)
 
     if serialised_items and marc_records is not None:
-        claim_blocking, claim_informational = _claim_provenance_findings(
-            serialised_items, marc_records,
+        claim_total = len(serialised_items)
+        claim_blocking, claim_informational = _run(
+            "checking claim provenance",
+            claim_total,
+            lambda: _claim_provenance_findings(serialised_items, marc_records),
         )
         blocking.extend(claim_blocking)
         informational.extend(claim_informational)
@@ -726,6 +814,7 @@ def wikidata_export_quality_report(
     serialised_items: list[dict[str, Any]] | None = None,
     marc_records: list[dict[str, Any]] | None = None,
     policy: SemanticQualityPolicy = DEFAULT_SEMANTIC_POLICY,
+    on_progress: _Progress | None = None,
 ) -> dict[str, list[str]]:
     """Render typed Findings for compatibility with existing callers."""
     findings = wikidata_export_quality_findings(
@@ -733,6 +822,7 @@ def wikidata_export_quality_report(
         serialised_items=serialised_items,
         marc_records=marc_records,
         policy=policy,
+        on_progress=on_progress,
     )
     return {
         "blocking": [
@@ -753,6 +843,7 @@ def assert_wikidata_export_quality(
     *,
     serialised_items: list[dict[str, Any]] | None = None,
     marc_records: list[dict[str, Any]] | None = None,
+    on_progress: _Progress | None = None,
 ) -> None:
     """Raise when built items have blocking findings that indicate a build bug.
 
@@ -761,7 +852,10 @@ def assert_wikidata_export_quality(
     findings are logged and never block.
     """
     report = wikidata_export_quality_report(
-        items, serialised_items=serialised_items, marc_records=marc_records,
+        items,
+        serialised_items=serialised_items,
+        marc_records=marc_records,
+        on_progress=on_progress,
     )
     for finding in report["informational"]:
         logger.warning("wikidata export quality [informational] %s", finding)

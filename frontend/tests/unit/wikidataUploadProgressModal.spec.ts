@@ -54,6 +54,10 @@ describe("formatJobEta", () => {
   it("formats minutes", () => {
     expect(formatJobEta(240)).toBe("about 4 min left");
   });
+
+  it("shows a countdown that ran over", () => {
+    expect(formatJobEta(-120)).toBe("about 2 min over");
+  });
 });
 
 describe("WikidataUploadSteps", () => {

@@ -1,3 +1,4 @@
+import {formatJobEtaShort} from "@/utils/formatJobEta";
 import type {RunJobSnapshot} from "@/api/runJobs";
 
 export type ProgressStep = NonNullable<RunJobSnapshot["progress"]["steps"]>[number];
@@ -25,6 +26,9 @@ export function JobStepsStrip({steps}: {steps: ProgressStep[]}) {
         const pass = status === "running" && step.current_label
           ? ` · ${step.current_label}`
           : "";
+        const eta = status === "running" && typeof step.eta_seconds === "number"
+          ? formatJobEtaShort(step.eta_seconds)
+          : null;
         const counts = total > 0 ? ` · ${processed}/${total}${step.unit ? ` ${step.unit}` : ""}` : "";
         const pct = total > 0 ? Math.min(100, Math.max(2, Math.round((processed / total) * 100))) : 0;
         const tone =
@@ -41,7 +45,7 @@ export function JobStepsStrip({steps}: {steps: ProgressStep[]}) {
           >
             <span className="inline-flex items-center gap-1">
               <span aria-hidden>{marker}</span>
-              <span>{step.label ?? `Step ${i + 1}`}{pass}{counts}</span>
+              <span>{step.label ?? `Step ${i + 1}`}{pass}{counts}{eta ? ` · ${eta}` : ""}</span>
             </span>
             {step.description ? (
               <span className="muted pl-4">{step.description}</span>

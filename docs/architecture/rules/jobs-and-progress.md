@@ -373,12 +373,15 @@ twice — and on both occasions the job was in fact progressing normally, once a
 
 `_fetch_wikidata_verify_items` now takes `phase_cb` / `progress_cb` and announces
 `VERIFY_SCOPE_PHASES`: assembling Studio scope → loading MARC records → checking
-Wikidata for duplicates → building verification evidence. `verify_job` owns a
+Wikidata for duplicates → building verification evidence → checking the verdict
+cache. MARC rows are read in batches of 200. Each step shows a count as soon
+as its total is known, and a countdown that can run past zero. The tray renders
+the step list from `steps[]`. `verify_job` owns a
 publisher task on the same pattern as the Studio build job: the callbacks only
 mutate shared state, the task performs every DB write, throttled to 1.5 s
 (Rule W-128 keeps polls light on the web dyno).
 
-1. **1-based steps with a unit label** (Rule W-112) — `Step 3 of 4: checking
+1. **1-based steps with a unit label** (Rule W-112) — `Step 3 of 5: checking
    Wikidata for duplicates`.
 2. **Nested counts where a step has them** (Rule W-113) — the duplicate step
    reports `12 of 40 lookups`, which is exactly the loop that stalled.
@@ -620,7 +623,16 @@ multi-phase counter MUST derive its numerator from a monotone
 
 A display that freezes at `n/m` reads as stuck too — the same build sat
 at "Matching pending entities… 5295/5295" for the whole serial DB-apply
-because that phase emitted nothing. Therefore: every long phase inside
+because that phase emitted nothing. A Wikidata Studio build did the same
+on step 6: the item loop reached 18524/18524 while QuickStatements export
+and the export-quality checks were still running (run 3494ebf5, job
+`536c0b8c`, 2026-10-01). A finished activity must hand the counter to the
+next activity. The next activity starts at 0 under its own name. That is
+a new count, so the previous numerator does not stay on screen.
+The same build's full run took 1 h 26 min (job `536c0b8c`). A Wikidata
+Studio step locks a countdown from its first samples. That countdown can
+go over. The whole build counts down from 1 h 26 min scaled by the entity
+total. Therefore: every long phase inside
 one `processed/total` pair MUST either advance its numerator or append a
 fresh ETA to its message, at least once per second of wall time.
 `re_enrich_run` implements this as: per-phase `time.monotonic()` start

@@ -432,12 +432,9 @@ async def spawn_eval_agent_run(
 
 
 # No output at all (not even a keepalive [STEP] line) from the eval-agent
-# subprocess for this long is treated as a hang, not a slow-but-alive
-# judging loop — Gemini calls plus retries for one item can take a while,
-# but the CLI logs a [STEP]/[STATS] line per item, so total silence this
-# long means the subprocess itself is stuck (e.g. an HTTP call with no
-# client-side timeout), not just working through a big backlog.
-_SUBPROCESS_IDLE_TIMEOUT_S = 180.0
+# subprocess for this long is treated as a hang. One slow judge call can sit
+# quiet for many minutes, so the limit is one hour, not three minutes.
+_SUBPROCESS_IDLE_TIMEOUT_S = 3600.0
 
 
 _MAX_AGENT_LINE_BYTES = 8 * 1024 * 1024

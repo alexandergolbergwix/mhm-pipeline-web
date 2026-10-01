@@ -19,6 +19,7 @@ from app.models.run_job import (
 from app.pipeline.run_job_service import JobCancelledError
 from app.pipeline.wikidata_studio_build_job import (
     BUILD_PHASES,
+    _MEASURED_PROCESS_SECONDS,
     _build_progress,
     _phase_plan,
     run_wikidata_studio_build_job,
@@ -324,6 +325,45 @@ def test_assembly_progress_names_the_pass_and_counts_items() -> None:
     assert "Merge records" in str(running["description"])
     assert progress["sub_message"] == "merging records: 1200 of 18524"
     assert progress["sub_unit"] == "items"
+
+
+def test_step_countdown_locks_then_can_run_over() -> None:
+    state: dict[str, object] = {
+        "phase": "assembling canonical projection",
+        "done": 10,
+        "records": 100,
+        "detail": "native items",
+        "now": 100.0,
+        "job_started": 0.0,
+    }
+    first = _build_progress(state, BUILD_PHASES)
+    assert first["eta_seconds"] is None
+    state["done"] = 20
+    state["now"] = 110.0
+    second = _build_progress(state, BUILD_PHASES)
+    assert second["eta_seconds"] == 80
+    assert "step 1 min left" in str(second["message"])
+    state["now"] = 200.0
+    third = _build_progress(state, BUILD_PHASES)
+    assert third["eta_seconds"] == -10
+    assert "step 10s over" in str(third["message"])
+
+
+def test_whole_build_countdown_uses_the_measured_run() -> None:
+    state: dict[str, object] = {
+        "phase": "loading canonical entities",
+        "done": 100,
+        "records": 18524,
+        "now": 100.0,
+        "job_started": 0.0,
+    }
+    progress = _build_progress(state, BUILD_PHASES)
+    assert progress["process_eta_seconds"] == _MEASURED_PROCESS_SECONDS - 100
+    assert "all" in str(progress["message"])
+    state["now"] = _MEASURED_PROCESS_SECONDS + 90
+    late = _build_progress(state, BUILD_PHASES)
+    assert late["process_eta_seconds"] == -90
+    assert "over" in str(late["message"])
 
 
 def test_progress_falls_back_to_the_first_step_for_an_unknown_phase() -> None:

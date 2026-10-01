@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.run import RunRecord
@@ -363,31 +364,56 @@ async def load_run_control_numbers(
     return out
 
 
+_MARC_READ_BATCH = 200
+
+
 async def load_run_marc_records_scoped(
     db: AsyncSession,
     run_id: uuid.UUID,
     control_numbers: set[str] | frozenset[str],
+    on_progress: Any = None,
 ) -> list[dict[str, Any]]:
-    """Load MARC only for control numbers in scope (quoted DB keys normalised)."""
+    """Load MARC for the control numbers in scope, one batch at a time.
+
+    The stored key is not always canonical, so each batch is read in key order
+    and filtered after normalisation. One batch stays in memory at a time.
+    """
     wanted = {canonical_control_number(cn) for cn in control_numbers}
     wanted.discard("")
     if not wanted:
         return []
-    rows = (
-        await db.execute(
-            select(RunRecord.control_number, RunRecord.marc).where(
-                RunRecord.run_id == run_id,
-            ).order_by(RunRecord.control_number.asc()),
-        )
-    ).all()
+    total = int(await db.scalar(
+        select(func.count()).select_from(RunRecord).where(RunRecord.run_id == run_id),
+    ) or 0)
+    span = max(total, 1)
+    if on_progress is not None:
+        on_progress(0, span)
     out: list[dict[str, Any]] = []
-    for cn, marc in rows:
-        canon = canonical_control_number(cn)
-        if canon not in wanted:
-            continue
-        rec = dict(marc or {})
-        rec["_control_number"] = canon
-        out.append(rec)
+    last = ""
+    scanned = 0
+    while True:
+        rows = (
+            await db.execute(
+                select(RunRecord.control_number, RunRecord.marc).where(
+                    RunRecord.run_id == run_id,
+                    RunRecord.control_number > last,
+                ).order_by(RunRecord.control_number.asc()).limit(_MARC_READ_BATCH),
+            )
+        ).all()
+        if not rows:
+            break
+        for cn, marc in rows:
+            canon = canonical_control_number(cn)
+            if canon not in wanted:
+                continue
+            rec = dict(marc or {})
+            rec["_control_number"] = canon
+            out.append(rec)
+        last = str(rows[-1][0] or last)
+        scanned += len(rows)
+        if on_progress is not None:
+            on_progress(min(scanned, span), span)
+        await asyncio.sleep(0)
     return out
 
 

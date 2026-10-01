@@ -5,6 +5,7 @@ import {
   OVERALL_PROGRESS_TITLE,
   STEP_ONLY_TITLE,
 } from "@/components/jobs/JobStepsStrip";
+import {formatJobEta} from "@/utils/formatJobEta";
 import type {BuildPhaseHint} from "@/lib/wikidataBuildPhases";
 
 interface JobProgressInlineProps {
@@ -71,6 +72,12 @@ export function JobProgressInline({job, labels, phaseHints}: JobProgressInlinePr
   const showSub = !done && Boolean(sub_total && sub_total > 0);
   const elapsed = useElapsed(job.started_at, !done);
   const phaseHint = !done ? phaseHints?.[job.progress.phase ?? ""] : undefined;
+  const stepEta = typeof job.progress.eta_seconds === "number"
+    ? formatJobEta(job.progress.eta_seconds)
+    : null;
+  const allEta = typeof job.progress.process_eta_seconds === "number"
+    ? formatJobEta(job.progress.process_eta_seconds)
+    : null;
 
   return (
     <div className="border-t border-white/5 pt-3 space-y-2">
@@ -99,6 +106,13 @@ export function JobProgressInline({job, labels, phaseHints}: JobProgressInlinePr
       {phaseHint && (
         <p className="muted text-xs">
           {phaseHint.detail} · typically {phaseHint.expected}
+        </p>
+      )}
+      {!done && (stepEta || allEta) && (
+        <p className="muted text-xs">
+          {stepEta ? `This step: ${stepEta}` : ""}
+          {stepEta && allEta ? " · " : ""}
+          {allEta ? `Whole build: ${allEta}` : ""}
         </p>
       )}
       {hasSteps && <JobStepsStrip steps={steps ?? []} />}

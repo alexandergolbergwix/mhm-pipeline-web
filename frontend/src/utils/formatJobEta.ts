@@ -1,18 +1,20 @@
 /** Format a job ETA in seconds for curator-facing progress (W-192). */
 
 export function formatJobEta(seconds: number | null | undefined): string {
-  if (seconds == null || Number.isNaN(seconds) || seconds < 0) {
+  if (seconds == null || Number.isNaN(seconds)) {
     return "Estimating…";
   }
-  const whole = Math.round(seconds);
-  if (whole <= 0) return "Done";
-  if (whole < 60) return `about ${whole}s left`;
+  const late = seconds < 0;
+  const whole = Math.abs(Math.round(seconds));
+  if (!late && whole <= 0) return "Done";
+  const tail = late ? "over" : "left";
+  if (whole < 60) return `about ${whole}s ${tail}`;
   const minutes = Math.round(whole / 60);
   if (minutes < 60) {
-    return minutes === 1 ? "about 1 min left" : `about ${minutes} min left`;
+    return minutes === 1 ? `about 1 min ${tail}` : `about ${minutes} min ${tail}`;
   }
   const hours = Math.round(minutes / 60);
-  return hours === 1 ? "about 1 h left" : `about ${hours} h left`;
+  return hours === 1 ? `about 1 h ${tail}` : `about ${hours} h ${tail}`;
 }
 
 export function formatJobElapsed(seconds: number | null | undefined): string {
@@ -28,11 +30,13 @@ export function formatJobElapsed(seconds: number | null | undefined): string {
 }
 
 export function formatJobEtaShort(seconds: number | null | undefined): string | null {
-  if (seconds == null || Number.isNaN(seconds) || seconds < 0) return null;
-  const whole = Math.round(seconds);
-  if (whole <= 0) return null;
-  if (whole < 60) return `~${whole}s`;
+  if (seconds == null || Number.isNaN(seconds)) return null;
+  const late = seconds < 0;
+  const whole = Math.abs(Math.round(seconds));
+  if (!late && whole <= 0) return null;
+  const mark = late ? " over" : "";
+  if (whole < 60) return `~${whole}s${mark}`;
   const minutes = Math.round(whole / 60);
-  if (minutes < 60) return `~${minutes}m`;
-  return `~${Math.round(minutes / 60)}h`;
+  if (minutes < 60) return `~${minutes}m${mark}`;
+  return `~${Math.round(minutes / 60)}h${mark}`;
 }

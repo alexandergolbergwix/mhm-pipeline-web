@@ -430,11 +430,16 @@ def _search_qids(payload: dict[str, Any] | None) -> list[str]:
     ]
 
 
-def _report(on_progress: Any, done: int, total: int) -> None:
+def _report(on_progress: Any, done: int, total: int, detail: str = "") -> None:
     """Publish probe progress, never letting a reporting error break the probe."""
     if on_progress is None:
         return
     try:
+        if detail:
+            on_progress(done, total, detail)
+        else:
+            on_progress(done, total)
+    except TypeError:
         on_progress(done, total)
     except Exception as exc:  # noqa: BLE001
         logger.warning("duplicate probe progress callback failed: %s", exc)
@@ -1185,7 +1190,11 @@ async def attach_duplicate_evidence(
     remaining = _probe_budget() if budget is None else budget
     pending: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
-    for item in items:
+    item_total = max(len(items), 1)
+    _report(on_progress, 0, item_total, "items")
+    for index, item in enumerate(items, start=1):
+        if index == 1 or index == item_total or index % 25 == 0:
+            _report(on_progress, index, item_total, "items")
         decided = decide_without_network(item)
         if decided is not None:
             item["_wikidata_existence"] = decided
@@ -1262,6 +1271,7 @@ async def attach_duplicate_evidence(
     ]
     total_keys = len(misses)
     fresh: dict[tuple[str, str], list[dict[str, str]]] = {}
+    _report(on_progress, 0, max(total_keys, 1), "lookups")
 
     def mark_unavailable(keys: list[tuple[str, str]], exc: Exception) -> None:
         for key in keys:
@@ -1287,7 +1297,7 @@ async def attach_duplicate_evidence(
         for key in chunk:
             fresh[key] = hits.get(key, [])
             apply(key, fresh[key])
-        _report(on_progress, len(fresh), total_keys)
+        _report(on_progress, len(fresh), max(total_keys, 1), "lookups")
 
     # Title and composite keys, grouped. A group that errors falls back to the
     # per-key residue below rather than losing every key in it.
@@ -1315,7 +1325,7 @@ async def attach_duplicate_evidence(
                 continue
             fresh[key] = hits[key]
             apply(key, fresh[key])
-        _report(on_progress, len(fresh), total_keys)
+        _report(on_progress, len(fresh), max(total_keys, 1), "lookups")
 
     # The residue: groups that errored, plus keys a group did not answer. One
     # request each, bounded, with a circuit breaker so a rate-limited API cannot
@@ -1354,7 +1364,7 @@ async def attach_duplicate_evidence(
         consecutive_failures = 0
         fresh[key] = hits
         apply(key, hits)
-        _report(on_progress, len(fresh), total_keys)
+        _report(on_progress, len(fresh), max(total_keys, 1), "lookups")
     if deferred:
         # Rule W-110: a cap the curator cannot see reads as "we checked". The
         # deferred rows make it visible on the read path too (Rule W-160).

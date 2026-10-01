@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 import uuid
 from collections.abc import Callable  # noqa: I001
 from typing import Any
@@ -511,36 +512,113 @@ SCOPE_PROGRESS_INTERVAL_SECONDS = 1.5
 def _scope_progress(state: dict[str, Any], session_id: str) -> dict[str, Any]:
     """1-based step progress for scope preparation (Rules W-112 / W-113).
 
-    A single static "Loading Studio scope…" with `total: 0` made two minutes of
-    real work indistinguishable from a hang — which is how the duplicate-probe
-    429 stall was first reported, twice.
+    Each step names its work, carries a count when one exists, and a countdown
+    that can run past zero.
     """
-    from app.routers.wikidata_studio import VERIFY_SCOPE_PHASES  # noqa: PLC0415
+    from app.routers.wikidata_studio import (  # noqa: PLC0415
+        VERIFY_SCOPE_GUIDE,
+        VERIFY_SCOPE_PHASES,
+    )
 
     label = str(state.get("phase") or "")
     step = (VERIFY_SCOPE_PHASES.index(label) + 1) if label in VERIFY_SCOPE_PHASES else 1
     total_steps = len(VERIFY_SCOPE_PHASES)
+    guide = VERIFY_SCOPE_GUIDE.get(label)
+    unit = str(state.get("detail") or (guide[0] if guide else "items"))
+    description = guide[1] if guide else ""
     message = (
         f"Step {step} of {total_steps}: {label}" if label else "Loading Studio scope…"
     )
+    done, total = int(state.get("done") or 0), int(state.get("total") or 0)
+    finished = min(done, total) if total else 0
+    now = float(state["now"]) if isinstance(state.get("now"), (int, float)) else time.monotonic()
+    step_left = _scope_eta(state, now, done, total)
+    if step_left is not None:
+        message = f"{message} · {_format_scope_eta(step_left)}"
+    steps: list[dict[str, Any]] = []
+    for index, phase in enumerate(VERIFY_SCOPE_PHASES, start=1):
+        phase_guide = VERIFY_SCOPE_GUIDE.get(phase)
+        entry: dict[str, Any] = {
+            "id": f"phase-{index}",
+            "label": phase,
+            "description": phase_guide[1] if phase_guide else "",
+        }
+        if index < step:
+            entry["status"] = "done"
+        elif index == step and label:
+            entry["status"] = "running"
+            if total:
+                entry["processed"] = finished
+                entry["total"] = total
+                entry["unit"] = unit
+            if step_left is not None:
+                entry["eta_seconds"] = step_left
+        else:
+            entry["status"] = "pending"
+        steps.append(entry)
     progress: dict[str, Any] = {
         "phase": "preparing",
-        "processed": 0,
-        "total": 0,
+        "processed": step if label else 0,
+        "total": total_steps,
+        "unit": "steps",
         "step": step,
         "step_total": total_steps,
         "message": message,
         "session_id": session_id,
+        "steps": steps,
+        "eta_seconds": step_left,
     }
-    done, total = int(state.get("done") or 0), int(state.get("total") or 0)
+    if description and label:
+        progress["current_label"] = description
     if total:
+        noun = unit[:-1] if unit.endswith("s") and unit != "lookups" else unit
+        if state.get("detail"):
+            sub_message = f"{state.get('detail')}: {finished} of {total}"
+        elif unit == "lookups":
+            sub_message = f"{finished} of {total} lookups"
+        else:
+            sub_message = f"{noun} {finished} of {total}"
         progress.update(
-            sub_processed=min(done, total),
+            sub_processed=finished,
             sub_total=total,
-            sub_unit="lookups",
-            sub_message=f"{min(done, total)} of {total} lookups",
+            sub_unit=unit,
+            sub_message=sub_message,
         )
     return progress
+
+
+def _format_scope_eta(seconds: int) -> str:
+    late = seconds < 0
+    whole = abs(int(seconds))
+    tail = "over" if late else "left"
+    if whole < 60:
+        return f"{whole}s {tail}"
+    minutes = max(1, round(whole / 60))
+    if minutes < 60:
+        return f"{minutes} min {tail}"
+    return f"{max(1, round(minutes / 60))} h {tail}"
+
+
+def _scope_eta(state: dict[str, Any], now: float, done: int, total: int) -> int | None:
+    key = str(state.get("phase") or "")
+    if state.get("eta_key") != key or done < int(state.get("eta_done") or 0):
+        state["eta_key"] = key
+        state["eta_started"] = now
+        state["eta_origin"] = done
+        state["eta_deadline"] = None
+    state["eta_done"] = done
+    started = float(state.get("eta_started") or now)
+    origin = int(state.get("eta_origin") or 0)
+    samples = done - origin
+    elapsed = max(0.0, now - started)
+    deadline = state.get("eta_deadline")
+    if deadline is None and samples >= 3 and total > 0 and elapsed > 0:
+        rate = elapsed / samples
+        deadline = now + max(0, total - done) * rate
+        state["eta_deadline"] = deadline
+    if isinstance(deadline, (int, float)):
+        return int(float(deadline) - now)
+    return None
 
 
 async def _publish_scope_progress(
@@ -552,11 +630,19 @@ async def _publish_scope_progress(
     last: tuple[Any, int] | None = None
     while True:
         await asyncio.sleep(SCOPE_PROGRESS_INTERVAL_SECONDS)
-        fingerprint = (state.get("phase"), int(state.get("done") or 0))
+        now = time.monotonic()
+        state["now"] = now
+        progress = _scope_progress(state, session_id)
+        fingerprint = (
+            state.get("phase"),
+            int(state.get("done") or 0),
+            state.get("detail"),
+            None if progress.get("eta_seconds") is None else int(progress["eta_seconds"]) // 5,
+        )
         if fingerprint == last:
             continue
         last = fingerprint
-        await update_job_progress(job_id, _scope_progress(state, session_id))
+        await update_job_progress(job_id, progress)
 
 
 async def _open_verify_stream(
@@ -641,9 +727,14 @@ async def _open_verify_stream(
             def on_phase(label: str) -> None:
                 state["phase"] = label
                 state["done"], state["total"] = 0, 0
+                state.pop("detail", None)
 
-            def on_lookups(done: int, total: int) -> None:
+            def on_lookups(done: int, total: int, detail: str = "") -> None:
                 state["done"], state["total"] = done, total
+                if detail:
+                    state["detail"] = detail
+                else:
+                    state.pop("detail", None)
 
             items, marc_records = await _fetch_wikidata_verify_items(
                 db, run_id,
@@ -680,11 +771,17 @@ async def _open_verify_stream(
                 partition_wikidata_verify_cache,
             )
 
+            from app.routers.wikidata_studio import VERIFY_SCOPE_PHASES  # noqa: PLC0415
+
+            state["phase"] = VERIFY_SCOPE_PHASES[4]
+            state["done"], state["total"] = 0, len(items)
+            state.pop("detail", None)
             pre_cached, uncached, _cache_stats = await partition_wikidata_verify_cache(
                 db, items,
                 judge_model=judge_model,
                 evaluator_id=evaluator_id,
                 override_cache=override_cache,
+                on_progress=on_lookups,
             )
             return _wikidata_verify_event_stream(
                 run_id=str(run_id),

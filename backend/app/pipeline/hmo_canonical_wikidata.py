@@ -1231,9 +1231,14 @@ def build_canonical_studio_result(
         if index == serial_total or index % 25 == 0:
             serial_progress(index, serial_total)
 
-    exporter = QuickStatementsExporter()
-    quickstatements = exporter.export(native_items)
     meter.finish_pass()
+    exporter = QuickStatementsExporter()
+
+    def _on_quickstatements(done: int, total: int) -> None:
+        if on_progress is not None:
+            on_progress(done, total, "writing QuickStatements")
+
+    quickstatements = exporter.export(native_items, on_progress=_on_quickstatements)
     return {
         "items": serialised,
         "native_items": native_items if return_native else None,

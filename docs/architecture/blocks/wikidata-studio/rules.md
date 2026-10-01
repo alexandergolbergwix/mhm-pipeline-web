@@ -942,7 +942,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    entities while the fingerprint is built. Assembling the canonical projection
    reports one rising item count across six passes (native items, merging
    records, claims, local references, validation, serialising). The step
-   sends `0/N items` as soon as assembly starts. Every step
+   sends `0/N items` as soon as assembly starts. When that count finishes,
+   the step names the next activity and starts that count at 0: writing
+   QuickStatements, each export-quality check, adopting known duplicates,
+   and saving items. Each activity locks a countdown from its first samples.
+   The countdown can run over. The whole build counts down from the measured
+   1 h 26 min of run 3494ebf5 job `536c0b8c`, scaled by the entity total.
+   Every step
    carries a short description of its work. Loading records, transliteration,
    and provenance mining each report a rising count (Rule W-259). The count
    never moves backwards (Rule W-259). A phase with no callback still shows

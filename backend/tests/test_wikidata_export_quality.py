@@ -78,3 +78,34 @@ def test_source_backed_work_without_author_claim_raises() -> None:
                 "authors": [{"name": "מחבר"}],
             }],
         )
+
+
+def test_quality_gate_names_the_current_check() -> None:
+    from app.pipeline.wikidata_export_quality_gate import (
+        _wikidata_export_quality_messages,
+    )
+
+    calls: list[tuple[int, int, str]] = []
+    _wikidata_export_quality_messages(
+        [_Item(labels={"en": "Shelfmark 1"})],
+        on_progress=lambda done, total, detail: calls.append((done, total, detail)),
+    )
+    assert calls[0] == (0, 1, "checking manuscript identity")
+    assert calls[-1][2] == "checking each item"
+    assert "checking holders" not in {detail for _done, _total, detail in calls}
+
+
+def test_quickstatements_export_counts_each_item() -> None:
+    from converter.wikidata.item_models import WikidataItem
+    from converter.wikidata.quickstatements import QuickStatementsExporter
+
+    calls: list[tuple[int, int]] = []
+    item = WikidataItem(
+        local_id="ms-1",
+        entity_type="manuscript",
+        labels={"en": "Shelfmark 1"},
+        statements=[],
+    )
+    QuickStatementsExporter().export([item], on_progress=lambda done, total: calls.append((done, total)))
+    assert calls[0] == (0, 1)
+    assert calls[-1] == (1, 1)

@@ -10,6 +10,7 @@ See: https://www.wikidata.org/wiki/Help:QuickStatements
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from converter.wikidata.item_builder import WikidataItem, WikidataStatement
@@ -196,11 +197,16 @@ class QuickStatementsExporter:
 
         return "\n".join(lines)
 
-    def export(self, items: list[WikidataItem]) -> str:
+    def export(
+        self,
+        items: list[WikidataItem],
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> str:
         """Export all items to QuickStatements v2 format.
 
         Args:
             items: List of WikidataItem instances.
+            on_progress: Optional ``(done, total)`` callback for the item loop.
 
         Returns:
             Complete QuickStatements text.
@@ -220,6 +226,20 @@ class QuickStatementsExporter:
         persons = [i for i in items if i.entity_type == "person" and not i.existing_qid]
         works = [i for i in items if i.entity_type == "work" and not i.existing_qid]
         manuscripts = [i for i in items if i.entity_type == "manuscript"]
+        ordered = (*persons, *works, *manuscripts)
+        total = len(ordered)
+        done = 0
+
+        def _tick() -> None:
+            nonlocal done
+            done += 1
+            if on_progress is not None and total and (
+                done == 1 or done == total or done % 25 == 0
+            ):
+                on_progress(done, total)
+
+        if on_progress is not None:
+            on_progress(0, max(total, 1))
 
         blocks.append(
             "/* MHM Pipeline — Wikidata QuickStatements Export */\n"
@@ -230,6 +250,7 @@ class QuickStatementsExporter:
             if block := self.export_item(person):
                 blocks.append(block)
                 blocks.append("")  # Blank line between items
+            _tick()
 
         blocks.append(
             "\n/* Works (create second; manuscripts P1574 them) */\n"
@@ -239,12 +260,14 @@ class QuickStatementsExporter:
             if block := self.export_item(work):
                 blocks.append(block)
                 blocks.append("")
+            _tick()
 
         blocks.append("\n/* Manuscripts */\n")
 
         for ms in manuscripts:
             blocks.append(self.export_item(ms))
             blocks.append("")
+            _tick()
 
         return "\n".join(blocks)
 

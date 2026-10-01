@@ -41,8 +41,10 @@ export interface RunJobProgress {
   sub_total?: number;
   sub_unit?: string;
   sub_message?: string;
-  /** Remaining seconds for the current upload step (null until enough samples). */
+  /** Remaining seconds for the current step. Negative means the estimate ran over. */
   eta_seconds?: number | null;
+  /** Remaining seconds for the whole build. Negative means the estimate ran over. */
+  process_eta_seconds?: number | null;
   elapsed_seconds?: number;
   current_label?: string;
   upload_target?: string;

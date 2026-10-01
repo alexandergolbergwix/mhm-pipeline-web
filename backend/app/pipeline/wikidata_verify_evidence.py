@@ -765,12 +765,18 @@ def build_verify_evidence_pack(
 def enrich_items_with_verify_evidence(
     items: list[dict[str, Any]],
     marc_records: list[dict[str, Any]],
+    on_progress: Any = None,
 ) -> None:
     """Attach ``verify_evidence`` + ``_marc_context`` on every item in place."""
-    for item in items:
+    total = max(len(items), 1)
+    if on_progress is not None:
+        on_progress(0, total)
+    for index, item in enumerate(items, start=1):
         pack = build_verify_evidence_pack(item, marc_records)
         item["verify_evidence"] = pack
         item["_marc_context"] = pack.get("marc") or {}
         # Rebuilding the pack would otherwise silently discard a probe answer
         # stamped earlier, which is how the export lost all 343 of them.
         stamp_duplicate_check(item)
+        if on_progress is not None and (index == 1 or index == total or index % 25 == 0):
+            on_progress(index, total)

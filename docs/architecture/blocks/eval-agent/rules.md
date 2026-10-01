@@ -41,7 +41,7 @@
   setup in a short-lived `session_scope()` before constructing the
   `StreamingResponse`. *Why:* a minutes-long (or hung) stream pins one Postgres
   connection per session — the 2026-07-04 pool-exhaustion outage.
-- **R10 — The subprocess is bounded.** Total stdout silence for 180 s kills it;
+- **R10 — The subprocess is bounded.** Total stdout silence for 1 hour kills it;
   consumer cancellation terminates it; stderr is drained concurrently and its
   tail surfaces in `runner.error`. NEVER spawn it without these guards. *Why:*
   hung Gemini calls otherwise leak processes, money, and DB connections.

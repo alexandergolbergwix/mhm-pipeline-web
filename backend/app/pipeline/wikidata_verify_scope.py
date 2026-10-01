@@ -40,6 +40,7 @@ async def partition_wikidata_verify_cache(
     judge_model: str,
     evaluator_id: str,
     override_cache: bool,
+    on_progress: Any = None,
 ) -> tuple[list[tuple[dict[str, Any], dict[str, Any]]], list[dict[str, Any]], dict[str, int]]:
     """Split *items* into cache hits and items that must be judged.
 
@@ -63,7 +64,12 @@ async def partition_wikidata_verify_cache(
 
     pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
     uncached: list[dict[str, Any]] = []
-    for item in items:
+    item_total = max(len(items), 1)
+    if on_progress is not None:
+        on_progress(0, item_total)
+    for index, item in enumerate(items, start=1):
+        if on_progress is not None and (index == 1 or index == item_total or index % 25 == 0):
+            on_progress(index, item_total)
         hit = await read_from_inference_cache(
             db,
             kind="ai_verdict",

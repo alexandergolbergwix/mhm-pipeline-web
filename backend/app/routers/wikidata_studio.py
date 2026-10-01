@@ -1095,18 +1095,29 @@ async def _execute_studio_build(
         # than a CREATE we would have to refuse later (Rule W-168). Cache-only —
         # a build never probes (Rule W-119) — so this picks up whatever the last
         # verify run learned.
+        item_total = max(len(items), 1)
+        if progress_cb is not None:
+            progress_cb(0, item_total, "adopting known duplicates")
         summary["duplicates_adopted"] = await _adopt_probed_duplicate_qids(
             items, result["native_items"] or [],
         )
+        if progress_cb is not None:
+            progress_cb(item_total, item_total, "adopting known duplicates")
         # The canonical projection is gated exactly like the legacy one: a build
         # bug must not reach the Studio cache or the curator (Rule W-163).
-        assert_wikidata_export_quality(
+        await run_in_threadpool(
+            assert_wikidata_export_quality,
             result["native_items"] or [],
             serialised_items=items,
             marc_records=marc_records,
+            on_progress=progress_cb,
         )
+        if progress_cb is not None:
+            progress_cb(0, item_total, "saving items")
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=result["quickstatements"], summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
         await _replace_item_rows(db, run_id, approved_only=approved_only, source=source, items=items)
+        if progress_cb is not None:
+            progress_cb(item_total, item_total, "saving items")
         row = await _get_studio_cache_row(db, run_id, approved_only, source)
         if row is None:
             raise RuntimeError(f"canonical Studio cache missing after build for run {run_id}")
@@ -1158,10 +1169,15 @@ async def _execute_studio_build(
     await check_cancel()
 
     if result.get("native_items"):
-        assert_wikidata_export_quality(
+        legacy_total = max(len(result["native_items"]), 1)
+        if progress_cb is not None:
+            progress_cb(0, legacy_total, "checking export quality")
+        await run_in_threadpool(
+            assert_wikidata_export_quality,
             result["native_items"],
             serialised_items=result["items"],
             marc_records=marc_records,
+            on_progress=progress_cb,
         )
         for it_dict, it_native in zip(
             result["items"], result["native_items"], strict=True,
@@ -3139,14 +3155,33 @@ async def _load_marc_records_for_run(db: AsyncSession, run_id: uuid.UUID) -> lis
 # a hang — which is exactly how the 429 stall was first reported.
 VERIFY_SCOPE_PHASES: tuple[str, ...] = (
     "assembling Studio scope",
-    "loading item scope",
-    "loading MARC records",
-    "building MARC context",
-    "checking verdict cache",
     "loading MARC records",
     "checking Wikidata for duplicates",
     "building verification evidence",
+    "checking verdict cache",
 )
+VERIFY_SCOPE_GUIDE: dict[str, tuple[str, str]] = {
+    "assembling Studio scope": (
+        "items",
+        "Read the saved Studio items for this verify",
+    ),
+    "loading MARC records": (
+        "records",
+        "Load the MARC records for those items",
+    ),
+    "checking Wikidata for duplicates": (
+        "lookups",
+        "Ask Wikidata whether each item already exists",
+    ),
+    "building verification evidence": (
+        "items",
+        "Attach the MARC evidence to each item",
+    ),
+    "checking verdict cache": (
+        "items",
+        "Reuse a saved verdict when the item is unchanged",
+    ),
+}
 
 
 async def _fetch_wikidata_verify_items(
@@ -3216,7 +3251,10 @@ async def _fetch_wikidata_verify_items(
     catalog: list[dict[str, Any]] = []
     items: list[dict[str, Any]] = []
     wanted_cns: set[str] = set()
-    for raw in scoped_items:
+    scope_total = max(len(scoped_items), 1)
+    if progress_cb is not None:
+        progress_cb(0, scope_total)
+    for index, raw in enumerate(scoped_items, start=1):
         override = overrides_by_id.get(str(raw.get("local_id") or ""))
         item = (
             apply_wikidata_item_override(raw, override_row_to_dict(override))
@@ -3236,14 +3274,26 @@ async def _fetch_wikidata_verify_items(
         item["record_ids"] = record_ids
         catalog.append(item)
         if wanted and local_id not in wanted:
+            if index == scope_total or index % 25 == 0:
+                if progress_cb is not None:
+                    progress_cb(index, scope_total)
+                await asyncio.sleep(0)
             continue
         wanted_cns.update(record_ids)
         items.append(item)
+        if progress_cb is not None and (
+            index == 1 or index == scope_total or index % 25 == 0
+        ):
+            progress_cb(index, scope_total)
+        if index % 25 == 0:
+            await asyncio.sleep(0)
     # Subset verify still needs work/person targets for P1574/P3342 evidence
     # (Rule W-170) — look them up in the full Studio catalog, do not judge them.
     attach_local_reference_targets(items, catalog=catalog)
     phase(VERIFY_SCOPE_PHASES[1])
-    marc_records = await load_run_marc_records_scoped(db, run_id, wanted_cns)
+    marc_records = await load_run_marc_records_scoped(
+        db, run_id, wanted_cns, on_progress=progress_cb,
+    )
     from app.db import session_scope  # noqa: PLC0415
     from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
         adopt_identifier_matched_duplicates,
@@ -3282,7 +3332,7 @@ async def _fetch_wikidata_verify_items(
     # Cached three tiers deep and never raises, so this cannot slow or break the
     # scope; the DB transaction is already closed above (Rule W-40).
     await attach_live_value_labels(session_scope, items)
-    enrich_items_with_verify_evidence(items, marc_records)
+    enrich_items_with_verify_evidence(items, marc_records, on_progress=progress_cb)
     return items, marc_records
 
 _WIKIDATA_VERIFY_CHANNEL = "wikidata-verify-sessions"

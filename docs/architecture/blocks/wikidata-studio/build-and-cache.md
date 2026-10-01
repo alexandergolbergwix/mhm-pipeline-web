@@ -78,7 +78,11 @@ Heroku claims the row; the claimed container orchestrates (Rule W-237):
   The count never moves backwards (Rule W-259 / R132). The page and the
   job tray show that pass name and the item count on the running step.
   The step sends `0/N items` as soon as assembly starts, before the first
-  batch finishes.
+  batch finishes. When that count finishes, the step names the next activity
+  and starts its count at 0: writing QuickStatements, each export-quality
+  check, adopting known duplicates, and saving items.
+  Each activity shows a countdown. The countdown can run over. The whole
+  build counts down from the measured 1 h 26 min, scaled by the entity total.
   Every step also shows a short description of its work. Record load,
   transliteration, and provenance mining each show their own count.
 
