@@ -364,6 +364,31 @@ def test_claim_checks_cap_wikidata_overall_at_partial() -> None:
     assert gated["overall"] == "partial"
 
 
+def test_claim_uncertainty_does_not_cap_wikidata_overall() -> None:
+    """Bridge-claim noul in [0.4, 0.7) is support uncertainty, not a removable
+    defect: it must not drag a gold-full item to partial (P2888/P973 class)."""
+    payload = {"statements": [
+        {"property": "P31", "value": "Q1"},
+        {"property": "P2888", "value": "QHMO1"},
+        {"property": "P973", "value": "http://x"},
+        {"property": "P217", "value": "F 46266"},
+    ]}
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "yes",
+        "overall": "full", "reasoning": "r", "suggested_fix": None,
+    }
+    answers = _answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "yes"})
+    answers["claim_0"] = {"noul": 0.9}
+    answers["claim_1"] = {"noul": 0.5}  # uncertain bridge
+    answers["claim_2"] = {"noul": 0.6}  # uncertain described-at
+    answers["claim_3"] = {"noul": 0.45}  # uncertain shelfmark
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="wikidata_item",
+        candidate=_candidate("wikidata_item", payload), meta={"answers": answers},
+    )
+    assert gated["overall"] == "full"
+
+
 def test_name_quality_malformed_fails_hmo_item() -> None:
     verdict = {
         "name_ok": "yes", "type_ok": "yes", "role_ok": "n/a",

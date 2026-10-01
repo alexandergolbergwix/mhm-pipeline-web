@@ -311,7 +311,17 @@ def overall_from_answers(
         if isinstance(artifact_noul, (int, float)) and artifact_noul >= 0.5:
             states.append(("partial", False))
     if evaluator_id == _WIKIDATA_ITEM:
-        states.extend((s, False) for s in _claim_states(payload, answers))
+        # Claim-level noul in [0.4, 0.7) is SUPPORT UNCERTAINTY, not a defect:
+        # the claim instructions define noul < 0.4 as "no channel names this
+        # property" (unsupported → removable bad claim → caps at partial).
+        # Capping on uncertainty made every bridge claim (P2888/P973/P217)
+        # drag gold-full items to partial — so only an actually-unsupported
+        # claim (fail) caps; partial contributes nothing.
+        states.extend(
+            ("fail", False)
+            for s in _claim_states(payload, answers)
+            if s == "fail"
+        )
         p31 = (answers.get("p31_ok") or {}).get("choice") or ""
         if p31:
             # Wrong/missing instance-of typing is a real public-data problem

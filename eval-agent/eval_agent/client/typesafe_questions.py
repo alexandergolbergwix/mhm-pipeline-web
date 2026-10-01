@@ -42,7 +42,10 @@ _TYPE_OK = (
     "correct for this span/label? 'yes' = clearly correct; 'partial' = correct "
     "but truncated/ambiguous, or the relationship is different than claimed — "
     "e.g. in a provenance note 'בן/בכמה\"ר <name>' names a father or teacher, "
-    "not the owner/acquirer; 'no' = clearly the wrong kind of thing."
+    "not the owner/acquirer; 'no' = clearly the wrong kind of thing. Span "
+    "length is a name_ok question, never a type question: a single given name "
+    "('יצחק', 'חיים') or a surname-only span is still clearly a person — "
+    "answer 'yes' and judge completeness under name_ok."
 )
 _ROLE_OK_PERSON = (
     "Applying the evaluation brief in the state, does the MARC evidence "

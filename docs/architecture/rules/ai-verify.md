@@ -1071,3 +1071,9 @@ surface: the `mhm-jobs2` secret must carry every provider key the tier-1
 registry offers on that surface (`TYPESAFE_API_KEY`, `QUBRID_API_KEY`, …).
 
 Tests: `backend/tests/unit/test_hmo_item_verify_spawn_failure.py`.
+
+## Rule W-265 — Claim support uncertainty MUST NOT cap a verified claim-set at partial (added 2026-10-01)
+
+The `wikidata_item` claim checks treated every capped claim as a defect: claim-level noul in [0.4, 0.7) — support uncertainty per the claim instructions, not "unsupported" — dragged gold-full works carrying bridge claims (P2888/P973/P217) down to partial. The shadow-cycle-1 adjudication had already flagged this as the known over-strict claim class, and the same batch showed a second class: `type_ok=partial` on single-given-name person spans where the gold says the type is clearly a person.
+
+`overall_from_answers` now contributes a capping state only for an actually-unsupported claim (`fail`); partial claim states contribute nothing. Span length is a `name_ok` question, never a type question — the `type_ok` prompt says a single given name or surname-only span is still clearly a person, judged for completeness under `name_ok`. Tests: `eval-agent/tests/test_jev_gates.py::test_claim_uncertainty_does_not_cap_wikidata_overall`.

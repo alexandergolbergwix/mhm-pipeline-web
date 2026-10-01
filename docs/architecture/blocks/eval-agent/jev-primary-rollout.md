@@ -27,8 +27,11 @@
 ## Current state (what exists)
 
 - Certification harness + gold: `backend/scripts/typesafe_bakeoff.py`
-  (question sets, verdict mapping, gates, gold scoring) +
-  `state/typesafe-bakeoff/gold-v1/*.jsonl` (1,238 rows).
+  (verdict mapping, gates, gold scoring; Jev question sets now import from
+  `eval_agent/client/typesafe_questions.py` — single source of truth) +
+  `state/typesafe-bakeoff/gold-v1/*.jsonl` (1,238 rows). Tier-1 scoring
+  harness: `backend/scripts/gold_score_tier1.py` runs the Qubrid judge over
+  a stratified gold subset and scores it exactly like the Jev gold mode.
 - Gates NOT yet met (Jev: 0.826 accuracy, 8 unsafe/1,238, det 0.966) →
   policy stays "Jev primary + LLM exception handler"; Jev-only is a later
   phase gated on re-certification.
@@ -200,6 +203,15 @@ over-strict claim class). Known style divergence (no outcome impact): Kimi
 answers `role_ok=n/a` on 48 structural-ish HMO entities where Jev answers
 `yes` per its certified question contract. contents/genre Kimi comparisons
 stalled (Kimi-side) — gold-mode runs stand in until a fresh comparison.
+
+**2026-10-01 gate fixes (both known over-strict classes closed, Rule W-265):**
+the wikidata_item claim check no longer caps overall on claim-level noul in
+[0.4, 0.7) — support uncertainty is not a removable defect; only an
+actually-unsupported claim (`fail`) caps, so P2888/P973/P217 bridge claims
+stop dragging gold-full works to partial. The `type_ok` prompt defers span
+length to `name_ok`: a single given name or surname-only span is still
+clearly a person (the 10-row single-given-name `type_ok=partial` class).
+Tests: `eval-agent/tests/test_jev_gates.py::test_claim_uncertainty_does_not_cap_wikidata_overall`.
 
 ### 9. Rollout sequence
 1. Shadow: run both judges on real verify jobs for 2–4 cycles; log
