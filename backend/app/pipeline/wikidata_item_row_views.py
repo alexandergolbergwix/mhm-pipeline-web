@@ -112,7 +112,10 @@ async def ensure_rows_backfilled(
     """Backfill rows from the cache blob once, for pre-table builds.
 
     Returns the row count for the build key. A missing cache row is a
-    :class:`LookupError` — callers answer 409 (no build exists).
+    :class:`LookupError` — callers answer 409 (no build exists). The
+    all-matches scope (``approved_only=False``) never gets its own build
+    cache: it falls back to the approved build's blob, so the review
+    table's "All matches" pill works without a second corpus build.
     """
     from app.models.wikidata_studio_cache import WikidataStudioCache  # noqa: PLC0415
     from app.pipeline.hmo_canonical_wikidata import filter_public_wikidata_items  # noqa: PLC0415
@@ -126,6 +129,16 @@ async def ensure_rows_backfilled(
             )
         )
     ).scalar_one_or_none()
+    if cache_row is None and not approved_only:
+        cache_row = (
+            await db.execute(
+                select(WikidataStudioCache).where(
+                    WikidataStudioCache.run_id == run_id,
+                    WikidataStudioCache.approved_only.is_(True),
+                    WikidataStudioCache.source == source,
+                )
+            )
+        ).scalar_one_or_none()
     if cache_row is None:
         raise LookupError(f"No Wikidata Studio build exists for run {run_id}.")
 
