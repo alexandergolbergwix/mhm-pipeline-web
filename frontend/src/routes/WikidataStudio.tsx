@@ -111,6 +111,7 @@ export default function WikidataStudio() {
   const [reconcileMap, setReconcileMap] = useState<Record<string, ReconcileOutcome>>({});
   const [uploadMap, setUploadMap]       = useState<Record<string, UploadOutcome>>({});
   const [busy, setBusy] = useState<"reconcile" | "dry" | "live" | null>(null);
+  const [rebuildBusy, setRebuildBusy] = useState(false);
   const [lastUpload, setLastUpload] = useState<{
     dry_run: boolean; moratorium_lifted: boolean; test_mode: boolean;
   } | null>(null);
@@ -514,6 +515,23 @@ export default function WikidataStudio() {
             </label>
             <button onClick={reconcile} disabled={!!busy} className="button-ghost text-sm">
               {busy === "reconcile" ? "Reconciling…" : "Reconcile with Wikidata"}
+            </button>
+            <button
+              onClick={async () => {
+                if (!runId || rebuildBusy) return;
+                setRebuildBusy(true); setError(null);
+                try {
+                  await Studio.rebuildSelected(runId, visibleItemIds, projectionSource);
+                  await refresh({});
+                } catch (e) {
+                  setError(e instanceof ApiError ? e.detail : String(e));
+                } finally { setRebuildBusy(false); }
+              }}
+              disabled={rebuildBusy || visibleItemIds.length === 0 || buildJobRunning}
+              className="button-ghost text-sm"
+              title="Recompute only the items currently visible (respecting filters), then merge them into the build."
+            >
+              {rebuildBusy ? "Rebuilding…" : "Rebuild visible"}
             </button>
             <button
               onClick={() => {

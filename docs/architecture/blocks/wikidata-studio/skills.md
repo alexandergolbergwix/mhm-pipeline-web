@@ -2,6 +2,18 @@
 
 > Up: [Wikidata Studio](README.md)
 
+### Skill: rebuild a subset without a full build
+
+1. Filter the review table to the items you want recomputed (search /
+   entity filter define the selection).
+2. Click **Rebuild visible** — `POST /runs/{id}/wikidata-studio/rebuild-selected`
+   rebuilds only the records behind those items (canonical subset + legacy
+   slice), merges fresh rows into the cache + read model by `local_id`,
+   and always recomputes (skip-cache by design).
+3. A full Rebuild supersedes the patch: corpus-wide passes (person
+   coalescing, label disambiguation) only ran over the selected subset.
+   Capped at 200 items per call (Rule W-267).
+
 ### Skill: add or change a P/Q constant
 
 1. Open `https://www.wikidata.org/wiki/Property:PXXX` (or `/QXXX`) — never rely

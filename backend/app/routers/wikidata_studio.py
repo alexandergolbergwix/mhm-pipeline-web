@@ -17,7 +17,7 @@ import json
 import logging
 import threading
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any, Literal
@@ -425,6 +425,34 @@ class StudioSummary(BaseModel):
 class PropertyInfo(BaseModel):
     id: str
     label: str
+
+
+class RebuildSelectedRequest(BaseModel):
+    local_ids: list[str] = Field(min_length=1)
+    source: str = "canonical"
+
+
+_REBUILD_SELECTED_CAP = 200
+
+
+def _merge_rebuilt_items(
+    cached_items: list[dict[str, Any]],
+    selected_old_ids: set[str],
+    new_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge rebuilt rows into the cached corpus.
+
+    Selected local_ids are replaced; a rebuilt record may also mint a
+    person/work local_id that other rows share — those are replaced too.
+    """
+    replaced = selected_old_ids | {
+        str(it.get("local_id") or "") for it in new_items
+    }
+    kept = [
+        it for it in cached_items
+        if str(it.get("local_id") or "") not in replaced
+    ]
+    return kept + list(new_items)
 
 
 class StudioBuildResponse(BaseModel):
@@ -1660,6 +1688,162 @@ class UploadResponse(BaseModel):
     moratorium_lifted: bool
     test_mode: bool
     outcomes: list[UploadOutcomeDto]
+
+
+@router.post("/{run_id}/wikidata-studio/rebuild-selected")
+async def rebuild_selected_wikidata_items(
+    run_id: uuid.UUID,
+    body: RebuildSelectedRequest,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Rebuild only the records behind the selected items and merge the
+    fresh rows into the Studio cache + review read model.
+
+    Always recomputes (skip-cache by design): the point is to pick up a
+    builder fix without a full-corpus build. A full rebuild supersedes
+    this patch — corpus-wide passes (person coalescing, label
+    disambiguation) only ran over the selected subset here.
+    """
+    await _lookup_run_with_access(db, run_id, auth, write=True)
+    wanted = {str(x).strip() for x in body.local_ids if str(x).strip()}
+    if not wanted:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "select at least one item")
+    if len(wanted) > _REBUILD_SELECTED_CAP:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"rebuild-selected is capped at {_REBUILD_SELECTED_CAP} items per call",
+        )
+    source = body.source if body.source in ("legacy", "canonical") else "canonical"
+    cached = await _get_studio_cache_row(db, run_id, True, source)
+    if cached is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"no {source} Studio build for this run",
+        )
+    selected = [
+        it for it in (cached.result_items or [])
+        if str(it.get("local_id") or "") in wanted
+    ]
+    if not selected:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "selected items are not in the cached build",
+        )
+    record_ids: list[str] = []
+    for it in selected:
+        for rid in it.get("records") or []:
+            cn = str(rid).strip()
+            if cn and cn not in record_ids:
+                record_ids.append(cn)
+
+    from app.pipeline.wikidata_studio_batches import (  # noqa: PLC0415
+        _cn_keys,
+        load_wikidata_build_slice,
+    )
+    from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
+    slice_inputs = await load_wikidata_build_slice(
+        db, run_id, record_ids, approved_only=True,
+    )
+    hmo_instance_qids = await wikidata_studio.hmo_instance_qids_for_run(
+        db, run_id, record_ids,
+    )
+    override_rows = (
+        await db.execute(
+            select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+        )
+    ).scalars().all()
+    overrides = {
+        r.local_id: {
+            "labels": r.labels,
+            "descriptions": r.descriptions,
+            "aliases": r.aliases,
+            "add_statements": r.add_statements,
+            "remove_statements": r.remove_statements,
+            "statement_edits": r.statement_edits,
+        }
+        for r in override_rows
+    }
+
+    if source == "canonical":
+        all_entities = await _canonical_entities_for_run(db, run_id)
+        wanted_cn_keys = set(_cn_keys(record_ids))
+        subset_entities = [
+            entity for entity in all_entities
+            if wanted_cn_keys & set(_cn_keys(entity.control_numbers or []))
+        ]
+        if not subset_entities:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "no canonical entities behind the selected items",
+            )
+        context = canonical_studio_context(
+            marc_records=slice_inputs["marc_records"],
+            approved_matches=slice_inputs["approved_matches"],
+            entities_by_cn=slice_inputs["entities_by_cn"],
+        )
+        legacy_native = await wikidata_studio.build_items_for_run(
+            marc_records=slice_inputs["marc_records"],
+            approved_matches=slice_inputs["approved_matches"],
+            entities_by_cn=slice_inputs["entities_by_cn"],
+            overrides=overrides,
+            return_native=True,
+            hmo_instance_qids=hmo_instance_qids,
+        )
+
+        from app.pipeline.hmo_canonical_wikidata import (  # noqa: PLC0415
+            build_canonical_studio_result,
+        )
+
+        result = await run_in_threadpool(
+            build_canonical_studio_result,
+            subset_entities,
+            overrides=overrides,
+            context=context,
+            reconcile=False,
+            legacy_native_items=legacy_native.get("native_items") or [],
+            return_native=True,
+        )
+        new_items = result["items"]
+    else:
+        legacy_result = await wikidata_studio.build_items_for_run(
+            marc_records=slice_inputs["marc_records"],
+            approved_matches=slice_inputs["approved_matches"],
+            entities_by_cn=slice_inputs["entities_by_cn"],
+            overrides=overrides,
+            return_native=True,
+            hmo_instance_qids=hmo_instance_qids,
+        )
+        finished = await run_in_threadpool(
+            wikidata_studio.finish_native_items,
+            legacy_result.get("native_items") or [],
+        )
+        new_items = finished["items"]
+
+    rebuilt_old_ids = {str(it.get("local_id") or "") for it in selected}
+    new_ids = {str(it.get("local_id") or "") for it in new_items}
+    merged = _merge_rebuilt_items(cached.result_items or [], rebuilt_old_ids, new_items)
+    cached.result_items = merged
+    cached.record_count = len(merged)
+    cached.summary = {
+        **(cached.summary or {}),
+        "total_items": len(merged),
+        "manuscripts": sum(1 for i in merged if i.get("entity_type") == "manuscript"),
+        "persons": sum(1 for i in merged if i.get("entity_type") == "person"),
+        "works": sum(1 for i in merged if i.get("entity_type") == "work"),
+        "selected_rebuild": {
+            "selected": len(rebuilt_old_ids),
+            "rebuilt": len(new_items),
+            "at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
+    await _replace_item_rows(db, run_id, approved_only=True, source=source, items=merged)
+    await db.flush()
+    return {
+        "selected": len(rebuilt_old_ids),
+        "rebuilt": len(new_items),
+        "total": len(merged),
+        "source": source,
+    }
 
 
 @router.post("/{run_id}/wikidata-studio/upload")

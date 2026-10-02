@@ -94,6 +94,13 @@ export interface ReconcileResponse {
   outcomes: ReconcileOutcome[];
 }
 
+export interface RebuildSelectedResponse {
+  selected: number;
+  rebuilt: number;
+  total: number;
+  source: string;
+}
+
 export interface UploadOutcome {
   local_id: string;
   label: string;
@@ -350,6 +357,12 @@ export const Studio = {
     api.post<ReconcileResponse>(
       `/runs/${runId}/wikidata-studio/reconcile?source=${source}&approved_only=${approvedOnly ? "true" : "false"}`,
       {},
+    ),
+
+  rebuildSelected: (runId: string, localIds: string[], source: "legacy" | "canonical" = "canonical") =>
+    api.post<RebuildSelectedResponse>(
+      `/runs/${runId}/wikidata-studio/rebuild-selected`,
+      {local_ids: localIds, source},
     ),
 
   upload: (runId: string, opts: {

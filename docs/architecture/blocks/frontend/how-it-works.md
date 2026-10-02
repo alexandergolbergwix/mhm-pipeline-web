@@ -17,7 +17,7 @@ bookmark compatibility). Project pages under `/projects/:projectId{,/history,/en
 reviewed HMO Wikibase read-back and carries the selected source through build,
 refresh, verification, and upload-job parameters. The page is laid out in three
 zones — **Review** (status line plus the item review table, always visible,
-with the scope pill, Rebuild, and the AI verify/autofix/approve toolbar),
+with the scope pill, Rebuild, Rebuild visible, and the AI verify/autofix/approve toolbar),
 **Publish** (the Publication panel), and one collapsed **Advanced**
 `<details>` ("Advanced: source, exports, rebuild") holding skip-cache, the
 upload approved-only scope, exports/import, the data-source switch, and the
