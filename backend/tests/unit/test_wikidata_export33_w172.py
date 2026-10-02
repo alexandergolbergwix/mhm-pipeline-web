@@ -58,6 +58,30 @@ class TestCatalogNoteNotInscription:
             "מיוסד על ס' ערמת חטים מאת יהודה דה פורטה. לפי דעת קאסוטו המחבר הוא שלמה."
         )
 
+    def test_colophon_prose_is_catalog_note(self) -> None:
+        # The cataloger describing a colophon — never the inscription itself.
+        assert is_catalog_note_placeholder(
+            'בסופו קולופון המחבר: "סיימתי ... ער"ה ת"ם לפ"ק".'
+        )
+        assert is_catalog_note_placeholder(
+            "נכתב בידי אברהם בן שלמה בן אברהם בן זכריה בן בניה (קולופון 4"
+        )
+        assert is_catalog_note_placeholder(
+            'בדף 1א "שער התבואות" ובסופו קולופון (לא ברור אם שייך לתכלאל)'
+        )
+
+    def test_workflow_and_access_notes_are_catalog_notes(self) -> None:
+        assert is_catalog_note_placeholder("שמעיה יצחק הלוי -- רשות לצלם ניתנה ב.12.8.13")
+        assert is_catalog_note_placeholder("אוסף וואלך - הוצא מהספרייה מתוקף צו בית משפט")
+
+    def test_catalog_pointers_are_catalog_notes(self) -> None:
+        assert is_catalog_note_placeholder("קיטלוג מפורט יותר, ראה באוסף הקיטלוגים.")
+        assert is_catalog_note_placeholder("המחבר העתיק את כתב-יד לונדון בית הדין ובית המדרש 146")
+
+    def test_genuine_inscription_text_stays_claimable(self) -> None:
+        assert not is_catalog_note_placeholder('סיימתי לכתוב בשנת תקצ"ה יום ב חודש אלול')
+        assert not is_catalog_note_placeholder("אני הקטן אברהם בן שלמה כתבתי")
+
 
 class TestFacsimileWorkDescription:
     def test_facsimile_source_not_called_manuscript_work(self) -> None:

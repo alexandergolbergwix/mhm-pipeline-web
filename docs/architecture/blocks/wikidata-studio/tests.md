@@ -32,7 +32,9 @@
   Hebrew preferred P8189 strip.
 - `backend/tests/unit/test_wikidata_export33_w172.py` — Rule W-172:
   judge fixture keeps quantity `unit`, HE description omits shelfmark,
-  scholarly P1684 gate, facsimile work description, person alias filter.
+  scholarly P1684 gate (extended: colophon prose, workflow/access notes,
+  catalog pointers, scholarly comparison — Rule W-72), facsimile work
+  description, person alias filter.
 - `backend/tests/unit/test_wikidata_corpus_scale_w171.py` — Rule W-171:
   ISBD split, P1574 specificity, identity gate, leaf unit, alias hygiene,
   incipit gate, century→embedded year, sticky-full, optional TSV stream

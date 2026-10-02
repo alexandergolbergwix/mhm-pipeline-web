@@ -37,6 +37,35 @@ def is_catalog_note_placeholder(value: object) -> bool:
         or re.search(r"\b(?:see|cf\.)\s*:", folded)
     ):
         return True
+    # Third-person catalog prose ABOUT a colophon — the scribe never names
+    # his own colophon, so the word itself marks cataloger apparatus
+    # (בסופו קולופון / קולופון המחבר בדף … / (קולופון 4).
+    if "קולופון" in text:
+        return True
+    # Workflow / access prose: photocopy permissions and legal custody notes
+    # (רשות לצלם ניתנה … / הוצא מהספרייה מתוקף צו בית משפט).
+    if (
+        "רשות לצלם" in text
+        or "הוצא מהספרייה" in text
+        or "צו בית משפט" in text
+        or "מתוקף צו" in text
+    ):
+        return True
+    # Catalog pointers (קיטלוג מפורט יותר, ראה באוסף הקיטלוגים).
+    if "קיטלוג" in folded or "באוסף הקיטלוגים" in folded:
+        return True
+    # Third-person cross-reference prose (המחבר העתיק את כתב-יד …) —
+    # a real inscription is first-person.
+    if "המחבר העתיק" in folded or "המעתיק העתיק" in folded:
+        return True
+    # Scholarly-comparison bibliography prose (השווה מהדורת … / וראה שם
+    # בעמ' … / על כתב-יד זה ראה …) — apparatus, not object text.
+    if (
+        "השווה מהדורת" in folded
+        or "וראה שם" in folded
+        or "על כתב-יד זה ראה" in folded
+    ):
+        return True
     return bool(
         re.match(r"^(?:נושא נוסף|additional subject|catalog(?:ue|ing)? note)\s*[:：]", folded)
         or "book suggested to google" in folded

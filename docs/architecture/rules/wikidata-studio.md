@@ -251,7 +251,7 @@ content and approved-match QIDs as `Q\d+`, and emits direct P1574 references for
 approved existing works. Unknown titles remain fail-closed and never receive fuzzy
 QID guesses. Tests: `test_wikidata_studio_works.py`.
 
-### Rule W-72 — Public Wikidata semantic claims MUST be evidence-gated (added 2026-07-15)
+### Rule W-72 — Public Wikidata semantic claims MUST be evidence-gated (added 2026-07-15; extended 2026-10-02)
 
 The Phase 1 audit of run `48ba6c13-115c-4763-bff1-c08b9031b518` found
 false-positive P921 topics, over-specific P136 genres, historical owners and
@@ -265,6 +265,17 @@ holder QID (with an evidence-based description fallback). Rejected candidates
 remain in source/evidence fields for curator reconciliation. Tests:
 `test_wikidata_phase1_projection.py`, `test_marc_650_655_lod.py`, and
 `test_wikidata_work_candidates.py`.
+
+Extended 2026-10-02 after the run `3494ebf5` verify: 206 of 296 partial
+manuscripts carried `P1684` claims whose text was catalog prose ABOUT the
+object, not the inscription — third-person colophon descriptions (the word
+קולופון in prose), photocopy/access and legal-custody workflow notes
+(רשות לצלם / הוצא מהספרייה / צו בית משפט), catalog pointers (קיטלוג /
+באוסף הקיטלוגים), third-person cross-references (המחבר העתיק …), and
+scholarly-comparison bibliography (השווה מהדורת … / וראה שם …). The
+catalog-note filter now rejects all of these; genuine first-person
+inscription text stays claimable. 270 manuscripts of that run lose their
+false inscription claims entirely. Tests: `test_wikidata_export33_w172.py`.
 
 
 ### Rule W-73 — Illustrated genre MUST NOT imply illuminated manuscript (added 2026-07-15)
