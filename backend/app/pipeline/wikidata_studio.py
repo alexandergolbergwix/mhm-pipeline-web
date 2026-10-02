@@ -50,7 +50,10 @@ logger = logging.getLogger(__name__)
 # v8: source-specific work authors, person-language suppression, and fuzzy-QID guard.
 # v9: folio-range and person-genealogy work-candidate guards (Rule W-264) —
 # cached rows still carrying those degenerate 500 works must not upload.
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v9"
+# v10: Rule W-72 catalog-prose P1684 filter extension (colophon prose,
+# workflow/access notes, catalog pointers, scholarly comparison) — cached
+# rows still carrying those false inscription claims must not upload.
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v10"
 
 
 def studio_cache_has_stale_validation(
