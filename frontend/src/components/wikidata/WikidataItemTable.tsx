@@ -12,7 +12,7 @@ import {resolveWikidataItemDataStatus} from "@/utils/wikidataItemDataStatus";
 
 const PAGE_SIZE = 25;
 
-type ColKey = "entity_type" | "data_status" | "upload_outcome" | "validation" | "ai_verdict" | "approved";
+type ColKey = "entity_type" | "data_status" | "upload_outcome" | "validation" | "ai_verdict" | "approved" | "statement_count";
 
 function itemLabel(item: StudioItem): string {
   const l = item.labels ?? {};
@@ -27,6 +27,10 @@ function cellFilterValues(item: StudioItem, col: ColKey): string[] {
     return ["warn"];
   }
   if (col === "ai_verdict") return [item.ai_verdict?.overall ?? "not verified"];
+  if (col === "statement_count") {
+    const n = item.statement_count ?? item.statements?.length ?? 0;
+    return [String(n)];
+  }
   if (col === "data_status") return [resolveWikidataItemDataStatus(item)];
   if (col === "upload_outcome") return [item.upload_outcome ?? "never tried"];
   if (col === "approved") {
@@ -55,7 +59,7 @@ export function WikidataItemTable({
   judgingIds,
 }: WikidataItemTableProps) {
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<"label" | "local_id" | "data_status">("label");
+  const [sortKey, setSortKey] = useState<"label" | "local_id" | "data_status" | "statement_count">("label");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, Set<string>>>>({});
@@ -85,6 +89,9 @@ export function WikidataItemTable({
       if (sortKey === "label") {
         av = itemLabel(a);
         bv = itemLabel(b);
+      } else if (sortKey === "statement_count") {
+        av = String(a.statement_count ?? a.statements?.length ?? 0);
+        bv = String(b.statement_count ?? b.statements?.length ?? 0);
       } else if (sortKey === "data_status") {
         av = resolveWikidataItemDataStatus(a);
         bv = resolveWikidataItemDataStatus(b);
@@ -163,6 +170,7 @@ export function WikidataItemTable({
                 ["entity_type", "Entity type", false],
                 ["data_status", "Data status", false],
                 ["existing_qid", "QID", false],
+                ["statement_count", "Stmts", true],
                 ["upload_outcome", "Last upload", false],
                 ["validation", "Validation", false],
                 ["ai_verdict", "AI verdict", false],
@@ -205,6 +213,7 @@ export function WikidataItemTable({
                     <WikidataItemDataStatusBadge item={item} />
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">{item.existing_qid ?? "—"}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{item.statement_count ?? item.statements?.length ?? 0}</td>
                   <td className="px-3 py-2" data-testid={`wikidata-item-upload-outcome-${id}`}>
                     <UploadOutcomeBadge
                       outcome={item.upload_outcome}

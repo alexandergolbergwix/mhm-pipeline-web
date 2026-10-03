@@ -758,7 +758,7 @@ export default function WikidataStudio() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 flex-wrap mt-0.5 text-[10px]">
-                          <span className="muted">{(it.statements ?? []).length} stmts</span>
+                          <span className="muted">{it.statement_count ?? (it.statements ?? []).length} stmts</span>
                           {it.existing_qid && (
                             <span className="text-biu-sky font-mono">↻{it.existing_qid}</span>
                           )}
