@@ -21,11 +21,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.item_override import WikidataItemOverride
 from app.models.wikidata_studio_item_row import WikidataStudioItemRow
+from app.pipeline.marc_verify_context import load_run_marc_records
 from app.pipeline.wikidata_item_merge import apply_wikidata_item_override, override_row_to_dict
 from app.pipeline.wikidata_item_views import (
+    _adopt_cached_duplicate_qids,
+    _attach_live_labels_for_verdict_keys,
     _merge_one_wikidata_item,
+    _mirror_adopted_qids,
+    _sanitise_merged_verdicts,
+    slim_item_for_verdict_persist,
     trim_studio_list_item,
 )
+from app.pipeline.wikidata_verdict_cache import attach_local_reference_targets
 
 logger = logging.getLogger(__name__)
 
@@ -283,8 +290,10 @@ async def page_wikidata_items(
     items: list[dict[str, Any]] = []
     last_sort = ""
     last_local = ""
+    page_ovs: list[Any] = []
     for row, ov_row in page_rows:
         raw = dict(row.payload or {})
+        page_ovs.append(ov_row)
         merged = _merge_one_wikidata_item(
             raw, ov_row=ov_row, ledger=ledger, latest_writes=latest_writes,
         )
@@ -293,6 +302,35 @@ async def page_wikidata_items(
             row.local_id if sort == "local_id" else row.label_sort,
         )
         last_local = str(row.local_id)
+
+    # Rule W-169/W-268 — the fast row path replays the same verdict
+    # staleness contract as the merged view: adoption, live labels, local
+    # targets, then the SHA check. A verdict whose claims fingerprint no
+    # longer matches the row reads as unknown, never as a stale pass.
+    verdict_pairs = [
+        (item, ov_row.ai_verdict)
+        for item, ov_row in zip(items, page_ovs, strict=True)
+        if ov_row is not None and ov_row.ai_verdict
+    ]
+    if verdict_pairs:
+        stable_rows = [
+            apply_wikidata_item_override(
+                dict(row.payload or {}),
+                override_row_to_dict(ov_row) if ov_row else {},
+            )
+            for row, ov_row in page_rows
+        ]
+        attach_local_reference_targets(items)
+        attach_local_reference_targets(stable_rows)
+        adopted = await _adopt_cached_duplicate_qids(items) or set()
+        _mirror_adopted_qids(items, stable_rows, adopted)
+        await _attach_live_labels_for_verdict_keys(items, stable_rows)
+        stable_items = {
+            str(row.get("local_id") or ""): slim_item_for_verdict_persist(row)
+            for row in stable_rows
+        }
+        marc_records = await load_run_marc_records(db, run_id)
+        _sanitise_merged_verdicts(verdict_pairs, items, marc_records, stable_items)
 
     total = None
     approved_count = None
