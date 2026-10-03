@@ -770,7 +770,11 @@ def dedupe_statements(statements: list[WikidataStatement]) -> list[WikidataState
     for stmt in statements or []:
         key = (
             str(stmt.property_id or ""),
-            str(stmt.value if stmt.value is not None else ""),
+            str(stmt.value if stmt.value is not None else "")
+            if str(stmt.property_id or "") != "P2093"
+            # MARC 100$a punctuation is transcription variance, not identity
+            # (Rule W-269 follow-up) — same normalization as _statement_key.
+            else re.sub(r"\s+", " ", str(stmt.value or "").strip().rstrip(" ,.;:/-")),
         )
         current = best.get(key)
         if current is None:
@@ -785,10 +789,17 @@ def dedupe_statements(statements: list[WikidataStatement]) -> list[WikidataState
 
 
 def _statement_key(stmt: WikidataStatement) -> tuple[str, str, str]:
+    value = str(stmt.value if stmt.value is not None else "")
+    if str(stmt.property_id or "") == "P2093":
+        # MARC 100$a punctuation is transcription variance, not identity:
+        # "ויטל, חיים בן יוסף," (trailing comma) and "ויטל, חיים בן יוסף"
+        # are the same author string — dedupe on the normalized form and
+        # let ranking keep the better-sourced instance (Rule W-269 follow-up).
+        value = re.sub(r"\s+", " ", value.strip().rstrip(" ,.;:/-"))
     return (
         str(stmt.property_id or ""),
         str(stmt.value_type or ""),
-        str(stmt.value if stmt.value is not None else ""),
+        value,
     )
 
 

@@ -290,3 +290,22 @@ class TestExportCarriesPropertyIds:
         assert stmt["property_id"] == "P31"
         assert stmt["property_label"] == "instance of"
         assert data["statements"][0]["references"][0]["property"] == "P248"
+
+
+def test_p2093_trailing_comma_variants_dedupe() -> None:
+    """MARC 100$a punctuation variance is one author, not two (W-269 follow-up)."""
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+    from app.pipeline.wikidata_canonical_enrichment import dedupe_statements
+
+    bare = WikidataStatement(
+        property_id="P2093", value="ויטל, חיים בן יוסף", value_type="string",
+    )
+    comma = WikidataStatement(
+        property_id="P2093", value="ויטל, חיים בן יוסף,", value_type="string",
+        references=[{"property": "P248", "value": "Q1"}],
+    )
+    out = dedupe_statements([bare, comma])
+    values = [str(s.value) for s in out if s.property_id == "P2093"]
+    assert len(values) == 1, values
+    # the better-sourced instance wins
+    assert values[0].endswith(",")
