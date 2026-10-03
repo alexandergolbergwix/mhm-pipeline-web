@@ -35,7 +35,13 @@ _NAME_OK = (
     "generic-placeholder-only, or malformed. Boundary noise is 'partial', not "
     "exact: a span that cuts a bracket/parenthesis mid-way (unclosed '(' or an "
     "unterminated title) or appends a parenthetical not part of the entity. An "
-    "empty MARC context with no accepted-exception coverage forces 'no'."
+    "empty MARC context with no accepted-exception coverage forces 'no'. "
+    "Manuscript-designation exception (per the WikiProject Manuscripts data "
+    "model): manuscripts have no titles, so the accepted identity label is a "
+    "designation — 'כתב יד עברי, {holder}, {shelfmark}', optionally with the "
+    "NLI control number when the catalog gives no shelfmark. Judge whether "
+    "holder and shelfmark/number are present and substantive, never whether "
+    "the label reads like a work or person name."
 )
 _TYPE_OK = (
     "Applying the evaluation brief in the state, is the predicted entity type "

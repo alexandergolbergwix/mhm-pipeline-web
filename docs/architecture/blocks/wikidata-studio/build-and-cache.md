@@ -25,7 +25,7 @@ item instead of the static slug), then computes
   the 409 detail is never shown as an error while the build runs (HMO-parity,
   frontend R15/W-106).
 
-The build schema is part of the fingerprint. Schema `source-aware-works-v10`
+The build schema is part of the fingerprint. Schema `source-aware-works-v11`
 (Rule W-264's folio-range and person-genealogy guards) also treats a cached
 person carrying an ERROR-level `NO_IDENTIFIER` issue as
 stale (`wikidata_studio.py:50`). The current builder either emits an external
@@ -260,7 +260,7 @@ UI badges) and as a **hard gate inside the upload path**.
 
 ### Verification evidence contract
 
-The builder keeps catalog identifiers in P3959/source metadata rather than public labels, and each person item records compact `authority_evidence` (VIAF/NLI identity, preferred names, and dates). Verification and `fetch_merged_wikidata_items` both run `attach_local_reference_targets` on the complete item set before fingerprinting or stale sanitisation, so internal `__LOCAL:<id>` evidence cannot make persisted verdicts disappear. Work items and source manuscripts carry `work_candidate_evidence`; a new work without accepted evidence fails validation. Before the eval-agent fixture write, `wikidata_verify_evidence.enrich_items_with_verify_evidence` attaches a multi-channel `verify_evidence` pack (MARC + VIAF + Mazal + existing Wikidata + HMO Wikibase) and `attach_wikidata_marc_context` ensures the same slice used by cache keys (Rule W-124). Verify fetch canonicalises quoted control numbers so Studio `record_ids` still join run MARC. The evaluator prompt surfaces each pack plus the WikiProject Manuscripts skill block. `w124_v1` / `records_marc_v7` keys include the evidence pack, work evidence, prompt-visible statement labels, qualifiers, references, authority, local targets, and the MARC slice. Static genre/subject QIDs require verified `QID_LABELS`; uncertain mappings and broad `Jews` P921 claims fail closed.
+The builder keeps catalog identifiers in P3959/source metadata rather than public labels, and each person item records compact `authority_evidence` (VIAF/NLI identity, preferred names, and dates). Verification and `fetch_merged_wikidata_items` both run `attach_local_reference_targets` on the complete item set before fingerprinting or stale sanitisation, so internal `__LOCAL:<id>` evidence cannot make persisted verdicts disappear. Work items and source manuscripts carry `work_candidate_evidence`; a new work without accepted evidence fails validation. Before the eval-agent fixture write, `wikidata_verify_evidence.enrich_items_with_verify_evidence` attaches a multi-channel `verify_evidence` pack (MARC + VIAF + Mazal + existing Wikidata + HMO Wikibase) and `attach_wikidata_marc_context` ensures the same slice used by cache keys (Rule W-124). Verify fetch canonicalises quoted control numbers so Studio `record_ids` still join run MARC. The evaluator prompt surfaces each pack plus the WikiProject Manuscripts skill block. `w124_v1` / `records_marc_v8` keys include the evidence pack, work evidence, prompt-visible statement labels, qualifiers, references, authority, local targets, and the MARC slice. Static genre/subject QIDs require verified `QID_LABELS`; uncertain mappings and broad `Jews` P921 claims fail closed.
 
 ### Semantic projection safety
 

@@ -24,7 +24,10 @@ WIKIDATA_VERDICT_SCHEMA = "w175_v1"
 # span length to name_ok) altered the prompt and the gate — verdicts judged
 # under the old contract must re-judge. Full verdicts stick via W-171 (the old
 # gates were stricter, so an old full is still a full); partial/fail re-judge.
-WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v7"
+# v8: the name_ok brief gained the manuscript-designation exception (W-82:
+# designation labels are the accepted manuscript identity) — verdicts judged
+# under the old brief must re-judge.
+WIKIDATA_VERDICT_KEY_VERSION = "records_marc_v8"
 
 
 FINGERPRINT_STATEMENT_LIMIT = 40

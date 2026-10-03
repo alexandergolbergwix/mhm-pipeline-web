@@ -428,14 +428,12 @@ KNOWN_WORK_QIDS: dict[str, str] = {
     "שלחן ערוך": "Q822206",
     "Mishneh Torah": "Q201029",
     "משנה תורה": "Q201029",
-    # Q1845 — Bible (collection of sacred books in Judaism and Christianity)
-    "Bible": "Q1845",
-    # Q83367 — Tanakh / Hebrew Bible
-    "Tanakh": "Q83367",
-    "Tanach": "Q83367",
-    "Hebrew Bible": "Q83367",
-    'תנ"ך': "Q83367",
-    "תנך": "Q83367",
+    # Collection-level concepts (Bible Q1845, Tanakh Q83367) are NOT works:
+    # a manuscript record titled "Bible" is a composite CONTAINING Bible
+    # books, and linking the generic concept fails closed per Rule W-70
+    # (run 3494ebf5: a kabbalistic compilation was mis-linked to Q1845).
+    # Specific biblical books keep their own verified QIDs via
+    # specific_biblical_work_qid — see work_link_specificity.
     # Q623354 — Haggadah / Passover Haggadah (הגדה של פסח)
     "Haggadah": "Q623354",
     "Passover Haggadah": "Q623354",

@@ -787,9 +787,11 @@ def test_known_work_title_aliases_are_exact_and_not_fuzzy() -> None:
     assert known_work_qid_for_title("משנה תורה") == "Q201029"
     assert known_work_qid_for_title("משנה תורה (ספר זמנים)") is None
     assert known_work_qid_for_title("יצירה דומה") is None
-    assert known_work_qid_for_title("Bible") == "Q1845"
-    assert known_work_qid_for_title('תנ"ך') == "Q83367"
-    assert known_work_qid_for_title("Tanakh") == "Q83367"
+    # Collection-level concepts are not works (Rule W-70 fail-closed): a
+    # manuscript record titled "Bible" is a composite containing Bible books.
+    assert known_work_qid_for_title("Bible") is None
+    assert known_work_qid_for_title('תנ"ך') is None
+    assert known_work_qid_for_title("Tanakh") is None
     assert known_work_qid_for_title("הגדה של פסח") == "Q623354"
     assert known_work_qid_for_title("Passover Haggadah") == "Q623354"
     assert known_work_qid_for_title("תיקון חצות") == "Q2740944"
@@ -828,13 +830,15 @@ async def test_related_works_known_qid_links_without_local_work() -> None:
     exemplar_values = [
         stmt.value for stmt in manuscript.statements if stmt.property_id == "P1574"
     ]
-    assert set(exemplar_values) >= {"Q1845", "Q83367", "Q2740944", "Q623354"}
+    # Collection-level Bible/Tanakh no longer link (Rule W-70 fail-closed)
+    assert set(exemplar_values) >= {"Q2740944", "Q623354"}
     assert all(not str(v).startswith("__LOCAL:") for v in exemplar_values)
     accepted = [
         row for row in manuscript.work_candidate_evidence
         if isinstance(row, dict) and row.get("accepted") is True
     ]
-    assert len(accepted) >= 4
+    # Bible/Tanakh related works no longer map (collection-level concepts)
+    assert len(accepted) >= 2
     assert_wikidata_export_quality(result["native_items"])
 
 
