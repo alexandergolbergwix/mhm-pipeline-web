@@ -16,10 +16,13 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w175_v1 with Rule W-175: sticky-full on review-table sanitise,
-# presentation labels out of cache keys, non-passing verify default.
+# Bumped to w176_v1 with the Jev top-30 rule rollout: per-rule questions
+# change the wikidata_item prompt — verdicts judged under the old question
+# set must re-judge (full verdicts stick via W-171; partial/fail re-judge).
+# Prior: w175_v1 (Rule W-175: sticky-full on review-table sanitise,
+# presentation labels out of cache keys, non-passing verify default).
 # Prior: w174_v1 (catalogue P973 gate + Hebrew brackets + holder gloss).
-WIKIDATA_VERDICT_SCHEMA = "w175_v1"
+WIKIDATA_VERDICT_SCHEMA = "w176_v1"
 # v7: the W-265 judge change (claim-uncertainty no longer caps, type_ok defers
 # span length to name_ok) altered the prompt and the gate — verdicts judged
 # under the old contract must re-judge. Full verdicts stick via W-171 (the old

@@ -5,11 +5,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 _EVAL_AGENT_ROOT = Path(__file__).resolve().parents[3] / "eval-agent"
 if str(_EVAL_AGENT_ROOT) not in sys.path:
     sys.path.insert(0, str(_EVAL_AGENT_ROOT))
+
+from eval_agent.ingest.wikidata_items import compact_statements  # noqa: E402
 
 from app.pipeline.hmo_canonical_wikidata import (  # noqa: E402
     _filter_person_aliases,
@@ -20,7 +20,6 @@ from converter.wikidata.catalog_notes import is_catalog_note_placeholder  # noqa
 from converter.wikidata.item_builder import (  # noqa: E402
     _build_work_description_for_record,
 )
-from eval_agent.ingest.wikidata_items import compact_statements  # noqa: E402
 
 
 class TestJudgeFixtureKeepsQuantityUnit:
@@ -37,7 +36,7 @@ class TestJudgeFixtureKeepsQuantityUnit:
         assert rows[0]["value_type"] == "quantity"
 
     def test_schema_bumped_for_unit_fixture(self) -> None:
-        assert WIKIDATA_VERDICT_SCHEMA == "w175_v1"
+        assert WIKIDATA_VERDICT_SCHEMA == "w176_v1"
 
 
 class TestHebrewDescriptionNotLabelClone:

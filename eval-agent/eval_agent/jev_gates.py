@@ -97,6 +97,144 @@ def synthesize_reasoning(
     return "; ".join(parts) + "."
 
 
+_OPENER = {
+    "full": "This item is safe to approve.",
+    "partial": "This item needs curator attention before upload.",
+    "fail": "Do not upload this item as-is.",
+}
+
+_AXIS_PASSED = {
+    "name_ok": "The label is accurate.",
+    "type_ok": "The entity type is correct.",
+    "role_ok": "The statements check out.",
+}
+
+_AXIS_PROBLEM = {
+    "name_ok": "The label needs attention.",
+    "type_ok": "The entity type needs attention.",
+    "role_ok": "The statements need attention.",
+}
+
+
+def _claim_evidence_lines(
+    payload: dict[str, Any], answers: dict[str, Any], limit: int = 3,
+) -> list[str]:
+    """Concrete unsupported-claim names for the claims_supported rule."""
+    out: list[str] = []
+    statements = _statement_props(payload)
+    for i, stmt in enumerate(statements[:MAX_CLAIMS]):
+        ans = answers.get(f"claim_{i}")
+        if not isinstance(ans, dict):
+            continue
+        noul = ans.get("noul")
+        if not isinstance(noul, (int, float)) or noul >= 0.7:
+            continue
+        prop = str(stmt.get("property") or "?")
+        label = str(stmt.get("property_label") or prop)
+        value = str(stmt.get("value_label") or stmt.get("value") or "")
+        out.append(f"{label} ({prop}) = {value}"[:90])
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _plain_note(note: str) -> str:
+    """Strip the leading 'axis:' token from a mechanical-gate note."""
+    for axis in AXES:
+        prefix = f"{axis}: "
+        if note.startswith(prefix):
+            note = note[len(prefix):]
+            note = note[0].upper() + note[1:]
+            break
+    return note if note.endswith((".", "!", "?")) else note + "."
+
+
+def explain_wikidata_verdict(
+    axes: dict[str, str],
+    overall: str,
+    payload: dict[str, Any],
+    answers: dict[str, Any],
+    notes: list[str],
+) -> str:
+    """Human-readable explanation for a wikidata_item Jev verdict.
+
+    Replaces the axis-token string ("role_ok=partial; evidence in title;
+    p=0.85.") with curator sentences: an opener, the per-rule findings of
+    the top-30 manifest that did not pass, the concrete unsupported claims,
+    and the mechanical gate findings. Rule answers carry no free text, so
+    the reasons come from the rule's own fix hint plus payload facts.
+    """
+    from eval_agent.wikidata_rules import rule_states
+
+    sentences: list[str] = [_OPENER.get(overall, _OPENER["partial"])]
+    passed: list[str] = []
+    for axis in AXES:
+        value = str(axes.get(axis) or "unknown")
+        if value == "yes":
+            passed.append(_AXIS_PASSED[axis])
+    if passed and overall != "full":
+        sentences.append(" ".join(passed))
+
+    findings: list[str] = []
+    for rule, state in rule_states(answers):
+        if state == "pass":
+            continue
+        detail = rule.get("fix") or rule["statement"]
+        if rule["id"] == "claims_supported":
+            lines = _claim_evidence_lines(payload, answers)
+            if lines:
+                detail = "unsupported: " + "; ".join(lines) + ". " + detail
+        findings.append(f"{'Problem' if state == 'fail' else 'Minor issue'}"
+                        f" — {rule['name']}: {detail}")
+    if not findings:
+        # No per-rule answers (legacy cache or escalation): plain axis text.
+        for axis in AXES:
+            value = str(axes.get(axis) or "unknown")
+            if value in ("partial", "no"):
+                findings.append(_AXIS_PROBLEM[axis])
+    sentences.extend(findings)
+
+    for note in notes:
+        sentences.append(_plain_note(note))
+
+    dup = duplicate_check_from_payload(payload)
+    dup_status = str(dup.get("status") or "")
+    if dup_status == DUP_STATUS_HAS_QID:
+        sentences.append(
+            "This is an update to an existing Wikidata item — no duplicate "
+            "risk.",
+        )
+    elif dup_status == "absent":
+        sentences.append(
+            "The duplicate check ran on live Wikidata: no existing item "
+            "carries this identifier (absent).",
+        )
+
+    if overall == "full" and len(sentences) == 1:
+        sentences.append(
+            "Label, type, and statements all satisfy the entity-creation "
+            "rules.",
+        )
+    p31 = (answers.get("p31_ok") or {}).get("choice") or ""
+    if p31 == "no":
+        sentences.append(
+            "The instance-of (P31) class is wrong for this entity — wrong "
+            "public modeling gets items deleted by the community.",
+        )
+    elif p31 == "partial":
+        sentences.append(
+            "The instance-of (P31) class is present but questionable as "
+            "the primary class.",
+        )
+    dup = (answers.get("duplicate_risk") or {}).get("choice") or ""
+    if overall != "fail" and dup == "unknown":
+        sentences.append(
+            "The duplicate check was inconclusive — it does not count "
+            "against the item, but a curator may re-run it.",
+        )
+    return " ".join(sentences)
+
+
 def deterministic_text_artifacts(
     payload: dict[str, Any], marc_context: dict[str, str] | None = None,
 ) -> list[tuple[str, str]]:
@@ -243,6 +381,78 @@ def has_p31_statement(payload: dict[str, Any]) -> bool:
                 str(stmt.get("property") or stmt.get("property_id") or "") == "P31":
             return True
     return False
+
+
+def _statement_props(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    return [s for s in (payload.get("statements") or []) if isinstance(s, dict)]
+
+
+def _prop_value(stmt: dict[str, Any]) -> str:
+    return str(stmt.get("value") or stmt.get("value_label") or "")
+
+
+def structural_findings(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Deterministic top-30 rule checks beyond the three ported gates
+    (artifact / validator-error / duplicate / P31-present): one title per
+    work, one catalog record per manuscript, unresolved __LOCAL: targets,
+    and comma-joined author-name strings. Each finding forces its axis in
+    code — never a judgment, never softened by the confidence gate."""
+    entity_type = str(payload.get("entity_type") or "")
+    statements = _statement_props(payload)
+    findings: list[dict[str, Any]] = []
+
+    def _count(prop: str) -> int:
+        return sum(
+            1 for s in statements
+            if str(s.get("property") or s.get("property_id") or "") == prop
+        )
+
+    if entity_type == "work" and _count("P1476") > 1:
+        findings.append({
+            "rule": "one title per work",
+            "axis": "role_ok", "force": "no",
+            "note": "the work carries more than one P1476 (title) claim — "
+                    "a second title form is a defect",
+        })
+    if entity_type == "manuscript":
+        if _count("P217") > 1:
+            findings.append({
+                "rule": "one catalog record per manuscript",
+                "axis": "role_ok", "force": "no",
+                "note": "the manuscript carries more than one P217 "
+                        "(shelfmark) claim — a second shelfmark is "
+                        "cross-record contamination",
+            })
+        if _count("P3959") > 1:
+            findings.append({
+                "rule": "one catalog record per manuscript",
+                "axis": "role_ok", "force": "no",
+                "note": "the manuscript carries more than one P3959 "
+                        "(catalog ID) claim",
+            })
+    local_targets = payload.get("local_reference_targets")
+    local_targets = local_targets if isinstance(local_targets, dict) else {}
+    for s in statements:
+        value = _prop_value(s)
+        if value.startswith("__LOCAL:") and value not in local_targets:
+            findings.append({
+                "rule": "internal reference targets resolve",
+                "axis": "role_ok", "force": "no",
+                "note": f"{value} does not resolve in "
+                        "local_reference_targets — build defect",
+            })
+            break
+    for s in statements:
+        prop = str(s.get("property") or s.get("property_id") or "")
+        value = _prop_value(s)
+        if prop == "P2093" and ", " in value:
+            findings.append({
+                "rule": "author-name strings hold one name",
+                "axis": "role_ok", "force": "partial",
+                "note": f"P2093 carries a comma-joined name list: {value[:60]}",
+            })
+            break
+    return findings
 
 
 def _answer_confidences(answers: dict[str, Any]) -> dict[str, Any]:
@@ -430,6 +640,38 @@ def apply_jev_gates(
             "name_ok: deterministic text artifacts ("
             + "; ".join(name for name, _ in artifacts_code) + ")",
         )
+    if evaluator_id == _WIKIDATA_ITEM:
+        # Top-30 manifest, deterministic half: structural findings force
+        # their axis in code (never softened by the confidence gate).
+        _FORCE_RANK = {"yes": 0, "partial": 1, "no": 2}
+        for finding in structural_findings(payload):
+            axis = finding["axis"]
+            if str(final.get(axis)) == "n/a":
+                continue
+            if _FORCE_RANK[finding["force"]] > _FORCE_RANK.get(str(final.get(axis)), 0):
+                final[axis] = finding["force"]
+                forced.add(axis)
+                notes.append(f"{axis}: {finding['note']}")
+        # Judgment half: each per-rule answer reconciles into its axis in
+        # code — overall stays code-computed (block rule R44).
+        from eval_agent.wikidata_rules import (  # noqa: PLC0415
+            rule_question_id,
+            rule_states,
+        )
+        for rule, state in rule_states(answers):
+            axis = rule["axis"]
+            if axis in forced or str(final.get(axis)) == "n/a":
+                continue
+            conf = confidences.get(rule_question_id(rule["id"]))
+            if state == "fail":
+                if isinstance(conf, (int, float)) and conf < ROLE_CONF_GATE:
+                    if final[axis] == "yes":
+                        final[axis] = "partial"
+                else:
+                    final[axis] = "no"
+                    forced.add(axis)
+            elif state == "partial" and final[axis] == "yes":
+                final[axis] = "partial"
     for axis in AXES:
         if axis in forced:
             continue
@@ -442,9 +684,14 @@ def apply_jev_gates(
     overall = overall_from_answers(
         evaluator_id, final, answers, payload,
     )
-    reasoning = synthesize_reasoning(final, evidence, match_kind, answers)
-    if notes:
-        reasoning += " Confidence gate: " + "; ".join(notes) + "."
+    if evaluator_id == _WIKIDATA_ITEM:
+        reasoning = explain_wikidata_verdict(
+            final, overall, payload, answers, notes,
+        )
+    else:
+        reasoning = synthesize_reasoning(final, evidence, match_kind, answers)
+        if notes:
+            reasoning += " Confidence gate: " + "; ".join(notes) + "."
     gated = {
         "name_ok": final[NAXIS],
         "type_ok": final[TAXIS],

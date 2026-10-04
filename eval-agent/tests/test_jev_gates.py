@@ -237,7 +237,7 @@ def test_duplicate_gate_not_run_never_moves_an_axis() -> None:
     )
     assert gated["type_ok"] == "yes"
     assert gated["overall"] == "full"
-    assert "duplicate_risk: unknown" in gated["reasoning"]
+    assert "duplicate check was inconclusive" in gated["reasoning"]
 
 
 def test_missing_p31_fails_wikidata_item() -> None:
@@ -253,7 +253,7 @@ def test_missing_p31_fails_wikidata_item() -> None:
     )
     assert gated["type_ok"] == "no"
     assert gated["overall"] == "fail"
-    assert "no P31" in gated["reasoning"]
+    assert "No P31 (instance of) statement" in gated["reasoning"]
 
 
 def test_p31_answer_no_fails_overall() -> None:
@@ -271,7 +271,7 @@ def test_p31_answer_no_fails_overall() -> None:
         candidate=_candidate("wikidata_item", payload), meta=meta,
     )
     assert gated["overall"] == "fail"
-    assert "P31 typing: no" in gated["reasoning"]
+    assert "instance-of (P31) class is wrong" in gated["reasoning"]
 
 
 def test_p31_answer_partial_caps_overall() -> None:
@@ -593,3 +593,110 @@ def test_gates_response_is_frozen_safe(tmp_path) -> None:
     assert response.verdict is not None
     assert response.verdict["overall"] == "partial"
     assert replace(response, verdict=response.verdict).verdict == response.verdict
+
+
+def _rule_answer(rule_id: str, choice: str, conf: float = 0.9) -> dict:
+    from eval_agent.wikidata_rules import rule_question_id
+    return {rule_question_id(rule_id): {"choice": choice, "confidence": conf}}
+
+
+def test_rule_fail_forces_axis_and_overall() -> None:
+    payload = _wiki_payload()
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "yes",
+        "overall": "full", "reasoning": "r", "suggested_fix": None,
+    }
+    meta = {"answers": {
+        **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "yes"}),
+        **_rule_answer("person_role", "no"),
+    }}
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="wikidata_item",
+        candidate=_candidate("wikidata_item", payload), meta=meta,
+    )
+    assert gated["role_ok"] == "no"
+    assert gated["overall"] == "fail"
+    assert "person role supported" in gated["reasoning"]
+    assert "Relabel the role" in gated["reasoning"]
+
+
+def test_rule_fail_low_confidence_routes_to_review() -> None:
+    payload = _wiki_payload()
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "yes",
+        "overall": "full", "reasoning": "r", "suggested_fix": None,
+    }
+    meta = {"answers": {
+        **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "yes"}),
+        **_rule_answer("person_role", "no", conf=0.2),
+    }}
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="wikidata_item",
+        candidate=_candidate("wikidata_item", payload), meta=meta,
+    )
+    assert gated["role_ok"] == "partial"
+    assert gated["overall"] == "partial"
+
+
+def test_rule_partial_downgrades_yes() -> None:
+    payload = _wiki_payload()
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "yes",
+        "overall": "full", "reasoning": "r", "suggested_fix": None,
+    }
+    meta = {"answers": {
+        **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "yes"}),
+        **_rule_answer("value_identity_trust", "partial"),
+    }}
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="wikidata_item",
+        candidate=_candidate("wikidata_item", payload), meta=meta,
+    )
+    assert gated["role_ok"] == "partial"
+    assert gated["overall"] == "partial"
+
+
+def test_structural_multi_title_forces_role_ok() -> None:
+    payload = _wiki_payload({
+        "entity_type": "work",
+        "statements": [
+            {"property": "P31", "value": "Q571"},
+            {"property": "P1476", "value": "A"},
+            {"property": "P1476", "value": "B"},
+        ],
+    })
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "yes",
+        "overall": "full", "reasoning": "r", "suggested_fix": None,
+    }
+    meta = {"answers": _answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "yes"})}
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="wikidata_item",
+        candidate=_candidate("wikidata_item", payload), meta=meta,
+    )
+    assert gated["role_ok"] == "no"
+    assert "more than one P1476" in gated["reasoning"]
+
+
+def test_structural_unresolved_local_target() -> None:
+    payload = _wiki_payload({
+        "statements": [
+            {"property": "P31", "value": "Q571"},
+            {"property": "P1574", "value": "__LOCAL:w1"},
+        ],
+    })
+    findings = jev_gates.structural_findings(payload)
+    assert any("does not resolve" in f["note"] for f in findings)
+
+
+def test_structural_comma_author_string() -> None:
+    payload = _wiki_payload({
+        "statements": [
+            {"property": "P31", "value": "Q571"},
+            {"property": "P2093", "value": "Rabbi Moshe, Rabbi Yehuda"},
+        ],
+    })
+    findings = jev_gates.structural_findings(payload)
+    assert any("comma-joined" in f["note"] for f in findings)
+    assert all(f["force"] == "partial" for f in findings
+               if "comma-joined" in f["note"])

@@ -298,6 +298,26 @@ def questions_for(
              "duplicate_found": "an identifier-matching item already exists",
              "unknown": "probe inconclusive — no conclusion"},
         )
+        # Per-rule questions: one judgment rule of the top-30
+        # entity-creation manifest each (deterministic rules stay in
+        # jev_gates code and are never asked). The certified axis questions
+        # above stay byte-identical (block rule R44) — these extend the set.
+        from eval_agent.wikidata_rules import (  # noqa: PLC0415
+            judgment_rules,
+            rule_question_id,
+        )
+        entity_type = str(
+            ((getattr(candidate, "payload", None) or {}).get("entity_type"))
+            or "",
+        )
+        for rule in judgment_rules(entity_type):
+            qs[rule_question_id(rule["id"])] = _choice(
+                rule_question_id(rule["id"]),
+                f"Rule — {rule['name']}. {rule['question']}",
+                {"yes": "rule satisfied",
+                 "partial": "rule partly satisfied — curator can fix",
+                 "no": "rule violated"},
+            )
     if evaluator_id not in _EVIDENCE_FIELDS:
         return qs
     fields = _EVIDENCE_FIELDS[evaluator_id]

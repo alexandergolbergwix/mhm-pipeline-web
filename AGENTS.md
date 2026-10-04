@@ -116,8 +116,12 @@ Gemini uses the curator's Settings key (or server `GEMINI_API_KEY`); Qubrid
 models (Kimi K2.5, DeepSeek V4 Flash) use server `QUBRID_API_KEY` only; the
 TypeSafe Jev model (`typesafe/jev-1.13.0`) uses server `TYPESAFE_API_KEY` and
 runs deterministic code gates + optional LLM escalation (eval-agent block
-**R44**). Non-Gemini models run linear judging (no agentic tool-loop). See
-eval-agent block **R16** and **Rule W-46**
+**R44**). For `wikidata_item` Jev also runs the **top-30 entity-creation rule
+manifest** (`eval_agent/wikidata_rules.py`): 8 deterministic rules stay in
+code, 22 judgment rules get one question each, rule answers reconcile into
+the axes in code, and the verdict explanation is plain-language rule findings
+— never axis tokens (cache salt `w176_v1`). Non-Gemini models run linear
+judging (no agentic tool-loop). See eval-agent block **R16** and **Rule W-46**
 ([docs/architecture/rules/ai-verify.md](docs/architecture/rules/ai-verify.md)).
 
 ## HMO Wikibase Schema — AI verify

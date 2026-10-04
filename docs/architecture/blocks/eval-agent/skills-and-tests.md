@@ -232,7 +232,14 @@ cd backend && DATABASE_URL=… .venv/bin/python -m scripts.typesafe_bakeoff \
   wikidata duplicate gate (probe `candidates_found` → fail; update/adopted/
   absent pass; `not_run` never moves an axis), missing-P31 gate,
   schema-clean gated verdicts, session wiring (gates run for the typesafe
-  provider only).
+  provider only), plus the top-30 rule rollout: rule-answer reconciliation
+  into the axes, structural findings (multi-P1476 / multi-P217 / unresolved
+  `__LOCAL:` / comma P2093), and the plain-language explanation.
+- `eval-agent/tests/test_wikidata_rules.py` — the top-30 manifest shape
+  (30 rules: 8 deterministic + 22 judgment), per-entity-type filtering,
+  `rule_<id>` questions in the wikidata_item set (never in other
+  evaluators), `rule_states` mapping, and the human-readable explanation
+  (legacy answers fall back to plain axis text).
 - `eval-agent/tests/test_jev_escalation.py` — escalation policy: high-conf
   full stays with Jev; partial / low-conf full → fallback verdict with the
   deciding `judge_id`; policy off / non-typesafe primary never escalate;

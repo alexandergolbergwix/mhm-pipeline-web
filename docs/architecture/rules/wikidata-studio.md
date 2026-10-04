@@ -1807,7 +1807,7 @@ claims were unchanged. Sticky-full already existed in
    “Verify visible / all” remains available as a secondary control.
 5. Partial / fail / verification_failed never stick.
 
-Schema / skill salt **`w175_v1`**.
+Schema salt **`w176_v1`** (Jev top-30 rule rollout); skill pack **`w175_v1`**.
 
 Tests: `backend/tests/unit/test_wikidata_verdict_cache.py` (sticky sanitise +
 gloss-agnostic keys).
