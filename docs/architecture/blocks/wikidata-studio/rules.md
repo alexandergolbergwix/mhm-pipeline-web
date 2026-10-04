@@ -596,7 +596,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `sanitise_stale_wikidata_verdict` reuses sticky-full; cache keys omit
     presentation `value_label`/`property_label` (fixtures keep them);
     schema salt only for Mode-β rubric/skill changes; Studio primary
-    button is Verify non-passing; schema `w178_v1` / skill `w175_v1`.
+    button is Verify non-passing; schema `w179_v1` / skill `w175_v1`.
     *Why:* each W-171…W-174 salt bump blanked every pill and forced
     full-corpus re-verify for unchanged fulls.*
 

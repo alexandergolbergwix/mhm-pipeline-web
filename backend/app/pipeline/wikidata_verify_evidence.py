@@ -149,7 +149,7 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P1104": ("extent",),
     "P1476": ("title",),
     "P1574": ("contents", "title", "related_records"),
-    "P1680": ("title",),
+    "P1680": ("subtitle", "title"),
     "P1684": ("notes", "colophon_text", "summary"),
     "P1922": ("notes", "colophon_text", "summary"),   # first line / incipit
     "P655": ("authors", "contributors"),              # translator

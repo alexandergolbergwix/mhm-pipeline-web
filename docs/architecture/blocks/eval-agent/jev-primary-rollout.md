@@ -281,8 +281,11 @@ W-171..W-175:
   keys fall back to plain axis sentences, so old cache rows still render
   readably.
 - **Cache:** the question change is a prompt change — verdict schema salt
-  bumped `w177_v1` → `w178_v1` (backend `wikidata_verdict_cache.py`,
-  record-id cap). Full verdicts stick via W-171; partial/fail re-judge
+  bumped `w178_v1` → `w179_v1` (backend `wikidata_verdict_cache.py`):
+  the MARC context now carries a `subtitle` key (245$b) and P1680's
+  claim_sources cite the subtitle slice — the ISBD subtitle stopped
+  reading as an unsupported claim (47% of partial manuscripts vs 7% of
+  fulls, 2026-10-04). Full verdicts stick via W-171; partial/fail re-judge
   under the new questions.
 - Tests: `eval-agent/tests/test_wikidata_rules.py`,
   `test_jev_gates.py` (advisory findings / structural findings incl. the

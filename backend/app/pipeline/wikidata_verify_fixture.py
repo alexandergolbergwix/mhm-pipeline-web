@@ -50,9 +50,12 @@ def compact_wikidata_verify_fixture_item(item: dict[str, Any]) -> dict[str, Any]
         "hmo_wikibase_id": item.get("hmo_wikibase_id"),
         "source_uri": item.get("source_uri"),
         "validation_issues": item.get("validation_issues") or [],
-        # Capped: a work evidenced across hundreds of manuscripts must not
-        # flood the judge state (TypeSafe input cap, 2026-10-04).
-        "record_ids": verify_record_ids(item),
+        # Capped HARD for the judge state: the session merges every listed
+        # record into the state's MARC block, and 6 merged Hebrew prayer-
+        # book records still breached the TypeSafe input cap (119 abstains
+        # on 2026-10-04). Two records — the P3959 anchor + one backup —
+        # keep the claims evidenced; the evidence packs carry the rest.
+        "record_ids": verify_record_ids(item, cap=2),
         # The rubric treats local_reference_targets as a first-class pack
         # ("__LOCAL:<id> … Accept it when local_reference_targets contains
         # that id") and the Jev structural check reads it — a lean fixture

@@ -37,7 +37,7 @@ _SCALAR_KEYS = frozenset({
 })
 
 HMO_ITEM_MARC_KEYS = [
-    "title", "authors", "contributors", "subjects", "provenance",
+    "title", "subtitle", "authors", "contributors", "subjects", "provenance",
     "notes", "dates", "place", "related_places", "languages",
     "material", "extent", "shelfmark", "colophon_text", "contents",
     # P921 (main subject) is derived from these as well as from 650/600 — a
@@ -48,7 +48,7 @@ HMO_ITEM_MARC_KEYS = [
 ]
 
 AUTHORITY_MARC_KEYS = [
-    "title", "authors", "contributors", "subjects", "provenance",
+    "title", "subtitle", "authors", "contributors", "subjects", "provenance",
     "notes", "dates", "place", "related_places", "colophon_text",
 ]
 
@@ -61,6 +61,10 @@ AUTHORITY_MARC_KEYS = [
 RAW_TAG_FALLBACK: dict[str, tuple[str, ...]] = {
     "dates": ("008", "260$c", "264$c", "046$a", "046$b"),
     "title": ("245$a", "245$b", "245$c"),
+    # The ISBD subtitle (245$b / split remainder) — P1680's evidence channel;
+    # citing only the main title made every real subtitle read as unsupported
+    # (2026-10-04: P1680 on 47% of partial manuscripts vs 7% of fulls).
+    "subtitle": ("245$b",),
     "variant_titles": ("246$a", "246$b"),
     "place": ("260$a", "264$a", "751$a"),
     "extent": ("300$a", "300$b", "300$c"),

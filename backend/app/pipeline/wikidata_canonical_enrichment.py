@@ -765,42 +765,80 @@ def dedupe_statements(statements: list[WikidataStatement]) -> list[WikidataState
     ``string`` and ``external-id`` survived twice — every manuscript shipped
     P3959 four or five times (Rule W-137). Ranking by (references, qualifiers)
     keeps the referenced instance the judge and curator want to see.
+
+    Quantity properties additionally dedupe on the numeric value: the HMO
+    snapshot carries ``has_height_mm: "200"`` (string, no unit) while the
+    metadata projection emits 200.0 with ``unit=mm`` — both survived and the
+    judge read the bare string twin as a removable bad claim (2026-10-04:
+    role_ok=partial on every manuscript carrying both).
     """
     best: dict[tuple[str, str], WikidataStatement] = {}
     order: list[tuple[str, str]] = []
     for stmt in statements or []:
         key = (
             str(stmt.property_id or ""),
-            str(stmt.value if stmt.value is not None else "")
-            if str(stmt.property_id or "") != "P2093"
-            # MARC 100$a punctuation is transcription variance, not identity
-            # (Rule W-269 follow-up) — same normalization as _statement_key.
-            else re.sub(r"\s+", " ", str(stmt.value or "").strip().rstrip(" ,.;:/-")),
+            _dedupe_value(str(stmt.property_id or ""), stmt),
         )
         current = best.get(key)
         if current is None:
             best[key] = stmt
             order.append(key)
             continue
-        rank = (len(stmt.references or []), len(stmt.qualifiers or []))
-        current_rank = (len(current.references or []), len(current.qualifiers or []))
+        pid = str(stmt.property_id or "")
+        if pid in _QUANTITY_DEDUPE_PIDS:
+            # The unit-bearing quantity is the claim the judge and curator
+            # want — it outranks a referenced but unitless string twin.
+            rank = (1 if _has_unit(stmt) else 0, len(stmt.references or []),
+                    len(stmt.qualifiers or []))
+            current_rank = (
+                1 if _has_unit(current) else 0,
+                len(current.references or []),
+                len(current.qualifiers or []),
+            )
+        else:
+            rank = (len(stmt.references or []), len(stmt.qualifiers or []))
+            current_rank = (
+                len(current.references or []),
+                len(current.qualifiers or []),
+            )
         if rank > current_rank:
             best[key] = stmt
     return [best[key] for key in order]
 
 
-def _statement_key(stmt: WikidataStatement) -> tuple[str, str, str]:
+def _has_unit(stmt: WikidataStatement) -> bool:
+    unit = getattr(stmt, "unit", None)
+    return bool(unit and str(unit).strip())
+
+
+_QUANTITY_DEDUPE_PIDS = frozenset({"P2048", "P2049", "P1104"})
+
+
+def _dedupe_value(pid: str, stmt: WikidataStatement) -> str:
     value = str(stmt.value if stmt.value is not None else "")
-    if str(stmt.property_id or "") == "P2093":
+    if pid == "P2093":
         # MARC 100$a punctuation is transcription variance, not identity:
         # "ויטל, חיים בן יוסף," (trailing comma) and "ויטל, חיים בן יוסף"
         # are the same author string — dedupe on the normalized form and
         # let ranking keep the better-sourced instance (Rule W-269 follow-up).
-        value = re.sub(r"\s+", " ", value.strip().rstrip(" ,.;:/-"))
+        return re.sub(r"\s+", " ", value.strip().rstrip(" ,.;:/-"))
+    if pid in _QUANTITY_DEDUPE_PIDS:
+        try:
+            return str(float(value.replace(",", "")))
+        except (TypeError, ValueError):
+            return value
+    return value
+
+
+def _statement_key(stmt: WikidataStatement) -> tuple[str, str, str]:
+    """Merge-time key: (property, value_type, value) with P2093 normalization."""
+    pid = str(stmt.property_id or "")
     return (
-        str(stmt.property_id or ""),
+        pid,
         str(stmt.value_type or ""),
-        value,
+        _dedupe_value(pid, stmt)
+        if pid == "P2093" or pid in _QUANTITY_DEDUPE_PIDS
+        else str(stmt.value if stmt.value is not None else ""),
     )
 
 

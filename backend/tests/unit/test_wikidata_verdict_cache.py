@@ -656,3 +656,17 @@ def test_verify_record_ids_caps_multi_source_work() -> None:
     # a normal item is unaffected
     single = verify_record_ids({"records": ["990000848100205171"]})
     assert single == ["990000848100205171"]
+
+
+def test_p1680_claims_cite_the_subtitle_slice() -> None:
+    from app.pipeline.wikidata_verify_evidence import CLAIM_SOURCE_SLICES
+
+    assert CLAIM_SOURCE_SLICES["P1680"] == ("subtitle", "title")
+
+
+def test_subtitle_slice_projected_from_245b() -> None:
+    from app.pipeline.marc_verify_context import project_marc_slice
+
+    rec = {"title": "תכלאל", "subtitle": "עם פירוש חידושין"}
+    out = project_marc_slice(rec, ["title", "subtitle"])
+    assert out["subtitle"] == "עם פירוש חידושין"
