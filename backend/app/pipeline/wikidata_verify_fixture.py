@@ -14,6 +14,7 @@ from app.pipeline.wikidata_verdict_cache import (
     fixture_statements,
     judge_evidence_projection,
     record_ids_for_wikidata_item,
+    verify_record_ids,
 )
 
 _FIXTURE_ITEM_KEYS = (
@@ -49,7 +50,9 @@ def compact_wikidata_verify_fixture_item(item: dict[str, Any]) -> dict[str, Any]
         "hmo_wikibase_id": item.get("hmo_wikibase_id"),
         "source_uri": item.get("source_uri"),
         "validation_issues": item.get("validation_issues") or [],
-        "record_ids": record_ids_for_wikidata_item(item),
+        # Capped: a work evidenced across hundreds of manuscripts must not
+        # flood the judge state (TypeSafe input cap, 2026-10-04).
+        "record_ids": verify_record_ids(item),
         # The rubric treats local_reference_targets as a first-class pack
         # ("__LOCAL:<id> … Accept it when local_reference_targets contains
         # that id") and the Jev structural check reads it — a lean fixture

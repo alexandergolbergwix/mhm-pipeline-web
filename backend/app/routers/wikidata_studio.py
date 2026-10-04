@@ -101,8 +101,8 @@ from app.pipeline.wikidata_verdict_cache import (
     attach_local_reference_targets,
     attach_wikidata_marc_context,
     marc_context_for_wikidata_item,
-    record_ids_for_wikidata_item,
     sanitise_stale_wikidata_verdict,
+    verify_record_ids,
     wikidata_verdict_input_fingerprint,
     wikidata_verdict_query_summary,
 )
@@ -3451,7 +3451,7 @@ async def _fetch_wikidata_verify_items(
             cn
             for cn in (
                 canonical_control_number(value)
-                for value in record_ids_for_wikidata_item(item)
+                for value in verify_record_ids(item)
             )
             if cn and cn in run_record_ids
         ]

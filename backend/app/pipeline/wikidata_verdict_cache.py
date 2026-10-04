@@ -16,7 +16,10 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w177_v1 with the Jev top-30 rule rollout v2: claim-conditional
+# Bumped to w178_v1 with the verify record-id cap: multi-source works
+# (348-record Tiklal class) flooded the judge state — their marc_context
+# slice and record_ids in the query summary change → re-judge.
+# Prior: w177_v1 (the Jev top-30 rule rollout v2: claim-conditional
 # rule questions + advisory rule findings (no axis forcing) + the lean
 # fixture now ships local_reference_targets. Verdicts judged under w176_v1
 # (the first rule rollout, 2026-10-04) must re-judge; full verdicts stick
@@ -27,7 +30,7 @@ from app.pipeline.marc_verify_context import (
 # Prior: w175_v1 (Rule W-175: sticky-full on review-table sanitise,
 # presentation labels out of cache keys, non-passing verify default).
 # Prior: w174_v1 (catalogue P973 gate + Hebrew brackets + holder gloss).
-WIKIDATA_VERDICT_SCHEMA = "w177_v1"
+WIKIDATA_VERDICT_SCHEMA = "w178_v1"
 # v7: the W-265 judge change (claim-uncertainty no longer caps, type_ok defers
 # span length to name_ok) altered the prompt and the gate — verdicts judged
 # under the old contract must re-judge. Full verdicts stick via W-171 (the old
@@ -166,6 +169,67 @@ def judge_evidence_projection(item: dict[str, Any]) -> dict[str, Any]:
     for key in JUDGE_EVIDENCE_KEYS_DROPPED:
         slim.pop(key, None)
     return slim
+
+
+VERIFY_RECORD_ID_CAP = 6
+
+
+def verify_record_ids(item: dict[str, Any], *, cap: int = VERIFY_RECORD_ID_CAP) -> list[str]:
+    """Record ids the VERIFY path may use for one item, capped.
+
+    A work evidenced across hundreds of manuscripts (e.g. the Tiklal work
+    carries 348 source records) must not flood the judge state: the full
+    `records` list made the eval-agent prompt exceed the TypeSafe input
+    cap — HTTP 400 max_tokens_exceeded on every judged row of that class
+    (127 abstains, 2026-10-04). The P3959 reference anchors come first
+    (they evidence this item's claims), then stored records up to the cap.
+    Fingerprints keep the full ``_record_ids`` — only the judge state is
+    capped.
+    """
+    from app.pipeline.marc_verify_context import canonical_control_number  # noqa: PLC0415
+
+    anchors: list[str] = []
+    seen: set[str] = set()
+    for statement in item.get("statements") or []:
+        if not isinstance(statement, dict):
+            continue
+        for reference in statement.get("references") or []:
+            if not isinstance(reference, dict):
+                continue
+            snaks = (
+                reference.get("snaks")
+                if isinstance(reference.get("snaks"), list) else [reference]
+            )
+            for snak in snaks:
+                if not isinstance(snak, dict):
+                    continue
+                if str(snak.get("property") or snak.get("property_id") or "") != "P3959":
+                    continue
+                cn = canonical_control_number(snak.get("value"))
+                if cn and cn not in seen:
+                    seen.add(cn)
+                    anchors.append(cn)
+    if len(anchors) >= cap:
+        return anchors[:cap]
+    for key in ("record_ids", "records", "control_numbers"):
+        stored = item.get(key)
+        if not isinstance(stored, list):
+            continue
+        for value in stored:
+            cn = canonical_control_number(value)
+            if cn and cn not in seen:
+                seen.add(cn)
+                anchors.append(cn)
+                if len(anchors) >= cap:
+                    return anchors
+    for key in ("control_number", "_control_number", "record_id"):
+        cn = canonical_control_number(item.get(key))
+        if cn and cn not in seen:
+            seen.add(cn)
+            anchors.append(cn)
+            if len(anchors) >= cap:
+                break
+    return anchors
 
 
 def record_ids_for_wikidata_item(item: dict[str, Any]) -> list[str]:

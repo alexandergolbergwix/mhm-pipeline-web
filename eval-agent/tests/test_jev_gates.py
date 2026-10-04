@@ -674,6 +674,21 @@ def test_structural_unresolved_local_target() -> None:
     assert any("does not resolve" in f["note"] for f in findings)
 
 
+def test_structural_local_target_stripped_id_resolves() -> None:
+    """attach_local_reference_targets keys the pack WITHOUT the __LOCAL:
+    prefix — the stripped id must resolve (2026-10-04, 143 false fails)."""
+    payload = _wiki_payload({
+        "local_reference_targets": {
+            "work:צחות_בדיחותא_דקדושין": {"label": "צחות בדיחותא דקדושין"},
+        },
+        "statements": [
+            {"property": "P31", "value": "Q87167"},
+            {"property": "P1574", "value": "__LOCAL:work:צחות_בדיחותא_דקדושין"},
+        ],
+    })
+    assert jev_gates.structural_findings(payload) == []
+
+
 def test_structural_local_check_silent_when_pack_absent() -> None:
     """A payload surface without local_reference_targets (lean fixture)
     must not flag every __LOCAL: value — 2026-10-04, 143 false fails."""

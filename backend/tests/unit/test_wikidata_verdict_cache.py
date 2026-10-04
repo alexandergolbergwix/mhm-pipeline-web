@@ -637,3 +637,22 @@ class TestDuplicateRejudge:
         slim = slim_item_for_verdict_persist(item)
         assert "duplicate_check" not in slim["verify_evidence"]["wikidata_existing"]
         assert duplicate_class_for_item(slim) == "probed-conclusive"
+
+
+def test_verify_record_ids_caps_multi_source_work() -> None:
+    from app.pipeline.wikidata_verdict_cache import verify_record_ids
+
+    item = {
+        "local_id": "QDraft_Work___MS_1",
+        "statements": [{
+            "property": "P3959",
+            "references": [{"property": "P3959", "value": "990000848100205171"}],
+        }],
+        "records": [f"990000{i:09d}205171" for i in range(400)],
+    }
+    ids = verify_record_ids(item)
+    assert len(ids) == 6
+    assert ids[0] == "990000848100205171"
+    # a normal item is unaffected
+    single = verify_record_ids({"records": ["990000848100205171"]})
+    assert single == ["990000848100205171"]

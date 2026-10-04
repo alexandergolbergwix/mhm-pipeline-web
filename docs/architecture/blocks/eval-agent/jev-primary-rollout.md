@@ -244,7 +244,10 @@ W-171..W-175:
   silent when the payload carries no `local_reference_targets` pack, and
   the lean verify fixture (`wikidata_verify_fixture.py`) now ships the
   pack — v1 shipped neither and flagged 143 manuscripts as unresolved
-  build defects.
+  build defects. The pack is keyed by the id WITHOUT the `__LOCAL:`
+  prefix (`attach_local_reference_targets` strips it) and the check
+  compares stripped ids — the prefixed comparison was the second false-
+  fail round of 143 on the same day.
 - **19 judgment rules become one TypeSafe question each**, claim-
   conditional (`applicable_rules(entity_type, payload)`): a rule judging
   property X is asked only when the item carries X (P195→holder, P973,
@@ -255,6 +258,13 @@ W-171..W-175:
   ask exactly that, so no duplicate question goes out. v1 sent ~30
   unconditional questions per item and the TypeSafe API rejected the
   oversized responses (`HTTP 400 max_tokens_exceeded`, 127 abstains).
+- **Judge-state record cap** (`verify_record_ids`, cap 6, in
+  `wikidata_verdict_cache.py`): the verify path and the lean fixture use
+  the P3959 anchor records first, then stored records up to the cap — a
+  multi-source work (the Tiklal work spans 348 source records) flooded
+  the MARC scope and the eval-agent state and breached the TypeSafe input
+  cap on every judged row of that class. Fingerprints keep the full
+  `_record_ids`; only the judge state is capped (salt `w178_v1`).
 - **Rule answers are advisory only.** They never move the axes; the
   certified axis questions + mechanical gates decide the verdict, and
   `overall` stays code-computed (R44). v1 reconciled rule answers into
@@ -271,12 +281,14 @@ W-171..W-175:
   keys fall back to plain axis sentences, so old cache rows still render
   readably.
 - **Cache:** the question change is a prompt change — verdict schema salt
-  bumped `w176_v1` → `w177_v1` (backend `wikidata_verdict_cache.py`).
-  Full verdicts stick via W-171; partial/fail re-judge under the new
-  questions.
+  bumped `w177_v1` → `w178_v1` (backend `wikidata_verdict_cache.py`,
+  record-id cap). Full verdicts stick via W-171; partial/fail re-judge
+  under the new questions.
 - Tests: `eval-agent/tests/test_wikidata_rules.py`,
   `test_jev_gates.py` (advisory findings / structural findings incl. the
-  pack-absent skip), `tests/unit/test_wikidata_verdict_cache.py` (salt).
+  pack-absent skip and the stripped-id comparison),
+  `backend/tests/unit/test_wikidata_verdict_cache.py` (salt +
+  `verify_record_ids` cap), `tests/unit/test_wikidata_export33_w172.py`.
 
 ## What NOT to do
 - Do not auto-approve anything from AI verdicts (curator approval stays;

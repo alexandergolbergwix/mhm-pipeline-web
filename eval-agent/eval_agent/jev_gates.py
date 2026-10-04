@@ -454,7 +454,18 @@ def structural_findings(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if local_targets is not None:
         for s in statements:
             value = _prop_value(s)
-            if value.startswith("__LOCAL:") and value not in local_targets:
+            if not value.startswith("__LOCAL:"):
+                continue
+            # attach_local_reference_targets keys the pack by the id
+            # WITHOUT the __LOCAL: prefix (target_id = value minus prefix;
+            # a value_id may carry the real local id instead) — compare
+            # stripped, never the prefixed value (2026-10-04: the prefixed
+            # comparison flagged 143 manuscripts as unresolved).
+            candidates = {value.removeprefix("__LOCAL:")}
+            value_id = s.get("value_id")
+            if value_id:
+                candidates.add(str(value_id).removeprefix("__LOCAL:"))
+            if not (candidates & set(local_targets)):
                 findings.append({
                     "rule": "internal reference targets resolve",
                     "axis": "role_ok", "force": "no",
