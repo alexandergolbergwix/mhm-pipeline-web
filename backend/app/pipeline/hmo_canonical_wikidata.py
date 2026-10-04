@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
-from typing import Any, Callable
 import hashlib
 import json
 import logging
 import re
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
 from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
 from app.pipeline.marc_verify_context import (
@@ -516,7 +516,9 @@ def native_items_from_hmo(
         assert wd_type in PUBLIC_WIKIDATA_ENTITY_TYPES
         existing_qid = _accepted_wikidata_qid(entity)
         if wd_type == "work" and not existing_qid:
-            from converter.wikidata.property_mapping import known_work_qid_for_title  # noqa: PLC0415
+            from converter.wikidata.property_mapping import (
+                known_work_qid_for_title,  # noqa: PLC0415
+            )
 
             for title in _work_title_candidates(entity):
                 existing_qid = known_work_qid_for_title(title)
@@ -1481,7 +1483,10 @@ def _hebrew_preferred_heading_mismatch(item: WikidataItem, prefs: list[str]) -> 
         return False
     if any(heading_matches(label, preferred) for label in labels for preferred in prefs):
         return False
-    from converter.authority.heading_fidelity import _name_tokens, given_names_match  # noqa: PLC0415
+    from converter.authority.heading_fidelity import (  # noqa: PLC0415
+        _name_tokens,
+        given_names_match,
+    )
     from converter.authority.wikidata_crosscheck import hebrew_label_matches  # noqa: PLC0415
 
     # A byname can be absent, but shared ancestors cannot establish identity
@@ -1711,12 +1716,12 @@ def _sanitize_canonical_claims(
 ) -> None:
     """Remove known broad subjects and unsupported canonical holder claims."""
     from converter.wikidata.catalog_notes import is_catalog_note_placeholder  # noqa: PLC0415
-    from converter.wikidata.marc_subject_resolve import (  # noqa: PLC0415
-        canonical_reference_grounded_in_subjects,
-    )
     from converter.wikidata.manuscript_projection import (  # noqa: PLC0415
         _current_holder_names,
         _current_holder_qid,
+    )
+    from converter.wikidata.marc_subject_resolve import (  # noqa: PLC0415
+        canonical_reference_grounded_in_subjects,
     )
 
     for item in items:
@@ -1750,8 +1755,39 @@ def _sanitize_canonical_claims(
                 continue
             if pid == "P1684" and is_catalog_note_placeholder(value):
                 continue
+            if pid == "P2093":
+                fixed = _latin_author_casing(value)
+                if fixed != value:
+                    statement.value = fixed
+                    if str(statement.value_label or "") == value:
+                        statement.value_label = fixed
             kept.append(statement)
         item.statements = kept
+
+
+_LATIN_LOWER_RE = re.compile(r"^[a-z0-9 ,.\-'\u2019]+$")
+
+
+def _latin_author_casing(value: str) -> str:
+    """Title-case an all-lowercase Latin author string.
+
+    The HMO snapshot stores author name strings verbatim from 505/500
+    responsibility text — several arrive lowercased ("levi, benedetto"),
+    which the judge reads as a name that matches no evidence channel
+    (2026-10-04: 134 work partials). Hebrew strings pass through untouched.
+    """
+    text = str(value or "").strip()
+    if not text or not _LATIN_LOWER_RE.match(text):
+        return text
+    out: list[str] = []
+    for word in text.split(" "):
+        if not word:
+            out.append(word)
+        elif word[0].isalpha():
+            out.append(word[0].upper() + word[1:])
+        else:
+            out.append(word)
+    return " ".join(out)
 
 
 def quickstatements_from_canonical(entities: Iterable[CanonicalHmoEntity]) -> str:
@@ -2852,16 +2888,13 @@ def _hebrew_manuscript_description(record: dict[str, Any]) -> str:
     Keeps the ``he`` slot from falling back to a MARC note (Rule W-137). Only
     evidenced fragments are used — no invented date or holder.
     """
-    from converter.wikidata.item_builder import (  # noqa: PLC0415
-        HEBREW_INSTITUTION_NAMES,
-        _LANG_CODE_TO_HEBREW,
-        _holding_institution_name,
-    )
-
     # The language word follows the record, exactly as the `en` description
     # does — a hardcoded "עברי" made 10 Arabic/Italian manuscripts contradict
     # their own English description (Rule W-140).
-    from converter.wikidata.item_builder import (  # noqa: PLC0415
+    from converter.wikidata.item_builder import (  # noqa: PLC0415  # noqa: PLC0415
+        _LANG_CODE_TO_HEBREW,
+        HEBREW_INSTITUTION_NAMES,
+        _holding_institution_name,
         _is_printed_facsimile_record,
     )
 
