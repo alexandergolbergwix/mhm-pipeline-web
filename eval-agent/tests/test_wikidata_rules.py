@@ -6,6 +6,7 @@ from eval_agent.client.typesafe_questions import questions_for
 from eval_agent.jev_gates import explain_wikidata_verdict
 from eval_agent.wikidata_rules import (
     RULES,
+    applicable_rules,
     judgment_rules,
     rule_question_id,
     rule_states,
@@ -24,7 +25,7 @@ def test_manifest_shape() -> None:
     for rule in RULES:
         assert rule["axis"] in ("name_ok", "type_ok", "role_ok")
         assert rule["name"] and rule["statement"]
-        if rule["kind"] == "judgment":
+        if rule["kind"] == "judgment" and not rule.get("axis_native"):
             assert rule["question"] and rule["fix"]
 
 
@@ -50,15 +51,48 @@ def test_questions_for_wikidata_item_includes_rule_questions() -> None:
 
     payload = {"entity_type": "manuscript", "statements": []}
     qs = questions_for("wikidata_item", SimpleNamespace(payload=payload))
-    expected = {rule_question_id(r["id"]) for r in judgment_rules("manuscript")}
+    expected = {rule_question_id(r["id"]) for r in applicable_rules("manuscript", payload)}
     assert expected <= set(qs)
     # certified axes untouched
     for key in ("name_ok", "type_ok", "role_ok", "p31_ok", "duplicate_risk",
                 "evidence_field"):
         assert key in qs
+    # axis-native rules are never asked separately (the certified axis
+    # questions already judge them)
+    assert not (expected & {"rule_label_identity", "rule_entity_type_fit",
+                            "rule_p31_class_choice"})
     # no rule questions leak into a non-wikidata evaluator
     qs_person = questions_for("person_ner", SimpleNamespace(payload={}))
     assert not [k for k in qs_person if k.startswith("rule_")]
+
+
+def test_applicable_rules_are_claim_conditional() -> None:
+    # a manuscript with no P195/P973/aliases gets no holder/p973/alias rule
+    bare = {"entity_type": "manuscript", "statements": [], "aliases": {}}
+    bare_ids = {r["id"] for r in applicable_rules("manuscript", bare)}
+    assert "holder_identity" not in bare_ids
+    assert "p973_agreement" not in bare_ids
+    assert "alias_intent" not in bare_ids
+    # carrying the claim brings the rule back
+    holding = {
+        "entity_type": "manuscript",
+        "statements": [
+            {"property": "P195", "value": "Q1028334"},
+            {"property": "P973", "value": "https://example.org"},
+        ],
+        "aliases": {"he": ["כתב יד"]},
+        "existing_qid": "Q42",
+    }
+    full_ids = {r["id"] for r in applicable_rules("manuscript", holding)}
+    assert {"holder_identity", "p973_agreement", "alias_intent",
+            "existing_qid_identity"} <= full_ids
+    # claims_supported is unconditional (it judges what IS present)
+    assert "claims_supported" in bare_ids
+
+
+def test_rules_total_and_axis_native() -> None:
+    assert len(RULES) == 30
+    assert sum(1 for r in RULES if r.get("axis_native")) == 3
 
 
 def test_rule_states_maps_choices() -> None:

@@ -123,20 +123,12 @@ RULES: tuple[dict[str, Any], ...] = (
         "id": "label_identity",
         "kind": _JUDGMENT,
         "name": "label names the right entity",
+        "axis_native": True,
         "statement": (
             "The label names the real entity the evidence describes — not a "
             "different person, work, or manuscript."
         ),
         "axis": "name_ok",
-        "question": (
-            "Does the item's label name the real entity the evidence "
-            "channels describe — the same person, work, or manuscript the "
-            "MARC record, authority packs, and existing Wikidata point to? "
-            "'yes' = the label matches the evidence identity; 'partial' = "
-            "the label is close but trimmed, extended, or ambiguous; "
-            "'no' = the label names a different entity."
-        ),
-        "fix": "Correct the label to the evidenced name.",
     },
     {
         "id": "label_substance",
@@ -148,11 +140,13 @@ RULES: tuple[dict[str, Any], ...] = (
         ),
         "axis": "name_ok",
         "question": (
-            "Do the item's label and description carry substance? 'yes' = "
-            "specific and substantive (or an intentional system label with "
-            "control number and period); 'partial' = a generic placeholder "
-            "without substance; 'no' = malformed (unbalanced quotes, "
-            "trailing punctuation in quotes, 'und' language code)."
+            "Do the label and description carry substance? 'yes' = "
+            "specific and substantive — including an intentional system "
+            "label with control number and period, and a manuscript "
+            "designation built from catalog identity fragments (holder, "
+            "collector, shelfmark); 'partial' = a generic placeholder "
+            "without substance; 'no' = malformed (unbalanced quotes, 'und' "
+            "language code)."
         ),
         "fix": "Replace the placeholder or malformed text with the evidenced name.",
     },
@@ -168,12 +162,13 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "name_ok",
         "question": (
             "Does the description match the evidence? A description is a "
-            "disambiguator, not a summary: '<language> manuscript, <date>, "
-            "<script>, <material>, <holder>' (any evidenced subset) is the "
-            "correct house style. 'yes' = accurate fragments, no invented "
-            "detail; 'partial' = mostly right but one fragment looks wrong "
-            "or borrowed from another record; 'no' = it describes a "
-            "different manuscript or asserts unsupported facts."
+            "disambiguator in house style: '<language> manuscript, <date>, "
+            "<script>, <material>, <holder>' — any evidenced subset. 'yes' "
+            "= every fragment in the description appears in the MARC "
+            "context or the evidence packs (nothing invented); 'partial' = "
+            "NAME the specific fragment that looks wrong or borrowed; "
+            "'no' = it describes a different manuscript or asserts "
+            "unsupported facts. Hedging without a named fragment is 'yes'."
         ),
         "fix": "Rebuild the description from the evidenced fragments only.",
     },
@@ -190,12 +185,11 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "name_ok",
         "applies": ("manuscript", "work"),
         "question": (
-            "Are the item's aliases intentional? For a manuscript whose "
-            "label is the holder+shelfmark designation, the Hebrew MARC 245 "
-            "title as an alias is intentional — do not penalize it. 'yes' = "
-            "aliases are the 245 title or known variant forms; 'partial' = "
-            "an alias is redundant or oddly formatted but harmless; 'no' = "
-            "an alias names a different work or entity."
+            "Are the aliases intentional? For a designation-label "
+            "manuscript the Hebrew MARC 245 title as alias is intentional — "
+            "do not penalize it. 'yes' = aliases are the 245 title or known "
+            "variants; 'partial' = redundant or oddly formatted but "
+            "harmless; 'no' = an alias names a different work or entity."
         ),
         "fix": "Remove the foreign alias.",
     },
@@ -203,26 +197,19 @@ RULES: tuple[dict[str, Any], ...] = (
         "id": "entity_type_fit",
         "kind": _JUDGMENT,
         "name": "entity type fits the evidence",
+        "axis_native": True,
         "statement": (
             "The predicted entity type (person / manuscript / work) is "
             "correct for what the evidence describes. Span length is a "
             "label question, never a type question."
         ),
         "axis": "type_ok",
-        "question": (
-            "Is the item's entity type correct for what the evidence "
-            "describes? 'yes' = clearly the right kind of thing; 'partial' "
-            "= correct but the relationship is different than claimed (e.g. "
-            "a provenance note names a father or teacher, not the owner); "
-            "'no' = clearly the wrong kind of thing. Span length is a label "
-            "question — a single given name is still clearly a person."
-        ),
-        "fix": "Move the entity to the correct type.",
     },
     {
         "id": "p31_class_choice",
         "kind": _JUDGMENT,
         "name": "instance-of class is appropriate",
+        "axis_native": True,
         "statement": (
             "The chosen P31 class fits: person → Q5, manuscript → Q87167 "
             "or a legitimate subclass, work → a written-work class; no "
@@ -230,18 +217,6 @@ RULES: tuple[dict[str, Any], ...] = (
             "typed as book is acceptable."
         ),
         "axis": "type_ok",
-        "question": (
-            "Is the item's P31 class choice appropriate under the "
-            "WikiProject Manuscripts data model? 'yes' = person → Q5, "
-            "manuscript → Q87167 or a legitimate subclass, work → a "
-            "written-work class; 'partial' = present but questionable as "
-            "the primary class (a discouraged subclass such as Q213924 "
-            "codex, a lectionary typed P31 instead of P136 genre, or a "
-            "facsimile still typed only as manuscript); 'no' = P31 "
-            "contradicts the entity type or carries a known-wrong class. "
-            "Wrong public modeling gets items deleted by the community."
-        ),
-        "fix": "Re-type the item to the data-model class.",
     },
     {
         "id": "existing_qid_identity",
@@ -254,11 +229,10 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "type_ok",
         "question": (
             "If the item updates an existing QID, is that QID the same "
-            "real-world entity as this item? Compare labels, aliases, "
-            "identifiers, and dates in the existing-Wikidata pack. 'yes' = "
-            "same entity; 'partial' = plausibly the same but the evidence "
-            "is thin; 'no' = a different entity — the update would corrupt "
-            "someone else's item. Do not call a human (Q5) target a "
+            "real-world entity? Compare labels, identifiers, and dates in "
+            "the existing-Wikidata pack. 'yes' = same entity; 'partial' = "
+            "plausible but thin evidence; 'no' = a different entity — the "
+            "update would corrupt another item. Never call a Q5 target a "
             "disambiguation page without P31=Q4167410 evidence."
         ),
         "fix": "Unlink the wrong QID and re-run the duplicate check.",
@@ -277,10 +251,10 @@ RULES: tuple[dict[str, Any], ...] = (
         "question": (
             "Does the MARC evidence support the person's predicted role? "
             "'yes' = the role-mapped field(s) support it; 'partial' = "
-            "adjacent but weaker evidence; 'no' = the record unambiguously "
-            "assigns a different role (a dictation note makes the person an "
-            "author, not a copyist). Honor the deterministic grounding "
-            "signal stated in the state."
+            "adjacent but weaker evidence; 'no' = the record assigns a "
+            "different role (a dictation note makes the person an author, "
+            "not a copyist). Honor the deterministic grounding signal in "
+            "the state."
         ),
         "fix": "Relabel the role (e.g. author instead of copyist) or drop the role edge.",
     },
@@ -297,22 +271,18 @@ RULES: tuple[dict[str, Any], ...] = (
         ),
         "axis": "role_ok",
         "question": (
-            "Are the item's present statements supported by at least one "
-            "evidence channel? Channels: (a) the statement's own "
-            "references; (b) work_candidate_evidence; (c) per-claim "
-            "claim_sources — a PID with a non-empty evidence object is "
-            "supported, and channel names tell you which pack to trust "
-            "(authority.viaf, authority.mazal, hmo_wikibase, "
-            "work_candidate_evidence, authority.person_link); (d) the MARC "
-            "slice; (e) VIAF/Mazal packs; (f) existing Wikidata or the HMO "
-            "Wikibase. Structural claims (P31, P3959, P5008) need no "
-            "source. channel_empty means the catalog field is empty — "
-            "sparsity, not a defect; no_channel_mapped is our build defect. "
-            "Provenance is established by the claim's own references (P248 "
-            "+ P3959 / P854) or the Mazal pack. 'yes' = every present "
-            "claim supported; 'partial' = mostly correct with removable "
-            "bad claims; 'no' = a present claim is unsupported by every "
-            "channel."
+            "Are the present statements supported by at least one evidence "
+            "channel? Channels: the claim's own references; "
+            "work_candidate_evidence; claim_sources (a PID with non-empty "
+            "evidence is supported; channel names say which pack — "
+            "authority.viaf/mazal, hmo_wikibase, work_candidate_evidence, "
+            "authority.person_link); the MARC slice; VIAF/Mazal packs; "
+            "existing Wikidata or HMO Wikibase. Structural claims (P31, "
+            "P3959, P5008) need no source. channel_empty = catalog "
+            "sparsity, not a defect; no_channel_mapped = build defect. "
+            "'yes' = every present claim supported; 'partial' = mostly "
+            "correct with removable bad claims; 'no' = a present claim is "
+            "supported by no channel."
         ),
         "fix": "Remove the unsupported claim or add its source.",
     },
@@ -328,11 +298,9 @@ RULES: tuple[dict[str, Any], ...] = (
         ),
         "axis": "role_ok",
         "question": (
-            "Are the item's claims modeled in the right place? 'yes' = "
-            "each claim uses the correct property and value kind; 'partial' "
-            "= defensible but the modeling could be better (e.g. a "
-            "role-specific relation carried as a plain association); 'no' = "
-            "a claim is in the wrong place — an institution used as a "
+            "Are claims modeled in the right place? 'yes' = correct "
+            "property and value kind; 'partial' = defensible but improvable "
+            "modeling; 'no' = wrong place — an institution used as a "
             "person or scribe, a transcriber claim on a building, or a "
             "manuscript fact stored on the work."
         ),
@@ -352,12 +320,10 @@ RULES: tuple[dict[str, Any], ...] = (
         "applies": ("work",),
         "question": (
             "Are the work's author claims modeled correctly? 'yes' = P50 "
-            "with a verified person QID when authority evidence exists, or "
-            "P2093 name strings when it does not — never both for the same "
-            "person, and name strings match the MARC name; 'partial' = a "
-            "mix or a formatting drift that a curator can fix; 'no' = an "
-            "author attributed to the wrong person or invented from model "
-            "memory."
+            "with a verified QID when authority evidence exists, else P2093 "
+            "name strings matching MARC — never both for one person; "
+            "'partial' = a mix or formatting drift a curator can fix; "
+            "'no' = an author attributed to the wrong or invented person."
         ),
         "fix": "Replace the string with the verified QID, or correct the name.",
     },
@@ -375,11 +341,11 @@ RULES: tuple[dict[str, Any], ...] = (
         "applies": ("manuscript", "work"),
         "question": (
             "Are the P921 (subject) claims specific enough? 'yes' = each "
-            "subject is a controlled, well-matched heading that the record "
-            "is actually about; 'partial' = one subject is broader than "
-            "the record warrants but removable; 'no' = a generic heading "
-            "(e.g. 'Jews') is asserted as a primary subject without the "
-            "record making it so."
+            "subject is a controlled, well-matched heading the record is "
+            "actually about; 'partial' = one subject broader than "
+            "warranted but removable; 'no' = a generic heading (e.g. "
+            "'Jews') asserted as primary subject without the record "
+            "making it so."
         ),
         "fix": "Remove the over-broad subject claim.",
     },
@@ -393,13 +359,10 @@ RULES: tuple[dict[str, Any], ...] = (
         ),
         "axis": "role_ok",
         "question": (
-            "If the item carries P7535, does it hold archival-collection "
-            "scope-and-content text? 'yes' = the text describes an "
-            "archival collection identified in the record; 'partial' = the "
-            "text is borderline catalog prose; 'no' = P7535 carries "
-            "ordinary catalog notes or provenance that belong elsewhere "
-            "(or the claim is unsupported). not_applicable when P7535 is "
-            "absent — judge it 'yes'."
+            "If P7535 is present, does it hold archival-collection "
+            "scope-and-content text? 'yes' = archival collection text (or "
+            "P7535 absent); 'partial' = borderline catalog prose; 'no' = "
+            "ordinary catalog notes or unsupported text in P7535."
         ),
         "fix": "Remove P7535 or move the text to the right property.",
     },
@@ -416,12 +379,11 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "role_ok",
         "applies": ("person", "work"),
         "question": (
-            "Do the item's date claims agree with the evidence? 'yes' = "
-            "dates match an authority pack or the MARC record (year "
-            "precision is valid); 'partial' = a date is plausible but "
-            "conflicts mildly with one channel; 'no' = dates are "
-            "chronologically impossible or clearly contradict the "
-            "authority evidence."
+            "Do the date claims agree with the evidence? 'yes' = dates "
+            "match an authority pack or the MARC record (year precision is "
+            "valid); 'partial' = plausible but mildly conflicting with one "
+            "channel; 'no' = chronologically impossible or contradicting "
+            "the authority evidence."
         ),
         "fix": "Correct the date from the authority pack.",
     },
@@ -437,12 +399,10 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "role_ok",
         "applies": ("person",),
         "question": (
-            "Does the person's description carry dates only when an "
-            "authority row backs them? 'yes' = dates come from an "
-            "identifier-backed authority row, or the description is "
-            "dateless (correct); 'partial' = dates appear with thin "
-            "authority backing; 'no' = dates appear with no authority "
-            "backing at all — they were invented."
+            "Does the description carry dates only when an authority row "
+            "backs them? 'yes' = authority-backed dates or a dateless "
+            "description (correct); 'partial' = thin authority backing; "
+            "'no' = dates with no authority backing — invented."
         ),
         "fix": "Drop the invented dates from the description.",
     },
@@ -457,13 +417,12 @@ RULES: tuple[dict[str, Any], ...] = (
         ),
         "axis": "role_ok",
         "question": (
-            "Do the item-valued claims use the supplied value_label / "
-            "verify_evidence.value_labels glosses? 'yes' = every item "
-            "value is the glossed entity the evidence names; 'partial' = "
-            "one value lacks a gloss but is plausible (a missing gloss "
-            "alone is not a defect); 'no' = a value's identity was "
-            "invented from QID shape or model memory — especially never "
-            "invent NLI for an unrelated QID."
+            "Do item-valued claims use the supplied value_label / "
+            "verify_evidence.value_labels glosses? 'yes' = every value is "
+            "the glossed entity, or a value lacks a gloss but is plausible "
+            "(a missing gloss alone is never a defect); 'partial' = a "
+            "gloss CONTRADICTS the claim it glosses; 'no' = an identity "
+            "invented from QID shape or model memory."
         ),
         "fix": "Correct the value to the glossed entity or drop the claim.",
     },
@@ -480,14 +439,14 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "role_ok",
         "applies": ("manuscript",),
         "question": (
-            "Does the P195 (held by) claim name the correct holding "
-            "institution? Trust value_label, then "
-            "verify_evidence.value_labels, then the English label's holder "
-            "fragment. 'yes' = the audited holder QID is the right "
-            "institution; 'partial' = plausible but the gloss is missing; "
-            "'no' = the claim names a different institution (e.g. invents "
-            "NLI or Robarts for a QID that is Cambridge or the British "
-            "Library)."
+            "Does P195 (held by) name the correct holding institution? "
+            "Trust value_label, then verify_evidence.value_labels, then "
+            "the label's holder fragment. 'yes' = the audited holder QID "
+            "is right, or the gloss agrees with the label's holder "
+            "fragment; 'partial' = the gloss CONTRADICTS the label's "
+            "holder fragment; 'no' = a different institution (e.g. "
+            "inventing NLI for a Cambridge or British Library QID). A "
+            "missing gloss alone is never a defect — answer 'yes'."
         ),
         "fix": "Correct the holder QID to the glossed institution.",
     },
@@ -503,13 +462,11 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "role_ok",
         "applies": ("manuscript",),
         "question": (
-            "Do the P973 (described at) URLs agree with the item's "
-            "identity? Check whether an embedded shelfmark or reference "
-            "matches the item's P217. 'yes' = URLs agree, or no P973 is "
-            "present (absent claims are never defects); 'partial' = a URL "
-            "is for the right repository but its reference is ambiguous; "
-            "'no' = a URL points at a different record — a removable bad "
-            "claim."
+            "Do the P973 (described at) URLs agree with this item? Check "
+            "an embedded shelfmark/reference against the item's P217. "
+            "'yes' = URLs agree, or no P973 present (absent claims are "
+            "never defects); 'partial' = right repository but ambiguous "
+            "reference; 'no' = the URL points at a different record."
         ),
         "fix": "Remove or correct the described-at URL.",
     },
@@ -526,12 +483,13 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "role_ok",
         "applies": ("work", "manuscript"),
         "question": (
-            "Are contained-work claims modeled correctly? 'yes' = "
-            "identified works link their verified QIDs and unidentified "
-            "ones map to Q234460 with a P1932 catalog title; 'partial' = "
-            "defensible but one contained work could be modeled better; "
-            "'no' = an invented work QID link, or a contained text left "
-            "as a bare string where the data model wants a work item."
+            "Are contained-work claims modeled correctly? 'yes' = verified "
+            "work QIDs linked, unidentified ones mapped to Q234460 with a "
+            "P1932 catalog title, or __LOCAL: targets that resolve in "
+            "local_reference_targets — the data-model shapes; 'partial' = "
+            "a contained work left as a bare string where the data model "
+            "wants a work item; 'no' = an invented work-QID link or a "
+            "target that resolves to the wrong kind of thing."
         ),
         "fix": "Remodel the contained work per the data model.",
     },
@@ -548,11 +506,10 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "name_ok",
         "applies": ("work",),
         "question": (
-            "Does the work's title claim match the evidenced catalog "
-            "title (MARC 245/500 or the accepted work entry)? 'yes' = the "
-            "same title, normalized, internal Hebrew gershayim preserved; "
-            "'partial' = a minor orthographic drift a curator can fix; "
-            "'no' = a different title than any evidence supplies."
+            "Does the P1476 title match the evidenced catalog title (MARC "
+            "245/500 or the accepted work entry)? 'yes' = same title, "
+            "normalized, Hebrew gershayim preserved; 'partial' = minor "
+            "orthographic drift; 'no' = a title no evidence supplies."
         ),
         "fix": "Correct the title to the evidenced form.",
     },
@@ -567,13 +524,13 @@ RULES: tuple[dict[str, Any], ...] = (
         ),
         "axis": "role_ok",
         "question": (
-            "Does any present claim rest ONLY on an LLM-extracted "
-            "proposal (verify_evidence.llm_proposals)? Generation is not "
-            "an evidence channel. 'yes' = every claim has a real evidence "
-            "channel beyond proposals (or no proposals exist); 'partial' "
-            "= a proposal agrees with a real channel but is the loudest "
+            "Does any present claim rest ONLY on an LLM-extracted proposal "
+            "(verify_evidence.llm_proposals)? Generation is not an "
+            "evidence channel. 'yes' = every claim has a real channel "
+            "beyond proposals (or no proposals exist); 'partial' = a "
+            "proposal agrees with a real channel but is the loudest "
             "source; 'no' = a claim is supported by nothing but a "
-            "proposal — it must be treated as unsupported."
+            "proposal."
         ),
         "fix": "Remove the proposal-only claim.",
     },
@@ -593,7 +550,7 @@ RULES: tuple[dict[str, Any], ...] = (
             "THIS record? 'yes' = everything belongs to this manuscript; "
             "'partial' = one fragment looks borrowed but is deniable; "
             "'no' = another record's shelfmark, title, or contents is "
-            "present — cross-record contamination, a hard failure."
+            "present — cross-record contamination."
         ),
         "fix": "Remove the other record's data.",
     },
@@ -615,6 +572,50 @@ def judgment_rules(entity_type: str = "") -> list[dict[str, Any]]:
         applies = rule.get("applies") or ("all",)
         if "all" in applies or not entity_type or entity_type in applies:
             out.append(rule)
+    return out
+
+
+def applicable_rules(entity_type: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Judgment rules worth a question for THIS item.
+
+    Entity-type filter, then the claim-conditional filter: a rule that
+    judges property X is only asked when the item actually carries X (or
+    the surface it reads from exists). This keeps the TypeSafe response
+    under its token cap — ~30 unconditional questions per item made the
+    API reject the call (HTTP 400 max_tokens_exceeded, 127 abstains on
+    2026-10-04).
+
+    Three rules are axis-native (label_identity → name_ok,
+    entity_type_fit → type_ok, p31_class_choice → p31_ok): the certified
+    axis questions already ask exactly that judgment, so no separate
+    question goes out — the explanation renders the axis/p31 answer.
+    """
+    statements = [s for s in (payload.get("statements") or []) if isinstance(s, dict)]
+    props = {
+        str(s.get("property") or s.get("property_id") or "") for s in statements
+    }
+    has = lambda prop: prop in props  # noqa: E731
+    aliases = payload.get("aliases") or {}
+    claim_gates = {
+        "holder_identity": has("P195"),
+        "p973_agreement": has("P973"),
+        "title_claim_accuracy": has("P1476"),
+        "author_modeling": has("P50") or has("P2093"),
+        "contained_work_modeling": has("P1574"),
+        "p7535_scope": has("P7535"),
+        "dates_plausible": has("P569") or has("P570") or has("P571"),
+        "subject_specificity": has("P921"),
+        "alias_intent": bool(aliases),
+        "existing_qid_identity": bool(str(payload.get("existing_qid") or "").strip()),
+    }
+    out: list[dict[str, Any]] = []
+    for rule in judgment_rules(entity_type):
+        if rule.get("axis_native"):
+            continue
+        gate = claim_gates.get(rule["id"])
+        if gate is False:
+            continue
+        out.append(rule)
     return out
 
 

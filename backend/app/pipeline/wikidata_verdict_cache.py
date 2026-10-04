@@ -16,13 +16,18 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w176_v1 with the Jev top-30 rule rollout: per-rule questions
-# change the wikidata_item prompt — verdicts judged under the old question
-# set must re-judge (full verdicts stick via W-171; partial/fail re-judge).
+# Bumped to w177_v1 with the Jev top-30 rule rollout v2: claim-conditional
+# rule questions + advisory rule findings (no axis forcing) + the lean
+# fixture now ships local_reference_targets. Verdicts judged under w176_v1
+# (the first rule rollout, 2026-10-04) must re-judge; full verdicts stick
+# via W-171.
+# Prior: w176_v1 (first rule rollout — unconditional rule questions forced
+# axes; produced 143 __LOCAL false fails + 38 rule-driven fails + 127
+# max_tokens abstains).
 # Prior: w175_v1 (Rule W-175: sticky-full on review-table sanitise,
 # presentation labels out of cache keys, non-passing verify default).
 # Prior: w174_v1 (catalogue P973 gate + Hebrew brackets + holder gloss).
-WIKIDATA_VERDICT_SCHEMA = "w176_v1"
+WIKIDATA_VERDICT_SCHEMA = "w177_v1"
 # v7: the W-265 judge change (claim-uncertainty no longer caps, type_ok defers
 # span length to name_ok) altered the prompt and the gate — verdicts judged
 # under the old contract must re-judge. Full verdicts stick via W-171 (the old

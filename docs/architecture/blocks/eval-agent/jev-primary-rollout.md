@@ -225,7 +225,7 @@ Tests: `eval-agent/tests/test_jev_gates.py::test_claim_uncertainty_does_not_cap_
    (determinism 0.966 → ≥0.99); then demote the LLM to optional
    spot-checker per channel that passes.
 
-## Top-30 rule-based verification (2026-10-04, wikidata_item)
+## Top-30 rule-based verification (2026-10-04, v2 — wikidata_item)
 
 The curator could not read the old synthesized explanation
 (`role_ok=partial; evidence in title; p=0.85.`) — axis tokens are not an
@@ -240,30 +240,43 @@ W-171..W-175:
   manuscript, `__LOCAL:` targets resolve, one name per P2093 string) are
   checked in code — never asked of the model. The pre-existing three gates
   stay; `structural_findings()` adds the four new checks and forces their
-  axis (never softened by the confidence gate).
-- **22 judgment rules** become exactly one TypeSafe question each
-  (`rule_<id>`, filtered by `entity_type`; an unknown type gets all 22).
-  The certified axis questions stay byte-identical (R44) — rule answers
-  reconcile into the axes IN CODE (fail → axis `no`, fail below
-  `ROLE_CONF_GATE` → review `partial`, partial → caps `yes` at `partial`),
-  so `overall` remains code-computed. Re-run the wikidata-channel bake-off
-  before defaulting the channel to Jev.
+  axis (never softened by the confidence gate). The `__LOCAL:` check stays
+  silent when the payload carries no `local_reference_targets` pack, and
+  the lean verify fixture (`wikidata_verify_fixture.py`) now ships the
+  pack — v1 shipped neither and flagged 143 manuscripts as unresolved
+  build defects.
+- **19 judgment rules become one TypeSafe question each**, claim-
+  conditional (`applicable_rules(entity_type, payload)`): a rule judging
+  property X is asked only when the item carries X (P195→holder, P973,
+  P1476→title, P50/P2093→author, P1574→contained works, P7535, P569/P570/
+  P571→dates, P921→subjects, aliases→alias intent, existing_qid→wrong-
+  entity check). 3 rules are axis-native (label identity, entity type,
+  P31 class) — the certified `name_ok`/`type_ok`/`p31_ok` questions already
+  ask exactly that, so no duplicate question goes out. v1 sent ~30
+  unconditional questions per item and the TypeSafe API rejected the
+  oversized responses (`HTTP 400 max_tokens_exceeded`, 127 abstains).
+- **Rule answers are advisory only.** They never move the axes; the
+  certified axis questions + mechanical gates decide the verdict, and
+  `overall` stays code-computed (R44). v1 reconciled rule answers into
+  the axes and Jev's noisy rule calls produced 38 false fails.
 - **Plain-language explanation** — `explain_wikidata_verdict()` replaces
   the axis-token synthesis for wikidata_item: an opener
   (safe-to-approve / needs-attention / do-not-upload), the per-rule
   findings with each rule's fix hint, the concrete unsupported claims
   (from the per-claim noul answers), the mechanical gate findings without
   their `axis:` prefixes, and the duplicate-check outcome (update / absent
-  / inconclusive — named by its status token). Legacy cached answers
-  without rule keys fall back to plain axis sentences, so old cache rows
-  still render readably.
+  / inconclusive — named by its status token). A finding on a passing
+  axis renders as a **Note** (it did not move the verdict); on a problem
+  axis as **Problem**/Minor issue. Legacy cached answers without rule
+  keys fall back to plain axis sentences, so old cache rows still render
+  readably.
 - **Cache:** the question change is a prompt change — verdict schema salt
-  bumped `w175_v1` → `w176_v1` (backend `wikidata_verdict_cache.py`).
+  bumped `w176_v1` → `w177_v1` (backend `wikidata_verdict_cache.py`).
   Full verdicts stick via W-171; partial/fail re-judge under the new
   questions.
 - Tests: `eval-agent/tests/test_wikidata_rules.py`,
-  `test_jev_gates.py` (rule-force / low-confidence-review / structural
-  findings), `tests/unit/test_wikidata_verdict_cache.py` (salt).
+  `test_jev_gates.py` (advisory findings / structural findings incl. the
+  pack-absent skip), `tests/unit/test_wikidata_verdict_cache.py` (salt).
 
 ## What NOT to do
 - Do not auto-approve anything from AI verdicts (curator approval stays;

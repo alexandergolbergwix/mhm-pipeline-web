@@ -14,7 +14,7 @@
 | `backend/app/pipeline/hmo_wikidata_projection.py` | Fail-closed adapter accepting only exact HMO manuscript URIs and unambiguous local QIDs for Wikidata projection |
 | `backend/app/pipeline/wikidata_item_views.py` | Merged read model: cache + overrides + ledger QID + upload audit + cached QID adoption + live value-label gloss + stale-sanitized AI verdict; only probe-adopted QIDs enter the stable verdict projection (W-131 / W-169 / W-205) |
 | `backend/app/pipeline/marc_verify_context.py` | `load_run_control_numbers`, `load_run_marc_records_scoped` (W-132) |
-| `backend/app/pipeline/wikidata_verify_fixture.py` | Lean eval-agent fixture + `release_wikidata_verify_heap` (W-131/W-132) |
+| `backend/app/pipeline/wikidata_verify_fixture.py` | Lean eval-agent fixture + `release_wikidata_verify_heap` (W-131/W-132); ships `local_reference_targets` so the judge can resolve `__LOCAL:` targets (2026-10-04) |
 | `backend/app/pipeline/wikidata_item_merge.py` | Apply curator overrides onto serialised item dicts (carries `ai_verdict` for sticky-full, W-171) |
 | `backend/app/pipeline/wikidata_item_verify.py` | Persist AI verdicts to `WikidataItemOverride` after verify streams |
 | `backend/app/pipeline/wikidata_duplicate_probe.py` | Batched Action-API duplicate check; linked-QID classification; work `inlabel`+P31 allowlist probe (W-139 / W-190 / W-196 / W-199) |
@@ -22,7 +22,7 @@
 | `backend/app/pipeline/wikidata_local_refs.py` | Resolves `__LOCAL:` targets; drops orphan bare-QID P3342; drops redundant Q234460 (Rules W-138 / W-170 / W-171) |
 | `backend/app/pipeline/wikidata_live_native_hygiene.py` | W-194 / W-196: clear false live QIDs; coerce monolingualtext; omit implausible P2048/P2049; rewrite `__LOCAL:` |
 | `backend/app/pipeline/wikidata_verify_evidence.py` | Multi-source evidence packs: MARC slice, per-claim `claim_sources` provenance, offline `value_labels`, VIAF/Mazal/HMO channels |
-| `backend/app/pipeline/wikidata_verdict_cache.py` | Verdict fingerprints, claims-fingerprint sticky-full helpers, volatile-metadata stripping, legacy judge-failure normalization, schema `w176_v1` (W-171…W-175 / W-207 / W-208) |
+| `backend/app/pipeline/wikidata_verdict_cache.py` | Verdict fingerprints, claims-fingerprint sticky-full helpers, volatile-metadata stripping, legacy judge-failure normalization, schema `w177_v1` (W-171…W-175 / W-207 / W-208) |
 | `backend/app/migrations/versions/0038_unknown_judge_failures.py` | Historical migration that converted provider-failure verdicts to `unknown` rows (superseded by W-211) |
 | `backend/app/migrations/versions/0039_public_abstain_provider_errors.py` | Convert legacy `unknown` / `verification_failed` rows to `abstain` with provider-error status and a marked, reversible migration (W-211) |
 | `backend/app/pipeline/wikidata_verify_scope.py` | Shared verify cache partitioner + sticky-full (W-167 / W-171) |

@@ -15,11 +15,12 @@ from app.pipeline.wikidata_verdict_cache import (
     judge_evidence_projection,
     record_ids_for_wikidata_item,
 )
+
 _FIXTURE_ITEM_KEYS = (
     "_local_id", "local_id", "entity_type", "semantic_type",
     "labels", "descriptions", "aliases", "statements", "statement_count",
     "existing_qid", "hmo_wikibase_id", "source_uri", "validation_issues",
-    "record_ids", "records", "verify_evidence",
+    "record_ids", "records", "verify_evidence", "local_reference_targets",
 )
 
 
@@ -49,6 +50,12 @@ def compact_wikidata_verify_fixture_item(item: dict[str, Any]) -> dict[str, Any]
         "source_uri": item.get("source_uri"),
         "validation_issues": item.get("validation_issues") or [],
         "record_ids": record_ids_for_wikidata_item(item),
+        # The rubric treats local_reference_targets as a first-class pack
+        # ("__LOCAL:<id> … Accept it when local_reference_targets contains
+        # that id") and the Jev structural check reads it — a lean fixture
+        # without it made every __LOCAL: value look unresolved (2026-10-04,
+        # 143 false fails). The pack is small (work-target glosses).
+        "local_reference_targets": item.get("local_reference_targets") or {},
     }
     evidence = item.get("verify_evidence")
     if isinstance(evidence, dict):

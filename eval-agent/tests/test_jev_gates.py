@@ -600,7 +600,7 @@ def _rule_answer(rule_id: str, choice: str, conf: float = 0.9) -> dict:
     return {rule_question_id(rule_id): {"choice": choice, "confidence": conf}}
 
 
-def test_rule_fail_forces_axis_and_overall() -> None:
+def test_rule_answer_is_advisory_never_moves_axis() -> None:
     payload = _wiki_payload()
     verdict = {
         "name_ok": "yes", "type_ok": "yes", "role_ok": "yes",
@@ -609,51 +609,35 @@ def test_rule_fail_forces_axis_and_overall() -> None:
     meta = {"answers": {
         **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "yes"}),
         **_rule_answer("person_role", "no"),
+        **_rule_answer("claims_supported", "no"),
     }}
     gated = jev_gates.apply_jev_gates(
         verdict, evaluator_id="wikidata_item",
         candidate=_candidate("wikidata_item", payload), meta=meta,
     )
-    assert gated["role_ok"] == "no"
-    assert gated["overall"] == "fail"
-    assert "person role supported" in gated["reasoning"]
-    assert "Relabel the role" in gated["reasoning"]
+    # advisory: the certified axes decide; rule answers only annotate
+    assert gated["role_ok"] == "yes"
+    assert gated["overall"] == "full"
+    assert "Note — person role supported" in gated["reasoning"]
+    assert "Note — claims supported by a channel" in gated["reasoning"]
 
 
-def test_rule_fail_low_confidence_routes_to_review() -> None:
+def test_rule_finding_on_problem_axis_is_labeled_problem() -> None:
     payload = _wiki_payload()
     verdict = {
-        "name_ok": "yes", "type_ok": "yes", "role_ok": "yes",
-        "overall": "full", "reasoning": "r", "suggested_fix": None,
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "partial",
+        "overall": "partial", "reasoning": "r", "suggested_fix": None,
     }
     meta = {"answers": {
-        **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "yes"}),
-        **_rule_answer("person_role", "no", conf=0.2),
+        **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "partial"}),
+        **_rule_answer("person_role", "no"),
     }}
     gated = jev_gates.apply_jev_gates(
         verdict, evaluator_id="wikidata_item",
         candidate=_candidate("wikidata_item", payload), meta=meta,
     )
     assert gated["role_ok"] == "partial"
-    assert gated["overall"] == "partial"
-
-
-def test_rule_partial_downgrades_yes() -> None:
-    payload = _wiki_payload()
-    verdict = {
-        "name_ok": "yes", "type_ok": "yes", "role_ok": "yes",
-        "overall": "full", "reasoning": "r", "suggested_fix": None,
-    }
-    meta = {"answers": {
-        **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "yes"}),
-        **_rule_answer("value_identity_trust", "partial"),
-    }}
-    gated = jev_gates.apply_jev_gates(
-        verdict, evaluator_id="wikidata_item",
-        candidate=_candidate("wikidata_item", payload), meta=meta,
-    )
-    assert gated["role_ok"] == "partial"
-    assert gated["overall"] == "partial"
+    assert "Problem — person role supported" in gated["reasoning"]
 
 
 def test_structural_multi_title_forces_role_ok() -> None:
@@ -680,6 +664,7 @@ def test_structural_multi_title_forces_role_ok() -> None:
 
 def test_structural_unresolved_local_target() -> None:
     payload = _wiki_payload({
+        "local_reference_targets": {"__LOCAL:w2": {"label": "other"}},
         "statements": [
             {"property": "P31", "value": "Q571"},
             {"property": "P1574", "value": "__LOCAL:w1"},
@@ -687,6 +672,20 @@ def test_structural_unresolved_local_target() -> None:
     })
     findings = jev_gates.structural_findings(payload)
     assert any("does not resolve" in f["note"] for f in findings)
+
+
+def test_structural_local_check_silent_when_pack_absent() -> None:
+    """A payload surface without local_reference_targets (lean fixture)
+    must not flag every __LOCAL: value — 2026-10-04, 143 false fails."""
+    payload = _wiki_payload({
+        "statements": [
+            {"property": "P31", "value": "Q571"},
+            {"property": "P1574", "value": "__LOCAL:w1"},
+        ],
+    })
+    assert "local_reference_targets" not in payload
+    findings = jev_gates.structural_findings(payload)
+    assert findings == []
 
 
 def test_structural_comma_author_string() -> None:

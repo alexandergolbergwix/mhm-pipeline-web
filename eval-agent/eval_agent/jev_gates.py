@@ -176,21 +176,36 @@ def explain_wikidata_verdict(
         sentences.append(" ".join(passed))
 
     findings: list[str] = []
+    axes_with_findings: set[str] = set()
     for rule, state in rule_states(answers):
         if state == "pass":
             continue
+        axis = rule["axis"]
+        # Advisory: a rule finding on an axis the certified questions
+        # already marked as a problem is a "Problem"; on a passing axis it
+        # is only a curator note (it did not move the verdict).
+        if str(axes.get(axis) or "") in ("yes", "n/a", "unknown"):
+            label = "Note"
+        else:
+            axes_with_findings.add(axis)
+            label = "Problem" if state == "fail" else "Minor issue"
         detail = rule.get("fix") or rule["statement"]
         if rule["id"] == "claims_supported":
             lines = _claim_evidence_lines(payload, answers)
             if lines:
                 detail = "unsupported: " + "; ".join(lines) + ". " + detail
-        findings.append(f"{'Problem' if state == 'fail' else 'Minor issue'}"
-                        f" — {rule['name']}: {detail}")
+        findings.append(f"{label} — {rule['name']}: {detail}")
     if not findings:
         # No per-rule answers (legacy cache or escalation): plain axis text.
         for axis in AXES:
             value = str(axes.get(axis) or "unknown")
             if value in ("partial", "no"):
+                findings.append(_AXIS_PROBLEM[axis])
+                axes_with_findings.add(axis)
+    else:
+        for axis in AXES:
+            value = str(axes.get(axis) or "unknown")
+            if value in ("partial", "no") and axis not in axes_with_findings:
                 findings.append(_AXIS_PROBLEM[axis])
     sentences.extend(findings)
 
@@ -431,17 +446,22 @@ def structural_findings(payload: dict[str, Any]) -> list[dict[str, Any]]:
                         "(catalog ID) claim",
             })
     local_targets = payload.get("local_reference_targets")
-    local_targets = local_targets if isinstance(local_targets, dict) else {}
-    for s in statements:
-        value = _prop_value(s)
-        if value.startswith("__LOCAL:") and value not in local_targets:
-            findings.append({
-                "rule": "internal reference targets resolve",
-                "axis": "role_ok", "force": "no",
-                "note": f"{value} does not resolve in "
-                        "local_reference_targets — build defect",
-            })
-            break
+    if not isinstance(local_targets, dict):
+        # The pack is absent from this payload surface (lean fixture) — the
+        # check cannot distinguish a stripped pack from a build defect, so
+        # it stays silent rather than flagging every __LOCAL: value.
+        local_targets = None
+    if local_targets is not None:
+        for s in statements:
+            value = _prop_value(s)
+            if value.startswith("__LOCAL:") and value not in local_targets:
+                findings.append({
+                    "rule": "internal reference targets resolve",
+                    "axis": "role_ok", "force": "no",
+                    "note": f"{value} does not resolve in "
+                            "local_reference_targets — build defect",
+                })
+                break
     for s in statements:
         prop = str(s.get("property") or s.get("property_id") or "")
         value = _prop_value(s)
@@ -652,26 +672,11 @@ def apply_jev_gates(
                 final[axis] = finding["force"]
                 forced.add(axis)
                 notes.append(f"{axis}: {finding['note']}")
-        # Judgment half: each per-rule answer reconciles into its axis in
-        # code — overall stays code-computed (block rule R44).
-        from eval_agent.wikidata_rules import (  # noqa: PLC0415
-            rule_question_id,
-            rule_states,
-        )
-        for rule, state in rule_states(answers):
-            axis = rule["axis"]
-            if axis in forced or str(final.get(axis)) == "n/a":
-                continue
-            conf = confidences.get(rule_question_id(rule["id"]))
-            if state == "fail":
-                if isinstance(conf, (int, float)) and conf < ROLE_CONF_GATE:
-                    if final[axis] == "yes":
-                        final[axis] = "partial"
-                else:
-                    final[axis] = "no"
-                    forced.add(axis)
-            elif state == "partial" and final[axis] == "yes":
-                final[axis] = "partial"
+        # Judgment half stays ADVISORY: rule answers never move the axes —
+        # the certified axis questions + mechanical gates decide the
+        # verdict (2026-10-04: forcing axes from rule answers produced 38
+        # false fails; noisy rule calls must inform the curator, not the
+        # overall).
     for axis in AXES:
         if axis in forced:
             continue

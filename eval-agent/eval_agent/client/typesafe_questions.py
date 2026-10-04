@@ -38,10 +38,15 @@ _NAME_OK = (
     "empty MARC context with no accepted-exception coverage forces 'no'. "
     "Manuscript-designation exception (per the WikiProject Manuscripts data "
     "model): manuscripts have no titles, so the accepted identity label is a "
-    "designation — 'כתב יד עברי, {holder}, {shelfmark}', optionally with the "
-    "NLI control number when the catalog gives no shelfmark. Judge whether "
-    "holder and shelfmark/number are present and substantive, never whether "
-    "the label reads like a work or person name."
+    "designation built from whatever identity fragments the catalog "
+    "supplies — holder, collector, collection, and/or shelfmark — in Hebrew "
+    "or English: 'כתב יד עברי, {holder}, {shelfmark}', '{holder}, {shelfmark}', "
+    "'{collector}, {shelfmark}', or a shelfmark-only '{shelfmark}' (e.g. "
+    "'F 21724') when the catalog gives no holder. Judge whether the "
+    "fragments are present and consistent with the MARC evidence (710/090/"
+    "245/966), never whether the label reads like a work or person name or "
+    "follows one exact template. A parenthetical that appears verbatim in "
+    "the MARC source title is part of the label, not boundary noise."
 )
 _TYPE_OK = (
     "Applying the evaluation brief in the state, is the predicted entity type "
@@ -299,18 +304,18 @@ def questions_for(
              "unknown": "probe inconclusive — no conclusion"},
         )
         # Per-rule questions: one judgment rule of the top-30
-        # entity-creation manifest each (deterministic rules stay in
-        # jev_gates code and are never asked). The certified axis questions
-        # above stay byte-identical (block rule R44) — these extend the set.
+        # entity-creation manifest each, filtered to the claims the item
+        # actually carries (claim-conditional — the unconditional set
+        # overflowed the TypeSafe response cap on 2026-10-04). Deterministic
+        # rules stay in jev_gates code; axis-native rules are covered by
+        # the certified questions above (byte-identical, block rule R44).
         from eval_agent.wikidata_rules import (  # noqa: PLC0415
-            judgment_rules,
+            applicable_rules,
             rule_question_id,
         )
-        entity_type = str(
-            ((getattr(candidate, "payload", None) or {}).get("entity_type"))
-            or "",
-        )
-        for rule in judgment_rules(entity_type):
+        entity_payload = getattr(candidate, "payload", None) or {}
+        entity_type = str(entity_payload.get("entity_type") or "")
+        for rule in applicable_rules(entity_type, entity_payload):
             qs[rule_question_id(rule["id"])] = _choice(
                 rule_question_id(rule["id"]),
                 f"Rule — {rule['name']}. {rule['question']}",
