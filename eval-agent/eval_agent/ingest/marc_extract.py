@@ -101,6 +101,20 @@ def merge_records(
     return base
 
 
+# Per-field cap on the judge state's MARC slice. A work spanning hundreds of
+# manuscripts (the Tiklal class) carries an enormous 505 contents list; the
+# unbounded field blew the TypeSafe input cap on every judged row of that
+# class (119 abstains, 2026-10-04). Per-claim evidence is bounded elsewhere
+# (claim_sources quotes ≤ 400 chars), so the head of each field suffices.
+_MAX_SLICE_CHARS = 4000
+
+
+def _cap(text: str) -> str:
+    if len(text) <= _MAX_SLICE_CHARS:
+        return text
+    return text[:_MAX_SLICE_CHARS] + " …[truncated]"
+
+
 def project_many(
     index: dict[str, dict[str, Any]],
     control_numbers: list[str],
@@ -201,17 +215,17 @@ def project(record: dict[str, Any], keys: list[str]) -> dict[str, str]:
             real = [str(x) for x in v[1:] if x]
             if not real:
                 continue
-            out[k] = " | ".join(real)
+            out[k] = _cap(" | ".join(real))
             continue
         if isinstance(v, list):
-            out[k] = " | ".join(
+            out[k] = _cap(" | ".join(
                 json.dumps(x, ensure_ascii=False) if isinstance(x, dict) else str(x)
                 for x in v if x
-            )
+            ))
         elif isinstance(v, dict):
-            out[k] = json.dumps(v, ensure_ascii=False)
+            out[k] = _cap(json.dumps(v, ensure_ascii=False))
         else:
-            out[k] = str(v)
+            out[k] = _cap(str(v))
     for name, rendered in raw_tag_slice(record, skip=set(out)).items():
-        out[name] = rendered
+        out[name] = _cap(rendered)
     return out
