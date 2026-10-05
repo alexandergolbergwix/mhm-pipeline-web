@@ -714,3 +714,67 @@ def test_structural_comma_author_string() -> None:
     assert any("comma-joined" in f["note"] for f in findings)
     assert all(f["force"] == "partial" for f in findings
                if "comma-joined" in f["note"])
+
+
+def test_axis_hedge_upgraded_when_all_rules_pass() -> None:
+    """191 of 194 partials (2026-10-05 harvest) answered every rule "yes"
+    and hedged the summary axis — the specific answers override."""
+    payload = _wiki_payload()
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "partial",
+        "overall": "partial", "reasoning": "r", "suggested_fix": None,
+    }
+    meta = {"answers": {
+        **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "partial"}),
+        "p31_ok": {"choice": "yes", "confidence": 0.9},
+        "duplicate_risk": {"choice": "no_duplicate_risk", "confidence": 0.9},
+        **_rule_answer("claims_supported", "yes"),
+        **_rule_answer("value_identity_trust", "yes"),
+    }}
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="wikidata_item",
+        candidate=_candidate("wikidata_item", payload), meta=meta,
+    )
+    assert gated["role_ok"] == "yes"
+    assert gated["overall"] == "full"
+    assert "hedge upgraded" in gated["reasoning"]
+
+
+def test_axis_hedge_blocked_by_rule_finding() -> None:
+    payload = _wiki_payload()
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "partial",
+        "overall": "partial", "reasoning": "r", "suggested_fix": None,
+    }
+    meta = {"answers": {
+        **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "partial"}),
+        "p31_ok": {"choice": "yes", "confidence": 0.9},
+        "duplicate_risk": {"choice": "no_duplicate_risk", "confidence": 0.9},
+        **_rule_answer("claims_supported", "yes"),
+        **_rule_answer("person_role", "partial"),
+    }}
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="wikidata_item",
+        candidate=_candidate("wikidata_item", payload), meta=meta,
+    )
+    assert gated["role_ok"] == "partial"
+    assert gated["overall"] == "partial"
+
+
+def test_axis_hedge_blocked_by_p31_partial() -> None:
+    payload = _wiki_payload()
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "partial",
+        "overall": "partial", "reasoning": "r", "suggested_fix": None,
+    }
+    meta = {"answers": {
+        **_answers({"name_ok": "yes", "type_ok": "yes", "role_ok": "partial"}),
+        "p31_ok": {"choice": "partial", "confidence": 0.9},
+        "duplicate_risk": {"choice": "no_duplicate_risk", "confidence": 0.9},
+        **_rule_answer("claims_supported", "yes"),
+    }}
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="wikidata_item",
+        candidate=_candidate("wikidata_item", payload), meta=meta,
+    )
+    assert gated["overall"] == "partial"

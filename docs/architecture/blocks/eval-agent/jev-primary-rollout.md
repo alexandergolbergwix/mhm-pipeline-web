@@ -265,6 +265,13 @@ W-171..W-175:
   the MARC scope and the eval-agent state and breached the TypeSafe input
   cap on every judged row of that class. Fingerprints keep the full
   `_record_ids`; only the judge state is capped (salt `w178_v1`).
+- **Axis-hedge upgrade (2026-10-05):** the answer harvest showed 191 of
+  194 partials answered EVERY judgment rule "yes" with no mechanical
+  finding, then hedged the summary axis to "partial" (Jev has no free
+  text — the specific checks are the only signal). When all answered
+  rules pass, no gate fired, and the P31/duplicate contract answers are
+  clean, an axis "partial" upgrades to "yes" in code. Axis "no" and
+  every rule finding keep the verdict where it is.
 - **Rule answers are advisory only.** They never move the axes; the
   certified axis questions + mechanical gates decide the verdict, and
   `overall` stays code-computed (R44). v1 reconciled rule answers into

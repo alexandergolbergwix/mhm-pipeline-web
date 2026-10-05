@@ -688,6 +688,33 @@ def apply_jev_gates(
         # verdict (2026-10-04: forcing axes from rule answers produced 38
         # false fails; noisy rule calls must inform the curator, not the
         # overall).
+        # Hedge upgrade: the 2026-10-05 answer harvest showed 191 of 194
+        # partials answered EVERY judgment rule "yes" with no mechanical
+        # finding, then hedged the summary axis to "partial" (Jev has no
+        # free text — the specific checks are the only signal). When all
+        # answered rules pass, no gate fired, and the P31/duplicate
+        # contract answers are clean, an axis "partial" is unsupported
+        # hedging: the specific answers override the summary. Axis "no"
+        # and every rule finding keep the verdict where it is.
+        from eval_agent.wikidata_rules import rule_states
+        answered = rule_states(answers)
+        p31_choice = (answers.get("p31_ok") or {}).get("choice") or "yes"
+        dup_choice = (answers.get("duplicate_risk") or {}).get("choice") or ""
+        hedge_clear = (
+            bool(answered)
+            and all(state == "pass" for _, state in answered)
+            and p31_choice == "yes"
+            and dup_choice != "duplicate_found"
+        )
+        if hedge_clear:
+            upgraded = [axis for axis in AXES if str(final.get(axis)) == "partial"]
+            if upgraded:
+                notes.append(
+                    f"{', '.join(upgraded)}: all {len(answered)} "
+                    "entity-creation rules pass — summary hedge upgraded to yes",
+                )
+                for axis in upgraded:
+                    final[axis] = "yes"
     for axis in AXES:
         if axis in forced:
             continue
