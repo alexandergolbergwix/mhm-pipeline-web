@@ -121,6 +121,10 @@ class Verdict:
     # None when no fix is proposed or when the evaluator does not support fixes.
     suggested_fix: SuggestedFix | None = None
     publication_decision: dict[str, object] | None = None
+    # TypesafeJudge raw answers + confidences (out-of-band, R44) — kept on the
+    # Verdict so the trace can emit an agent.answers event; never serialized
+    # into the schema-constrained verdict record itself.
+    meta: dict[str, Any] | None = None
 
     def to_jsonl_record(self) -> dict[str, Any]:
         return {

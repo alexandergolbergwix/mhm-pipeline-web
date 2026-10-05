@@ -778,6 +778,8 @@ class Session:
         self._tally_tokens(response.input_tokens, response.output_tokens)
         response = self._apply_jev_gates(active_judge, evaluator, candidate, response)
         verdict = evaluator.parse_verdict(response.verdict, candidate)
+        if isinstance(active_judge, TypesafeJudge) and response.meta:
+            verdict.meta = dict(response.meta)
         for attempt in range(_judge_retries()):
             if self._usable_verdict(response, verdict):
                 break
@@ -984,6 +986,20 @@ def _emit_verdict_trace(v: Verdict) -> None:
     record = v.to_jsonl_record()
     record["type"] = "agent.verdict"
     print("[TRACE] " + json.dumps(record, ensure_ascii=False), flush=True)
+    answers = (v.meta or {}).get("answers")
+    if isinstance(answers, dict) and answers:
+        print(
+            "[TRACE] " + json.dumps(
+                {
+                    "type": "agent.answers",
+                    "record_id": v.record_id,
+                    "evaluator_id": v.evaluator_id,
+                    "meta": {"answers": answers},
+                },
+                ensure_ascii=False,
+            ),
+            flush=True,
+        )
 
 
 def _load_defaults() -> dict[str, Any]:
