@@ -535,6 +535,8 @@ def overall_from_answers(
     final_axes: dict[str, str],
     answers: dict[str, Any],
     payload: dict[str, Any],
+    *,
+    ignore_claim_states: bool = False,
 ) -> str:
     """Full harness overall: axis checks (blocking) + the secondary check
     states (name_quality / text_quality for hmo, claims + p31_ok +
@@ -558,11 +560,12 @@ def overall_from_answers(
         # Capping on uncertainty made every bridge claim (P2888/P973/P217)
         # drag gold-full items to partial — so only an actually-unsupported
         # claim (fail) caps; partial contributes nothing.
-        states.extend(
-            ("fail", False)
-            for s in _claim_states(payload, answers)
-            if s == "fail"
-        )
+        if not ignore_claim_states:
+            states.extend(
+                ("fail", False)
+                for s in _claim_states(payload, answers)
+                if s == "fail"
+            )
         p31 = (answers.get("p31_ok") or {}).get("choice") or ""
         if p31:
             # Wrong/missing instance-of typing is a real public-data problem
@@ -722,18 +725,30 @@ def apply_jev_gates(
             and p31_choice == "yes"
             and dup_choice != "duplicate_found"
         )
-        if hedge_clear:
-            upgraded = [axis for axis in AXES if str(final.get(axis)) == "partial"]
-            if upgraded:
-                notes.append(
-                    f"{', '.join(upgraded)}: all {len(answered)} "
-                    "entity-creation rules pass — summary hedge upgraded to yes",
-                )
-                for axis in upgraded:
-                    final[axis] = "yes"
+    else:
+        answered, p31_choice, dup_choice = [], "", ""
+        hedge_clear = False
+    if hedge_clear:
+        upgraded = [axis for axis in AXES if str(final.get(axis)) == "partial"]
+        if upgraded:
+            notes.append(
+                f"{', '.join(upgraded)}: all {len(answered)} "
+                "entity-creation rules pass — summary hedge upgraded to yes",
+            )
+            for axis in upgraded:
+                final[axis] = "yes"
 
     overall = overall_from_answers(
         evaluator_id, final, answers, payload,
+        # The claims_supported rule supersedes the coarse per-claim nouls:
+        # when every judgment rule passes, an individual low noul is the
+        # same unsupported hedge (2026-10-05: the last ~150 partials).
+        ignore_claim_states=(
+            evaluator_id == _WIKIDATA_ITEM and bool(answered)
+            and all(state == "pass" for _, state in answered)
+            and p31_choice == "yes"
+            and dup_choice != "duplicate_found"
+        ),
     )
     if evaluator_id == _WIKIDATA_ITEM:
         reasoning = explain_wikidata_verdict(
