@@ -132,6 +132,7 @@ RULES: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "label_substance",
+        "axis_native": True,
         "kind": _JUDGMENT,
         "name": "label and description carry substance",
         "statement": (
@@ -152,6 +153,7 @@ RULES: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "description_accuracy",
+        "axis_native": True,
         "kind": _JUDGMENT,
         "name": "description matches the evidence",
         "statement": (
@@ -239,6 +241,7 @@ RULES: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "person_role",
+        "axis_native": True,
         "kind": _JUDGMENT,
         "name": "person role supported",
         "statement": (
@@ -308,6 +311,7 @@ RULES: tuple[dict[str, Any], ...] = (
     },
     {
         "id": "author_modeling",
+        "axis_native": True,
         "kind": _JUDGMENT,
         "name": "author claims modeled correctly",
         "statement": (

@@ -121,7 +121,7 @@ manifest** (`eval_agent/wikidata_rules.py`): 8 deterministic rules stay in
 code, 19 judgment rules go out claim-conditionally (3 are axis-native — the
 certified axis questions already judge them), rule answers stay advisory
 (findings only, never axis moves), and the verdict explanation is
-plain-language rule findings — never axis tokens (cache salt `w181_v1`). Non-Gemini models run linear
+plain-language rule findings — never axis tokens (cache salt `w182_v1`). Non-Gemini models run linear
 judging (no agentic tool-loop). See eval-agent block **R16** and **Rule W-46**
 ([docs/architecture/rules/ai-verify.md](docs/architecture/rules/ai-verify.md)).
 

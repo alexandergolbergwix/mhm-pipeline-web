@@ -16,7 +16,11 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w181_v1 with the axis-hedge upgrade: when every judgment
+# Bumped to w182_v1: the 4 axis-restating rule questions (label
+# substance, description accuracy, author modeling, person role) went
+# axis-native — they duplicated the certified axes and their noise
+# blocked the hedge upgrade on ~150 rows (answer harvest 2026-10-05).
+# Prior: w181_v1 (axis-hedge upgrade: when every judgment
 # rule passes and the P31/duplicate contract answers are clean, an
 # axis "partial" is upgraded to yes in code (Jev hedges the summary
 # axis while its specific checks pass — 191 of 194 partials).
@@ -39,7 +43,7 @@ from app.pipeline.marc_verify_context import (
 # Prior: w175_v1 (Rule W-175: sticky-full on review-table sanitise,
 # presentation labels out of cache keys, non-passing verify default).
 # Prior: w174_v1 (catalogue P973 gate + Hebrew brackets + holder gloss).
-WIKIDATA_VERDICT_SCHEMA = "w181_v1"
+WIKIDATA_VERDICT_SCHEMA = "w182_v1"
 # v7: the W-265 judge change (claim-uncertainty no longer caps, type_ok defers
 # span length to name_ok) altered the prompt and the gate — verdicts judged
 # under the old contract must re-judge. Full verdicts stick via W-171 (the old
