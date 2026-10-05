@@ -695,8 +695,24 @@ def apply_jev_gates(
         # answered rules pass, no gate fired, and the P31/duplicate
         # contract answers are clean, an axis "partial" is unsupported
         # hedging: the specific answers override the summary. Axis "no"
-        # and every rule finding keep the verdict where it is.
+        # and every rule finding keep the verdict where it is. The upgrade
+        # itself runs AFTER the confidence gate (below) — a sub-gate 'no'
+        # routed to review is the same unsupported hedge when every
+        # specific check passes.
         from eval_agent.wikidata_rules import rule_states
+    for axis in AXES:
+        if axis in forced:
+            continue
+        conf = confidences.get(axis)
+        if final[axis] == "no" and isinstance(conf, (int, float)) \
+                and conf < ROLE_CONF_GATE:
+            final[axis] = "partial"
+            notes.append(f"{axis}: 'no' at confidence {conf:.2f} — routed to review")
+
+    if evaluator_id == _WIKIDATA_ITEM:
+        # Hedge upgrade AFTER the confidence gate: a sub-gate 'no' routed to
+        # review is the same unsupported hedge when every specific check
+        # passes — both shapes upgrade.
         answered = rule_states(answers)
         p31_choice = (answers.get("p31_ok") or {}).get("choice") or "yes"
         dup_choice = (answers.get("duplicate_risk") or {}).get("choice") or ""
@@ -715,14 +731,6 @@ def apply_jev_gates(
                 )
                 for axis in upgraded:
                     final[axis] = "yes"
-    for axis in AXES:
-        if axis in forced:
-            continue
-        conf = confidences.get(axis)
-        if final[axis] == "no" and isinstance(conf, (int, float)) \
-                and conf < ROLE_CONF_GATE:
-            final[axis] = "partial"
-            notes.append(f"{axis}: 'no' at confidence {conf:.2f} — routed to review")
 
     overall = overall_from_answers(
         evaluator_id, final, answers, payload,
