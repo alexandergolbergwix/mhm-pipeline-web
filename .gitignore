@@ -183,3 +183,4 @@ snapshots/*.json
 
 # Local verdict analysis reports — keep generated evidence out of Git.
 reports/
+paper/
