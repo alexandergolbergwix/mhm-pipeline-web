@@ -1755,12 +1755,13 @@ def _sanitize_canonical_claims(
                 continue
             if pid == "P1684" and is_catalog_note_placeholder(value):
                 continue
-            if pid == "P2093":
+            if pid == "P2093" and value:
+                # WikidataStatement has no value_label field — the label the
+                # judge sees is stamped later from value. Normalize value in
+                # place; non-frozen dataclass, direct assignment is safe.
                 fixed = _latin_author_casing(value)
                 if fixed != value:
                     statement.value = fixed
-                    if str(statement.value_label or "") == value:
-                        statement.value_label = fixed
             kept.append(statement)
         item.statements = kept
 
