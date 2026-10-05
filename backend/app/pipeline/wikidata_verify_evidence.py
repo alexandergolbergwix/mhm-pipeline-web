@@ -157,7 +157,10 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P5816": ("notes", "material"),                   # condition
     "P2048": ("extent",),
     "P2049": ("extent",),
-    "P2093": ("authors", "contributors"),
+    # 505-derived works carry the author in the contents line (no 100/700
+    # on the record) — citing only authors/contributors left every such
+    # P2093 with an empty evidence pack (2026-10-04: 134 work partials).
+    "P2093": ("authors", "contributors", "contents"),
     "P2635": ("extent",),
     "P3959": ("record_ids",),
     "P6108": ("digital_access",),
@@ -225,8 +228,8 @@ _PERSON_LINK_CLAIM_PIDS: dict[str, tuple[str, ...]] = {
     "P110": ("contributors",),
     "P655": ("authors", "contributors"),
     "P9046": ("authors", "contributors"),
-    "P50": ("authors",),
-    "P2093": ("authors", "contributors"),
+    "P50": ("authors", "contents"),
+    "P2093": ("authors", "contributors", "contents"),
     "P1028": ("provenance", "contributors"),   # donated by
     "P11811": ("provenance", "contributors"),  # beforehand owned by
     "P11812": ("provenance", "contributors"),  # afterward owned by

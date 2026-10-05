@@ -16,7 +16,9 @@ from app.pipeline.marc_verify_context import (
     marc_context_for_item,
 )
 
-# Bumped to w179_v1 with the subtitle evidence channel: P1680 now cites
+# Bumped to w180_v1: P2093/P50 cite the contents slice — 505-derived
+# work authors stopped reading as unsupported (134 work partials).
+# Prior: w179_v1 (subtitle evidence channel: P1680 now cites
 # the 245$b subtitle slice (not the main title) and the MARC context
 # carries a subtitle key — items with subtitles re-judge. Prior:
 # w178_v1 (verify record-id cap: multi-source works
@@ -33,7 +35,7 @@ from app.pipeline.marc_verify_context import (
 # Prior: w175_v1 (Rule W-175: sticky-full on review-table sanitise,
 # presentation labels out of cache keys, non-passing verify default).
 # Prior: w174_v1 (catalogue P973 gate + Hebrew brackets + holder gloss).
-WIKIDATA_VERDICT_SCHEMA = "w179_v1"
+WIKIDATA_VERDICT_SCHEMA = "w180_v1"
 # v7: the W-265 judge change (claim-uncertainty no longer caps, type_ok defers
 # span length to name_ok) altered the prompt and the gate — verdicts judged
 # under the old contract must re-judge. Full verdicts stick via W-171 (the old
