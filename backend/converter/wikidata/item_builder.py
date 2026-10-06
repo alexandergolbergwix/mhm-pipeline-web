@@ -643,6 +643,28 @@ _ROLE_TO_LABEL: dict[str, str] = {
     "commentator": "commentator",
     "PATRON": "patron",
     "patron": "patron",
+    # The Hebrew MARC role variants (the ROLE_TO_PID keys) — without these
+    # every Hebrew-role person fell back to the generic "person associated
+    # with Hebrew manuscripts" description, which the judge reads as a
+    # placeholder (2026-10-06: the last person fails/partials).
+    "מעתיק": "scribe",
+    "סופר": "scribe",
+    "בעלים": "owner",
+    "בעל": "owner",
+    "(ממנו)": "owner",
+    "former owner": "former owner",
+    "בעלים קודמים": "former owner",
+    "signatory": "signatory",
+    "חותם": "signatory",
+    "mentioned": "mentioned person",
+    "נזכר": "mentioned person",
+    "מוזכר": "mentioned person",
+    "commissioned by": "patron",
+    "commissioner": "patron",
+    "seller": "seller",
+    "censor": "censor",
+    "illuminator": "illuminator",
+    "annotator": "annotator",
 }
 
 
@@ -877,6 +899,12 @@ def _build_person_description(role: str, dates_str: str, is_org: bool) -> str:
             return _cap_description(f"organization ({safe_dates})")
         return "organization associated with Hebrew manuscripts"
     role_label = _ROLE_TO_LABEL.get((role or "").strip(), "")
+    if not role_label:
+        # The raw MARC role may carry wrappers ("(מעתיק)") — try the
+        # normalized form the role pipeline uses for the PID lookup.
+        from converter.wikidata.role_normalize import normalize_marc_role  # noqa: PLC0415
+
+        role_label = _ROLE_TO_LABEL.get(normalize_marc_role(role), "")
     # Role-only "Hebrew manuscript editor/commentator" descriptions arrive on
     # Studio persons whose authority_evidence was slimmed, so the judge sees an
     # unsupported description (export-28 Person_164). Keep role wording when
@@ -885,6 +913,12 @@ def _build_person_description(role: str, dates_str: str, is_org: bool) -> str:
         return "person associated with Hebrew manuscripts"
     if role_label and safe_dates:
         return _cap_description(f"{role_label} ({safe_dates})")
+    if role_label == "former owner":
+        return "former owner of a Hebrew manuscript"
+    if role_label == "signatory":
+        return "signatory in a Hebrew manuscript"
+    if role_label == "mentioned person":
+        return "person mentioned in a Hebrew manuscript"
     if role_label:
         return _cap_description(f"Hebrew manuscript {role_label}")
     if safe_dates:

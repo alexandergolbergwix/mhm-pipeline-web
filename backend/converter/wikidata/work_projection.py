@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from converter.wikidata.isbd_title import split_isbd_title_subtitle
 from converter.wikidata.item_builder import (
     LANG_TO_QID,
     P_AUTHOR,
@@ -27,6 +28,7 @@ from converter.wikidata.item_builder import (
     logger,
     nli_reference,
 )
+from converter.wikidata.property_mapping import P_SUBTITLE
 
 
 def _match_text(value: object) -> str:
@@ -394,14 +396,38 @@ class WorkProjectionMixin:
             )
         )
         title_language = "he" if _has_hebrew_script(title) else "en"
-        work.statements.append(
-            WikidataStatement(
-                property_id=P_TITLE,
-                value=title,
-                value_type="monolingualtext",
-                language=title_language,
+        # ISBD split on the work title, matching the manuscript path (Rule 33):
+        # the marc.title evidence slice carries the MAIN part, so a P1476 with
+        # the full "תורה : עם ניקוד וטעמים…" string read as a title that
+        # matched no evidence channel (2026-10-06, 28 work partials).
+        main_title, subtitle = split_isbd_title_subtitle(title, None)
+        if main_title:
+            work.statements.append(
+                WikidataStatement(
+                    property_id=P_TITLE,
+                    value=main_title,
+                    value_type="monolingualtext",
+                    language=title_language,
+                )
             )
-        )
+        else:
+            work.statements.append(
+                WikidataStatement(
+                    property_id=P_TITLE,
+                    value=title,
+                    value_type="monolingualtext",
+                    language=title_language,
+                )
+            )
+        if subtitle and subtitle.casefold() != main_title.casefold():
+            work.statements.append(
+                WikidataStatement(
+                    property_id=P_SUBTITLE,
+                    value=subtitle,
+                    value_type="monolingualtext",
+                    language=title_language,
+                )
+            )
         # A manuscript language is not automatically the language of every
         # contained work. Emit P407 only when work-specific language evidence
         # is supplied by an authority/curator channel.
