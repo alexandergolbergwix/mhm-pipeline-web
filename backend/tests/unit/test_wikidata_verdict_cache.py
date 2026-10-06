@@ -711,3 +711,36 @@ def test_p1476_evidence_cites_contents() -> None:
     from app.pipeline.wikidata_verify_evidence import CLAIM_SOURCE_SLICES
 
     assert CLAIM_SOURCE_SLICES["P1476"] == ("title", "contents")
+
+
+def test_fabricated_245_evidence_is_rejected() -> None:
+    import uuid as _uuid
+    from app.pipeline.hmo_canonical_wikidata import (
+        CanonicalStudioContext,
+        _reject_fabricated_245_evidence,
+    )
+
+    cn = "990001936620205171"
+    context = CanonicalStudioContext(
+        marc_by_cn={cn: {"title": "שער שברי לוחות", "_control_number": cn}},
+    )
+    rows = [{
+        "title": "תורה", "raw_title": "תורה", "source_text": "תורה",
+        "source_field": "245", "source_record_id": cn,
+        "accepted": True, "reason": "marc_245_title",
+    }]
+    out = _reject_fabricated_245_evidence(rows, context, type("E", (), {"local_id": "x"})())
+    assert out[0]["accepted"] is False
+    assert out[0]["reason"] == "fabricated_245_evidence"
+
+    # a genuine 245 match survives
+    context2 = CanonicalStudioContext(
+        marc_by_cn={cn: {"title": "תורה", "_control_number": cn}},
+    )
+    rows2 = [{
+        "title": "תורה", "raw_title": "תורה", "source_text": "תורה",
+        "source_field": "245", "source_record_id": cn,
+        "accepted": True, "reason": "marc_245_title",
+    }]
+    out2 = _reject_fabricated_245_evidence(rows2, context2, type("E", (), {"local_id": "y"})())
+    assert out2[0]["accepted"] is True

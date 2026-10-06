@@ -530,6 +530,66 @@ def _split_work_title_claims(statements: list[WikidataStatement]) -> None:
             )
 
 
+
+def _reject_fabricated_245_evidence(
+    work_evidence: list[dict[str, Any]],
+    context: CanonicalStudioContext | None,
+    entity: Any,
+) -> list[dict[str, Any]]:
+    """A work-evidence row citing MARC 245 must match the record's title.
+
+    Run 3494ebf5 shipped works whose only accepted evidence row claimed
+    ``source_field=245`` with ``source_text=תורה`` on a record whose real
+    245 title is ``שער שברי לוחות`` — the judge correctly read the title
+    claim as unevidenced. Fail closed: the row is marked unaccepted so the
+    work drops under the W-68 no-accepted-evidence rule (Rule W-70).
+    """
+    if not work_evidence or context is None:
+        return work_evidence
+    from converter.wikidata.item_builder import _normalise_label  # noqa: PLC0415
+
+    marc_by_cn = context.marc_by_cn
+    changed = False
+    for row in work_evidence:
+        if not isinstance(row, dict) or row.get("accepted") is not True:
+            continue
+        if str(row.get("source_field") or "").strip().upper() != "245":
+            continue
+        cn = canonical_control_number(str(row.get("source_record_id") or ""))
+        record = marc_by_cn.get(cn) if cn else None
+        if record is None:
+            continue
+        record_title = _normalise_label(str(record.get("title") or ""))
+        if not record_title:
+            continue
+        claimed = " ".join(str(row.get(key) or "") for key in
+                           ("source_text", "raw_title", "title"))
+        claimed_main = _normalise_label(
+            split_work_title_main(claimed) or claimed,
+        )
+        if (_normalise_label(row.get("source_text") or "") in record_title
+                or record_title in claimed_main
+                or claimed_main in record_title):
+            continue
+        row["accepted"] = False
+        row["reason"] = "fabricated_245_evidence"
+        changed = True
+    if changed:
+        logger.warning(
+            "work evidence: rejected fabricated 245 rows for %s",
+            getattr(entity, "local_id", "") or "",
+        )
+    return work_evidence
+
+
+def split_work_title_main(title: str) -> str:
+    from converter.wikidata.isbd_title import split_isbd_title_subtitle  # noqa: PLC0415
+
+    main, _subtitle = split_isbd_title_subtitle(str(title or ""), None)
+    return main
+
+
+
 def native_items_from_hmo(
     entities: Iterable[CanonicalHmoEntity],
     *,
@@ -597,6 +657,9 @@ def native_items_from_hmo(
         # of an item that already exists on Wikidata (Rule W-114 / W-138).
         if wd_type == "work" and not existing_qid:
             existing_qid = _known_qid_from_work_evidence(work_evidence)
+        work_evidence = _reject_fabricated_245_evidence(
+            work_evidence, context, entity,
+        )
         # Fail closed: never emit a CREATE work without accepted source evidence
         # (Rule W-68 / WORK_WITHOUT_SOURCE_EVIDENCE). Existing QIDs may UPDATE.
         if (
