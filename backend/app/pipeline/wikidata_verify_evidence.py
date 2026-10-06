@@ -147,7 +147,11 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P953": ("digital_access",),
     "P1071": ("place",),
     "P1104": ("extent",),
-    "P1476": ("title",),
+    # Works whose candidate came from the 505 carry excerpt-range titles
+    # ("תורה (דברים כט : ט-לא:ל)") — the record's title slice names only the
+    # parent work, so the contents line is the channel that actually
+    # matches (2026-10-06).
+    "P1476": ("title", "contents"),
     "P1574": ("contents", "title", "related_records"),
     "P1680": ("subtitle", "title"),
     "P1684": ("notes", "colophon_text", "summary"),

@@ -509,6 +509,12 @@ def _split_work_title_claims(statements: list[WikidataStatement]) -> None:
         main, subtitle = split_isbd_title_subtitle(value, None)
         if not main or main == value:
             continue
+        # A colon inside a parenthetical (verse ranges: "תורה (דברים לב :
+        # א-לב:נב)") is not an ISBD break — splitting truncates the title
+        # mid-parenthetical. Keep the original when the main part would end
+        # with an unbalanced paren (2026-10-06 regression).
+        if main.count("(") != main.count(")"):
+            continue
         statement.value = main
         if subtitle and not any(
             str(s.property_id or "") == "P1680" for s in statements

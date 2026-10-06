@@ -691,3 +691,23 @@ def test_scripture_titles_carry_no_author() -> None:
     assert _is_scripture_title("Torah")
     assert not _is_scripture_title("פרוש התורה")
     assert not _is_scripture_title("משנה תורה")
+
+
+def test_work_title_split_keeps_parenthetical_colons() -> None:
+    """A colon inside a verse-range parenthetical is not an ISBD break."""
+    from app.pipeline.hmo_canonical_wikidata import _split_work_title_claims
+    from converter.wikidata.item_models import WikidataStatement
+
+    st = [WikidataStatement(property_id="P1476",
+                            value="תורה (דברים לב : א-לב:נב)",
+                            value_type="monolingualtext")]
+    _split_work_title_claims(st)
+    assert [(s.property_id, s.value) for s in st] == [
+        ("P1476", "תורה (דברים לב : א-לב:נב)"),
+    ]
+
+
+def test_p1476_evidence_cites_contents() -> None:
+    from app.pipeline.wikidata_verify_evidence import CLAIM_SOURCE_SLICES
+
+    assert CLAIM_SOURCE_SLICES["P1476"] == ("title", "contents")
