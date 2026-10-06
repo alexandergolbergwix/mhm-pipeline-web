@@ -341,7 +341,30 @@ def _evidence_window(text: str, pid: str, item: dict[str, Any]) -> str:
             continue
         pos = text.find(needle)
         if pos < 0:
-            continue
+            # Separator variance between the claim and the 505 line
+            # ("(דברים כט : …)" vs "(דברים כט, …)") — anchor on the needle's
+            # distinctive words: the position with the most word hits inside
+            # a 300-char window wins.
+            import re as _re  # noqa: PLC0415
+
+            words = [
+                w for w in _re.split(r"[^\w\u0590-\u05ff]+", needle) if len(w) >= 3
+            ]
+            best, best_score = -1, 0
+            for word in words:
+                start = 0
+                while True:
+                    at = text.find(word, start)
+                    if at < 0:
+                        break
+                    window_text = text[max(0, at - 150): at + 200]
+                    score = sum(1 for w in words if w in window_text)
+                    if score > best_score:
+                        best, best_score = at, score
+                    start = at + 1
+            if best < 0 or best_score < 2:
+                continue
+            pos = best
         if pos < 0:
             continue
         start = max(0, pos - 100)
