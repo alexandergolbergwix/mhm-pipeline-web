@@ -416,8 +416,12 @@ GENRE_TO_QID: dict[str, str] = {
 
 # Well-known works that already exist on Wikidata (labels verified live 2026-07-26)
 KNOWN_WORK_QIDS: dict[str, str] = {
-    "Torah": "Q34990",
-    "תורה": "Q34990",
+    # "Torah"/"תורה" is deliberately ABSENT (2026-10-06): a Torah-scroll
+    # record's work candidate is the scroll's own text, not the Q34990
+    # "Torah" text item — 28 works were shipping as Q34990 updates with
+    # catalog titles (and the 505's commentator as P2093 author). The
+    # scroll itself is the manuscript (Q2350579); the text stays unlinked
+    # and fails closed like the Bible/Tanakh collection entries (Rule W-70).
     "Talmud": "Q43290",
     "תלמוד": "Q43290",
     "Mishnah": "Q191825",

@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -68,6 +69,15 @@ _COMPOSITE_SEP = "␟"
 # us proposing a new item against Q623354, the Passover Haggadah.
 _TITLE_PROBE_TYPES: dict[str, str] = {"work": "P1476"}
 _TITLE_PREFIX = "title+"
+# Exact-label probes answer only on a same-class item; the default is the
+# person class (the identifier-less scribe case).
+_PERSON_CLASS = "Q5"
+_LABEL_PID_PREFIX = "label:"
+
+# Marker a label-matched candidate carries: an EXACT normalized label or
+# alias match on a same-class item (adoptable — see
+# _ADOPTABLE_MATCH_PREFIXES). Likeness is never reported.
+_LABEL_MATCH_PREFIX = "label="
 
 STATUS_ABSENT = "absent"
 STATUS_CANDIDATES = "candidates_found"
@@ -262,6 +272,14 @@ def identity_probes(item: dict[str, Any]) -> list[dict[str, str]]:
     Identifier probes answer outright; composite probes (Rule W-144) answer by
     conjunction. Both count, so an item with only a composite probe available is
     still probed rather than skipped.
+
+    An item with NO identifier, composite or title key (an identifier-less
+    person — the common scribe case) gets one label probe: a live
+    ``wbsearchentities`` lookup on its own label, answered only by an
+    EXACT normalized label/alias match on a same-class item. Anything
+    weaker stays unreported — W-139 forbids inferring duplication from
+    label likeness (2026-10-05: person 3494ebf5/360, 14, 437 existed on
+    Wikidata under exact Hebrew labels while the item shipped as CREATE).
     """
     entity_type = str(item.get("entity_type") or "")
     probes: list[dict[str, str]] = []
@@ -270,7 +288,27 @@ def identity_probes(item: dict[str, Any]) -> list[dict[str, str]]:
             probes.append({"kind": "identifier", "pid": pid, "value": value})
     probes.extend(composite_probes(item))
     probes.extend(title_probes(item))
+    probes.extend(label_probes(item))
     return probes
+
+
+def label_probes(item: dict[str, Any]) -> list[dict[str, str]]:
+    """One exact-label lookup for items the other probes cannot see."""
+    if _statement_values(item, "P3959") or _statement_values(item, "P214"):
+        return []
+    if composite_probes(item) or title_probes(item):
+        return []
+    labels = item.get("labels") or {}
+    label = str(labels.get("he") or labels.get("en") or "").strip()
+    if not label:
+        return []
+    classes = _statement_values(item, "P31")
+    expected = classes[0] if len(classes) == 1 else _PERSON_CLASS
+    return [{
+        "kind": "label",
+        "pid": f"label:{expected}",
+        "value": label,
+    }]
 
 
 def title_probes(item: dict[str, Any]) -> list[dict[str, str]]:
@@ -892,6 +930,113 @@ def probe_composites_batch(
     return out
 
 
+_LABEL_STRIP_RE = re.compile(r"[\u0591-\u05c7'\"\u2019\u201d\u05f4\u05f3,.:;()\[\]\-]+")
+
+
+def _normalize_label_for_match(value: str) -> str:
+    """Nikud/quote/punctuation-insensitive label identity (W-139 extension).
+
+    An exact match means the same name form the catalog carries — the
+    normalization removes only marks that are transcription variance, never
+    word content. Casefolded so Latin forms compare.
+    """
+    text = _LABEL_STRIP_RE.sub(" ", str(value or ""))
+    return " ".join(text.split()).casefold()
+
+
+def _label_search_url(query: str, language: str) -> str:
+    params = urllib.parse.urlencode({
+        "action": "wbsearchentities",
+        "search": query,
+        "language": language,
+        "limit": "5",
+        "format": "json",
+        "formatversion": "2",
+        "maxlag": "5",
+    })
+    return f"{_API}?{params}"
+
+
+def probe_label_match(
+    label: str,
+    expected_class: str,
+    *,
+    fetch: Any = None,
+    timeout: float | None = None,
+) -> list[dict[str, str]]:
+    """Exact-label duplicate lookup for identifier-less items.
+
+    ``wbsearchentities`` on the item's own label (Hebrew preferred), then one
+    batched entity fetch for the candidates' labels, aliases, and P31. Only a
+    SAME-CLASS item whose label or alias equals our label (normalized,
+    nikud/quote-insensitive) is reported, as ``matched_on=label=<label>`` —
+    an identity signal the adoption path may act on. No likeness, no
+    candidates (W-139).
+    """
+    caller = fetch or _fetch_json
+    text = str(label or "").strip()
+    if not text:
+        return []
+    language = "he" if re.search(r"[\u0590-\u05ff]", text) else "en"
+    timeout = timeout or _timeout()
+    # wbsearchentities answers a maxlag/429 as a JSON error body, not an HTTP
+    # status — retry politely before treating it as an absence (2026-10-06:
+    # a wdqs lag wave returned error payloads for all three label probes).
+    payload: dict[str, Any] | None = None
+    for attempt in range(3):
+        payload = caller(_label_search_url(text, language), timeout=timeout)
+        if isinstance(payload, dict) and not payload.get("error"):
+            break
+        if fetch is None:
+            # Real API — back off; caller-injected fetches (tests) stay instant.
+            time.sleep(2.0 * (attempt + 1))
+    search_rows = (payload or {}).get("search") or []
+    qids = [
+        str(row.get("id") or "")
+        for row in search_rows
+        if isinstance(row, dict) and str(row.get("id") or "").startswith("Q")
+    ][:5]
+    if not qids:
+        return []
+    ours = _normalize_label_for_match(text)
+    if not ours:
+        return []
+    entities = caller(_entities_url(qids), timeout=timeout or _timeout())
+    out: list[dict[str, str]] = []
+    for qid in qids:
+        entity = ((entities or {}).get("entities") or {}).get(qid) or {}
+        claims = entity.get("claims") or {}
+        classes = _claim_values(claims, "P31")
+        if expected_class and expected_class not in classes:
+            continue
+        their_labels = [
+            str(v.get("value") or "")
+            for v in (entity.get("labels") or {}).values() if isinstance(v, dict)
+        ] + [
+            str(a.get("value") or "")
+            for v in (entity.get("aliases") or {}).values() if isinstance(v, dict)
+            for a in v
+        ]
+        forms = {_normalize_label_for_match(x) for x in their_labels}
+        forms.discard("")
+        if ours not in forms:
+            continue
+        # Report the form that MATCHED (the same-script label), not the
+        # entity's first label — the adoption conflict gate compares
+        # same-script headings, and an English label here would send an
+        # exact Hebrew match down the cross-script path.
+        matched_form = next(
+            (x for x in their_labels if _normalize_label_for_match(x) == ours),
+            "",
+        )
+        out.append({
+            "qid": qid,
+            "matched_on": f"{_LABEL_MATCH_PREFIX}{text}",
+            "label": matched_form,
+        })
+    return out
+
+
 def probe_batch(
     pairs: list[tuple[str, str]],
     *,
@@ -1262,8 +1407,13 @@ async def attach_duplicate_evidence(
     misses = [key for key in pairs if key not in answered_keys]
     # Identifier keys pack many to a request; composite and title keys batch too,
     # but by group (see probe_composites_batch / probe_titles_batch), so they are
-    # dispatched by key shape rather than one at a time.
-    single_misses = [key for key in misses if "+" not in key[0]]
+    # dispatched by key shape rather than one at a time. Label keys are one
+    # wbsearchentities call each — dispatched separately, before the batch paths.
+    label_misses = [key for key in misses if key[0].startswith(_LABEL_PID_PREFIX)]
+    single_misses = [
+        key for key in misses
+        if "+" not in key[0] and not key[0].startswith(_LABEL_PID_PREFIX)
+    ]
     title_misses = [key for key in misses if key[0].startswith(_TITLE_PREFIX)]
     composite_misses = [
         key for key in misses
@@ -1283,6 +1433,19 @@ async def attach_duplicate_evidence(
                     "note": "lookup failed — duplication is UNKNOWN, not ruled out",
                 }
                 stats["unavailable"] += 1
+
+    for key in label_misses:
+        try:
+            hits = await run_in_threadpool(
+                probe_label_match, key[1], key[0].split(":", 1)[1], fetch=fetch,
+            )
+        except Exception as exc:  # noqa: BLE001 — a probe must never break verify
+            logger.warning("duplicate probe label match failed: %s", exc)
+            mark_unavailable([key], exc)
+            continue
+        fresh[key] = hits
+        apply(key, hits)
+        _report(on_progress, len(fresh), max(total_keys, 1), "lookups")
 
     for start in range(0, len(single_misses), _BATCH_SIZE):
         chunk = single_misses[start : start + _BATCH_SIZE]
@@ -1413,7 +1576,7 @@ async def attach_duplicate_evidence(
 # whose AND is verified client-side (Rule W-144).
 _ADOPTABLE_MATCH_PREFIXES = tuple(f"{pid}=" for pid in sorted({
     *(pid for pids in _IDENTIFIER_PIDS_BY_TYPE.values() for pid in pids),
-}))
+})) + (_LABEL_MATCH_PREFIX,)
 
 
 def _adoptable_qids(existence: dict[str, Any]) -> set[str]:
@@ -1483,7 +1646,7 @@ def _same_script_family(a: str, b: str) -> bool:
 _HE_GIVEN_LATIN: dict[str, frozenset[str]] = {
     "אברהם": frozenset({"abraham", "avraham"}),
     "יצחק": frozenset({"isaac", "yitzhak", "yitshak", "yizhak"}),
-    "יעקב": frozenset({"jacob", "yaakov", "yaakov"}),
+    "יעקב": frozenset({"jacob", "yaakov"}),
     "משה": frozenset({"moses", "moshe", "mosheh"}),
     "אהרן": frozenset({"aaron", "aharon"}),
     "יוסף": frozenset({"joseph", "yosef", "josef"}),

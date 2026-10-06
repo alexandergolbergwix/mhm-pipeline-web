@@ -17,8 +17,8 @@ import json
 import logging
 import threading
 import uuid
-from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncIterator, Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -1735,11 +1735,12 @@ async def rebuild_selected_wikidata_items(
             if cn and cn not in record_ids:
                 record_ids.append(cn)
 
+    from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
     from app.pipeline.wikidata_studio_batches import (  # noqa: PLC0415
         _cn_keys,
         load_wikidata_build_slice,
     )
-    from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
 
     slice_inputs = await load_wikidata_build_slice(
         db, run_id, record_ids, approved_only=True,
@@ -1833,7 +1834,7 @@ async def rebuild_selected_wikidata_items(
         "selected_rebuild": {
             "selected": len(rebuilt_old_ids),
             "rebuilt": len(new_items),
-            "at": datetime.now(timezone.utc).isoformat(),
+            "at": datetime.now(UTC).isoformat(),
         },
     }
     await _replace_item_rows(db, run_id, approved_only=True, source=source, items=merged)
@@ -3016,7 +3017,7 @@ def _slice_items(
     returned from cache or from a fresh build. The cache invariant
     (Rule W-26) is untouched.
     """
-    from converter.wikidata.property_labels import PROPERTY_LABELS, QID_LABELS  # noqa: PLC0415
+    from converter.wikidata.property_labels import PROPERTY_LABELS  # noqa: PLC0415
 
     # ── precomputed aggregates (full unfiltered build) ──────────────────
     approved_item_count = sum(1 for it in all_items if it.get("approved") is True)
@@ -3505,6 +3506,30 @@ async def _fetch_wikidata_verify_items(
     # claims instead of failing the item on a risk we have just resolved
     # (Rule W-168).
     adopt_identifier_matched_duplicates(items)
+    # Newly adopted items (identifier or exact-label match) must show the
+    # live labels to the judge — without them an UPDATE whose labels match
+    # the live item still read as "label needs attention" (2026-10-06).
+    newly_adopted = [
+        item for item in items
+        if str(item.get("existing_qid") or "").strip()
+        and isinstance(item.get("_wikidata_existence"), dict)
+        and ((item["_wikidata_existence"].get("adoption") or {}).get("adopted") is True)
+    ]
+    if newly_adopted:
+        from app.pipeline.wikidata_live_enrich import (  # noqa: PLC0415
+            enrich_items_with_wikidata_live,
+        )
+        enriched_live = await enrich_items_with_wikidata_live(newly_adopted)
+        by_id = {
+            str(i.get("_local_id") or i.get("local_id") or ""): i
+            for i in enriched_live
+        }
+        items = [
+            by_id.get(
+                str(i.get("_local_id") or i.get("local_id") or ""), i,
+            )
+            for i in items
+        ]
     # LLM provenance proposals (Rule W-140) are attached during the BUILD, not
     # here: one model call per manuscript kept "Loading Studio scope…" spinning
     # for minutes. Verify reads whatever the build already stamped, and
@@ -3786,15 +3811,26 @@ async def _prepare_wikidata_verify_scope(
     action: agent_actions.AgentAction,
     items: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Filter/enrich verify scope for action-specific evaluators."""
-    if action.id != "autofix_from_wikidata":
-        return items
+    """Filter/enrich verify scope for action-specific evaluators.
+
+    UPDATE items carry ``wikidata_live`` for every action now (2026-10-06):
+    the audit judge must see the live label of the QID it is asked about —
+    without it, an update whose labels match the live item read as
+    "label needs attention" and hedged the verdict to partial (11 persons
+    in run 3494ebf5).
+    """
     scoped = [i for i in items if str(i.get("existing_qid") or "").strip()]
     if not scoped:
-        return scoped
+        return items
     from app.pipeline.wikidata_live_enrich import enrich_items_with_wikidata_live  # noqa: PLC0415
 
-    return await enrich_items_with_wikidata_live(scoped)
+    enriched = await enrich_items_with_wikidata_live(scoped)
+    by_qid = {
+        str(i.get("existing_qid") or ""): i for i in enriched
+    }
+    return [
+        by_qid.get(str(i.get("existing_qid") or ""), i) for i in items
+    ]
 
 
 def _cached_wikidata_verdict_event(
@@ -4127,7 +4163,7 @@ async def _upsert_studio_cache(
     """Write (insert or update) the build cache row.  Errors are swallowed
     so a cache write failure never degrades the user-facing response."""
     try:
-        from datetime import datetime, timezone  # noqa: PLC0415
+        from datetime import datetime  # noqa: PLC0415
 
         if existing is None:
             row = WikidataStudioCache(
@@ -4153,7 +4189,7 @@ async def _upsert_studio_cache(
             existing.pending_match_count = pending_match_count
             existing.used_match_count = used_match_count
             existing.record_count = record_count
-            existing.built_at = datetime.now(timezone.utc)
+            existing.built_at = datetime.now(UTC)
         await db.commit()
     except Exception as exc:  # noqa: BLE001
         logger.warning("wikidata-studio cache write failed for run %s: %s", run_id, exc)

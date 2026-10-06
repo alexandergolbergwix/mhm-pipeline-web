@@ -181,3 +181,18 @@ class TestBothItemShapesAreTold:
         ):
             assert asyncio.run(_adopt_probed_duplicate_qids(serialised, [])) == 0
         assert "existing_qid" not in serialised[0]
+
+    def test_an_exact_label_match_becomes_an_update(self) -> None:
+        """An exact normalized label match on a same-class item is an
+        identity (2026-10-06: person 3494ebf5/360 exists as Q22935567 with
+        the identical Hebrew label while the item shipped as CREATE)."""
+        item = _item(
+            "QDraft_Person_360",
+            {"qid": "Q22935567", "matched_on": "label=יחיא בשירי",
+             "label": "יחיא בשירי"},
+            labels={"he": "יחיא בשירי"},
+            statements=[{"property_id": "P31", "value": "Q5"}],
+        )
+        adopt_identifier_matched_duplicates([item])
+        assert item["existing_qid"] == "Q22935567"
+        assert item["_wikidata_existence"]["adoption"]["adopted"] is True

@@ -56,3 +56,21 @@ def _split_colon_title(text: str) -> tuple[str, str]:
             return left.rstrip(" .,;:/-"), right.rstrip(" .,;:/-")
         break
     return cleaned.rstrip(" .,;:/-"), ""
+
+
+# Scripture text titles — the text itself has no human author. The main
+# ISBD part is compared so "תורה : עם ניקוד וטעמים" is caught too. Scope is
+# deliberately the Torah only (the collection entries already fail closed
+# per Rule W-70; specific biblical books keep their own handling).
+_SCRIPTURE_TITLES = frozenset({"torah", "תורה", "חומש", "חמשה חומשי תורה"})
+
+
+def _match_text_loose(value: str) -> str:
+    import re as _re
+
+    return _re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+
+
+def is_scripture_title(title: str) -> bool:
+    main = _match_text_loose(title).split(" : ", 1)[0].strip(" :")
+    return main in _SCRIPTURE_TITLES or _match_text_loose(title) in _SCRIPTURE_TITLES

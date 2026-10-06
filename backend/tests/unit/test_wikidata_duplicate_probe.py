@@ -9,6 +9,7 @@ import urllib.parse
 from unittest.mock import patch
 
 from app.pipeline.wikidata_duplicate_probe import (
+    probe_label_match,
     STATUS_ABSENT,
     STATUS_CANDIDATES,
     STATUS_HAS_QID,
@@ -1012,3 +1013,87 @@ class TestThePlaceholderIsNotAnAnswer:
         item["_wikidata_existence"] = {"status": STATUS_ABSENT, "candidates": []}
         enrich_items_with_verify_evidence([item], [])
         assert stamp_duplicate_check(item)["status"] == STATUS_ABSENT
+
+
+class TestLabelProbes:
+    def test_identifierless_person_gets_one_label_probe(self) -> None:
+        item = {
+            "entity_type": "person",
+            "labels": {"he": "יחיא בשירי"},
+            "statements": [{"property_id": "P31", "value": "Q5"}],
+        }
+        assert identity_probes(item) == [
+            {"kind": "label", "pid": "label:Q5", "value": "יחיא בשירי"},
+        ]
+
+    def test_identified_item_gets_no_label_probe(self) -> None:
+        item = {
+            "entity_type": "person",
+            "labels": {"he": "x"},
+            "statements": [{"property_id": "P214", "value": "1"}],
+        }
+        assert [p for p in identity_probes(item) if p["kind"] == "label"] == []
+
+    def test_exact_label_match_is_reported(self) -> None:
+        calls = []
+
+        def fetch(url: str, *, timeout: float) -> dict:
+            calls.append(url)
+            if "wbsearchentities" in url:
+                return {"search": [{"id": "Q22935567"}]}
+            return {"entities": {"Q22935567": {
+                "labels": {"en": {"value": "Yihye Bashiri"},
+                           "he": {"value": "יחיא בשירי"}},
+                "aliases": {},
+                "claims": {"P31": [{"mainsnak": {"datavalue": {
+                    "value": {"id": "Q5"}}}}]},
+            }}}
+
+        hits = probe_label_match("יחיא בשירי", "Q5", fetch=fetch)
+        assert hits == [{
+            "qid": "Q22935567",
+            "matched_on": "label=יחיא בשירי",
+            "label": "יחיא בשירי",
+        }]
+
+    def test_wrong_class_is_not_reported(self) -> None:
+        def fetch(url: str, *, timeout: float) -> dict:
+            if "wbsearchentities" in url:
+                return {"search": [{"id": "Q1"}]}
+            return {"entities": {"Q1": {
+                "labels": {"he": {"value": "יחיא בשירי"}},
+                "claims": {"P31": [{"mainsnak": {"datavalue": {
+                    "value": {"id": "Q4167410"}}}}]},
+            }}}
+
+        assert probe_label_match("יחיא בשירי", "Q5", fetch=fetch) == []
+
+    def test_alias_match_with_punctuation_variance(self) -> None:
+        def fetch(url: str, *, timeout: float) -> dict:
+            if "wbsearchentities" in url:
+                return {"search": [{"id": "Q9"}]}
+            return {"entities": {"Q9": {
+                "labels": {"he": {"value": "אליהו דלפוגיט."}},
+                "claims": {"P31": [{"mainsnak": {"datavalue": {
+                    "value": {"id": "Q5"}}}}]},
+            }}}
+
+        assert probe_label_match("אליהו דלפוגיט", "Q5", fetch=fetch)
+
+    def test_maxlag_error_body_retries_then_answers(self) -> None:
+        attempts = []
+
+        def fetch(url: str, *, timeout: float) -> dict:
+            attempts.append(url)
+            if len(attempts) == 1:
+                return {"error": {"code": "maxlag"}}
+            if "wbsearchentities" in url:
+                return {"search": [{"id": "Q9"}]}
+            return {"entities": {"Q9": {
+                "labels": {"he": {"value": "אליהו דלפוגיט"}},
+                "claims": {"P31": [{"mainsnak": {"datavalue": {
+                    "value": {"id": "Q5"}}}}]},
+            }}}
+
+        assert probe_label_match("אליהו דלפוגיט", "Q5", fetch=fetch)
+        assert len(attempts) == 3

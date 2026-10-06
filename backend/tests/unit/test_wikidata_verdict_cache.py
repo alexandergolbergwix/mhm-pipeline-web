@@ -670,3 +670,24 @@ def test_subtitle_slice_projected_from_245b() -> None:
     rec = {"title": "תכלאל", "subtitle": "עם פירוש חידושין"}
     out = project_marc_slice(rec, ["title", "subtitle"])
     assert out["subtitle"] == "עם פירוש חידושין"
+
+
+def test_torah_is_not_a_known_work_qid() -> None:
+    """A Torah-scroll record's work candidate is the scroll's own text, not
+    the Q34990 'Torah' item — 28 works shipped as Q34990 updates with
+    catalog titles and the 505 commentator as author (2026-10-06)."""
+    from converter.wikidata.property_mapping import known_work_qid_for_title
+
+    assert known_work_qid_for_title("תורה") is None
+    assert known_work_qid_for_title("Torah") is None
+    assert known_work_qid_for_title("משנה תורה") == "Q201029"
+
+
+def test_scripture_titles_carry_no_author() -> None:
+    from converter.wikidata.isbd_title import is_scripture_title as _is_scripture_title
+
+    assert _is_scripture_title("תורה")
+    assert _is_scripture_title("תורה : עם ניקוד וטעמים, מסורה קטנה וגדול")
+    assert _is_scripture_title("Torah")
+    assert not _is_scripture_title("פרוש התורה")
+    assert not _is_scripture_title("משנה תורה")

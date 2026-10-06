@@ -267,6 +267,16 @@ class WorkProjectionMixin:
         # '"Diodati Segre"' or '"""כתובים"""' don't land in labels/aliases/
         # P1476 with spurious surrounding quotes.
         title = _strip_name_quotes(title).rstrip(" .,;:/-")
+        # Scripture texts carry no author: the 505 responsibility on a
+        # Torah-scroll record names the COMMENTATOR of a printed edition
+        # ("עם פירוש … אבן עזרא"), not the text's author — attaching it as
+        # P2093 made the judge read a wrong-person author on 28 work items
+        # (2026-10-06). The main ISBD part is compared so "תורה : עם ניקוד"
+        # is caught too.
+        from converter.wikidata.isbd_title import is_scripture_title  # noqa: PLC0415
+
+        if is_scripture_title(title):
+            author_name = None
         key = _work_key(title)
         work = self._find_work_for_title(title, author_name, source_record)
         if work is not None:

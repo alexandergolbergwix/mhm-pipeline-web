@@ -511,9 +511,12 @@ RULES: tuple[dict[str, Any], ...] = (
         "applies": ("work",),
         "question": (
             "Does the P1476 title match the evidenced catalog title (MARC "
-            "245/500 or the accepted work entry)? 'yes' = same title, "
+            "245/500 main ISBD part or the accepted work entry), or the "
+            "live label of the updated QID (verify_evidence."
+            "wikidata_existing.live.labels)? 'yes' = the same title, "
             "normalized, Hebrew gershayim preserved; 'partial' = minor "
-            "orthographic drift; 'no' = a title no evidence supplies."
+            "orthographic drift; 'no' = a title no evidence or the live "
+            "item supplies."
         ),
         "fix": "Correct the title to the evidenced form.",
     },
