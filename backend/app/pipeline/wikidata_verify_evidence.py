@@ -310,6 +310,49 @@ def _compact(value: Any) -> str:
     return text.strip()[:_MAX_CLAIM_EVIDENCE_CHARS]
 
 
+def _claim_match_values(pid: str, item: dict[str, Any]) -> list[str]:
+    """The item's own values for *pid*, trimmed of ISBD punctuation."""
+    out: list[str] = []
+    for statement in item.get("statements") or []:
+        if not isinstance(statement, dict):
+            continue
+        if str(statement.get("property_id") or statement.get("property") or "") != pid:
+            continue
+        for key in ("value_label", "value"):
+            text = str(statement.get(key) or "").strip()
+            if text and text not in out:
+                out.append(text)
+    return out
+
+
+def _evidence_window(text: str, pid: str, item: dict[str, Any]) -> str:
+    """Head of the slice, or a window around the claim's value inside it.
+
+    When the claim's own value appears deeper than the head, quote a
+    window around the FIRST match so the judge can see the quoted source
+    text that actually backs the claim.
+    """
+    head = text[:_MAX_CLAIM_EVIDENCE_CHARS]
+    if len(text) <= _MAX_CLAIM_EVIDENCE_CHARS:
+        return head
+    for value in _claim_match_values(pid, item):
+        needle = value.strip()
+        if len(needle) < 3:
+            continue
+        pos = text.find(needle)
+        if pos < 0:
+            continue
+        if pos < 0:
+            continue
+        start = max(0, pos - 100)
+        end = min(len(text), pos + len(needle) + 200)
+        window = text[start:end]
+        prefix = "…" if start > 0 else ""
+        suffix = "…" if end < len(text) else ""
+        return f"{prefix}{window}{suffix}"
+    return head
+
+
 def _authority_channel_evidence(item: dict[str, Any]) -> dict[str, list[Any]]:
     """Group the item's accepted authority rows by the channel they support."""
     buckets: dict[str, list[Any]] = {}
@@ -415,7 +458,11 @@ def build_claim_sources(
                 continue
             text = str(marc.get(name) or "").strip()
             if text:
-                evidence[name] = text[:_MAX_CLAIM_EVIDENCE_CHARS]
+                # Quote the window around the claim's own value when it sits
+                # deeper than the 400-char head (an excerpt-range work title
+                # or an author name inside a huge 505 list — the judge
+                # matched neither otherwise; 2026-10-06, 11 work partials).
+                evidence[name] = _evidence_window(text, pid, item)
 
         channel = _AUTHORITY_CLAIM_PIDS.get(pid)
         if channel:
