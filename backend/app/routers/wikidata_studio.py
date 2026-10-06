@@ -3452,7 +3452,7 @@ async def _fetch_wikidata_verify_items(
             cn
             for cn in (
                 canonical_control_number(value)
-                for value in verify_record_ids(item)
+                for value in verify_record_ids(item, cap=1)
             )
             if cn and cn in run_record_ids
         ]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from typing import Any
 
 from app.pipeline.ai_verdict_cache_common import (
@@ -203,6 +205,22 @@ def verify_record_ids(item: dict[str, Any], *, cap: int = VERIFY_RECORD_ID_CAP) 
 
     anchors: list[str] = []
     seen: set[str] = set()
+
+    def _add(cn: str) -> None:
+        if cn and cn not in seen:
+            seen.add(cn)
+            anchors.append(cn)
+
+    # The item's OWN source record first: the NLI CN embedded in the local
+    # id ("QDraft_Work___MS_990001936620205171"). Title-deduped works
+    # accumulated hundreds of source records and no P3959 of their own —
+    # without this the first stored record (an unrelated manuscript) became
+    # the judge's evidence and its title contradicted the claim
+    # (2026-10-06).
+    for key in ("_local_id", "local_id"):
+        match = re.search(r"\d{15,}", str(item.get(key) or ""))
+        if match:
+            _add(canonical_control_number(match.group(0)))
     for statement in item.get("statements") or []:
         if not isinstance(statement, dict):
             continue
@@ -218,10 +236,7 @@ def verify_record_ids(item: dict[str, Any], *, cap: int = VERIFY_RECORD_ID_CAP) 
                     continue
                 if str(snak.get("property") or snak.get("property_id") or "") != "P3959":
                     continue
-                cn = canonical_control_number(snak.get("value"))
-                if cn and cn not in seen:
-                    seen.add(cn)
-                    anchors.append(cn)
+                _add(canonical_control_number(snak.get("value")))
     if len(anchors) >= cap:
         return anchors[:cap]
     for key in ("record_ids", "records", "control_numbers"):
@@ -229,19 +244,13 @@ def verify_record_ids(item: dict[str, Any], *, cap: int = VERIFY_RECORD_ID_CAP) 
         if not isinstance(stored, list):
             continue
         for value in stored:
-            cn = canonical_control_number(value)
-            if cn and cn not in seen:
-                seen.add(cn)
-                anchors.append(cn)
-                if len(anchors) >= cap:
-                    return anchors
-    for key in ("control_number", "_control_number", "record_id"):
-        cn = canonical_control_number(item.get(key))
-        if cn and cn not in seen:
-            seen.add(cn)
-            anchors.append(cn)
+            _add(canonical_control_number(value))
             if len(anchors) >= cap:
-                break
+                return anchors
+    for key in ("control_number", "_control_number", "record_id"):
+        _add(canonical_control_number(item.get(key)))
+        if len(anchors) >= cap:
+            break
     return anchors
 
 
