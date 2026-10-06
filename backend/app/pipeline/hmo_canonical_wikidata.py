@@ -491,6 +491,39 @@ def native_wikidata_claims(
     return native
 
 
+def _split_work_title_claims(statements: list[WikidataStatement]) -> None:
+    """ISBD-split a work's P1476 in place (main part stays P1476).
+
+    The HMO snapshot title claim carries the full catalog string
+    ("תורה : עם ניקוד וטעמים, מסורה קטנה וגדולה") while the marc.title
+    evidence slice quotes the MAIN part — the title rule read a mismatch
+    on every such work (2026-10-06). The manuscript path splits the same
+    way (Rule 33); the remainder becomes P1680 when no subtitle exists.
+    """
+    from converter.wikidata.isbd_title import split_isbd_title_subtitle  # noqa: PLC0415
+
+    for index, statement in enumerate(list(statements or [])):
+        if str(statement.property_id or "") != "P1476":
+            continue
+        value = str(statement.value or "")
+        main, subtitle = split_isbd_title_subtitle(value, None)
+        if not main or main == value:
+            continue
+        statement.value = main
+        if subtitle and not any(
+            str(s.property_id or "") == "P1680" for s in statements
+        ):
+            statements.insert(
+                index + 1,
+                WikidataStatement(
+                    property_id="P1680",
+                    value=subtitle,
+                    value_type="monolingualtext",
+                    language=statement.language,
+                ),
+            )
+
+
 def native_items_from_hmo(
     entities: Iterable[CanonicalHmoEntity],
     *,
@@ -543,6 +576,8 @@ def native_items_from_hmo(
         ]
         if wd_type == "work" and context is not None:
             _append_context_work_author(entity, context, statements)
+        if wd_type == "work":
+            _split_work_title_claims(statements)
         _append_manuscript_bridge_statements(entity, wd_type, statements)
         labels, aliases = _wikidata_labels_and_aliases(entity, wd_type, context=context)
         work_evidence = (
