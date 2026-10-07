@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 
-from app.pipeline import agent_actions, hmo_item_actions
+from app.pipeline import agent_actions
 from app.pipeline.agent_runner import (
     AgentEvent,
     locate_eval_agent,
@@ -85,7 +86,7 @@ async def _persist_hmo_item_verdicts(
     from app.db import session_scope  # noqa: PLC0415
     from app.models.hmo_studio_item_override import HmoStudioItemOverride  # noqa: PLC0415
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     async with session_scope() as db:
         for v in verdicts:
             cand = v.get("candidate") if isinstance(v, dict) else None
