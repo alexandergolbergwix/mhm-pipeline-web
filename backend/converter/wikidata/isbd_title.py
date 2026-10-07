@@ -37,18 +37,25 @@ def split_isbd_title_subtitle(
 
 
 def _split_colon_title(text: str) -> tuple[str, str]:
-    """Split on the first ISBD colon not inside quotation marks."""
+    """Split on the first ISBD colon not inside quotation marks or parens."""
     cleaned = re.sub(r"\s+", " ", text.strip())
     if ":" not in cleaned:
         return cleaned.rstrip(" .,;:/-"), ""
 
     in_quotes = False
     quote_chars = set(_QUOTE_CHARS)
+    paren_depth = 0
     for idx, ch in enumerate(cleaned):
         if ch in quote_chars:
             in_quotes = not in_quotes
             continue
-        if in_quotes or ch != ":":
+        if ch == "(":
+            paren_depth += 1
+            continue
+        if ch == ")":
+            paren_depth = max(0, paren_depth - 1)
+            continue
+        if in_quotes or paren_depth or ch != ":":
             continue
         left = cleaned[:idx].rstrip()
         right = cleaned[idx + 1 :].lstrip()
