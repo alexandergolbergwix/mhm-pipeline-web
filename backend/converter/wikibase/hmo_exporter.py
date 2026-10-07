@@ -473,6 +473,13 @@ def _descriptions_for_node(
         merged = texts[0] if len(texts) == 1 else " · ".join(texts)
         merged = _dedupe_sentences(merged)
         merged = _enrich_description_with_control_numbers(merged, control_numbers)
+        # A description that IS the label (a person's own name after the
+        # natural-order swap) is a self-duplicate — it reads as a different
+        # person and fails the label rule. Names disambiguate nothing.
+        node_labels = _labels_for_node(graph, subject)
+        label_text = (node_labels.get(lang) or "").strip()
+        if label_text and merged.strip() == label_text:
+            continue
         built[lang] = _truncate(merged, _MAX_DESCRIPTION_LENGTH)
     if built:
         return sanitize_monolingual_map(built)
