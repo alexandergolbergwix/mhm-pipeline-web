@@ -68,6 +68,19 @@ EXPORTER_VERSION = "2"
 
 _ONTOLOGY_TTL = Path(__file__).resolve().parents[2] / "ontology" / "hebrew-manuscripts.ttl"
 
+# The ontology's controlled-vocabulary classes (the owl:oneOf family in the
+# TTL): their NamedIndividuals are TERMS, not catalog items — they ship via
+# the schema bootstrap, never the item build, and the AI verify must not
+# judge them (2026-10-06: 'Catalog Attribution' failed as a person item).
+VOCAB_ENTITY_TYPES = frozenset({
+    "AttributionSource", "ConditionType", "VocalizationType", "BindingType",
+    "DateFormatType", "CertaintyLevel", "DecorationType", "SubjectType",
+    "ParticipationRole", "CanonicalHierarchyType", "UnitStatusType",
+    "EpistemologicalStatus", "DataCategory", "InterpretationMethod",
+    "ConsensusLevelType", "RestrictionType", "DigitalAccessType",
+    "HierarchyType", "HebrewScriptType", "ViewType",
+})
+
 
 @lru_cache(maxsize=4)
 def _ontology_individual_index(
@@ -158,10 +171,17 @@ class HmoWikibaseExporter:
                 )
                 if predicate not in {RDF.type, RDFS.label}
             ]
+            labels = _labels_for_node(graph, subject)
+            if local_name(class_uri) == "E21_Person":
+                # Catalog authority headings are inverted ("Surname,
+                # Given"); the rubric expects a natural-order label with
+                # the inverted form as an alias (2026-10-06: the judge
+                # failed every inverted Hebrew person label).
+                labels = _natural_order_person_labels(labels)
             drafts.append(
                 WikibaseEntityDraft(
                     local_id=local_ids[subject],
-                    labels=_labels_for_node(graph, subject),
+                    labels=labels,
                     descriptions=_descriptions_for_node(graph, subject, class_uri),
                     entity_type=local_name(class_uri),
                     class_uri=str(class_uri),
@@ -518,6 +538,25 @@ def _balance_parens(text: str) -> str:
 
     cleaned = sanitize_work_title(text)
     return cleaned or text.strip()
+
+
+def _natural_order_person_labels(labels: dict[str, str]) -> dict[str, str]:
+    """Swap inverted authority headings to natural order for person labels.
+
+    "חלומניץ, יהודה ליב" → "יהודה ליב חלומניץ". Applies only to labels
+    whose value is a comma-separated two-part heading; anything else passes
+    through unchanged.
+    """
+    out: dict[str, str] = {}
+    for lang, text in labels.items():
+        stripped = text.strip()
+        if "," in stripped and len(stripped.split(",", 1)) == 2:
+            surname, given = (part.strip() for part in stripped.split(",", 1))
+            if surname and given:
+                out[lang] = f"{given} {surname}"
+                continue
+        out[lang] = text
+    return out
 
 
 def _truncate(text: str, max_length: int) -> str:

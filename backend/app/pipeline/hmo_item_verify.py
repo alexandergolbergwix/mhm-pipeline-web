@@ -198,6 +198,24 @@ async def hmo_item_verify_event_stream(
     runner_error: str | None = None
     runner_exit_code: int | None = None
     saw_runner_exit = False
+    # Controlled-vocabulary individuals are ontology TERMS, not items —
+    # the judge never audits them (2026-10-06: 'Catalog Attribution' failed
+    # as if it were a person).
+    from converter.wikibase.hmo_exporter import VOCAB_ENTITY_TYPES  # noqa: PLC0415
+
+    items = [
+        i for i in items
+        if str(i.get("entity_type") or "") not in VOCAB_ENTITY_TYPES
+    ]
+    uncached_items = [
+        i for i in uncached_items
+        if str(i.get("entity_type") or "") not in VOCAB_ENTITY_TYPES
+    ]
+    pre_cached = [
+        (item, payload) for item, payload in pre_cached
+        if str(item.get("entity_type") or "") not in VOCAB_ENTITY_TYPES
+    ]
+
     # Early index for per-verdict write-through before a dyno crash (Rule W-130).
     items_by_id = {
         str(i.get("_local_id") or i.get("local_id") or ""): i
