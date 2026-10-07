@@ -429,8 +429,22 @@ def _descriptions_for_node(
         descriptions.setdefault(comment.language or "en", text)
     built: dict[str, str] = {}
     control_numbers = _control_numbers_for_node(graph, subject)
+    readable_name = local_name(class_uri).replace("_", " ")
     for lang in ("en", "he"):
         texts = comments_by_lang.get(lang)
+        if not texts:
+            continue
+        # Comment hygiene (2026-10-06: run a6e1b67d shipped he descriptions
+        # ending in a dangling "·" and en descriptions joined with a bare
+        # type-name fragment — "…linked to manuscript X. · Person"):
+        # strip trailing middots and drop bare class-name fragments.
+        cleaned_texts = []
+        for t in texts:
+            t = t.strip().rstrip("·").strip()
+            if not t or t.casefold() == readable_name.casefold():
+                continue
+            cleaned_texts.append(t)
+        texts = cleaned_texts
         if not texts:
             continue
         # Never merge comments across scripts into the `en` description:
