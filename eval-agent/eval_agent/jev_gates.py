@@ -679,12 +679,10 @@ def apply_jev_gates(
                 "type_ok: no P31 (instance of) statement on the item — "
                 "structural claim missing; the build must emit it",
             )
-    artifacts_code = (
-        deterministic_text_artifacts(payload, marc_context)
-        if evaluator_id == "hmo_wikibase_item" else []
-    )
-    if artifacts_code and final[NAXIS] == "yes":
-        final[NAXIS] = "partial"
+    if artifacts_code:
+        if final[NAXIS] == "yes":
+            final[NAXIS] = "partial"
+            forced.add(NAXIS)
         notes.append(
             "name_ok: deterministic text artifacts ("
             + "; ".join(name for name, _ in artifacts_code) + ")",
@@ -731,6 +729,7 @@ def apply_jev_gates(
         # Hedge upgrade AFTER the confidence gate: a sub-gate 'no' routed to
         # review is the same unsupported hedge when every specific check
         # passes — both shapes upgrade.
+        from eval_agent.wikidata_rules import rule_states
         answered = rule_states(answers)
         p31_choice = (answers.get("p31_ok") or {}).get("choice") or "yes"
         dup_choice = (answers.get("duplicate_risk") or {}).get("choice") or ""
@@ -740,16 +739,30 @@ def apply_jev_gates(
             and p31_choice == "yes"
             and dup_choice != "duplicate_found"
         )
+    elif evaluator_id == "hmo_wikibase_item":
+        # HMO has no rule decomposition — the certified axes + mechanical
+        # gates decide. A partial axis with a clean label quality, no
+        # mechanical finding and nothing forced is hedging (the 2026-10-06
+        # harvest: 117 hmo non-passing, 0 real artifacts, name_quality ok
+        # on the hedge rows — the model hedges 'claims thin' on system
+        # entities whose claims are legitimately minimal).
+        nq = str((answers.get("name_quality") or {}).get("choice") or "")
+        hedge_clear = (
+            not artifacts_code
+            and nq in ("specific_and_substantive", "system_label_ok")
+            and not forced
+        )
+        answered = []
     else:
-        answered, p31_choice, dup_choice = [], "", ""
-        hedge_clear = False
+        answered, hedge_clear = [], False
     if hedge_clear:
         upgraded = [axis for axis in AXES if str(final.get(axis)) == "partial"]
         if upgraded:
-            notes.append(
-                f"{', '.join(upgraded)}: all {len(answered)} "
-                "entity-creation rules pass — summary hedge upgraded to yes",
-            )
+            if evaluator_id == _WIKIDATA_ITEM:
+                notes.append(
+                    f"{', '.join(upgraded)}: all {len(answered)} "
+                    "entity-creation rules pass — summary hedge upgraded to yes",
+                )
             for axis in upgraded:
                 final[axis] = "yes"
 
@@ -765,7 +778,7 @@ def apply_jev_gates(
             and dup_choice != "duplicate_found"
         ),
     )
-    if evaluator_id == _WIKIDATA_ITEM:
+    if evaluator_id in (_WIKIDATA_ITEM, "hmo_wikibase_item"):
         reasoning = explain_wikidata_verdict(
             final, overall, payload, answers, notes,
         )

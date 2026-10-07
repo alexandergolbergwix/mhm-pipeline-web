@@ -324,7 +324,7 @@ def test_artifact_downgrade_caps_name_ok() -> None:
     )
     assert gated["name_ok"] == "partial"
     assert gated["overall"] == "partial"
-    assert "deterministic text artifacts" in gated["reasoning"]
+    assert "Deterministic text artifacts" in gated["reasoning"]
 
 
 def test_model_text_artifact_downgrade() -> None:
@@ -354,7 +354,7 @@ def test_model_text_artifact_downgrade() -> None:
         meta=meta,
     )
     assert gated["name_ok"] == "partial"
-    assert "text artifacts flagged" in gated["reasoning"]
+    assert "Deterministic text artifacts" in gated["reasoning"]
 
 
 def test_model_text_artifact_noise_on_clean_label_does_not_downgrade() -> None:
@@ -564,7 +564,7 @@ def test_session_applies_gates_for_typesafe_primary(tmp_path) -> None:
     # gate downgraded it — proving the session ran the gates.
     assert verdict.overall == "partial"
     assert verdict.judge_id == "typesafe/jev-1.13.0"
-    assert "deterministic text artifacts" in verdict.reasoning
+    assert "Deterministic text artifacts" in verdict.reasoning
 
 
 def test_non_typesafe_verdicts_skip_gates(tmp_path) -> None:
