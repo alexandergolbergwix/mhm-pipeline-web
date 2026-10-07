@@ -202,7 +202,12 @@ class SessionConfig:
         if parallel is None and tier_spec.provider == "openai_compat":
             parallel = 1
 
-        escalate_on = tuple(ag_cfg.get("escalate_on", ["abstain", "partial"]))
+        escalate_on_arg = getattr(args, "escalate_on", None)
+        escalate_on = (
+            tuple(x.strip() for x in str(escalate_on_arg).split(",") if x.strip())
+            if escalate_on_arg
+            else tuple(ag_cfg.get("escalate_on", ["abstain", "partial"]))
+        )
         fallback_model = str(
             os.environ.get("EVAL_AGENT_FALLBACK_JUDGE")
             or judge_cfg.get("fallback_model")

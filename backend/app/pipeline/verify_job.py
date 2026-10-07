@@ -681,6 +681,8 @@ async def _open_verify_stream(
                 api_key=api_key,
                 override_cache=override_cache,
                 tier_model=tier_model,
+                escalate=bool(params.get("escalate")),
+                escalate_on=str(params.get("escalate_on") or ""),
             )
 
         if kind == JOB_KIND_NER_VERIFY:
@@ -702,6 +704,8 @@ async def _open_verify_stream(
                 api_key=api_key,
                 override_cache=override_cache,
                 tier_model=tier_model,
+                escalate=bool(params.get("escalate")),
+                escalate_on=str(params.get("escalate_on") or ""),
             )
 
         if kind == JOB_KIND_WIKIDATA_VERIFY:
@@ -794,6 +798,8 @@ async def _open_verify_stream(
                 api_key=api_key,
                 override_cache=override_cache,
                 tier_model=tier_model,
+                escalate=bool(params.get("escalate")),
+                escalate_on=str(params.get("escalate_on") or ""),
             )
 
         if kind == JOB_KIND_HMO_ITEM_VERIFY:
@@ -891,6 +897,8 @@ async def _open_verify_stream(
                 api_key=api_key,
                 override_cache=override_cache,
                 tier_model=tier_model,
+                escalate=bool(params.get("escalate")),
+                escalate_on=str(params.get("escalate_on") or ""),
             )
 
     return None

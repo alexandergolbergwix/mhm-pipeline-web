@@ -101,6 +101,8 @@ class HmoItemVerifyStartRequest(BaseModel):
     action_id: str = Field(..., min_length=1, max_length=64)
     item_ids: list[str] | None = None
     override_cache: bool = False
+    escalate: bool = False
+    escalate_on: str | None = None
     tier_model: str | None = Field(default=None, max_length=64)
 
 
@@ -1435,6 +1437,8 @@ async def start_hmo_item_verify_stream(
             api_key=api_key,
             override_cache=payload.override_cache,
             tier_model=payload.tier_model,
+            escalate=bool(payload.escalate),
+            escalate_on=str(payload.escalate_on or ""),
         )),
         media_type="text/event-stream",
         headers={

@@ -542,6 +542,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p_run.add_argument("--escalate-below-conf", type=float, default=None,
                        help="with --escalate-policy: also escalate `full` rows whose "
                             "Jev confidence is below this (default 0.85).")
+    p_run.add_argument("--escalate-on", default=None,
+                       help="with --escalate-policy: comma-separated overalls to "
+                            "escalate (default abstain,partial; e.g. "
+                            "abstain,partial,fail).")
 
     p_report = sub.add_parser("report", help="regenerate report from a run")
     p_report.add_argument("--run", default="latest")

@@ -486,6 +486,8 @@ class VerifyStartRequest(BaseModel):
     source: Literal["legacy", "canonical"] = "canonical"
     override_cache: bool = False
     tier_model: str | None = Field(default=None, max_length=64)
+    escalate: bool = False
+    escalate_on: str | None = Field(default=None, max_length=64)
 
 
 @router.get("/{run_id}/wikidata-studio/ai-verify/actions")
@@ -579,6 +581,8 @@ async def start_verify_stream(
             api_key=api_key,
             override_cache=payload.override_cache,
             tier_model=payload.tier_model,
+            escalate=bool(payload.escalate),
+            escalate_on=str(payload.escalate_on or ""),
         )),
         media_type="text/event-stream",
         headers={
@@ -3559,6 +3563,8 @@ async def _wikidata_verify_event_stream(
     api_key: str,
     override_cache: bool,
     tier_model: str | None,
+    escalate: bool = False,
+    escalate_on: str | None = None,
 ):
     state_dir = resolve_verify_state_dir(_WIKIDATA_VERIFY_CHANNEL, run_id)
     session_dir = resolve_verify_session_dir(_WIKIDATA_VERIFY_CHANNEL, run_id, session_id)
@@ -3653,6 +3659,8 @@ async def _wikidata_verify_event_stream(
                 tier_model=tier_model,
                 override_cache=override_cache,
                 rpm=action.rate_limit_rpm,
+                escalate_policy=bool(escalate),
+                escalate_on=str(escalate_on or ""),
             ):
                 from app.pipeline.agent_runner import emit_session_event  # noqa: PLC0415
 

@@ -210,6 +210,8 @@ async def spawn_eval_agent_run(
     rpm: int = 60,
     threshold: float | None = None,
     candidate_count: int | None = None,
+    escalate_policy: bool = False,
+    escalate_on: str | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """Run ``eval-agent run`` and yield each parsed event.
 
@@ -256,6 +258,12 @@ async def spawn_eval_agent_run(
         # --no-cache skips cache READS but still writes fresh verdicts
         # so the next session warm-hits whichever ones overlap.
         cmd += ["--no-cache"]
+    if escalate_policy:
+        # Two-judge escalation (R44): rows the tier-1 judge did not settle
+        # re-judge with the fallback model, whose verdict decides.
+        cmd += ["--escalate-policy"]
+        if escalate_on:
+            cmd += ["--escalate-on", escalate_on]
     if threshold is not None:
         # NER evaluators drop predictions below this confidence
         # (default 0.85). When a curator hand-picks entities they want

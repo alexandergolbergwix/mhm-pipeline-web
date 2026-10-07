@@ -184,6 +184,8 @@ async def hmo_item_verify_event_stream(
     marc_records: list[dict[str, Any]],
     api_key: str,
     override_cache: bool,
+    escalate: bool = False,
+    escalate_on: str | None = None,
     tier_model: str | None,
 ) -> AsyncIterator[AgentEvent]:
     state_dir = resolve_verify_state_dir(_HMO_ITEM_VERIFY_CHANNEL, run_id)
@@ -269,6 +271,8 @@ async def hmo_item_verify_event_stream(
                     override_cache=override_cache,
                     rpm=action.rate_limit_rpm,
                     candidate_count=len(uncached_items),
+                    escalate_policy=bool(escalate),
+                    escalate_on=str(escalate_on or ""),
                 ):
                     from app.pipeline.agent_runner import emit_session_event  # noqa: PLC0415
 
