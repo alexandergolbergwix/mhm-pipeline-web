@@ -551,7 +551,10 @@ def overall_from_answers(
         if name_quality:
             state = _NAME_QUALITY_STATE.get(name_quality, "error")
             states.append((state, state == "fail"))
-        if isinstance(artifact_noul, (int, float)) and artifact_noul >= 0.5:
+        # Same mechanical-confirmation rule as the axis downgrade: the
+        # model's noul alone flags clean system labels as artifacts.
+        if isinstance(artifact_noul, (int, float)) and artifact_noul >= 0.5 \
+                and deterministic_text_artifacts(payload):
             states.append(("partial", False))
     if evaluator_id == _WIKIDATA_ITEM:
         # Claim-level noul in [0.4, 0.7) is SUPPORT UNCERTAINTY, not a defect:
@@ -628,9 +631,21 @@ def apply_jev_gates(
     confidences = _answer_confidences(answers)
     tq = answers.get("text_quality") or {}
     artifact_noul = tq.get("noul") if isinstance(tq, dict) else None
-    artifact = isinstance(artifact_noul, (int, float)) and artifact_noul >= 0.5
 
     final = dict(raw_axes)
+    artifacts_code = (
+        deterministic_text_artifacts(payload, marc_context)
+        if evaluator_id == "hmo_wikibase_item" else []
+    )
+    # The model's text_quality noul is noisy on system labels (it flagged 72
+    # clean designation labels as artifacts in run a6e1b67d vs 26 real ones
+    # the deterministic check found) — for hmo_wikibase_item the artifact
+    # downgrade fires only when the MECHANICAL check confirms; the noul
+    # stays advisory (R44: mechanical detection stays in code).
+    artifact = isinstance(artifact_noul, (int, float)) and artifact_noul >= 0.5 and (
+        evaluator_id != "hmo_wikibase_item" or bool(artifacts_code)
+    )
+
     if artifact and final[NAXIS] == "yes":
         final[NAXIS] = "partial"
     notes: list[str] = []

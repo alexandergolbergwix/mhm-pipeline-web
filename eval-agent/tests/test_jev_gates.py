@@ -328,6 +328,10 @@ def test_artifact_downgrade_caps_name_ok() -> None:
 
 
 def test_model_text_artifact_downgrade() -> None:
+    """2026-10-06: the model's text_quality noul flagged 72 CLEAN system
+    labels as artifacts vs 26 the mechanical check found — the hmo
+    downgrade now requires the deterministic confirmation (the label in
+    this test has an unclosed paren, so the check confirms)."""
     verdict = {
         "name_ok": "yes", "type_ok": "yes", "role_ok": "n/a",
         "overall": "full", "reasoning": "r", "suggested_fix": None,
@@ -339,10 +343,44 @@ def test_model_text_artifact_downgrade() -> None:
     }}
     gated = jev_gates.apply_jev_gates(
         verdict, evaluator_id="hmo_wikibase_item",
-        candidate=_candidate("hmo_wikibase_item"), meta=meta,
+        candidate=_candidate(
+            "hmo_wikibase_item",
+            {
+                "_local_id": "QDraft_990123456789012345",
+                "labels": {"en": "Sefer Torah (folios 1"},
+                "descriptions": {"en": "a manuscript"},
+            },
+        ),
+        meta=meta,
     )
     assert gated["name_ok"] == "partial"
     assert "text artifacts flagged" in gated["reasoning"]
+
+
+def test_model_text_artifact_noise_on_clean_label_does_not_downgrade() -> None:
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "n/a",
+        "overall": "full", "reasoning": "r", "suggested_fix": None,
+    }
+    meta = {"answers": {
+        "name_ok": {"choice": "yes", "confidence": 0.9},
+        "type_ok": {"choice": "yes", "confidence": 0.9},
+        "text_quality": {"noul": 1.0},
+    }}
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="hmo_wikibase_item",
+        candidate=_candidate(
+            "hmo_wikibase_item",
+            {
+                "_local_id": "QDraft_990123456789012345",
+                "labels": {"en": "Sefer Torah"},
+                "descriptions": {"en": "a manuscript"},
+            },
+        ),
+        meta=meta,
+    )
+    assert gated["name_ok"] == "yes"
+    assert gated["overall"] == "full"
 
 
 def test_claim_checks_cap_wikidata_overall_at_partial() -> None:

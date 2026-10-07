@@ -491,15 +491,47 @@ def _dedupe_sentences(text: str) -> str:
     return " ".join(kept)
 
 
+def _balance_parens(text: str) -> str:
+    """Clean unbalanced parentheses out of a label/description.
+
+    The graph labels inherit 245/505 title text; a colon inside a verse
+    range cut the title mid-parenthetical at source ("Sefer Torah (folios
+    1"). Drop a dangling trailing close-paren and clip at the last unbalanced
+    open — the same hygiene sanitize_work_title applies to titles
+    (2026-10-06: 26 HMO items judged fail/partial on exactly this).
+    """
+    from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+
+    cleaned = sanitize_work_title(text)
+    return cleaned or text.strip()
+
+
 def _truncate(text: str, max_length: int) -> str:
-    """Clip free-text to a Wikibase length cap at a word boundary when possible."""
+    """Clip free-text to a Wikibase length cap at a word boundary when possible.
+
+    Also balances parentheses: truncation clips mid-parenthetical and some
+    source titles carry stray parens/quotes ("('תכלאל · …") — the judge's
+    deterministic artifact check failed 26 HMO items on exactly this
+    (2026-10-06). Open parens clip at the last open; dangling closes drop.
+    """
     text = text.strip()
-    if len(text) <= max_length:
-        return text
-    cut = text[: max_length - 1]
-    if " " in cut:
-        cut = cut.rsplit(" ", 1)[0]
-    return cut.rstrip() + "…"
+    if len(text) > max_length:
+        cut = text[: max_length - 1]
+        if " " in cut:
+            cut = cut.rsplit(" ", 1)[0]
+        text = cut.rstrip() + "…"
+    for _ in range(10):
+        opens, closes = text.count("("), text.count(")")
+        if opens == closes:
+            break
+        if opens > closes:
+            last_open = text.rfind("(")
+            if last_open < 0:
+                break
+            text = text[:last_open].rstrip()
+        else:
+            text = text.replace(")", "", 1)
+    return text
 
 
 def _statement_from_triple(
