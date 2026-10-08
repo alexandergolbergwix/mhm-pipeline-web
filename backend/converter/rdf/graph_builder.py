@@ -659,7 +659,11 @@ class GraphBuilder:
             ]
             merged_he = he_part
             if existing_he:
-                merged_he = " · ".join([*existing_he, he_part])
+                # An empty he_part must not join — "name · " shipped as a
+                # person he description (2026-10-06, run a6e1b67d).
+                merged_he = " · ".join(
+                    [part for part in [*existing_he, he_part] if part.strip()]
+                ) or he_part
                 for value in list(graph.objects(node_uri, RDFS.comment)):
                     if isinstance(value, Literal) and (value.language or "en") == "he":
                         graph.remove((node_uri, RDFS.comment, value))
