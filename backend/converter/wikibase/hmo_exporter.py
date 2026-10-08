@@ -172,6 +172,14 @@ class HmoWikibaseExporter:
                 if predicate not in {RDF.type, RDFS.label}
             ]
             labels = _labels_for_node(graph, subject)
+            if local_name(class_uri) == "CanonicalReference":
+                # Raw local names carry the source-class prefix
+                # ('Talmud_Bavli: שבת') — humanize to the referenced title.
+                labels = {
+                    lang: str(text).replace("_", " ").split(":", 1)[-1].strip()
+                    or text
+                    for lang, text in labels.items()
+                }
             if local_name(class_uri) == "E21_Person":
                 # Catalog authority headings are inverted ("Surname,
                 # Given"); the rubric expects a natural-order label with
@@ -460,7 +468,8 @@ def _descriptions_for_node(
         # strip trailing middots and drop bare class-name fragments.
         cleaned_texts = []
         for t in texts:
-            t = t.strip().rstrip("·").strip()
+            t = t.strip().rstrip("·").strip().strip("'").strip()
+            t = t.rstrip(".").strip()
             if not t or t.casefold() == readable_name.casefold():
                 continue
             cleaned_texts.append(t)
