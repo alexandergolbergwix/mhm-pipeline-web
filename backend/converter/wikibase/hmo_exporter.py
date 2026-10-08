@@ -477,6 +477,20 @@ def _descriptions_for_node(
         # natural-order swap) is a self-duplicate — it reads as a different
         # person and fails the label rule. Names disambiguate nothing.
         node_labels = _labels_for_node(graph, subject)
+        # A comment that IS the node's own name (person heading comments
+        # land as he comments verbatim) describes nothing — drop it.
+        # Compare punctuation-stripped: the heading comment carries the
+        # inverted form while the (swapped) label is natural order.
+        import re as _re  # noqa: PLC0415
+
+        def _name_skeleton(value: str) -> str:
+            return _re.sub(r"[^\w\u0590-\u05ff]+", "", str(value or "")).casefold()
+
+        skeleton = _name_skeleton(merged)
+        label_skeletons = {_name_skeleton(v) for v in node_labels.values()}
+        label_skeletons.discard("")
+        if skeleton and skeleton in label_skeletons:
+            continue
         label_text = (node_labels.get(lang) or "").strip()
         if label_text and merged.strip() == label_text:
             continue
