@@ -817,17 +817,16 @@ def resolve_against_mappings(
                 ResolvedClaim(source_uri_entry.wikibase_id, "string", draft.source_uri)
             )
 
-        # Name-only ghost persons: no claims, no source record, no MARC
+        # Name-only ghost persons: only HMO-structural claims (class links
+        # P288/P153/P293, resolution bridges), no source record, no MARC
         # presence — the judge's "empty MARC context forces no" was correct
         # every time (2026-10-06, run a6e1b67d). They are not items.
+        _STRUCTURAL_CLAIM_PIDS = {"P288", "P153", "P293", "P2888", "P973"}
         if (
             draft.entity_type == "E21_Person"
             and not draft.control_numbers
-            and not [c for c in claims if c.property_id not in {"P31"}]
-            and not any(
-                c.property_id not in {"P2888", "P973"} for c in claims
-            )
-            and len(claims) <= 1
+            and claims
+            and all(c.property_id in _STRUCTURAL_CLAIM_PIDS for c in claims)
         ):
             continue
         resolved.append(
