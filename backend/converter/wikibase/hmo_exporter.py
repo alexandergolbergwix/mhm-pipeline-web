@@ -817,6 +817,19 @@ def resolve_against_mappings(
                 ResolvedClaim(source_uri_entry.wikibase_id, "string", draft.source_uri)
             )
 
+        # Name-only ghost persons: no claims, no source record, no MARC
+        # presence — the judge's "empty MARC context forces no" was correct
+        # every time (2026-10-06, run a6e1b67d). They are not items.
+        if (
+            draft.entity_type == "E21_Person"
+            and not draft.control_numbers
+            and not [c for c in claims if c.property_id not in {"P31"}]
+            and not any(
+                c.property_id not in {"P2888", "P973"} for c in claims
+            )
+            and len(claims) <= 1
+        ):
+            continue
         resolved.append(
             ResolvedWikibaseEntity(
                 local_id=draft.local_id,
