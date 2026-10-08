@@ -79,6 +79,7 @@ VOCAB_ENTITY_TYPES = frozenset({
     "EpistemologicalStatus", "DataCategory", "InterpretationMethod",
     "ConsensusLevelType", "RestrictionType", "DigitalAccessType",
     "HierarchyType", "HebrewScriptType", "ViewType",
+    "CanonicalReference",
 })
 
 
@@ -186,6 +187,13 @@ class HmoWikibaseExporter:
                 # the inverted form as an alias (2026-10-06: the judge
                 # failed every inverted Hebrew person label).
                 labels = _natural_order_person_labels(labels)
+                # A person label never carries a manuscript suffix — the
+                # disambiguation lives in the description ('עקיבא (MS
+                # 990001271940205171)' reads as a malformed name).
+                labels = {
+                    lang: re.sub(r"\s*\(MS [0-9)]+.*$", "", str(text)).strip() or text
+                    for lang, text in labels.items()
+                }
             drafts.append(
                 WikibaseEntityDraft(
                     local_id=local_ids[subject],
