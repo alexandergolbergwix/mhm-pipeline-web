@@ -660,6 +660,17 @@ def native_items_from_hmo(
         work_evidence = _reject_fabricated_245_evidence(
             work_evidence, context, entity,
         )
+        # Fail closed: a person with no source record is a name-only ghost
+        # (minted from a bare mention) — no claim, no MARC presence; the
+        # judge's "empty MARC context forces no" was correct every time
+        # (2026-10-06, run a6e1b67d: 8 person fails with record_ids=[]).
+        if (
+            wd_type == "person"
+            and not identity_records_for(entity, wd_type)
+            and not statements
+        ):
+            _tick(index)
+            continue
         # Fail closed: never emit a CREATE work without accepted source evidence
         # (Rule W-68 / WORK_WITHOUT_SOURCE_EVIDENCE). Existing QIDs may UPDATE.
         if (
