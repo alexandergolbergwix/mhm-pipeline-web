@@ -537,6 +537,19 @@ def _descriptions_for_node(
     labels = _labels_for_node(graph, subject)
     label_text = labels.get("en") or labels.get("he") or ""
     if control_numbers:
+        if local_name(class_uri) in {"F1_Work", "F2_Expression"}:
+            # A work's description carries its own title + the manuscript
+            # context — "F1 Work linked to manuscript X" read as a generic
+            # placeholder and failed the label rule (2026-10-06: Work_Bible,
+            # Work_8).
+            work_title = label_text or readable
+            return {
+                "en": _truncate(
+                    f"The work '{work_title}' as recorded in manuscript "
+                    f"{control_numbers[0]}.",
+                    _MAX_DESCRIPTION_LENGTH,
+                ),
+            }
         return {
             "en": _truncate(
                 f"{readable} linked to manuscript {control_numbers[0]}.",

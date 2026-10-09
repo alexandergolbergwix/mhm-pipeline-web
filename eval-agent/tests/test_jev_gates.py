@@ -428,6 +428,8 @@ def test_claim_uncertainty_does_not_cap_wikidata_overall() -> None:
 
 
 def test_name_quality_malformed_fails_hmo_item() -> None:
+    """'malformed' fails only when the mechanical check confirms — the
+    candidate's label here has an unclosed paren, so it stands."""
     verdict = {
         "name_ok": "yes", "type_ok": "yes", "role_ok": "n/a",
         "overall": "full", "reasoning": "r", "suggested_fix": None,
@@ -439,9 +441,44 @@ def test_name_quality_malformed_fails_hmo_item() -> None:
     }}
     gated = jev_gates.apply_jev_gates(
         verdict, evaluator_id="hmo_wikibase_item",
-        candidate=_candidate("hmo_wikibase_item"), meta=meta,
+        candidate=_candidate(
+            "hmo_wikibase_item",
+            {
+                "_local_id": "QDraft_990123456789012345",
+                "labels": {"en": "Sefer Torah (folios 1"},
+                "descriptions": {"en": "a manuscript"},
+            },
+        ),
+        meta=meta,
     )
     assert gated["overall"] == "fail"
+
+
+def test_name_quality_malformed_without_mechanical_confirmation_is_noise() -> None:
+    """Jev called the gershayim label תנ"ך malformed at 0.27 — the
+    mechanical check finds no artifact, so the state must not fail."""
+    verdict = {
+        "name_ok": "yes", "type_ok": "yes", "role_ok": "n/a",
+        "overall": "full", "reasoning": "r", "suggested_fix": None,
+    }
+    meta = {"answers": {
+        "name_ok": {"choice": "yes", "confidence": 0.9},
+        "type_ok": {"choice": "yes", "confidence": 0.9},
+        "name_quality": {"choice": "malformed", "confidence": 0.27},
+    }}
+    gated = jev_gates.apply_jev_gates(
+        verdict, evaluator_id="hmo_wikibase_item",
+        candidate=_candidate(
+            "hmo_wikibase_item",
+            {
+                "_local_id": "QDraft_990123456789012345",
+                "labels": {"en": "תנ״ך"},
+                "descriptions": {"en": "a manuscript"},
+            },
+        ),
+        meta=meta,
+    )
+    assert gated["overall"] == "full"
 
 
 def test_match_kind_absent_keeps_ner_at_partial() -> None:

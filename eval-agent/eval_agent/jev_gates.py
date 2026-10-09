@@ -550,6 +550,18 @@ def overall_from_answers(
     if evaluator_id == "hmo_wikibase_item":
         if name_quality:
             state = _NAME_QUALITY_STATE.get(name_quality, "error")
+            # 'malformed' is mechanically checkable (unbalanced quotes,
+            # artifacts): the fail state only stands when the deterministic
+            # check confirms — Jev called the gershayim label תנ"ך malformed
+            # at 0.27 confidence (2026-10-06). 'generic_fallback' below the
+            # confidence gate is hedging, not a judgment.
+            if state == "fail" and name_quality == "malformed" \
+                    and not deterministic_text_artifacts(payload):
+                state = "pass"
+            if state == "partial" and name_quality == "generic_fallback":
+                conf = (answers.get("name_quality") or {}).get("confidence")
+                if isinstance(conf, (int, float)) and conf < ROLE_CONF_GATE:
+                    state = "pass"
             states.append((state, state == "fail"))
         # Same mechanical-confirmation rule as the axis downgrade: the
         # model's noul alone flags clean system labels as artifacts.
