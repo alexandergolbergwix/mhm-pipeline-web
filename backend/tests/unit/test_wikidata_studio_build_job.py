@@ -289,7 +289,11 @@ async def test_build_job_reports_phase_steps_and_nested_records(db_session, monk
     assert building[-1]["sub_unit"] == "records"
     assert "3 of 3" in building[-1]["sub_message"]
     build_step = BUILD_PHASES.index("building items") + 1
-    assert building[-1]["message"] == f"Step {build_step} of {len(BUILD_PHASES)}: building items"
+    # The countdown suffix (" · step Xs left") rides the message; assert the
+    # phase prefix only.
+    assert building[-1]["message"].startswith(
+        f"Step {build_step} of {len(BUILD_PHASES)}: building items"
+    )
 
     done_progress = finish.await_args.kwargs["progress"]
     assert done_progress["processed"] == 2
