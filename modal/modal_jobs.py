@@ -270,9 +270,10 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                 from app.pipeline.hmo_item_upload_job import run_hmo_item_upload_job
 
                 await run_hmo_item_upload_job(job_id)
-            elif kind == "hmo_item_verify":
-                # W-249: the eval-agent subprocess + 18k-item scope need the
-                # container's 8 GB — the 512 MB web dyno thrashed (R14).
+            elif kind in ("hmo_item_verify", "wikidata_verify"):
+                # W-249 + 2026-10-09: the eval-agent subprocess + the
+                # 18k/1.8k-item scope need the container's 8 GB — the
+                # 512 MB web dyno thrashed (R14 → R15 crash) on both.
                 from app.pipeline.verify_job import run_verify_job
 
                 await run_verify_job(job_id)
@@ -945,7 +946,7 @@ def run(request_body: dict) -> dict:
     kind = str(request_body.get("kind") or "")
     if not job_id or kind not in (
         "rdf_build", "hmo_item_build", "hmo_item_upload", "hmo_item_verify",
-        "hmo_rule_verify", "wikidata_studio_build",
+        "hmo_rule_verify", "wikidata_studio_build", "wikidata_verify",
     ):
         raise HTTPException(status_code=422, detail="job_id and kind required")
 
