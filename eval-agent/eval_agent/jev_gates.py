@@ -753,15 +753,29 @@ def apply_jev_gates(
         )
     elif evaluator_id == "hmo_wikibase_item":
         # HMO has no rule decomposition — the certified axes + mechanical
-        # gates decide. A partial axis with a clean label quality, no
-        # mechanical finding and nothing forced is hedging (the 2026-10-06
-        # harvest: 117 hmo non-passing, 0 real artifacts, name_quality ok
-        # on the hedge rows — the model hedges 'claims thin' on system
-        # entities whose claims are legitimately minimal).
+        # gates decide. A partial axis with no mechanical finding and
+        # nothing forced is hedging (the 2026-10-06 harvest: 117 hmo
+        # non-passing, 0 real artifacts — the model hedges 'claims thin' on
+        # system entities whose claims are legitimately minimal). The
+        # name_quality state participates through the SAME neutralization
+        # the overall uses: unconfirmed 'malformed' and sub-gate
+        # 'generic_fallback' are noise, not judgments.
         nq = str((answers.get("name_quality") or {}).get("choice") or "")
+        nq_conf = (answers.get("name_quality") or {}).get("confidence")
+        nq_blocking = (
+            nq in ("generic_fallback", "malformed")
+            and not (
+                nq == "malformed" and not deterministic_text_artifacts(payload)
+            )
+            and (
+                nq == "malformed"
+                or not isinstance(nq_conf, (int, float))
+                or nq_conf >= ROLE_CONF_GATE
+            )
+        )
         hedge_clear = (
             not artifacts_code
-            and nq in ("specific_and_substantive", "system_label_ok")
+            and (not nq or not nq_blocking)
             and not forced
         )
         answered = []
