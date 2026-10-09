@@ -191,7 +191,14 @@ class HmoWikibaseExporter:
                 # disambiguation lives in the description ('עקיבא (MS
                 # 990001271940205171)' reads as a malformed name).
                 labels = {
-                    lang: re.sub(r"\s*\(MS [0-9)]+.*$", "", str(text)).strip() or text
+                    lang: (
+                        text
+                        # "Unknown scribe 1 (MS …)" is an INTENTIONAL system
+                        # label (name_quality system_label_ok) — the suffix
+                        # must survive; strip it only from real names.
+                        if "unknown" in text.casefold()
+                        else re.sub(r"\s*\(MS [0-9)]+.*$", "", str(text)).strip() or text
+                    )
                     for lang, text in labels.items()
                 }
             drafts.append(
