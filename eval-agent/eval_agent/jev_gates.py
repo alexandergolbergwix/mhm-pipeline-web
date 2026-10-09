@@ -745,9 +745,18 @@ def apply_jev_gates(
         answered = rule_states(answers)
         p31_choice = (answers.get("p31_ok") or {}).get("choice") or "yes"
         dup_choice = (answers.get("duplicate_risk") or {}).get("choice") or ""
+        # The existing-QID identity rule is SETTLED when the item updates a
+        # QID whose live labels match the item's own (the duplicate probe
+        # adopted it — Rule W-139): a 'no' from the model on a settled
+        # identity is the same noise class as the artifact noul.
+        identity_settled = bool(str(payload.get("existing_qid") or "").strip())
+        answered_states = [
+            state for rule, state in answered
+            if not (identity_settled and rule["id"] == "existing_qid_identity")
+        ]
         hedge_clear = (
             bool(answered)
-            and all(state == "pass" for _, state in answered)
+            and all(state == "pass" for state in answered_states)
             and p31_choice == "yes"
             and dup_choice != "duplicate_found"
         )

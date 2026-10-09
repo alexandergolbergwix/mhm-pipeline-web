@@ -231,11 +231,16 @@ RULES: tuple[dict[str, Any], ...] = (
         "axis": "type_ok",
         "question": (
             "If the item updates an existing QID, is that QID the same "
-            "real-world entity? Compare labels, identifiers, and dates in "
-            "the existing-Wikidata pack. 'yes' = same entity; 'partial' = "
-            "plausible but thin evidence; 'no' = a different entity — the "
-            "update would corrupt another item. Never call a Q5 target a "
-            "disambiguation page without P31=Q4167410 evidence."
+            "real-world entity? The EXISTING-Wikidata pack is the identity "
+            "evidence: when verify_evidence.wikidata_existing.live.labels "
+            "equals (or contains) the item's own label — the live item's "
+            "Hebrew or English label matches the claim you are judging — "
+            "the answer is 'yes' by definition; the pipeline adopted that "
+            "QID through the duplicate probe. Do not demand more "
+            "corroboration: identifier or exact-label match IS identity "
+            "(Rule W-139). 'no' = the live labels contradict the item's "
+            "identity (a different person/work), never a missing extra "
+            "corroboration."
         ),
         "fix": "Unlink the wrong QID and re-run the duplicate check.",
     },
@@ -513,10 +518,13 @@ RULES: tuple[dict[str, Any], ...] = (
             "Does the P1476 title match the evidenced catalog title (MARC "
             "245/500 main ISBD part or the accepted work entry), or the "
             "live label of the updated QID (verify_evidence."
-            "wikidata_existing.live.labels)? 'yes' = the same title, "
-            "normalized, Hebrew gershayim preserved; 'partial' = minor "
-            "orthographic drift; 'no' = a title no evidence or the live "
-            "item supplies."
+            "wikidata_existing.live.labels)? Compare word-content skeletons "
+            "— an ISBD split, a colon inside a parenthetical verse range "
+            "('תורה (דברים כט : ט-לא:ל)'), or punctuation variance is the "
+            "SAME title, not a drift. 'yes' = the same title in any of "
+            "these forms; 'partial' = minor orthographic drift beyond "
+            "punctuation; 'no' = a title no evidence or the live item "
+            "supplies."
         ),
         "fix": "Correct the title to the evidenced form.",
     },
