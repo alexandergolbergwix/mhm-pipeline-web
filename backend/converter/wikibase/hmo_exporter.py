@@ -341,6 +341,15 @@ def _control_numbers_for_node(graph: Graph, subject: URIRef | BNode) -> list[str
         if node_key in ms_index:
             found.add(ms_index[node_key])
 
+        # Comment text carries the association too ("Person (copied from)
+        # linked to manuscript 990001345390205171") — the authority-fold
+        # persons have NO graph edge to their manuscript, only this comment;
+        # without scanning it the draft shipped record-less and the judge's
+        # empty-context rule failed it (2026-10-06).
+        for comment in graph.objects(node, RDFS.comment):
+            if isinstance(comment, Literal):
+                found.update(_control_numbers_in_uri(str(comment)))
+
         for parent in graph.subjects(object=node):
             if not isinstance(parent, URIRef | BNode):
                 continue
