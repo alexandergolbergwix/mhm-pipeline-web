@@ -2936,11 +2936,28 @@ def _upload_descriptions(
             return enriched
 
     cleaned: dict[str, str] = {}
+    label_words = {
+        word.casefold()
+        for value in entity.labels.values()
+        for word in re.findall(r"[\w\u0590-\u05ff]+", str(value or ""))
+        if word
+    }
     for lang, value in entity.descriptions.items():
-        text = str(value or "").strip()
+        text = str(value or "").strip().rstrip("·").strip()
         if not text or _is_boilerplate_description(text):
             continue
         if entity_type == "manuscript" and _is_catalog_note_description(text):
+            continue
+        # A description that is the entity's own name (in any word order —
+        # the authority heading vs the natural-order label) describes
+        # nothing (2026-10-06: 'נשיא, דוד בן אהרן ·' shipped against the
+        # natural-order label and the judge failed the identity).
+        desc_words = {
+            word.casefold()
+            for word in re.findall(r"[\w\u0590-\u05ff]+", text)
+            if word
+        }
+        if entity_type == "person" and desc_words and desc_words <= label_words:
             continue
         slot = _description_language_slot(str(lang), text)
         if not slot:
