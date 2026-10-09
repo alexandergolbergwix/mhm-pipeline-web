@@ -492,8 +492,11 @@ def _descriptions_for_node(
         # strip trailing middots and drop bare class-name fragments.
         cleaned_texts = []
         for t in texts:
-            t = t.strip().rstrip("·").strip().strip("'").strip()
-            t = t.rstrip(".").strip()
+            t = t.strip().rstrip("·").strip()
+            # "'…'" quote artifacts: a close-paren followed by an apostrophe
+            # ("Person (MS X)' (mentioned)…") is a splitter remnant.
+            t = re.sub(r"\)'", ")", t)
+            t = t.strip("'").strip().rstrip(".").strip()
             if not t or t.casefold() == readable_name.casefold():
                 continue
             cleaned_texts.append(t)
