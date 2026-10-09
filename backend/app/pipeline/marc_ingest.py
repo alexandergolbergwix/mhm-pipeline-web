@@ -354,6 +354,15 @@ def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
             if not _has_value(record.get("extent")):
                 record["extent"] = parsed_extent.count
             record["extent_unit"] = parsed_extent.unit
+            # The full 300$a text is the claim's own evidence: a
+            # volume-collated extent ("2 כרכים (160, 210 דף)") carries the
+            # per-volume counts the P1104/P2048 values come from — the bare
+            # total ("370") matched neither and the judge read the claim as
+            # unsupported (2026-10-09).
+            if not _has_value(record.get("extent_text")):
+                from converter.rdf.rdf_helpers import clean_marc_label  # noqa: PLC0415
+
+                record["extent_text"] = clean_marc_label(str(extent_raw))
             if parsed_extent.volumes:
                 record["volume_count"] = parsed_extent.volumes
 

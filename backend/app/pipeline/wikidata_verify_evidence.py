@@ -146,7 +146,10 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P921": ("subjects", "canonical_references"),
     "P953": ("digital_access",),
     "P1071": ("place",),
-    "P1104": ("extent",),
+    "P1104": ("extent_text", "extent"),
+    "P2048": ("extent_text", "extent"),
+    "P2049": ("extent_text", "extent"),
+    "P2635": ("extent_text", "extent"),
     # Works whose candidate came from the 505 carry excerpt-range titles
     # ("תורה (דברים כט : ט-לא:ל)") — the record's title slice names only the
     # parent work, so the contents line is the channel that actually
@@ -159,13 +162,10 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P655": ("authors", "contributors"),              # translator
     "P9046": ("authors", "contributors"),             # commentary by
     "P5816": ("notes", "material"),                   # condition
-    "P2048": ("extent",),
-    "P2049": ("extent",),
     # 505-derived works carry the author in the contents line (no 100/700
     # on the record) — citing only authors/contributors left every such
     # P2093 with an empty evidence pack (2026-10-04: 134 work partials).
     "P2093": ("authors", "contributors", "contents"),
-    "P2635": ("extent",),
     "P3959": ("record_ids",),
     "P6108": ("digital_access",),
     "P6216": ("rights",),

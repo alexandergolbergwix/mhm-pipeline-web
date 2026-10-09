@@ -39,7 +39,7 @@ _SCALAR_KEYS = frozenset({
 HMO_ITEM_MARC_KEYS = [
     "title", "subtitle", "authors", "contributors", "subjects", "provenance",
     "notes", "dates", "place", "related_places", "languages",
-    "material", "extent", "shelfmark", "colophon_text", "contents",
+    "material", "extent", "extent_text", "shelfmark", "colophon_text", "contents",
     # P921 (main subject) is derived from these as well as from 650/600 — a
     # canonical Bible/Talmud citation is a different source from a subject
     # heading, and a claim must cite the channel it actually came from
@@ -68,6 +68,7 @@ RAW_TAG_FALLBACK: dict[str, tuple[str, ...]] = {
     "variant_titles": ("246$a", "246$b"),
     "place": ("260$a", "264$a", "751$a"),
     "extent": ("300$a", "300$b", "300$c"),
+    "extent_text": ("300$a",),
     "material": ("340$a", "340$e"),
     "carrier": ("336$a", "337$a", "338$a"),
     "notes": ("500$a", "590$a", "597$a"),
