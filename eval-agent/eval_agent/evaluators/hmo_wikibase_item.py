@@ -68,6 +68,7 @@ class HmoWikibaseItemEvaluator(Evaluator):
             "control_numbers": control_numbers,
             "source_uri": ner_record.get("source_uri"),
             "wikibase_id": ner_record.get("wikibase_id"),
+            "existing_qid": ner_record.get("existing_qid"),
             "claims": hmo_wikibase_items.compact_statements(ner_record),
             "shacl_issues": shacl_issues,
             "blocking_shacl": bool(blocking),
@@ -111,6 +112,8 @@ class HmoWikibaseItemEvaluator(Evaluator):
             f"  control numbers: {json.dumps(p.get('control_numbers') or [], ensure_ascii=False)}\n"
             f"  source URI:      {p.get('source_uri') or ''}\n"
             f"  live Wikibase:   {p.get('wikibase_id') or '(not uploaded)'}\n"
+            f"  known Wikidata QID: {p.get('existing_qid') or '(none)'}"
+            f"{'  — this item IS that entity; treat as an UPDATE' if p.get('existing_qid') else ''}\n"
             f"  labels:          {json.dumps(p.get('labels') or {}, ensure_ascii=False)}\n"
             f"  descriptions:    "
             f"{json.dumps(p.get('descriptions') or {}, ensure_ascii=False)}\n"

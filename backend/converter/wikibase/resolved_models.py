@@ -92,6 +92,12 @@ class ResolvedWikibaseEntity:
     class_qid: str
     source_uri: str
     entity_type: str = ""
+    # A known Wikidata QID the entity IS (e.g. the canon work "Bible" →
+    # Q1845, provenance-gated: the reference must come from the record's
+    # canon hierarchy P164 and the title must match exactly). The verify
+    # judge treats the item as an UPDATE; the upload still runs the
+    # own-or-accept ownership check (Rule W-99).
+    existing_qid: str | None = None
     control_numbers: list[str] = field(default_factory=list)
     authority_evidence: list[dict[str, object]] = field(default_factory=list)
     claims: list[ResolvedClaim] = field(default_factory=list)
@@ -109,6 +115,7 @@ class ResolvedWikibaseEntity:
             "class_qid": self.class_qid,
             "source_uri": self.source_uri,
             "entity_type": self.entity_type,
+            "existing_qid": self.existing_qid,
             "control_numbers": list(self.control_numbers),
             "authority_evidence": list(self.authority_evidence),
             "claims": [c.to_dict() for c in self.claims],

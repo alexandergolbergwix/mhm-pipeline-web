@@ -861,9 +861,26 @@ def resolve_against_mappings(
             and all(c.property_id in _STRUCTURAL_CLAIM_PIDS for c in claims)
         ):
             continue
+        # Canon-reference works (P164 from the record's canon hierarchy):
+        # an exact canon title IS the canonical work — link it (Q1845
+        # Bible / Q83367 Tanakh). The W-70 mis-link case (compilations)
+        # is distinguished by provenance: the title comes from the canon
+        # hierarchy row, not a content title (2026-10-06, Work_Bible).
+        known_canon_qid = ""
+        if draft.entity_type == "F1_Work" and any(
+            c.property_id == "P164" for c in claims
+        ):
+            # Exact canon titles only — the W-70 mis-link case (compilations)
+            # is excluded by the P164 canon-hierarchy provenance.
+            known_canon_qid = {
+                "Bible": "Q1845",
+                "Tanakh": "Q83367",
+                "תנ״ך": "Q83367",
+            }.get(str(draft.labels.get("en") or "").strip().replace('"', "״"), "")
         resolved.append(
             ResolvedWikibaseEntity(
                 local_id=draft.local_id,
+                existing_qid=known_canon_qid or None,
                 labels=draft.labels,
                 descriptions=draft.descriptions,
                 class_qid=class_entry.wikibase_id,
