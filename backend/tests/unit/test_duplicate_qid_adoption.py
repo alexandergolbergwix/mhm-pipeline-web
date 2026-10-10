@@ -196,3 +196,28 @@ class TestBothItemShapesAreTold:
         adopt_identifier_matched_duplicates([item])
         assert item["existing_qid"] == "Q22935567"
         assert item["_wikidata_existence"]["adoption"]["adopted"] is True
+
+    def test_an_ours_provenance_match_adopts_even_a_title_match(self) -> None:
+        """A candidate provably created by our own pipeline (P2888 → the
+        HMO Wikibase bridge) is adoptable on any single match — we are
+        merging with our own prior output (2026-10-09, run 3494ebf5:
+        6 such items required manual curation before this)."""
+        item = _item(
+            "QDraft_Work_____by_33",
+            {"qid": "Q141175543", "matched_on": "title~דרושים AND P31=Q47461344",
+             "label": "דרושים", "ours": "true"},
+            labels={"he": "דרושים"},
+        )
+        adopt_identifier_matched_duplicates([item])
+        assert item["existing_qid"] == "Q141175543"
+        assert item["_wikidata_existence"]["adoption"]["adopted"] is True
+
+    def test_two_ours_candidates_stay_refused(self) -> None:
+        item = _item(
+            "QDraft_Work_x",
+            {"qid": "Q1", "matched_on": "label=x", "label": "x", "ours": "true"},
+            {"qid": "Q2", "matched_on": "label=x", "label": "x", "ours": "true"},
+        )
+        adopt_identifier_matched_duplicates([item])
+        assert "existing_qid" not in item
+        assert item["_wikidata_existence"]["adoption"]["adopted"] is False

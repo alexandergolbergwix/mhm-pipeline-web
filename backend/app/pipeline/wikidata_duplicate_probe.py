@@ -1082,11 +1082,28 @@ def probe_batch(
                 key = (pid, value)
                 if key in out or key not in {(p, v) for p, v in pairs}:
                     continue
-                out.setdefault(key, []).append({
-                    "qid": qid,
-                    "matched_on": f"{pid}={value}",
-                    "label": label,
-                })
+            # Provenance: a candidate carrying our HMO Wikibase bridge
+            # (P2888 → mhm-hmo.wikibase.cloud) is OUR OWN earlier upload —
+            # adopting a single such candidate is a merge with our own
+            # prior output, never third-party corruption (2026-10-09).
+            def _is_ours(cl: dict) -> bool:
+                dv = ((cl.get("mainsnak") or {}).get("datavalue") or {})
+                return "mhm-hmo.wikibase.cloud" in str(dv.get("value") or "")
+
+            ours = any(_is_ours(cl) for cl in claims.get("P2888") or [])
+            for pid in wanted:
+                for claim in claims.get(pid) or []:
+                    snak = ((claim or {}).get("mainsnak") or {}).get("datavalue") or {}
+                    value = str(snak.get("value") or "").strip()
+                    key = (pid, value)
+                    if key in out or key not in {(p, v) for p, v in pairs}:
+                        continue
+                    out.setdefault(key, []).append({
+                        "qid": qid,
+                        "matched_on": f"{pid}={value}",
+                        "label": label,
+                        **({"ours": "true"} if ours else {}),
+                    })
     return out
 
 
@@ -1580,21 +1597,31 @@ _ADOPTABLE_MATCH_PREFIXES = tuple(f"{pid}=" for pid in sorted({
 
 
 def _adoptable_qids(existence: dict[str, Any]) -> set[str]:
-    """QIDs from candidates matched on an IDENTITY key, not a likeness."""
+    """QIDs from candidates matched on an IDENTITY key, not a likeness.
+
+    Exception (2026-10-09): a candidate stamped ``ours`` — the live item
+    carries our HMO Wikibase bridge, so it is provably our own earlier
+    upload — is adoptable on ANY single-candidate match (label, title~,
+    identifier): adopting merges with our own prior output, never
+    third-party data. The label-conflict gate still applies, and the
+    upload's own-or-accept check still guards the write (Rule W-99).
+    """
     qids: set[str] = set()
     for candidate in existence.get("candidates") or []:
         if not isinstance(candidate, dict):
             continue
         if str(candidate.get("requires_curator_confirmation") or "").lower() == "true":
             continue
+        ours = str(candidate.get("ours") or "").lower() == "true"
         matched_on = str(candidate.get("matched_on") or "")
-        if matched_on.startswith(_TITLE_PREFIX) or matched_on.startswith("title~"):
-            continue
-        if not (
-            matched_on.startswith(_ADOPTABLE_MATCH_PREFIXES)
-            or " AND " in matched_on  # a verified composite conjunction
-        ):
-            continue
+        if not ours:
+            if matched_on.startswith(_TITLE_PREFIX) or matched_on.startswith("title~"):
+                continue
+            if not (
+                matched_on.startswith(_ADOPTABLE_MATCH_PREFIXES)
+                or " AND " in matched_on  # a verified composite conjunction
+            ):
+                continue
         qid = str(candidate.get("qid") or "").strip()
         if qid.startswith("Q"):
             qids.add(qid)
