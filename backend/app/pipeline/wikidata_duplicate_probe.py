@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 PROBE_SCHEMA = "dup_probe_v1"
 _BATCH_SIZE = 20
 _API = "https://www.wikidata.org/w/api.php"
-_USER_AGENT = "MHM-Pipeline-Web/1.0 (Wikidata Studio duplicate check; academic research)"
+_USER_AGENT = "MHM-Pipeline-Web/1.0 (Wikidata Studio duplicate check; academic research; contact shvedbook@gmail.com)"
 
 # Identifier properties that answer "is this the same entity?" outright.
 _IDENTIFIER_PIDS_BY_TYPE: dict[str, tuple[str, ...]] = {

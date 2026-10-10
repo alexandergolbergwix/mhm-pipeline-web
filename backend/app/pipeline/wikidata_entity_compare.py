@@ -75,7 +75,7 @@ async def fetch_wikidata_entity(qid: str) -> dict[str, Any]:
         r = await client.get(
             _WIKIDATA_API,
             params=params,
-            headers={"User-Agent": "mhm-pipeline-web/1.0 (wikidata-compare)"},
+            headers={"User-Agent": "mhm-pipeline-web/1.0 (wikidata-compare; contact shvedbook@gmail.com)"},
         )
         r.raise_for_status()
         data = r.json()
