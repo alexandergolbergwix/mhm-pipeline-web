@@ -62,7 +62,7 @@ def test_questions_for_wikidata_item_includes_rule_questions() -> None:
     assert not (expected & {"rule_label_identity", "rule_entity_type_fit",
                             "rule_p31_class_choice", "rule_label_substance",
                             "rule_description_accuracy", "rule_author_modeling",
-                            "rule_person_role"})
+                            "rule_person_role", "rule_title_claim_accuracy"})
     # no rule questions leak into a non-wikidata evaluator
     qs_person = questions_for("person_ner", SimpleNamespace(payload={}))
     assert not [k for k in qs_person if k.startswith("rule_")]
@@ -94,7 +94,7 @@ def test_applicable_rules_are_claim_conditional() -> None:
 
 def test_rules_total_and_axis_native() -> None:
     assert len(RULES) == 30
-    assert sum(1 for r in RULES if r.get("axis_native")) == 7
+    assert sum(1 for r in RULES if r.get("axis_native")) == 8
 
 
 def test_rule_states_maps_choices() -> None:

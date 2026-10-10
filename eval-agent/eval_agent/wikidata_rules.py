@@ -505,6 +505,7 @@ RULES: tuple[dict[str, Any], ...] = (
     {
         "id": "title_claim_accuracy",
         "kind": _JUDGMENT,
+        "axis_native": True,
         "name": "title claim matches the catalog title",
         "statement": (
             "A work's P1476 matches the MARC 245/500 title (normalized "
