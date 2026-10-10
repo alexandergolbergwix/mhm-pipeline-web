@@ -488,6 +488,7 @@ class VerifyStartRequest(BaseModel):
     tier_model: str | None = Field(default=None, max_length=64)
     escalate: bool = False
     escalate_on: str | None = Field(default=None, max_length=64)
+    parallel: int | None = None
 
 
 @router.get("/{run_id}/wikidata-studio/ai-verify/actions")
@@ -3565,6 +3566,7 @@ async def _wikidata_verify_event_stream(
     tier_model: str | None,
     escalate: bool = False,
     escalate_on: str | None = None,
+    parallel: int | None = None,
 ):
     state_dir = resolve_verify_state_dir(_WIKIDATA_VERIFY_CHANNEL, run_id)
     session_dir = resolve_verify_session_dir(_WIKIDATA_VERIFY_CHANNEL, run_id, session_id)
@@ -3661,6 +3663,7 @@ async def _wikidata_verify_event_stream(
                 rpm=action.rate_limit_rpm,
                 escalate_policy=bool(escalate),
                 escalate_on=str(escalate_on or ""),
+                parallel=int(parallel or 0) or None,
             ):
                 from app.pipeline.agent_runner import emit_session_event  # noqa: PLC0415
 

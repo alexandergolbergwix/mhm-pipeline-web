@@ -212,6 +212,7 @@ async def spawn_eval_agent_run(
     candidate_count: int | None = None,
     escalate_policy: bool = False,
     escalate_on: str | None = None,
+    parallel: int | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """Run ``eval-agent run`` and yield each parsed event.
 
@@ -264,6 +265,11 @@ async def spawn_eval_agent_run(
         cmd += ["--escalate-policy"]
         if escalate_on:
             cmd += ["--escalate-on", escalate_on]
+    if parallel:
+        # Typed Jev questions are independent — the session's worker pool
+        # judges concurrently; the model calls dominate after the caches
+        # warm (2026-10-09: serial judging was ~8 s/item on fresh scopes).
+        cmd += ["--parallel", str(parallel)]
     if threshold is not None:
         # NER evaluators drop predictions below this confidence
         # (default 0.85). When a curator hand-picks entities they want

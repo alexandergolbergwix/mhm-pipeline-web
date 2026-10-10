@@ -683,6 +683,7 @@ async def _open_verify_stream(
                 tier_model=tier_model,
                 escalate=bool(params.get("escalate")),
                 escalate_on=str(params.get("escalate_on") or ""),
+                parallel=int(params.get("parallel") or 0) or None,
             )
 
         if kind == JOB_KIND_NER_VERIFY:
@@ -706,6 +707,7 @@ async def _open_verify_stream(
                 tier_model=tier_model,
                 escalate=bool(params.get("escalate")),
                 escalate_on=str(params.get("escalate_on") or ""),
+                parallel=int(params.get("parallel") or 0) or None,
             )
 
         if kind == JOB_KIND_WIKIDATA_VERIFY:
@@ -800,6 +802,7 @@ async def _open_verify_stream(
                 tier_model=tier_model,
                 escalate=bool(params.get("escalate")),
                 escalate_on=str(params.get("escalate_on") or ""),
+                parallel=int(params.get("parallel") or 0) or None,
             )
 
         if kind == JOB_KIND_HMO_ITEM_VERIFY:
@@ -899,6 +902,7 @@ async def _open_verify_stream(
                 tier_model=tier_model,
                 escalate=bool(params.get("escalate")),
                 escalate_on=str(params.get("escalate_on") or ""),
+                parallel=int(params.get("parallel") or 0) or None,
             )
 
     return None

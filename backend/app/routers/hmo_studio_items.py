@@ -103,6 +103,7 @@ class HmoItemVerifyStartRequest(BaseModel):
     override_cache: bool = False
     escalate: bool = False
     escalate_on: str | None = None
+    parallel: int | None = None
     tier_model: str | None = Field(default=None, max_length=64)
 
 
@@ -1439,6 +1440,7 @@ async def start_hmo_item_verify_stream(
             tier_model=payload.tier_model,
             escalate=bool(payload.escalate),
             escalate_on=str(payload.escalate_on or ""),
+            parallel=int(payload.parallel or 0) or None,
         )),
         media_type="text/event-stream",
         headers={
