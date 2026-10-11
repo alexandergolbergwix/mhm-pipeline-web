@@ -194,13 +194,13 @@ class PublicationModule:
         # blocked by duplicate_strong_identity).
         claimed_by_assertion: dict[str, str] = {}
         merged_items: dict[str, Any] = {}
+        entities: list[PublicationEntity] = []
         async for input_page in self._projection_source.project(
             request.source_snapshot,
             request.profile,
         ):
             if len(input_page) > 1_000:
                 raise ValueError("A projection page cannot contain more than 1000 entities")
-            entities: list[PublicationEntity] = []
             for item in input_page:
                 if previous_key is not None and item.entity_key <= previous_key:
                     raise ValueError("The projection source must return unique canonical keys")
