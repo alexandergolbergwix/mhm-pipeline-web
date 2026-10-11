@@ -23,7 +23,10 @@ _REGISTRY: dict[str, AgentAction] = {
         ),
         evaluators=("wikidata_item",),
         min_candidates=1,
-        rate_limit_rpm=60,
+        # TypeSafe handles concurrent bursts; the 60-rpm cap is the Gemini-era
+        # quota. Jev judging at 240 rpm + parallel=6 cut a 1851-item scope
+        # from hours to minutes (2026-10-09).
+        rate_limit_rpm=240,
     ),
     "autofix_from_wikidata": AgentAction(
         id="autofix_from_wikidata",
