@@ -270,13 +270,22 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                 from app.pipeline.hmo_item_upload_job import run_hmo_item_upload_job
 
                 await run_hmo_item_upload_job(job_id)
-            elif kind in ("hmo_item_verify", "wikidata_verify", "wikidata_upload"):
+            elif kind in ("hmo_item_verify", "wikidata_verify"):
                 # W-249 + 2026-10-09: the eval-agent subprocess + the
                 # 18k/1.8k-item scope need the container's 8 GB — the
                 # 512 MB web dyno thrashed (R14 → R15 crash) on both.
                 from app.pipeline.verify_job import run_verify_job
 
                 await run_verify_job(job_id)
+            elif kind == "wikidata_upload":
+                # W-249 sibling: the two-pass upload holds the full corpus
+                # + ledger in memory — the 512 MB web dyno OOM'd on this
+                # exact run before isolation.
+                from app.pipeline.wikidata_upload_job import (
+                    run_wikidata_upload_job,
+                )
+
+                await run_wikidata_upload_job(job_id)
             elif kind == "hmo_rule_verify":
                 # Sharded fan-out: parallel rule-check containers; the
                 # claimed container orchestrates progress + terminal state.

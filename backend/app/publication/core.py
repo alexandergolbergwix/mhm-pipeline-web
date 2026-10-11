@@ -8,7 +8,12 @@ import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import Literal, Protocol, cast
+from typing import (
+    Any,
+    Literal,
+    Protocol,
+    cast,
+)
 
 from app.publication.digests import (
     CanonicalSequenceDigest,
@@ -58,6 +63,22 @@ from app.publication.types import (
     ReviewCommand,
     SourceSnapshotRef,
 )
+
+
+def _fold_same_identity_claims(kept: Any, item: Any) -> None:
+    """Fold a same-identity item's claims into the kept item's document."""
+    claims = kept.document.setdefault("claims", [])
+    seen = {
+        (str(c.get("property")), str(c.get("value")))
+        for c in claims if isinstance(c, dict)
+    }
+    for claim in item.document.get("claims") or []:
+        if not isinstance(claim, dict):
+            continue
+        key = (str(claim.get("property")), str(claim.get("value")))
+        if key not in seen:
+            claims.append(claim)
+            seen.add(key)
 
 
 class ProjectionSource(Protocol):
@@ -164,6 +185,15 @@ class PublicationModule:
         )
         entity_count = 0
         previous_key: str | None = None
+        # Same-identity merge: two projection items that adopted the SAME
+        # live QID (e.g. two manuscript-source works both matching Tikkun
+        # Chatzot → Q2740944) cannot both update it. The second item's
+        # claims fold into the first BEFORE the digest is computed, so the
+        # kept entity stays digest-consistent (2026-10-11, run 3494ebf5:
+        # Work_436 + Work_468 both asserted wikidata:Q2740944 → release
+        # blocked by duplicate_strong_identity).
+        claimed_by_assertion: dict[str, str] = {}
+        merged_items: dict[str, Any] = {}
         async for input_page in self._projection_source.project(
             request.source_snapshot,
             request.profile,
@@ -174,6 +204,28 @@ class PublicationModule:
             for item in input_page:
                 if previous_key is not None and item.entity_key <= previous_key:
                     raise ValueError("The projection source must return unique canonical keys")
+                previous_key = item.entity_key
+                target_key: str | None = None
+                for assertion in item.identity_assertions:
+                    # Only WIKIDATA QID assertions merge: the probe adopted
+                    # that QID for this item, so a second item with the same
+                    # QID is the same work. Weak assertions (shelfmarks)
+                    # still block review — two distinct entities may share
+                    # one (the designed cross-entity block).
+                    if not assertion.startswith("wikidata:"):
+                        continue
+                    target_key = claimed_by_assertion.get(assertion)
+                    if target_key is not None:
+                        break
+                if target_key is not None and target_key in merged_items:
+                    kept = merged_items[target_key]
+                    _fold_same_identity_claims(kept, item)
+                    for assertion in item.identity_assertions:
+                        claimed_by_assertion[assertion] = target_key
+                    continue
+                for assertion in item.identity_assertions:
+                    claimed_by_assertion[assertion] = item.entity_key
+                merged_items[item.entity_key] = item
                 digest = entity_digest(item)
                 entity = PublicationEntity(
                     release_id=release_id,
@@ -187,9 +239,8 @@ class PublicationModule:
                 )
                 entities.append(entity)
                 accumulator.add_entity(item.entity_key, digest)
-                previous_key = item.entity_key
                 entity_count += 1
-            await self._repository.add_release_entities(release_id, tuple(entities))
+        await self._repository.add_release_entities(release_id, tuple(entities))
         finding_count = await self._repository.validate_release(release_id)
         release = ReleaseRecord(
             release_id=release_id,
