@@ -93,7 +93,7 @@ export function WikidataPublicationPanel({
 }: WikidataPublicationPanelProps) {
   const [restoring, setRestoring] = useState(true);
   const [target, setTarget] = useState<PublicationTarget>("test");
-  const [deferConnections, setDeferConnections] = useState(false);
+  const [deferConnections, setDeferConnections] = useState(true);
   const [publication, setPublication] = useState<PublicationSummary | null>(null);
   const [operation, setOperation] = useState<PublicationOperation | null>(null);
   const [jobSnapshot, setJobSnapshot] = useState<RunJobSnapshot | null>(null);
@@ -135,7 +135,7 @@ export function WikidataPublicationPanel({
         if (stopped || !saved) return;
         setPublication(saved);
         setTarget(saved.target);
-        setDeferConnections(saved.profile_version === "1-nodes");
+        setDeferConnections(saved.profile_version !== "1");
         const {jobs} = await RunJobs.listForRun(runId, false, {kind: "wikidata_publication_dry_run", limit: 1});
         const job = jobs[0];
         if (stopped || !job || job.params.publication_id !== saved.publication_id) return;
