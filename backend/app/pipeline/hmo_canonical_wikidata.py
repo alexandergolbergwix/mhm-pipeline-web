@@ -696,6 +696,19 @@ def native_items_from_hmo(
             work_candidate_evidence=work_evidence,
         ))
         _tick(index)
+    # Fail closed on the FINAL shape: a person whose every claim was dropped
+    # by later hygiene passes (the rollup's structural claims, sanitized
+    # name-strings) ships as a bare label — the judge's "empty MARC context
+    # forces no" was right every time (2026-10-11, run 3494ebf5: 10 such
+    # fails). Mint-time checks cannot catch this; only the final shape can.
+    items = [
+        item for item in items
+        if not (
+            str(item.entity_type or "") == "person"
+            and not item.records
+            and not item.statements
+        )
+    ]
     return items
 
 
