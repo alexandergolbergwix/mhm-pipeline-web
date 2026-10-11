@@ -270,7 +270,7 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                 from app.pipeline.hmo_item_upload_job import run_hmo_item_upload_job
 
                 await run_hmo_item_upload_job(job_id)
-            elif kind in ("hmo_item_verify", "wikidata_verify"):
+            elif kind in ("hmo_item_verify", "wikidata_verify", "wikidata_upload"):
                 # W-249 + 2026-10-09: the eval-agent subprocess + the
                 # 18k/1.8k-item scope need the container's 8 GB — the
                 # 512 MB web dyno thrashed (R14 → R15 crash) on both.
@@ -947,6 +947,7 @@ def run(request_body: dict) -> dict:
     if not job_id or kind not in (
         "rdf_build", "hmo_item_build", "hmo_item_upload", "hmo_item_verify",
         "hmo_rule_verify", "wikidata_studio_build", "wikidata_verify",
+        "wikidata_upload",
     ):
         raise HTTPException(status_code=422, detail="job_id and kind required")
 
