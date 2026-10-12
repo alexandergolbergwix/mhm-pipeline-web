@@ -430,10 +430,21 @@ class CurrentWikidataBoundary:
                 continue
             snapshot = self._fetch_entity_sync(outcome.existing_qid)
             if snapshot is None:
-                observations[index] = TargetObservation.unknown(
-                    entity.entity_key,
-                    f"The reconciled target {outcome.existing_qid} is absent",
-                )
+                # Production reconciliation (Mazal/KIMA/VIAF matching) stored
+                # existing_qid values from www.wikidata.org. A TEST publish
+                # cannot update those QIDs — they do not exist on the test
+                # wiki — so the item is a fresh create there (2026-10-11,
+                # release f287809a: 253 such blocks stopped a test dry-run).
+                # Production keeps the fail-closed block: creating a
+                # duplicate beside a vanished reconciled target is the
+                # W-98 incident class.
+                if getattr(self._uploader, "_is_test", False):
+                    observations[index] = TargetObservation.absent(entity.entity_key)
+                else:
+                    observations[index] = TargetObservation.unknown(
+                        entity.entity_key,
+                        f"The reconciled target {outcome.existing_qid} is absent",
+                    )
                 continue
             is_ours = self._uploader._is_our_item(snapshot.qid)
             constructor = (

@@ -407,3 +407,66 @@ async def test_gateway_classifies_maxlag_as_pre_send_retryable() -> None:
 
     assert outcome.status == "pre_send_retryable"
     assert "12" in (outcome.detail or "")
+
+
+class _MissingTargetUploader:
+    _mark_as_bot = True
+    _is_test = False
+
+    def __init__(self, *, is_test: bool) -> None:
+        self._is_test = is_test
+
+    def _is_our_item(self, qid: str) -> bool:
+        del qid
+        return False
+
+    def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
+        del props
+        return {qid: {"missing": "-"} for qid in ids}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_test,expected_status", [(True, "absent"), (False, "unknown")])
+async def test_reconciled_target_absent_on_the_target_wiki(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    is_test: bool,
+    expected_status: str,
+) -> None:
+    import app.pipeline.wikidata_upload as wikidata_upload
+
+    def reconcile_to_production_qid(items: list[object]) -> list[object]:
+        assert len(items) == 1
+        return [
+            SimpleNamespace(
+                local_id="ms:1",
+                label="Ms",
+                entity_type="manuscript",
+                existing_qid="Q141175735",
+                method="identifier",
+                message="Found Q141175735 via identifier",
+            )
+        ]
+
+    monkeypatch.setattr(wikidata_upload, "_reconcile_sync", reconcile_to_production_qid)
+    boundary = CurrentWikidataBoundary(
+        uploader=_MissingTargetUploader(is_test=is_test),
+    )
+    entity = PublicationEntity(
+        release_id="release-1",
+        entity_key="ms:1",
+        entity_type="manuscript",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Ms"}, "statements": []},
+        evidence_refs=(),
+        identity_assertions=("P8189:authority-1",),
+        local_references=(),
+    )
+
+    observations = await boundary.reconcile_batch((entity,))
+
+    assert len(observations) == 1
+    observation = observations[0]
+    assert observation.status == expected_status
+    if expected_status == "unknown":
+        assert "Q141175735" in (observation.detail or "")
