@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 _SPARQL_ENDPOINT = "https://query.wikidata.org/sparql"
 _RATE_LIMIT_SECONDS = 1.0
 _TIMEOUT_SECONDS = 15
+_QUERY_ATTEMPTS = 3
+_QUERY_BACKOFF_SECONDS = 2.0
 _USER_AGENT = (
     "MHMPipeline/0.1 (https://github.com/alexgoldberg/mhm-pipeline; alexander.goldberg@biu.ac.il)"
 )
@@ -127,24 +129,36 @@ class WikidataReconciler:
         Returns:
             List of result binding dicts.
         """
-        self._rate_limit()
-        try:
-            resp = self._session.get(
-                self._endpoint,
-                params={"query": sparql, "format": "json"},
-                timeout=_TIMEOUT_SECONDS,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("results", {}).get("bindings", [])
-        except requests.RequestException as exc:
-            # FAIL CLOSED: do NOT return [] here. An empty list means "confirmed
-            # absent" to every caller and would let a transient WDQS outage be
-            # read as "no existing item → safe to CREATE", which is exactly how
-            # the 2026-04 import minted thousands of duplicates. Raise instead so
-            # the upload path blocks creation on uncertainty.
-            logger.warning("SPARQL query failed: %s", exc)
-            raise ReconciliationUnavailableError(str(exc)) from exc
+        # Transient WDQS failures (timeouts, 429, 502) must not read as
+        # "confirmed absent": every caller fail-closes on
+        # ReconciliationUnavailableError and blocks a good item. Retry a
+        # bounded number of times with backoff before giving up
+        # (2026-10-11 dry-run: 58 of 1850 items blocked on one flaky pass).
+        last_error: ReconciliationUnavailableError | None = None
+        for attempt in range(_QUERY_ATTEMPTS):
+            if attempt:
+                time.sleep(_QUERY_BACKOFF_SECONDS * attempt)
+            self._rate_limit()
+            try:
+                resp = self._session.get(
+                    self._endpoint,
+                    params={"query": sparql, "format": "json"},
+                    timeout=_TIMEOUT_SECONDS,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                return data.get("results", {}).get("bindings", [])
+            except requests.RequestException as exc:
+                # FAIL CLOSED: do NOT return [] here. An empty list means "confirmed
+                # absent" to every caller and would let a transient WDQS outage be
+                # read as "no existing item → safe to CREATE", which is exactly how
+                # the 2026-04 import minted thousands of duplicates. Raise instead so
+                # the upload path blocks creation on uncertainty.
+                logger.warning("SPARQL query failed (attempt %s): %s", attempt + 1, exc)
+                last_error = ReconciliationUnavailableError(str(exc))
+                last_error.__cause__ = exc
+        assert last_error is not None
+        raise last_error
 
     def reconcile_manuscript_by_nli_id(self, control_number: str) -> str | None:
         """Check if a manuscript item exists via P8189 (NLI J9U ID).
