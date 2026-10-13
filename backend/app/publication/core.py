@@ -533,6 +533,31 @@ class PublicationModule:
             await self._repository.checkpoint()
             active_entities = tuple(entity for entity in entities if not (isinstance(entity.document, Mapping) and entity.document.get("publication_deferred")))
             observations = await session.reconcile_batch(active_entities) if active_entities else ()
+            # One targeted retry for unknown observations: a single flaky
+            # WDQS lookup must not block a good item for the whole run
+            # (2026-10-12: 49 → 58 → 5 random timeouts across three passes).
+            retry_keys = frozenset(
+                observation.entity_key
+                for observation in observations
+                if observation.status == "unknown"
+            )
+            if retry_keys:
+                retry_entities = tuple(
+                    entity
+                    for entity in active_entities
+                    if entity.entity_key in retry_keys
+                )
+                retry_observations = await session.reconcile_batch(retry_entities)
+                by_retry = {
+                    observation.entity_key: observation
+                    for observation in retry_observations
+                }
+                observations = tuple(
+                    by_retry.get(observation.entity_key, observation)
+                    if observation.status == "unknown"
+                    else observation
+                    for observation in observations
+                )
             by_key = {observation.entity_key: observation for observation in observations}
             actions: list[PlanActionRecord] = []
             for entity in entities:
