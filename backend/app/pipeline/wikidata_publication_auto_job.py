@@ -87,9 +87,9 @@ async def run_automatic_publication(job_id):
             if params.get('_ai_credential'):
                 api_key = (await ExecutionCredentialResolver(params['_ai_credential'], **resolver_args).resolve(ref)).secret
             actions = (await db.execute(select(PublicationPlanAction).where(PublicationPlanAction.plan_id == plan.id)
-                .order_by(PublicationPlanAction.entity_key).limit(501))).scalars().all()
-            if len(actions) > 500:
-                raise ValueError('Automatic resolution supports at most 500 entities per Release.')
+                .order_by(PublicationPlanAction.entity_key).limit(2001))).scalars().all()
+            if len(actions) > 2000:
+                raise ValueError('Automatic resolution supports at most 2000 entities per Release.')
             saved = (job.progress or {}).get('report') or (job.result or {}).get('report')
             if not saved and params.get('resume_from_job_id') and not params.get('force_refresh'):
                 previous = await db.get(RunJob, uuid.UUID(params['resume_from_job_id']))

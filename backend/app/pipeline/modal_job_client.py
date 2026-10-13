@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 MODAL_JOB_KINDS = frozenset({
     "rdf_build", "hmo_item_build", "hmo_item_upload", "hmo_item_verify",
     "hmo_rule_verify", "wikidata_studio_build", "wikidata_verify",
-    "wikidata_upload",
+    "wikidata_upload", "wikidata_publication_ai_review",
 })
 
 # Modal web endpoint: dispatch must be quick (it only spawns).

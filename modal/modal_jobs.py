@@ -318,6 +318,17 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                     await run_wikidata_studio_build_job(job_id)
                 else:
                     await _run_wikidata_studio_build_sharded(job_id)
+            elif kind == "wikidata_publication_ai_review":
+                # W-249 sibling: the automatic resolution (and the advisory
+                # AI review) holds the whole release projection in memory
+                # and the automatic path also runs the in-job dry-run
+                # (30+ min of WDQS lookups) plus the eval-agent judge —
+                # the 512 MB web dyno cannot carry any of that.
+                from app.pipeline.wikidata_publication_ai_review_job import (
+                    run_wikidata_publication_ai_review_job,
+                )
+
+                await run_wikidata_publication_ai_review_job(job_id)
             else:
                 raise ValueError(f"kind {kind!r} has no Modal executor")
         except Exception as exc:  # noqa: BLE001
