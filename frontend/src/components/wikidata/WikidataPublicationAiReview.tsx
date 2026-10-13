@@ -1,6 +1,5 @@
 import {useEffect, useState} from "react";
 import {PublicationAiReviewApi, type PublicationAiReviewState, type PublicationAdvanceCommand, type PublicationSummary} from "@/api/publication";
-import {RunJobs} from "@/api/runJobs";
 import {Tier1ModelSelect, useTier1Model} from "@/components/Tier1ModelSelect";
 import {useRunJobs} from "@/stores/runJobs";
 import {getPublicationReadiness} from "@/utils/publicationState";
@@ -58,21 +57,38 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
     if (!active) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
+    let lastKey = "";
     const poll = async () => {
       try {
         const next = await PublicationAiReviewApi.read(runId, publicationId);
         if (stopped) return;
-        setState(next);
-        if (next.job_id) {
-          const job = await RunJobs.get(runId, next.job_id);
-          if (!stopped) useRunJobs.getState().upsertJob(job);
+        // Re-render only when the summary actually changed: the 1850-row
+        // publication panel must not repaint every 2 s (2026-10-13 lag).
+        const nextKey = `${next.status}:${next.phase}:${next.processed}:${next.total}:${next.job_id ?? ""}`;
+        if (nextKey !== lastKey) {
+          lastKey = nextKey;
+          setState(next);
         }
       } catch (caught: unknown) {if (!stopped) setError(String(caught));}
-      if (!stopped) timer = setTimeout(() => {void poll();}, 2000);
+      if (!stopped) timer = setTimeout(() => {void poll();}, 5000);
     };
     timer = setTimeout(() => {void poll();}, 1000);
     return () => {stopped = true; clearTimeout(timer);};
   }, [active, runId, publicationId]);
+
+  // Job updates arrive on the SSE tray (useProjectEvents → upsertJob);
+  // do not poll RunJobs.get in a loop beside the summary poll.
+  const jobId = state?.job_id;
+  const job = useRunJobs((s) => (jobId ? s.jobs[jobId] : undefined));
+  useEffect(() => {
+    if (!job || !jobId) return;
+    if (job.status === "queued" || job.status === "running") return;
+    let stopped = false;
+    void PublicationAiReviewApi.read(runId, publicationId).then((next) => {
+      if (!stopped) setState(next);
+    }).catch((caught: unknown) => {if (!stopped) setError(String(caught));});
+    return () => {stopped = true;};
+  }, [job?.status, jobId, runId, publicationId]);
 
   const start = async (automatic = false, retryFailed = false) => {
     if (!plan) return;

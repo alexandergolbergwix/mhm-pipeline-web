@@ -187,10 +187,13 @@ export function WikidataPublicationPanel({
       try {
         const job = await RunJobs.get(runId, prepareJobId);
         if (stopped) return;
-        setJobSnapshot(job);
+        setJobSnapshot((previous) => (
+          previous && previous.status === job.status && previous.error === job.error
+            ? previous : job
+        ));
         useRunJobs.getState().upsertJob(job);
         if (job.status === "queued" || job.status === "running") {
-          timer = window.setTimeout(() => { void poll(); }, 1000);
+          timer = window.setTimeout(() => { void poll(); }, 5000);
           return;
         }
         const publicationId = typeof job.result?.publication_id === "string"
