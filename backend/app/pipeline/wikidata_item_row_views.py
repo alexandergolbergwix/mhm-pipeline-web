@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 from sqlalchemy import delete, func, or_, select
@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.item_override import WikidataItemOverride
 from app.models.wikidata_studio_item_row import WikidataStudioItemRow
-from app.pipeline.marc_verify_context import load_run_marc_records
+from app.pipeline.marc_verify_context import load_run_marc_records_scoped
 from app.pipeline.wikidata_item_merge import apply_wikidata_item_override, override_row_to_dict
 from app.pipeline.wikidata_item_views import (
     _adopt_cached_duplicate_qids,
@@ -329,7 +329,26 @@ async def page_wikidata_items(
             str(row.get("local_id") or ""): slim_item_for_verdict_persist(row)
             for row in stable_rows
         }
-        marc_records = await load_run_marc_records(db, run_id)
+        # The evidence packs read only each item's own records, so load
+        # just those MARC blobs — a full-corpus load per page made every
+        # 50-row page re-read 1851 records (2026-10-13 lag report).
+        page_control_numbers = {
+            cn
+            for row, _ in page_rows
+            for cn in (
+                list(row.payload.get("record_ids") or [])
+                if isinstance(row.payload, Mapping) else []
+            )
+            + (
+                list(row.payload.get("records") or [])
+                if isinstance(row.payload, Mapping) else []
+            )
+            if cn
+        }
+        marc_records = (
+            await load_run_marc_records_scoped(db, run_id, page_control_numbers)
+            if page_control_numbers else []
+        )
         _sanitise_merged_verdicts(verdict_pairs, items, marc_records, stable_items)
 
     total = None

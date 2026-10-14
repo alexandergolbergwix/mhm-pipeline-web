@@ -1061,6 +1061,7 @@ def _core_command(command, actor_id: str, credential_ref: str):
             credential_ref=credential_ref,
             actor_id=actor_id,
             idempotency_key=idempotency_key,
+            force_refresh=command.force_refresh,
         )
     if isinstance(command, PublishPublicationCommand):
         return PublishCommand(

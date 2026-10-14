@@ -263,6 +263,11 @@ class PublicationRepository(Protocol):
 
     async def get_plan(self, plan_id: str) -> PlanRecord: ...
 
+    async def previous_plan_observations(
+        self,
+        publication_id: str,
+    ) -> dict[str, PlanActionRecord]: ...
+
     async def page_plan_actions(
         self,
         plan_id: str,
@@ -552,6 +557,23 @@ class InMemoryPublicationRepository:
             return self._plans[plan_id]
         except KeyError as exc:
             raise LookupError(plan_id) from exc
+
+    async def previous_plan_observations(
+        self,
+        publication_id: str,
+    ) -> dict[str, PlanActionRecord]:
+        plans = [
+            plan for plan in self._plans.values()
+            if plan.publication_id == publication_id
+        ]
+        if not plans:
+            return {}
+        latest = max(plans, key=lambda plan: plan.plan_id)
+        actions = self._plan_actions.get(latest.plan_id) or {}
+        return {
+            key: record for key, record in actions.items()
+            if record.observation_status != "unknown"
+        }
 
     async def page_plan_actions(
         self,

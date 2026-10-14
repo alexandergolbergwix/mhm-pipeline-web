@@ -521,6 +521,33 @@ class SqlAlchemyPublicationRepository:
             raise LookupError(plan_id)
         return await self._plan_record(row)
 
+    async def previous_plan_observations(
+        self,
+        publication_id: str,
+    ) -> dict[str, PlanActionRecord]:
+        """Observations from the most recent sealed plan of this publication.
+
+        The dry-run reuses them for entities whose digest is unchanged so a
+        re-check after a one-item fix does not re-reconcile the whole corpus
+        (2026-10-13: every re-check re-ran ~1850 WDQS lookups, ~30 min).
+        """
+        latest = (
+            await self._session.execute(
+                select(PlanRow.id).where(
+                    PlanRow.publication_id == _uuid(publication_id),
+                    PlanRow.status == "sealed",
+                ).order_by(PlanRow.created_at.desc()).limit(1)
+            )
+        ).scalar_one_or_none()
+        if latest is None:
+            return {}
+        rows = (
+            await self._session.execute(
+                select(PlanActionRow).where(PlanActionRow.plan_id == latest)
+            )
+        ).scalars().all()
+        return {row.entity_key: self._plan_action_record(row) for row in rows}
+
     async def page_plan_actions(
         self,
         plan_id: str,

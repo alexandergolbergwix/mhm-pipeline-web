@@ -25,6 +25,7 @@ from app.publication.digests import (
 from app.publication.gateway import (
     GatewayRecoveryRequest,
     GatewayWriteRequest,
+    TargetObservation,
     WikidataGateway,
     WikidataGatewaySession,
     WriteOutcome,
@@ -523,6 +524,15 @@ class PublicationModule:
             },
         )
         counts = {"create": 0, "update": 0, "skip": 0, "block": 0}
+        # Observation reuse: a re-check after a one-item fix must not
+        # re-reconcile the whole corpus (~1850 WDQS lookups ≈ 30 min,
+        # 2026-10-13). Reuse the previous sealed plan's observation for an
+        # entity whose digest is unchanged; force_refresh bypasses.
+        prior_observations: dict[str, PlanActionRecord] = {}
+        if not command.force_refresh:
+            prior_observations = await self._repository.previous_plan_observations(
+                publication_id,
+            )
         after: str | None = None
         while True:
             entities, has_more = await self._repository.page_approved_entities(
@@ -532,7 +542,30 @@ class PublicationModule:
             )
             await self._repository.checkpoint()
             active_entities = tuple(entity for entity in entities if not (isinstance(entity.document, Mapping) and entity.document.get("publication_deferred")))
-            observations = await session.reconcile_batch(active_entities) if active_entities else ()
+            reusable = {
+                entity.entity_key: prior_observations[entity.entity_key]
+                for entity in active_entities
+                if entity.entity_key in prior_observations
+                and prior_observations[entity.entity_key].entity_digest == entity.entity_digest
+                and prior_observations[entity.entity_key].observation_status != "unknown"
+            }
+            fresh_entities = tuple(
+                entity for entity in active_entities if entity.entity_key not in reusable
+            )
+            observations = list(
+                await session.reconcile_batch(fresh_entities) if fresh_entities else ()
+            )
+            observations.extend(
+                TargetObservation(
+                    entity_key=key,
+                    status=record.observation_status,
+                    qid=record.target_qid,
+                    fingerprint=record.target_fingerprint,
+                    remote_revision=record.target_revision,
+                    detail=record.detail,
+                )
+                for key, record in reusable.items()
+            )
             # One targeted retry for unknown observations: a single flaky
             # WDQS lookup must not block a good item for the whole run
             # (2026-10-12: 49 → 58 → 5 random timeouts across three passes).

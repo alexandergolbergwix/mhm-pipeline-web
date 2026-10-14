@@ -116,6 +116,7 @@ class DryRunCommand:
     idempotency_key: str
     receipt_ttl_seconds: int = 3_600
     foreign_qid_consents: tuple[ForeignQidConsent, ...] = ()
+    force_refresh: bool = False
     kind: Literal["dry_run"] = field(default="dry_run", init=False)
 
 
