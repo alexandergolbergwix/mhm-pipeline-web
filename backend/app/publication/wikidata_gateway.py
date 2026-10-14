@@ -91,6 +91,10 @@ class WikidataAuthenticationError(WikidataGatewayError):
     """The target rejected the configured credential."""
 
 
+class WikidataPermanentError(WikidataGatewayError):
+    """The API rejected the write before applying it — retrying cannot help."""
+
+
 @dataclass(frozen=True, slots=True)
 class CredentialMaterial:
     credential_id: str
@@ -249,6 +253,8 @@ class _SafeWikidataGatewaySession:
         except WikidataRevisionConflictError as exc:
             return WriteOutcome.blocked(str(exc))
         except WikidataAuthenticationError as exc:
+            return WriteOutcome.blocked(str(exc))
+        except WikidataPermanentError as exc:
             return WriteOutcome.blocked(str(exc))
         except WikidataOutcomeUnknownError as exc:
             return WriteOutcome.outcome_unknown(str(exc))
@@ -510,6 +516,22 @@ class CurrentWikidataBoundary:
         mutation = request.mutation
         try:
             item = self._native_item_from_mutation(mutation)
+            # test.wikidata.org reuses production P-numbers for unrelated
+            # datatypes, so claims must go through the same remap/filter
+            # machinery as the Studio upload path (Rules W-182–W-189) —
+            # raw production-schema claims fail every write there
+            # (2026-10-14: all 1847 actions failed with 'Bad value type').
+            if self._uploader._is_test:
+                self._uploader._ensure_test_maps_for_item(item)
+                item, adapt = self._uploader._adapt_item_for_test_wiki(item)
+                if adapt.skipped:
+                    # Rule W-186: incompatible leftover snaks are not
+                    # stripped — the item is refused rather than written
+                    # degraded (the Studio upload path does the same).
+                    raise WikidataPermanentError(
+                        f"{len(adapt.skipped)} incompatible snaks for "
+                        f"test.wikidata.org: {'; '.join(adapt.skipped[:6])}"
+                    )
             if mutation.allow_foreign_update and mutation.target_qid:
                 self._uploader.register_foreign_accept(mutation.target_qid)
             self._uploader._check_moratorium_for_live()
@@ -547,6 +569,10 @@ class CurrentWikidataBoundary:
         except WikidataGatewayError:
             raise
         except Exception as exc:  # noqa: BLE001
+            from converter.wikidata.uploader import ClaimBuildError  # noqa: PLC0415
+
+            if isinstance(exc, ClaimBuildError):
+                raise WikidataPermanentError(str(exc)) from exc
             raise _classify_write_exception(exc) from exc
 
     def _confirm_mutation_sync(
@@ -717,6 +743,18 @@ def _classify_write_exception(exc: Exception) -> WikidataGatewayError:
         return WikidataCsrfError(message)
     if code in {"badtoken", "notloggedin", "assertuserfailed", "permissiondenied"}:
         return WikidataAuthenticationError(message)
+    # Deterministic rejections: the API refused the request BEFORE applying
+    # anything, so the outcome is known — the item can never be written as
+    # shaped. Treating these as outcome_unknown made the execution retry the
+    # same doomed write forever (2026-10-14: 1842/1847 churned on
+    # 'Bad value type' + 'Label and description ... same value').
+    if (
+        code in {"modification-failed", "failed-save", "invalidvalue"}
+        or "bad value type" in lowered
+        or "can not have the same value" in lowered
+        or "modificationfailed" in type(exc).__name__.lower()
+    ):
+        return WikidataPermanentError(message)
     return WikidataOutcomeUnknownError(message)
 
 

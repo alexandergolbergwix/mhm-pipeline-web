@@ -57,6 +57,7 @@ class _ReadbackUploader:
 
 class _CsrfRetryUploader:
     _mark_as_bot = True
+    _is_test = False
 
     def __init__(self) -> None:
         self.refresh_count = 0
@@ -470,3 +471,76 @@ async def test_reconciled_target_absent_on_the_target_wiki(
     assert observation.status == expected_status
     if expected_status == "unknown":
         assert "Q141175735" in (observation.detail or "")
+
+
+class _TestWikiUploader(_MissingTargetUploader):
+    def __init__(self, *, skipped: list[str]) -> None:
+        super().__init__(is_test=True)
+        self._skipped = skipped
+        self.adapted = 0
+
+    def _ensure_test_maps_for_item(self, item: object) -> object:
+        del item
+        return None
+
+    def _adapt_item_for_test_wiki(self, item: object) -> tuple[object, object]:
+        self.adapted += 1
+        return item, SimpleNamespace(stats=None, skipped=self._skipped)
+
+
+@pytest.mark.asyncio
+async def test_test_target_write_refuses_incompatible_leftovers() -> None:
+    uploader = _TestWikiUploader(skipped=["P854 url not representable"])
+    boundary = CurrentWikidataBoundary(uploader=uploader)
+    entity = PublicationEntity(
+        release_id="release-1",
+        entity_key="ms:1",
+        entity_type="manuscript",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Ms"}, "statements": []},
+        evidence_refs=(),
+        identity_assertions=(),
+        local_references=(),
+    )
+    mutation = GatewayMutation(
+        entity_key=entity.entity_key,
+        entity_type=entity.entity_type,
+        action="create",
+        target_qid=None,
+        payload_digest="1" * 64,
+        entity_digest=entity.entity_digest,
+        document=entity.document,
+        identity_assertions=entity.identity_assertions,
+    )
+    class _Factory:
+        async def open(self, credential: CredentialMaterial) -> CurrentWikidataBoundary:
+            return boundary
+
+    material = CredentialMaterial(
+        credential_id="wikidata:test:actor",
+        target=TargetRef(site="test.wikidata.org", environment="test"),
+        secret="token",
+    )
+
+    class _FixedResolver:
+        async def resolve(self, credential_ref: str) -> CredentialMaterial:
+            del credential_ref
+            return material
+
+    adapter = WikidataGatewayAdapter(
+        credential_resolver=_FixedResolver(), boundary_factory=_Factory(),
+    )
+    session = await adapter.open(
+        "wikidata:test:actor",
+        TargetRef(site="test.wikidata.org", environment="test"),
+    )
+    outcome = await session.write(
+        GatewayWriteRequest(
+            intent_id="intent-1",
+            request_key="execution-1:ms:1:1",
+            mutation=mutation,
+        ),
+    )
+    assert uploader.adapted == 1
+    assert outcome.status == "blocked"
+    assert "P854" in (outcome.detail or "")

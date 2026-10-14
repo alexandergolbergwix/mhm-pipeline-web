@@ -715,6 +715,13 @@ class WikidataUploader:
         # 2026-04-16 (deeper audit Fix #17): previously overwrote
         # community-improved descriptions on existing items.
         for lang, desc in item.descriptions.items():
+            if desc and desc == item.labels.get(lang):
+                # Wikidata rejects a description identical to the label in
+                # the same language — the whole write fails. A description
+                # that only repeats the label carries no information; drop
+                # it instead of refusing the item (2026-10-14: 234 release
+                # items failed with 'Label and description ... same value').
+                continue
             if item.existing_qid:
                 try:
                     current = wbi_item.descriptions.get(lang)
