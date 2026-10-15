@@ -133,12 +133,14 @@ class PublicationModule:
         gateway: WikidataGateway,
         clock: Callable[[], datetime] | None = None,
         dry_run_progress: Callable[[int, int], Awaitable[None]] | None = None,
+        execution_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> None:
         self._projection_source = projection_source
         self._repository = repository
         self._gateway = gateway
         self._clock = clock or (lambda: datetime.now(UTC))
         self._dry_run_progress = dry_run_progress
+        self._execution_progress = execution_progress
 
     async def prepare(self, request: PrepareRequest) -> OperationRef:
         prior = await self._repository.find_prepared(
@@ -930,6 +932,7 @@ class PublicationModule:
                 deferred_entity_keys=deferred_entity_keys,
             )
             counts = await self._repository.summarize_write_intents(execution.execution_id)
+            await self._report_execution_progress(execution, counts)
             if (
                 counts["pre_send_retryable"]
                 or counts["outcome_unknown"]
@@ -938,6 +941,23 @@ class PublicationModule:
                 continue
         counts = await self._repository.summarize_write_intents(execution.execution_id)
         await self._finish_execution_from_counts(publication, execution, counts)
+
+    async def _report_execution_progress(
+        self,
+        execution: ExecutionRecord,
+        counts: Mapping[str, int],
+    ) -> None:
+        if self._execution_progress is None:
+            return
+        done = min(
+            execution.total_count,
+            counts["succeeded"]
+            + counts["blocked"]
+            + counts["pre_send_retryable"]
+            + counts["outcome_unknown"]
+            + counts["skipped"],
+        )
+        await self._execution_progress(done, execution.total_count)
 
     async def _process_execution_actions(
         self,

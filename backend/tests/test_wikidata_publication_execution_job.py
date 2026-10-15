@@ -48,7 +48,7 @@ async def test_execution_worker_uses_references_and_never_a_plaintext_secret(
     seen: dict[str, object] = {}
 
     class FakeRuntime:
-        def __init__(self, *, session, gateway_factory) -> None:
+        def __init__(self, *, session, gateway_factory, execution_progress=None) -> None:
             seen["session"] = session
             seen["gateway_factory"] = gateway_factory
 
@@ -112,7 +112,7 @@ async def test_execution_worker_reports_completed_item_failures_without_pause(
     await db_session.commit()
 
     class CompletedWithFailuresRuntime:
-        def __init__(self, *, session, gateway_factory) -> None:
+        def __init__(self, *, session, gateway_factory, execution_progress=None) -> None:
             pass
 
         async def execute(self, **kwargs):
@@ -167,7 +167,7 @@ async def test_execution_worker_explains_pause_after_safe_items_finish(
     await db_session.commit()
 
     class PausedRuntime:
-        def __init__(self, *, session, gateway_factory) -> None:
+        def __init__(self, *, session, gateway_factory, execution_progress=None) -> None:
             pass
 
         async def execute(self, **kwargs):
@@ -233,7 +233,7 @@ async def test_execution_worker_pauses_durable_execution_when_runtime_fails(
     await db_session.commit()
 
     class FailingRuntime:
-        def __init__(self, *, session, gateway_factory) -> None:
+        def __init__(self, *, session, gateway_factory, execution_progress=None) -> None:
             pass
 
         async def execute(self, **kwargs):

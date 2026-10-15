@@ -471,11 +471,13 @@ class PublicationRuntime:
         gateway_factory: PublicationGatewayFactory,
         clock: Callable[[], datetime] | None = None,
         dry_run_progress: Callable[[int, int], Awaitable[None]] | None = None,
+        execution_progress: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> None:
         self._session = session
         self._gateway_factory = gateway_factory
         self._clock = clock or (lambda: datetime.now(UTC))
         self._dry_run_progress = dry_run_progress
+        self._execution_progress = execution_progress
         self._projection_source = StudioCacheProjectionSource(session)
 
     async def prepare(
@@ -667,6 +669,7 @@ class PublicationRuntime:
             gateway=self._gateway_factory(target=target, actor_id=actor_id),
             clock=self._clock,
             dry_run_progress=self._dry_run_progress,
+            execution_progress=self._execution_progress,
         )
 
     async def _publication_for_run(

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
+from typing import Any
 
 from app.db import session_scope
 from app.models.publication import PublicationExecution
@@ -34,60 +34,27 @@ from app.publication.wikidata_gateway import (
 logger = logging.getLogger(__name__)
 
 
-async def _poll_write_progress(
-    job_id: uuid.UUID,
-    execution_id: uuid.UUID,
-    total: int,
-) -> None:
-    """Mirror the durable action states into the job row while writing.
+def _make_execution_progress(job_id: uuid.UUID) -> Any:
+    """Mirror the runtime's write progress into the job row while writing.
 
-    The runtime only returns at the end, so without this poller the job tray
-    showed 'starting' for the whole run (2026-10-15: 1847 writes ≈ 90 min
-    with a frozen 0 / 0 display).
+    The runtime only returns at the end, so without this callback the tray
+    showed 'starting' for the whole write pass (2026-10-15: 1847 serial
+    writes ≈ 90 min with a frozen 0 / 0 display).
     """
-    from sqlalchemy import text
 
-    while True:
-        await asyncio.sleep(10)
-        try:
-            async with session_scope() as db:
-                row = (
-                    await db.execute(
-                        text(
-                            "SELECT "
-                            "count(*) FILTER (WHERE state = 'succeeded'), "
-                            "count(*) FILTER (WHERE state = 'blocked'), "
-                            "count(*) FILTER (WHERE state = 'pending'), "
-                            "count(*) FROM publication_execution_actions "
-                            "WHERE execution_id = :execution_id"
-                        ),
-                        {"execution_id": execution_id},
-                    )
-                ).first()
-            if row is None:
-                continue
-            succeeded, blocked, pending, seen = (int(value) for value in row)
-            done = succeeded + blocked
-            if not total:
-                total = seen
-            await update_job_progress(
-                job_id,
-                {
-                    "phase": "running",
-                    "processed": done,
-                    "total": total,
-                    "unit": "entities",
-                    "message": (
-                        f"Writing to Wikidata: {done} of {total} items done, "
-                        f"{pending} left."
-                    ),
-                },
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("The execution progress poll failed")
-            continue
+    async def progress(processed: int, total: int) -> None:
+        await update_job_progress(
+            job_id,
+            {
+                "phase": "running",
+                "processed": processed,
+                "total": total,
+                "unit": "entities",
+                "message": f"Writing to Wikidata: {processed} of {total} items.",
+            },
+        )
+
+    return progress
 
 
 def _required_param(job: RunJob, name: str) -> str:
@@ -143,7 +110,11 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
 
             gateway_factory = credential_gateway_factory
 
-        runtime = PublicationRuntime(session=db, gateway_factory=gateway_factory)
+        runtime = PublicationRuntime(
+            session=db,
+            gateway_factory=gateway_factory,
+            execution_progress=_make_execution_progress(job_id),
+        )
         await update_job_progress(
             job_id,
             {
@@ -153,11 +124,6 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
                 "unit": "entities",
                 "message": "Publication Execution is starting.",
             },
-        )
-        execution_row = await db.get(PublicationExecution, uuid.UUID(execution_id))
-        total = int(execution_row.total_count or 0) if execution_row else 0
-        poller = asyncio.create_task(
-            _poll_write_progress(job_id, uuid.UUID(execution_id), total)
         )
         try:
             summary = await runtime.execute(
@@ -175,12 +141,6 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
                 execution.status = "paused"
                 await db.commit()
             raise
-        finally:
-            poller.cancel()
-            try:
-                await poller
-            except (asyncio.CancelledError, Exception):
-                logger.exception("The execution progress poller stopped")
 
     execution = summary.execution
     if execution is None:
