@@ -792,6 +792,14 @@ def _classify_write_exception(exc: Exception) -> WikidataGatewayError:
         or "modificationfailed" in type(exc).__name__.lower()
     ):
         return WikidataPermanentError(message)
+    from converter.wikidata.uploader import UnauthorisedModificationError  # noqa: PLC0415
+
+    if isinstance(exc, UnauthorisedModificationError):
+        # A creator-check refusal is a permanent ownership verdict — the
+        # item is not ours (or the creator evidence is unavailable).
+        # Churning it as unknown retried forever (2026-10-15: adoption
+        # false-negatives from SPARQL hiccups looped the execution).
+        return WikidataPermanentError(message)
     return WikidataOutcomeUnknownError(message)
 
 
