@@ -172,6 +172,7 @@ class FakeWikidataGateway:
         self.open_count = 0
         self._write_calls: list[GatewayWriteRequest] = []
         self._recovery_calls: list[GatewayRecoveryRequest] = []
+        self.reconcile_sizes: list[int] = []
 
     @property
     def write_calls(self) -> tuple[GatewayWriteRequest, ...]:
@@ -196,6 +197,7 @@ class FakeWikidataGateway:
         self,
         entities: tuple[PublicationEntity, ...],
     ) -> tuple[TargetObservation, ...]:
+        self.reconcile_sizes.append(len(entities))
         return tuple(
             self._observations.get(
                 entity.entity_key,

@@ -34,6 +34,7 @@ from app.publication.core import ProjectionSource, PublicationModule
 from app.publication.digests import thaw_json
 from app.publication.gateway import WikidataGateway, WikidataGatewaySession
 from app.publication.repository import (
+    PlanActionRecord,
     PublicationNotFoundError,
 )
 from app.publication.sql_repository import SqlAlchemyPublicationRepository
@@ -524,6 +525,7 @@ class PublicationRuntime:
         publication_id: str,
         request: AdvancePublicationRequest,
         actor_id: str,
+        observation_seed: dict[str, PlanActionRecord] | None = None,
     ) -> PublicationMutationResponse:
         publication_row = await self._publication_for_run(run_id, publication_id)
         target = TargetRef(
@@ -540,7 +542,12 @@ class PublicationRuntime:
         else:
             operation = await module.advance(
                 publication_id,
-                _core_command(command, actor_id, _credential_ref(target, actor_id)),
+                _core_command(
+                    command,
+                    actor_id,
+                    _credential_ref(target, actor_id),
+                    observation_seed=observation_seed,
+                ),
             )
             operation_id = (
                 operation.resource_id
@@ -1033,7 +1040,13 @@ def _credential_ref(target: TargetRef, actor_id: str) -> str:
     return f"wikidata:{target.environment}:{actor_id}"
 
 
-def _core_command(command, actor_id: str, credential_ref: str):
+def _core_command(
+    command,
+    actor_id: str,
+    credential_ref: str,
+    *,
+    observation_seed: dict[str, PlanActionRecord] | None = None,
+):
     idempotency_key = str(uuid.uuid4())
     if isinstance(command, ReviewPublicationCommand):
         selection = (
@@ -1062,6 +1075,7 @@ def _core_command(command, actor_id: str, credential_ref: str):
             actor_id=actor_id,
             idempotency_key=idempotency_key,
             force_refresh=command.force_refresh,
+            observation_seed=observation_seed or {},
         )
     if isinstance(command, PublishPublicationCommand):
         return PublishCommand(

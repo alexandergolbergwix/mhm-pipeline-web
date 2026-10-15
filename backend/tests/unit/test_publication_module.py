@@ -27,6 +27,7 @@ from app.publication import (
     TargetRef,
 )
 from app.publication.gateway import FakeWikidataGateway, TargetObservation, WriteOutcome
+from app.publication.repository import PlanActionRecord
 from app.publication.testing import create_in_memory_publication_module
 
 
@@ -817,3 +818,80 @@ async def test_reference_only_item_never_becomes_a_write(observation):
         assert [call.mutation.entity_key for call in gateway.write_calls] == ['work:2']
     else:
         assert not gateway.write_calls
+
+
+@pytest.mark.asyncio
+async def test_dry_run_observation_seed_skips_unchanged_reconciliation() -> None:
+    gateway = FakeWikidataGateway(
+        observations={
+            "work:2": TargetObservation.present_foreign(
+                "work:2",
+                qid="Q200",
+                remote_revision=91,
+            ),
+        }
+    )
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={
+            "snapshot-7": (
+                PublicationEntityInput(
+                    entity_key="manuscript:1",
+                    entity_type="manuscript",
+                    document={"labels": {"en": "Manuscript 1"}},
+                ),
+                PublicationEntityInput(
+                    entity_key="work:2",
+                    entity_type="work",
+                    document={"labels": {"he": "ספר ב"}},
+                ),
+            )
+        },
+        gateway=gateway,
+        clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+    prepared_operation = await module.prepare(_prepare_request())
+    prepared = await module.read(SummaryQuery(prepared_operation.publication_id))
+    await module.advance(
+        prepared.publication_id,
+        ReviewCommand(
+            release_id=prepared.release_id,
+            expected_release_digest=prepared.release_digest,
+            selection=EntitySelection.all(),
+            decision="approve",
+            actor_id="curator-1",
+            reason="Seeding the subset dry-run.",
+            idempotency_key="review-before-seed",
+        ),
+    )
+    reviewed = await module.read(SummaryQuery(prepared.publication_id))
+
+    operation = await module.advance(
+        prepared.publication_id,
+        DryRunCommand(
+            approval_set_id=reviewed.approval_set_id or "",
+            expected_approval_digest=reviewed.approval_digest or "",
+            credential_ref="credential:wikidata:curator-1",
+            actor_id="curator-1",
+            idempotency_key="dry-run-seeded",
+            observation_seed={
+                "manuscript:1": PlanActionRecord(
+                    plan_id="parent-plan",
+                    entity_key="manuscript:1",
+                    entity_digest="parent-digest",
+                    action="create",
+                    observation_status="absent",
+                    target_qid=None,
+                    target_fingerprint=None,
+                    target_revision=None,
+                    allow_foreign_update=False,
+                    detail=None,
+                ),
+            },
+        ),
+    )
+    summary = await module.read(SummaryQuery(prepared.publication_id))
+    assert operation.resource_type == "plan"
+    # The seeded absent observation produced a create without a lookup.
+    assert gateway.reconcile_sizes == [1]
+    assert summary.plan_create_count == 1
+    assert summary.plan_blocked_count == 1

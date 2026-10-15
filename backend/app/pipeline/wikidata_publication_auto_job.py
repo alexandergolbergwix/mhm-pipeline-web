@@ -17,6 +17,7 @@ from app.publication.automatic_projection import build_documents
 from app.publication.credentials import ExecutionCredentialResolver
 from app.publication.digests import thaw_json, canonical_digest
 from app.publication.runtime import PublicationRuntime, _snapshot_parts, _has_blocking_item_issue
+from app.publication.repository import PlanActionRecord
 from app.publication.sql_repository import SqlAlchemyPublicationRepository
 from app.publication.wikidata_gateway import CurrentWikidataBoundaryFactory, WikidataGatewayAdapter
 from app.schemas.publication import PreparePublicationRequest, AdvancePublicationRequest
@@ -90,6 +91,26 @@ async def run_automatic_publication(job_id):
                 .order_by(PublicationPlanAction.entity_key).limit(2001))).scalars().all()
             if len(actions) > 2000:
                 raise ValueError('Automatic resolution supports at most 2000 entities per Release.')
+            # Seed the subset dry-run with the parent plan's observations so a
+            # retry does not re-reconcile the whole retained corpus: the subset
+            # publication is new, so previous_plan_observations is empty. Only
+            # 'absent' survives the digest mismatch by design (content-independent);
+            # the write preflight re-verifies identity fail-closed.
+            observation_seed = {
+                row.entity_key: PlanActionRecord(
+                    plan_id=params['plan_id'],
+                    entity_key=row.entity_key,
+                    entity_digest=row.entity_digest,
+                    action=row.action,
+                    observation_status=row.observation_status,
+                    target_qid=row.target_qid,
+                    target_fingerprint=row.target_fingerprint,
+                    target_revision=row.target_revision,
+                    allow_foreign_update=row.allow_foreign_update,
+                    detail=row.detail,
+                )
+                for row in actions
+            }
             saved = (job.progress or {}).get('report') or (job.result or {}).get('report')
             if not saved and params.get('resume_from_job_id') and not params.get('force_refresh'):
                 previous = await db.get(RunJob, uuid.UUID(params['resume_from_job_id']))
@@ -286,9 +307,10 @@ async def run_automatic_publication(job_id):
                 runtime = PublicationRuntime(session=db, dry_run_progress=dry_run_progress, gateway_factory=lambda **kwargs: WikidataGatewayAdapter(
                     credential_resolver=resolver, boundary_factory=CurrentWikidataBoundaryFactory()))
                 checked = (await runtime.advance(run_id=run_id, publication_id=prepared.publication_id, actor_id=actor,
-                    request=AdvancePublicationRequest.model_validate({'command': {'type': 'dry_run', 'force_refresh': True,
+                    request=AdvancePublicationRequest.model_validate({'command': {'type': 'dry_run', 'force_refresh': False,
                         'approval_set_id': reviewed.approval_set.approval_set_id,
-                        'expected_approval_digest': reviewed.approval_set.approval_digest}}))).publication
+                        'expected_approval_digest': reviewed.approval_set.approval_digest}}),
+                    observation_seed=observation_seed)).publication
                 if checked.dry_run_receipt.status == 'valid':
                     break
                 blocked = (await db.execute(select(PublicationPlanAction.entity_key).where(

@@ -533,6 +533,14 @@ class PublicationModule:
             prior_observations = await self._repository.previous_plan_observations(
                 publication_id,
             )
+        # A derived subset release (automatic resolution) is a NEW publication
+        # with no sealed plan of its own: seed it with the parent plan's
+        # observations. Only 'absent' is honoured regardless of digest — that
+        # status describes the remote target, not our content, and the write
+        # preflight re-verifies identity fail-closed before any CREATE
+        # (2026-10-15: every 'Resolve with AI' retry re-reconciled 1847 items).
+        for seed_key, seed_record in (command.observation_seed or {}).items():
+            prior_observations.setdefault(seed_key, seed_record)
         after: str | None = None
         while True:
             entities, has_more = await self._repository.page_approved_entities(
@@ -546,8 +554,14 @@ class PublicationModule:
                 entity.entity_key: prior_observations[entity.entity_key]
                 for entity in active_entities
                 if entity.entity_key in prior_observations
-                and prior_observations[entity.entity_key].entity_digest == entity.entity_digest
-                and prior_observations[entity.entity_key].observation_status != "unknown"
+                and (
+                    prior_observations[entity.entity_key].observation_status == "absent"
+                    or (
+                        prior_observations[entity.entity_key].entity_digest
+                        == entity.entity_digest
+                        and prior_observations[entity.entity_key].observation_status != "unknown"
+                    )
+                )
             }
             fresh_entities = tuple(
                 entity for entity in active_entities if entity.entity_key not in reusable

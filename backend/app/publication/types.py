@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from app.publication.repository import PlanActionRecord
 
 type JsonScalar = str | int | float | bool | None
 type JsonValue = JsonScalar | dict[str, JsonValue] | list[JsonValue]
@@ -117,6 +120,11 @@ class DryRunCommand:
     receipt_ttl_seconds: int = 3_600
     foreign_qid_consents: tuple[ForeignQidConsent, ...] = ()
     force_refresh: bool = False
+    # Parent-plan observations a derived release may reuse by entity key.
+    # Only 'absent' observations are honoured regardless of digest — that
+    # status describes the remote target, not our content — and the write
+    # preflight re-verifies identity fail-closed before any CREATE.
+    observation_seed: dict[str, PlanActionRecord] = field(default_factory=dict)
     kind: Literal["dry_run"] = field(default="dry_run", init=False)
 
 
