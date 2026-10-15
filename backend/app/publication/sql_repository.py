@@ -525,16 +525,31 @@ class SqlAlchemyPublicationRepository:
         self,
         publication_id: str,
     ) -> dict[str, PlanActionRecord]:
-        """Observations from the most recent sealed plan of this publication.
+        """Observations from the run's most recent sealed plan.
 
         The dry-run reuses them for entities whose digest is unchanged so a
         re-check after a one-item fix does not re-reconcile the whole corpus
         (2026-10-13: every re-check re-ran ~1850 WDQS lookups, ~30 min).
+        Scoped to the RUN, not the publication: every 'Start a new Release'
+        creates a new publication, and a per-publication cache would never
+        fire across releases (2026-10-15: release 9b3399df re-checked all
+        1847 although release e01f1bfc had just checked the same content).
         """
+        run_publications = (
+            await self._session.execute(
+                select(PublicationRow.id).where(
+                    PublicationRow.run_id == select(PublicationRow.run_id).where(
+                        PublicationRow.id == _uuid(publication_id),
+                    ).scalar_subquery(),
+                )
+            )
+        ).scalars().all()
+        if not run_publications:
+            return {}
         latest = (
             await self._session.execute(
                 select(PlanRow.id).where(
-                    PlanRow.publication_id == _uuid(publication_id),
+                    PlanRow.publication_id.in_(run_publications),
                     PlanRow.status == "sealed",
                 ).order_by(PlanRow.created_at.desc()).limit(1)
             )

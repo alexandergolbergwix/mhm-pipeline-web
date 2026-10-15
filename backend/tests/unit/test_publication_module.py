@@ -895,3 +895,84 @@ async def test_dry_run_observation_seed_skips_unchanged_reconciliation() -> None
     assert gateway.reconcile_sizes == [1]
     assert summary.plan_create_count == 1
     assert summary.plan_blocked_count == 1
+
+
+@pytest.mark.asyncio
+async def test_dry_run_reuses_observations_across_sibling_releases() -> None:
+    gateway = FakeWikidataGateway(
+        observations={
+            "manuscript:1": TargetObservation.absent("manuscript:1"),
+            "work:2": TargetObservation.present_foreign(
+                "work:2",
+                qid="Q200",
+                remote_revision=91,
+            ),
+        }
+    )
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={
+            "snapshot-7": (
+                PublicationEntityInput(
+                    entity_key="manuscript:1",
+                    entity_type="manuscript",
+                    document={"labels": {"en": "Manuscript 1"}},
+                ),
+                PublicationEntityInput(
+                    entity_key="work:2",
+                    entity_type="work",
+                    document={"labels": {"he": "ספר ב"}},
+                ),
+            )
+        },
+        gateway=gateway,
+        clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+
+    async def _approve_and_check(idempotency: str) -> str:
+        prepared_operation = await module.prepare(
+            PrepareRequest(
+                run_id="48ba6c13-115c-4763-bff1-c08b9031b518",
+                source_snapshot=SourceSnapshotRef(
+                    snapshot_id="snapshot-7",
+                    revision="approved-v7",
+                    digest="4" * 64,
+                ),
+                profile=ProfileRef(name="mhm-wikidata", version="1-nodes"),
+                target=TargetRef(site="test.wikidata.org", environment="test"),
+                actor_id="curator-1",
+                idempotency_key=idempotency,
+            ),
+        )
+        prepared = await module.read(SummaryQuery(prepared_operation.publication_id))
+        await module.advance(
+            prepared.publication_id,
+            ReviewCommand(
+                release_id=prepared.release_id,
+                expected_release_digest=prepared.release_digest,
+                selection=EntitySelection.all(),
+                decision="approve",
+                actor_id="curator-1",
+                reason="Sibling release.",
+                idempotency_key=f"review-{idempotency}",
+            ),
+        )
+        reviewed = await module.read(SummaryQuery(prepared.publication_id))
+        operation = await module.advance(
+            prepared.publication_id,
+            DryRunCommand(
+                approval_set_id=reviewed.approval_set_id or "",
+                expected_approval_digest=reviewed.approval_digest or "",
+                credential_ref="credential:wikidata:curator-1",
+                actor_id="curator-1",
+                idempotency_key=f"dry-run-{idempotency}",
+            ),
+        )
+        return operation.resource_type
+
+    first = await _approve_and_check("release-one")
+    assert first == "plan"
+    assert gateway.reconcile_sizes == [2]
+    second = await _approve_and_check("release-two")
+    assert second == "plan"
+    # Same run, unchanged digests: no second reconciliation round.
+    assert gateway.reconcile_sizes == [2]

@@ -562,9 +562,18 @@ class InMemoryPublicationRepository:
         self,
         publication_id: str,
     ) -> dict[str, PlanActionRecord]:
+        # Run-scoped: sibling publications of the same run share their
+        # observations so a re-release reuses checks (digest match governs).
+        publication = self._publications.get(publication_id)
+        if publication is None:
+            return {}
+        sibling_ids = {
+            key for key, record in self._publications.items()
+            if record.run_id == publication.run_id
+        }
         plans = [
             plan for plan in self._plans.values()
-            if plan.publication_id == publication_id
+            if plan.publication_id in sibling_ids
         ]
         if not plans:
             return {}
