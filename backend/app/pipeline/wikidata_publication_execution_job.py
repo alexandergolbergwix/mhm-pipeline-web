@@ -7,7 +7,7 @@ import uuid
 from typing import Any
 
 from app.db import session_scope
-from app.models.publication import PublicationExecution
+from app.models.publication import Publication, PublicationExecution
 from app.models.run_job import (
     JOB_STATUS_CANCELLED,
     JOB_STATUS_FAILED,
@@ -32,6 +32,99 @@ from app.publication.wikidata_gateway import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _ledger_entity_type(entity_key: str) -> str:
+    """Map a release entity key onto the global ledger key type."""
+    key = entity_key.strip()
+    if key.startswith("QDraft_MS_"):
+        return "marc"
+    if key.startswith("QDraft_Person_") or key.startswith("person:"):
+        return "person"
+    if key.startswith("QDraft_Work_") or key.startswith("work:"):
+        return "work"
+    return "other"
+
+
+async def _record_execution_ledger(
+    execution_id: uuid.UUID,
+    *,
+    publication_id: uuid.UUID,
+) -> int:
+    """Record succeeded write QIDs into the global ledger.
+
+    The phase-2 release resolves ``__LOCAL:`` references through this ledger,
+    so without it the cross-item links (works → manuscripts, persons) would
+    never materialise after the phase-1 creates (2026-10-15 live runbook).
+    Idempotent: re-running after a resume re-records the same mappings.
+    """
+    from sqlalchemy import select
+
+    from app.models.publication import (
+        Publication,
+        PublicationEntityRow,
+        PublicationExecution,
+        PublicationExecutionAction,
+        PublicationPlan,
+    )
+    from app.pipeline.wikidata_qid_ledger import (
+        ledger_namespace,
+        record_ledger_mapping,
+    )
+
+    recorded = 0
+    async with session_scope() as db:
+        publication_row = await db.get(Publication, publication_id)
+        is_test = (
+            str(publication_row.target_environment or "") != "production"
+            if publication_row is not None
+            else True
+        )
+        namespace = ledger_namespace(is_test=is_test)
+        release_id = (
+            await db.execute(
+                select(PublicationPlan.release_id)
+                .join(
+                    PublicationExecution,
+                    PublicationExecution.plan_id == PublicationPlan.id,
+                )
+                .where(PublicationExecution.id == execution_id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if release_id is None:
+            return 0
+        rows = (
+            await db.execute(
+                select(
+                    PublicationExecutionAction.entity_key,
+                    PublicationExecutionAction.result_qid,
+                    PublicationEntityRow.entity_type,
+                )
+                .join(
+                    PublicationEntityRow,
+                    (PublicationEntityRow.release_id == release_id)
+                    & (PublicationEntityRow.entity_key == PublicationExecutionAction.entity_key),
+                )
+                .where(
+                    PublicationExecutionAction.execution_id == execution_id,
+                    PublicationExecutionAction.state == "succeeded",
+                    PublicationExecutionAction.result_qid.is_not(None),
+                )
+            )
+        ).all()
+        for entity_key, qid, entity_type in rows:
+            # The ledger key convention maps manuscript → marc
+            # (ledger_key_for_item); person/work keep their names.
+            ledger_type = "marc" if entity_type == "manuscript" else entity_type
+            await record_ledger_mapping(
+                db,
+                f"{namespace}:{ledger_type}:{entity_key}",
+                str(qid),
+                local_key=entity_key,
+            )
+            recorded += 1
+    return recorded
 
 
 def _make_execution_progress(job_id: uuid.UUID) -> Any:
@@ -151,6 +244,19 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
             result={"publication_id": publication_id, "execution_id": execution_id},
         )
         return
+    # Ledger first: even a paused execution must leave the created QIDs
+    # behind, or the phase-2 linking release cannot resolve __LOCAL: refs.
+    try:
+        recorded = await _record_execution_ledger(
+            uuid.UUID(execution_id),
+            publication_id=uuid.UUID(publication_id),
+        )
+        if recorded:
+            logger.info("Publication execution recorded %d ledger mappings", recorded)
+    except Exception:
+        logger.exception(
+            "Recording the publication execution ledger mappings failed"
+        )
     terminal = {
         "succeeded": JOB_STATUS_SUCCEEDED,
         "cancelled": JOB_STATUS_CANCELLED,

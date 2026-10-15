@@ -267,6 +267,10 @@ class StudioCacheProjectionSource(ProjectionSource):
         self._session = session
         self.reference_only: dict[str, dict[str, object]] = {}
         self.automatic_documents: dict[str, dict[str, object]] = {}
+        # None → the ledger namespace follows WIKIDATA_TEST_MODE (the same
+        # default the Studio build records with); prepare() sets it from the
+        # release target so a live release reads live mappings only.
+        self.ledger_is_test: bool | None = None
 
     async def current_snapshot(
         self,
@@ -298,12 +302,35 @@ class StudioCacheProjectionSource(ProjectionSource):
         metadata = await self._cache_metadata(run_id, source, approved_only)
         if metadata is None or metadata[0] != source_snapshot.digest:
             raise PublicationSourceError("The selected Studio source changed before preparation")
+        # Ledger fallback for existing_qid: after a phase-1 execution the
+        # global ledger maps local_id → created QID, so a phase-2 release
+        # resolves __LOCAL: references into real links. The build's own
+        # existing_qid still wins (same precedence as the row-view merge).
+        from app.pipeline.wikidata_qid_ledger import (  # noqa: PLC0415
+            ledger_key_for_item,
+            load_global_ledger,
+        )
+
+        ledger = await load_global_ledger(
+            self._session,
+            is_test=self.ledger_is_test,
+        )
+
+        def _ledger_qid(item: Mapping[str, object]) -> str:
+            if item.get("existing_qid"):
+                return str(item["existing_qid"])
+            try:
+                key = ledger_key_for_item(item)
+            except Exception:
+                return ""
+            return str(ledger.get(key) or "")
+
         qids: dict[str, str] = {}
         entity_keys: set[str] = set()
         async for target in self._stream_items(run_id, source, approved_only, source_snapshot.digest):
             target = self.automatic_documents.get(_item_entity_key(target), target)
             entity_keys.add(_item_entity_key(target))
-            qid = str(target.get("existing_qid") or "").strip()
+            qid = _ledger_qid(target).strip()
             if _QID.fullmatch(qid) and not _has_blocking_item_issue(target):
                 qids[_item_entity_key(target)] = qid
         if not set(self.reference_only) <= entity_keys:
@@ -328,6 +355,10 @@ class StudioCacheProjectionSource(ProjectionSource):
                     "The selected Studio source contains blocking validation issues"
                 )
             item = dict(item)
+            if not item.get("existing_qid"):
+                ledger_qid = _ledger_qid(item)
+                if _QID.fullmatch(ledger_qid):
+                    item["existing_qid"] = ledger_qid
             if not self.automatic_documents:
                 item.pop("publication_reference_only", None)
                 item.pop("publication_deferred", None)
@@ -500,6 +531,7 @@ class PublicationRuntime:
         )
         self._projection_source.automatic_documents = automatic_documents or {}
         target = _target_ref(request.target)
+        self._projection_source.ledger_is_test = target.environment != "production"
         from app.publication.reference_only import resolve_reference_selection
         self._projection_source.reference_only = await resolve_reference_selection(
             self._session, run_id, request, snapshot, target)
