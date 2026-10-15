@@ -559,8 +559,36 @@ class CurrentWikidataBoundary:
                     if isinstance(classified, WikidataCsrfError) and write_attempt == 0:
                         self._uploader._refresh_edit_token()
                         continue
+                    # test.wikidata.org label conflict: an item already
+                    # carries this exact label (usually our own earlier
+                    # upload — the production-only reconciler cannot see
+                    # test items). Adopt it and apply the claims as an
+                    # update, exactly like the Studio wbeditentity path.
+                    if (
+                        self._uploader._is_test
+                        and mutation.action == "create"
+                        and mutation.target_qid is None
+                        and "already has label" in str(exc).lower()
+                    ):
+                        from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+                            parse_label_conflict_id,
+                        )
+
+                        adopted = parse_label_conflict_id(exc)
+                        if adopted:
+                            self._uploader._assert_modifiable(
+                                adopted,
+                                stage="publication_label_adoption",
+                            )
+                            item.existing_qid = adopted
+                            wbi_item, _, _ = self._uploader._build_wbi_item(item)
+                            result = wbi_item.write(**kwargs)
+                            break
                     raise classified from exc
             qid = str(getattr(result, "id", "") or mutation.target_qid or "")
+            if not qid and mutation.action == "create":
+                # An adopted update write returns the adopted item.
+                qid = str(getattr(item, "existing_qid", "") or "")
             if not qid:
                 raise WikidataOutcomeUnknownError(
                     "Wikidata returned no QID after the write request"
@@ -600,6 +628,15 @@ class CurrentWikidataBoundary:
             if snapshot is None:
                 return MutationConfirmation.not_applied("The target QID is absent")
             item = self._native_item_from_mutation(mutation, target_qid=resolved_qid)
+            # The read-back comparison must see the SAME claim shapes the
+            # write applied: on test.wikidata.org that is the W-182 remap
+            # (production P-numbers do not exist there with the same
+            # datatypes). Comparing unadapted claims made every successful
+            # write confirm as 'not applied' and churn forever
+            # (2026-10-15: 868 outcome_unknown with 'lacks claims').
+            if self._uploader._is_test:
+                self._uploader._ensure_test_maps_for_item(item)
+                item, _ = self._uploader._adapt_item_for_test_wiki(item)
             if mutation.allow_foreign_update:
                 self._uploader.register_foreign_accept(resolved_qid)
             # CREATE confirmation only reads the item that the preceding

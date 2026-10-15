@@ -22,6 +22,7 @@ from app.publication.wikidata_gateway import (
 
 class _ReadbackUploader:
     _mark_as_bot = True
+    _is_test = False
 
     def __init__(self) -> None:
         self.read_only_arguments: list[bool] = []
