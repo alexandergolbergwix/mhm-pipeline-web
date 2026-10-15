@@ -562,14 +562,18 @@ class InMemoryPublicationRepository:
         self,
         publication_id: str,
     ) -> dict[str, PlanActionRecord]:
-        # Run-scoped: sibling publications of the same run share their
-        # observations so a re-release reuses checks (digest match governs).
+        # Run-scoped AND target-scoped: sibling publications of the same run
+        # share their observations so a re-release reuses checks (digest match
+        # governs). A test-wiki check says nothing about production presence,
+        # so a different target never shares.
         publication = self._publications.get(publication_id)
         if publication is None:
             return {}
         sibling_ids = {
             key for key, record in self._publications.items()
             if record.run_id == publication.run_id
+            and (record.target.site, record.target.environment)
+            == (publication.target.site, publication.target.environment)
         }
         plans = [
             plan for plan in self._plans.values()

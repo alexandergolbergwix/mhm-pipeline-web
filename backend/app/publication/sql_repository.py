@@ -541,6 +541,19 @@ class SqlAlchemyPublicationRepository:
                     PublicationRow.run_id == select(PublicationRow.run_id).where(
                         PublicationRow.id == _uuid(publication_id),
                     ).scalar_subquery(),
+                    # Observations are TARGET-scoped: a test-wiki check says
+                    # nothing about production presence. Sharing them across
+                    # targets would turn live updates into creates
+                    # (fail-closed preflight would catch it, but the pass
+                    # would be wasted).
+                    PublicationRow.target_site == select(PublicationRow.target_site).where(
+                        PublicationRow.id == _uuid(publication_id),
+                    ).scalar_subquery(),
+                    PublicationRow.target_environment == select(
+                        PublicationRow.target_environment,
+                    ).where(
+                        PublicationRow.id == _uuid(publication_id),
+                    ).scalar_subquery(),
                 )
             )
         ).scalars().all()
