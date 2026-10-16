@@ -546,6 +546,13 @@ class CurrentWikidataBoundary:
                     f"request={request.request_key}"
                 )[:500],
                 "is_bot": self._uploader._mark_as_bot,
+                # WBI defaults to 100 retries × 60 s sleep inside ONE write
+                # call — a maxlag storm parked every parallel writer for
+                # hours (2026-10-16: 13 in-flight, zero progress). Bound it
+                # here: maxlag surfaces as pre_send_retryable and the
+                # durable claim queue re-attempts the action later.
+                "max_retries": 3,
+                "retry_after": 15,
             }
             if mutation.expected_revision is not None:
                 kwargs["baserevid"] = mutation.expected_revision
