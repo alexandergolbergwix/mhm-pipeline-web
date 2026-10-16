@@ -329,6 +329,16 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
                 )
 
                 await run_wikidata_publication_ai_review_job(job_id)
+            elif kind == "wikidata_publication_execution":
+                # W-249 sibling: the execution writes serially for ~90 min
+                # per pass and maxlag backoff makes the web dyno stall for
+                # hours; the 8 GB container plus the job's parallel workers
+                # (leased claims on disjoint actions) finish in minutes.
+                from app.pipeline.wikidata_publication_execution_job import (
+                    run_wikidata_publication_execution_job,
+                )
+
+                await run_wikidata_publication_execution_job(job_id)
             else:
                 raise ValueError(f"kind {kind!r} has no Modal executor")
         except Exception as exc:  # noqa: BLE001

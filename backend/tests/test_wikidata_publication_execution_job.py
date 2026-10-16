@@ -38,6 +38,7 @@ async def test_execution_worker_uses_references_and_never_a_plaintext_secret(
             "publication_id": publication_id,
             "execution_id": execution_id,
             "actor_id": actor_id,
+            "worker_count": 1,
         },
         progress={},
         created_by=sample_run["user_id"],
@@ -76,13 +77,14 @@ async def test_execution_worker_uses_references_and_never_a_plaintext_secret(
         "publication_id": publication_id,
         "execution_id": execution_id,
         "actor_id": actor_id,
+        "worker_count": 1,
     }
     assert seen["execute"] == {
         "run_id": sample_run["run_id"],
         "publication_id": publication_id,
         "execution_id": execution_id,
         "actor_id": actor_id,
-        "worker_id": f"publication-job:{job.id}",
+        "worker_id": f"publication-job:{job.id}:w0",
     }
 
 
@@ -104,6 +106,7 @@ async def test_execution_worker_reports_completed_item_failures_without_pause(
             "publication_id": publication_id,
             "execution_id": execution_id,
             "actor_id": actor_id,
+            "worker_count": 1,
         },
         progress={},
         created_by=sample_run["user_id"],
@@ -159,6 +162,7 @@ async def test_execution_worker_explains_pause_after_safe_items_finish(
             "publication_id": publication_id,
             "execution_id": execution_id,
             "actor_id": actor_id,
+            "worker_count": 1,
         },
         progress={},
         created_by=sample_run["user_id"],
@@ -225,6 +229,7 @@ async def test_execution_worker_pauses_durable_execution_when_runtime_fails(
             "publication_id": str(publication_id),
             "execution_id": str(execution_id),
             "actor_id": actor_id,
+            "worker_count": 1,
         },
         progress={},
         created_by=sample_run["user_id"],

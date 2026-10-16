@@ -60,6 +60,9 @@ def _seed_test_env() -> None:
     os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
     # Skip the Postgres LISTEN bridge — it crashes against SQLite.
     os.environ.setdefault("DISABLE_PG_LISTENER", "1")
+    # One shared SQLite connection in tests: concurrent execution workers
+    # would race the StaticPool (production defaults to 4 workers on Modal).
+    os.environ.setdefault("PUBLICATION_EXECUTION_WORKERS", "1")
     # Default admin notification recipient so access-request confirm
     # tests fire the email path without needing a fixture-created admin
     # user. Tests can override per-case via monkeypatch.

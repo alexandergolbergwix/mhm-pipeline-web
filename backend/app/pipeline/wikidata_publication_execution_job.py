@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 import uuid
 from typing import Any
 
@@ -24,7 +26,7 @@ from app.publication.credentials import (
     configured_publication_gateway_factory,
 )
 from app.publication.gateway import WikidataGateway
-from app.publication.runtime import PublicationRuntime
+from app.publication.runtime import PublicationRuntime, PublicationSummary
 from app.publication.types import TargetRef
 from app.publication.wikidata_gateway import (
     CurrentWikidataBoundaryFactory,
@@ -218,14 +220,50 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
                 "message": "Publication Execution is starting.",
             },
         )
+        # Parallel writers: the durable claim system already supports
+        # multiple workers (leased claims on disjoint actions), so K
+        # workers each drive their own gateway session and write
+        # concurrently. Serial writes made a 1736-item pass cost ~90 min
+        # plus maxlag storms (2026-10-16). Each worker needs its OWN DB
+        # session — one AsyncSession is not safe for concurrent use.
+        worker_count = max(1, min(8, int(
+            job.params.get("worker_count")
+            or os.environ.get("PUBLICATION_EXECUTION_WORKERS")
+            or 4
+        )))
+
+        async def _run_worker(index: int) -> PublicationSummary:
+            async with session_scope() as worker_db:
+                worker_runtime = PublicationRuntime(
+                    session=worker_db,
+                    gateway_factory=gateway_factory,
+                    execution_progress=_make_execution_progress(job_id),
+                )
+                return await worker_runtime.execute(
+                    run_id=run_id,
+                    publication_id=publication_id,
+                    execution_id=execution_id,
+                    actor_id=actor_id,
+                    worker_id=f"publication-job:{job_id}:w{index}",
+                )
+
         try:
-            summary = await runtime.execute(
-                run_id=run_id,
-                publication_id=publication_id,
-                execution_id=execution_id,
-                actor_id=actor_id,
-                worker_id=f"publication-job:{job_id}",
+            worker_summaries = await asyncio.gather(
+                *(_run_worker(i) for i in range(worker_count)),
+                return_exceptions=True,
             )
+            failures = [s for s in worker_summaries if isinstance(s, BaseException)]
+            summaries = [s for s in worker_summaries if not isinstance(s, BaseException)]
+            if not summaries:
+                # Every worker failed: the durable execution must go back to
+                # paused so a resume can retry it.
+                execution = await db.get(PublicationExecution, uuid.UUID(execution_id))
+                if execution is not None and execution.status in {"queued", "running"}:
+                    execution.status = "paused"
+                    await db.commit()
+                raise failures[0] if failures else RuntimeError(
+                    "The Publication execution produced no worker summary"
+                )
         except Exception:
             # Keep the durable execution resumable when a worker fails before
             # the runtime can persist its normal paused state.
@@ -234,6 +272,15 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
                 execution.status = "paused"
                 await db.commit()
             raise
+        # Prefer a summary whose execution reached a terminal state; paused
+        # beats failed-for-now because the durable rows keep the detail.
+        def _rank(summary: PublicationSummary) -> int:
+            status = summary.execution.status if summary.execution else ""
+            return {"succeeded": 0, "completed": 1, "cancelled": 2}.get(status, 3)
+
+        summary = max(summaries, key=_rank)
+        for failure in failures:
+            logger.warning("A publication execution worker failed: %s", failure)
 
     execution = summary.execution
     if execution is None:
