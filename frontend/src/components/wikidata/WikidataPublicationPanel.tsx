@@ -179,6 +179,50 @@ export function WikidataPublicationPanel({
     }
   }, [approvedOnly, deferConnections, runId, source, target, publication]);
 
+  // Live execution progress: the durable write pass takes tens of minutes,
+  // and the summary is only read once on mount — the "Upload progress" card
+  // froze at its first count (2026-10-16). Poll while an execution runs and
+  // repaint only when the counts actually move.
+  const execution = publication?.execution ?? null;
+  const executionActive = execution !== null
+    && (execution.status === "running" || execution.status === "queued");
+  const executionKey = execution
+    ? `${execution.execution_id}:${execution.status}:${execution.processed}:${execution.total}`
+    : "";
+  useEffect(() => {
+    if (!executionActive) return;
+    let stopped = false;
+    let lastKey = "";
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const response = await PublicationApi.read(
+          runId,
+          publication?.publication_id ?? "",
+          {type: "summary"},
+        );
+        if (stopped || !response.publication) return;
+        const nextExecution = response.publication.execution;
+        const nextKey = nextExecution
+          ? `${nextExecution.execution_id}:${nextExecution.status}:${nextExecution.processed}:${nextExecution.total}`
+          : "";
+        if (nextKey && nextKey !== lastKey) {
+          lastKey = nextKey;
+          setPublication(response.publication);
+        }
+      } catch {
+        // Keep the last good summary; the next tick retries.
+      }
+      if (!stopped) timer = window.setTimeout(() => { void poll(); }, 4000);
+    };
+    lastKey = executionKey;
+    timer = window.setTimeout(() => { void poll(); }, 2000);
+    return () => {
+      stopped = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [executionActive, executionKey, publication?.publication_id, runId]);
+
   useEffect(() => {
     if (!prepareJobId) return;
     let stopped = false;
