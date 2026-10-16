@@ -226,10 +226,14 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
         # concurrently. Serial writes made a 1736-item pass cost ~90 min
         # plus maxlag storms (2026-10-16). Each worker needs its OWN DB
         # session — one AsyncSession is not safe for concurrent use.
-        worker_count = max(1, min(8, int(
+        # Default 16 on the Modal container: the write path is
+        # network-bound (identity check + write + read-back per item),
+        # and the 429/maxlag retries absorb API pressure; 16 keeps
+        # every worker busy while staying within Wikidata bot limits.
+        worker_count = max(1, min(16, int(
             job.params.get("worker_count")
             or os.environ.get("PUBLICATION_EXECUTION_WORKERS")
-            or 4
+            or 16
         )))
 
         async def _run_worker(index: int) -> PublicationSummary:
