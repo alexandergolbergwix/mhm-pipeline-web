@@ -10,6 +10,7 @@ import pytest
 from app.publication.gateway import GatewayMutation, GatewayWriteRequest, TargetObservation
 from app.publication.types import PublicationEntity, TargetRef
 from app.publication.wikidata_gateway import (
+    _SafeWikidataGatewaySession,
     CredentialMaterial,
     CredentialTargetMismatchError,
     CurrentWikidataBoundary,
@@ -545,3 +546,65 @@ async def test_test_target_write_refuses_incompatible_leftovers() -> None:
     assert uploader.adapted == 1
     assert outcome.status == "blocked"
     assert "P854" in (outcome.detail or "")
+
+
+def test_native_item_drops_legacy_string_typed_twin() -> None:
+    entity = PublicationEntity(
+        release_id="release-1",
+        entity_key="QDraft_MS_1",
+        entity_type="manuscript",
+        entity_digest="1" * 64,
+        document={
+            "labels": {"en": "Ms"},
+            "statements": [
+                {"property_id": "P1104", "value": "2", "value_type": "string"},
+                {
+                    "property_id": "P1104",
+                    "value": 113,
+                    "value_type": "quantity",
+                    "unit": "Q107256474",
+                },
+                {"property_id": "P3959", "value": "9900001", "value_type": "external-id"},
+            ],
+        },
+        evidence_refs=(),
+        identity_assertions=(),
+        local_references=(),
+    )
+
+    item = CurrentWikidataBoundary._native_item(  # type: ignore[attr-defined]  # noqa: SLF001
+        entity=entity,
+    )
+
+    p1104 = [s for s in item.statements if s.property_id == "P1104"]
+    assert len(p1104) == 1
+    assert p1104[0].value_type == "quantity"
+    assert p1104[0].value == 113
+    assert [s.value for s in item.statements if s.property_id == "P3959"] == [
+        "9900001",
+    ]
+
+
+def test_native_item_coerces_lone_numeric_string_on_quantity_property() -> None:
+    entity = PublicationEntity(
+        release_id="release-1",
+        entity_key="QDraft_MS_2",
+        entity_type="manuscript",
+        entity_digest="2" * 64,
+        document={
+            "labels": {"en": "Ms"},
+            "statements": [
+                {"property_id": "P1104", "value": "74", "value_type": "string"},
+            ],
+        },
+        evidence_refs=(),
+        identity_assertions=(),
+        local_references=(),
+    )
+
+    item = CurrentWikidataBoundary._native_item(  # type: ignore[attr-defined]  # noqa: SLF001
+        entity=entity,
+    )
+
+    assert len(item.statements) == 1
+    assert item.statements[0].value_type == "quantity"

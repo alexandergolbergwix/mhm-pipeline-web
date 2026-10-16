@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from app.publication.digests import canonical_digest, thaw_json
 from app.publication.gateway import (
@@ -719,6 +719,7 @@ class CurrentWikidataBoundary:
                     rank=str(raw.get("rank") or "normal"),
                 )
             )
+        statements = _repair_legacy_statement_shapes(statements)
         return WikidataItem(
             labels=_string_map(document.get("labels")),
             descriptions=_string_map(document.get("descriptions")),
@@ -747,6 +748,52 @@ def _dict_list(value: object) -> list[dict[str, object]]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         return []
     return [dict(item) for item in value if isinstance(item, Mapping)]
+
+
+_QUANTITY_PROPERTY_IDS = frozenset({"P1104", "P2048", "P2049", "P2635"})
+_STRUCTURED_VALUE_TYPES = frozenset(
+    {"item", "quantity", "time", "url", "monolingualtext", "external-id"},
+)
+
+
+def _repair_legacy_statement_shapes(
+    statements: list[Any],
+) -> list[Any]:
+    """Drop legacy string-typed twins and coerce numeric strings to quantities.
+
+    Older builds carried a property twice: once with a plain string value
+    and once with the properly typed statement (2026-10-16 live release:
+    P1104 "2" string beside P1104 113 quantity on the same manuscript —
+    the string twin failed every update with 'Bad value type string,
+    expected quantity'). The structured statement is canonical; the string
+    twin is dropped. A lone numeric string on a known quantity property is
+    coerced so a stale shape still writes correctly.
+    """
+    by_property: dict[str, list[Any]] = {}
+    for statement in statements:
+        by_property.setdefault(statement.property_id, []).append(statement)
+
+    repaired: list[Any] = []
+    for statement in statements:
+        group = by_property.get(statement.property_id) or []
+        if (
+            statement.value_type == "string"
+            and any(
+                other.value_type in _STRUCTURED_VALUE_TYPES
+                for other in group
+                if other is not statement
+            )
+        ):
+            continue
+        if (
+            statement.value_type == "string"
+            and statement.property_id in _QUANTITY_PROPERTY_IDS
+            and str(statement.value).strip().replace(".", "", 1).isdigit()
+        ):
+            statement.value = str(statement.value).strip()
+            statement.value_type = "quantity"
+        repaired.append(statement)
+    return repaired
 
 
 def _string_map(value: object) -> dict[str, str]:
