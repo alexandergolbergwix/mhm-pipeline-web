@@ -16,6 +16,14 @@ interface RemoteClaim {
   value: string;
 }
 
+interface RemoteSnak {
+  mainsnak?: {datavalue?: {value?: unknown}};
+}
+
+interface RemoteEntityClaims {
+  claims?: Record<string, RemoteSnak[]>;
+}
+
 export interface WikidataBlockedActionDrawerProps {
   entityKey: string;
   targetQid: string | null;
@@ -23,7 +31,7 @@ export interface WikidataBlockedActionDrawerProps {
   ourStatements: BlockedActionStatement[];
   target: PublicationTarget;
   disabled: boolean;
-  onUseExisting: ((entityKeys: string[]) => void | Promise<void>) | null;
+  onUseExisting?: (entityKeys: string[]) => void | Promise<void>;
   onAcceptUpdate: (consent: PublicationForeignQidConsent) => void | Promise<void>;
 }
 
@@ -49,7 +57,7 @@ function ourClaimView(statement: BlockedActionStatement): RemoteClaim {
 }
 
 function remoteClaimsFrom(payload: unknown, qid: string): RemoteClaim[] {
-  const root = payload as {entities?: Record<string, {claims?: Record<string, Array<{mainsnak?: {datavalue?: {value?: unknown}}>>}>>};
+  const root = payload as {entities?: Record<string, RemoteEntityClaims>};
   const entity = root.entities?.[qid];
   const claims = entity?.claims ?? {};
   const rows: RemoteClaim[] = [];
