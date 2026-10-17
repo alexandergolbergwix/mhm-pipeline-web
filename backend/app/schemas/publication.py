@@ -174,6 +174,8 @@ class BlockedPlanAction(PublicationSchema):
     target_qid: str | None
     reason: str
     consent: PublicationForeignQidConsent | None = None
+    entity_label: str | None = None
+    our_statements: list[dict[str, object]] = Field(default_factory=list)
 
 
 class PlanSummary(PublicationSchema):
@@ -187,6 +189,7 @@ class PlanSummary(PublicationSchema):
     status: Literal["ready", "blocked", "expired", "executed"]
     expires_at: datetime | None
     action_counts: dict[str, int]
+    accepted_foreign_update_count: int = 0
 
 
 class DryRunReceiptSummary(PublicationSchema):

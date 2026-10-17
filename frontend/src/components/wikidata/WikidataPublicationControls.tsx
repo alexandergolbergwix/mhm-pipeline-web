@@ -1,8 +1,10 @@
 import {WikidataPublicationAiReview} from "./WikidataPublicationAiReview";
+import {WikidataBlockedActionDrawer} from "./WikidataBlockedActionDrawer";
 import {useState} from "react";
 import type {
   PublicationAdvanceCommand,
   PublicationEntity,
+  PublicationForeignQidConsent,
   PublicationSummary,
 } from "@/api/publication";
 import {getPublicationReadiness} from "@/utils/publicationState";
@@ -115,6 +117,15 @@ export function WikidataPublicationControls({
     });
     setConsentSelection({planDigest: "", entityKeys: []});
   };
+  const acceptForeignUpdate = (consent: PublicationForeignQidConsent) => {
+    if (!approval) return;
+    return onAdvance({
+      type: "dry_run",
+      approval_set_id: approval.approval_set_id,
+      expected_approval_digest: approval.approval_digest,
+      foreign_qid_consents: [consent],
+    });
+  };
   const publish = () => {
     if (!plan || !receipt) return;
     return onAdvance({
@@ -135,7 +146,7 @@ export function WikidataPublicationControls({
       <div className="rounded-lg bg-white/5 p-4 space-y-3">
         <p className="text-lg font-medium">{executionWaitingForReview ? "Upload actions complete" : executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : executionFinishedSuccessfully ? "Upload complete" : execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
         <p className="text-sm muted">{release.entity_count} items in this Release · Target: {publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}</p>
-        {plan && <p className="text-sm">{actionCount(plan.action_counts, "create")} new · {actionCount(plan.action_counts, "update")} updates · {actionCount(plan.action_counts, "skip")} reused without updates · {actionCount(plan.action_counts, "blocked")} need attention</p>}
+        {plan && <p className="text-sm">{actionCount(plan.action_counts, "create")} new · {actionCount(plan.action_counts, "update")} updates · reused without updates: {actionCount(plan.action_counts, "skip")} · accepted foreign updates: {plan.accepted_foreign_update_count ?? 0} · {actionCount(plan.action_counts, "blocked")} need attention</p>}
         {plan && <div className="rounded-md border border-white/10 surface-inset p-3" data-testid="publication-result-summary" aria-live="polite">
           <p className="text-sm font-medium">{includedCount.toLocaleString()} of {release.entity_count.toLocaleString()} records prepared</p>
           <p className="text-xs muted">
@@ -214,13 +225,22 @@ export function WikidataPublicationControls({
           <ul className="space-y-2 mt-2">
             {plan.blocked_actions.map((action) => <li key={action.entity_key} className="text-xs">
               <span className="font-semibold">{action.entity_key}{action.target_qid ? ` · ${action.target_qid}` : ""}</span>
+              {action.entity_label && <span className="muted"> — {action.entity_label}</span>}
               <details>
                 <summary className="cursor-pointer">Why this record is not included</summary>
                 <p className="break-words">{action.reason}</p>
               </details>
+              <WikidataBlockedActionDrawer
+                entityKey={action.entity_key}
+                targetQid={action.target_qid}
+                consent={action.consent ?? null}
+                ourStatements={action.our_statements ?? []}
+                target={publication.target}
+                disabled={busy || executionActive || !readiness.approvalCurrent || !publication.source_current}
+                onUseExisting={onUseExisting}
+                onAcceptUpdate={acceptForeignUpdate}
+              />
               {action.consent && <div className="mt-2 space-y-1">
-                <a href={`https://${publication.target === "live" ? "www" : "test"}.wikidata.org/wiki/${action.consent.qid}`}
-                  target="_blank" rel="noopener noreferrer" className="link-accent underline">Review {action.consent.qid}</a>
                 <label className="flex items-center gap-2">
                   <input type="checkbox" checked={selectedKeys.includes(action.entity_key)}
                     disabled={busy || executionActive || !readiness.approvalCurrent || !publication.source_current}
@@ -232,14 +252,6 @@ export function WikidataPublicationControls({
                     }} />
                   I reviewed {action.consent.qid} and permit this Release to update it.
                 </label>
-                {onUseExisting && <div className="space-y-1">
-                  <p>Use this option only if both records describe the same item. A new Release requires approval and a fresh dry-run.</p>
-                  <button type="button" className="button-ghost text-sm"
-                    disabled={busy || !!execution || !readiness.approvalCurrent || !publication.source_current}
-                    onClick={() => { void onUseExisting([action.entity_key]); }}>
-                    Use {action.consent.qid} without updates
-                  </button>
-                </div>}
                 <p className="muted">Check before publication after you review this item. A changed item requires another review.</p>
               </div>}
             </li>)}

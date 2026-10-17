@@ -161,6 +161,8 @@ async def test_foreign_consent_reaches_dry_run_worker(sample_run, db_session, mo
     assert consent["entity_key"] == "work:1"
     assert consent["qid"] == "Q123"
     assert consent["remote_revision"] == 7
+    assert actions[0]["entity_label"] == "Work 1"
+    assert actions[0]["our_statements"] and actions[0]["our_statements"][0]["property"]
     if mismatch:
         consent[mismatch] = {"qid": "Q456", "remote_revision": 8, "entity_digest": "0" * 64}[mismatch]
     command["foreign_qid_consents"] = [consent]
@@ -168,6 +170,7 @@ async def test_foreign_consent_reaches_dry_run_worker(sample_run, db_session, mo
     assert checked["plan"]["plan_id"] != blocked["plan"]["plan_id"]
     assert checked["plan"]["action_counts"]["update"] == (1 if mismatch is None else 0)
     assert checked["plan"]["action_counts"]["blocked"] == (1 if mismatch is None else 2)
+    assert checked["plan"]["accepted_foreign_update_count"] == (1 if mismatch is None else 0)
     assert checked["dry_run_receipt"]["status"] == "failed"
 
 
@@ -1245,3 +1248,165 @@ async def test_automatic_evidence_uses_only_the_items_source_records(sample_run,
     unrelated = await collect_evidence(db_session, {'record_ids': ['missing-record']},
         sample_run['user_id'], run_id=sample_run['run_id'])
     assert unrelated == []
+
+
+@pytest.mark.asyncio
+async def test_blocked_sweep_stamps_p3959_updates_and_defers_unverifiable_matches(
+    sample_run, db_session, monkeypatch,
+):
+    import httpx
+    from app.pipeline.agent_runner import AgentEvent
+    from app.pipeline.wikidata_publication_dry_run_job import run_wikidata_publication_dry_run_job
+    from app.pipeline.wikidata_publication_ai_review_job import run_wikidata_publication_ai_review_job
+    from app.publication.wikidata_gateway import RemoteEntitySnapshot
+
+    judge_calls = []
+    progress_events = []
+    target_qids = {
+        'manuscript:1': 'Q134619072',
+        'person:2': 'Q1176777',
+        'person:3': 'Q16130567',
+    }
+    remote_documents = {
+        'Q134619072': {'id': 'Q134619072', 'claims': {'P3959': [
+            {'mainsnak': {'datavalue': {'value': '990000533850205171'}}}]}},
+        'Q1176777': {'id': 'Q1176777', 'claims': {'P31': [
+            {'mainsnak': {'datavalue': {'value': {'id': 'Q5'}}}}]}},
+        'Q16130567': {'id': 'Q16130567', 'claims': {'P214': [
+            {'mainsnak': {'datavalue': {'value': '123'}}}]}},
+    }
+
+    class Boundary:
+        async def reconcile_batch(self, entities):
+            observations = []
+            for entity in entities:
+                qid = entity.document.get('existing_qid') or target_qids[entity.entity_key]
+                if entity.document.get('existing_qid'):
+                    observations.append(TargetObservation.present_owned(
+                        entity.entity_key, qid=qid, remote_revision=7, fingerprint='remote'))
+                else:
+                    observations.append(TargetObservation.present_foreign(
+                        entity.entity_key, qid=qid, remote_revision=7, fingerprint='remote'))
+            return tuple(observations)
+
+        async def fetch_entity(self, qid):
+            return RemoteEntitySnapshot(qid=qid, revision=7, fingerprint='remote',
+                document=remote_documents[qid])
+
+        async def write_once(self, request):
+            pytest.fail('The automatic sweep must not write to Wikidata')
+
+    async def open_boundary(self, credential):
+        return Boundary()
+
+    async def subprocess(**kwargs):
+        item = __import__('json').loads(
+            (kwargs['pipeline_output'] / 'wikidata_items.json').read_text())[0]
+        pack = item['publication_review']
+        judge_calls.append((item['local_id'], pack['check']))
+        decision = {'identity': 'same_entity', 'labels_supported': True,
+            'identity_evidence': [pack['evidence'][0]['id']],
+            'reason': 'Catalogue supports the identity.',
+            'claims': [{'index': i, 'status': 'supported', 'evidence': [pack['evidence'][0]['id']]}
+                for i, _ in enumerate(pack['proposed_entity']['statements'])]}
+        root = kwargs['state_dir'] / 'runs' / 'fixture'
+        root.mkdir(parents=True)
+        (root / 'results.jsonl').write_text(__import__('json').dumps(
+            {'record_id': item['local_id'], 'evaluator_id': 'wikidata_publication_review',
+                'verification_status': 'judged', 'error': None,
+                'verdict': {'overall': 'partial', 'name_ok': 'yes', 'type_ok': 'yes',
+                    'reasoning': 'Identity separate from claims.',
+                    'publication_decision': decision}}))
+        yield AgentEvent(type='runner.exit', payload={'return_code': 0})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(**kwargs,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200,
+            text='Primary catalogue: identifier 123. Works and authors.'))))
+    monkeypatch.setenv('GEMINI_API_KEY', 'fixture-ai-key')
+    monkeypatch.setattr('app.pipeline.run_job_service.spawn_job', lambda _job_id: None)
+    monkeypatch.setattr('app.publication.wikidata_gateway.CurrentWikidataBoundaryFactory.open', open_boundary)
+    monkeypatch.setattr('app.pipeline.agent_runner.spawn_eval_agent_run', subprocess)
+    from app.pipeline import wikidata_publication_auto_job
+    real_update_progress = wikidata_publication_auto_job.update_job_progress
+
+    async def capture_progress(job_id, progress):
+        progress_events.append(progress)
+        await real_update_progress(job_id, progress)
+
+    monkeypatch.setattr(wikidata_publication_auto_job, 'update_job_progress', capture_progress)
+
+    def item(local_id, entity_type, label, statements):
+        return {
+            'local_id': local_id, 'entity_type': entity_type, 'labels': {'en': label},
+            'descriptions': {'en': label}, 'aliases': {}, 'statements': statements,
+            'existing_qid': None, 'validation_issues': [],
+        }
+
+    def statement(prop, value, value_type):
+        return {'property': prop, 'value': value, 'value_type': value_type,
+            'references': [{'property': 'P854', 'value': 'https://www.nli.org.il/fixture'}]}
+
+    items = [
+        item('manuscript:1', 'manuscript', 'Jerusalem, NLI, MS 1', [
+            statement('P31', 'Q87167', 'item'),
+            statement('P3959', '990000533850205171', 'external-id'),
+        ]),
+        item('person:2', 'person', 'David Sultan', [
+            statement('P31', 'Q5', 'item'),
+        ]),
+        item('person:3', 'person', 'Yosef Ben-David', [
+            statement('P31', 'Q5', 'item'),
+            statement('P214', '123', 'external-id'),
+        ]),
+    ]
+    await _add_canonical_cache(db_session, sample_run['run_id'], items=items)
+    client, run_id = sample_run['client'], sample_run['run_id']
+    assert (await client.put('/api/me/api-keys/wikidata_test',
+        json={'value': 'Fixture@Test:publication-fixture'})).status_code == 200
+    publication = await _prepare_direct(db_session, run_id, sample_run['user_id'],
+        target='test', profile_version='1-nodes')
+    url = f"/api/runs/{run_id}/wikidata-publications/{publication.publication_id}"
+    reviewed = (await client.post(url + '/advance', json={'command': {'type': 'review',
+        'release_id': publication.current_release.release_id,
+        'expected_release_digest': publication.current_release.release_digest,
+        'selection': {'mode': 'eligible_release'}, 'decision': 'approve',
+        'reason': 'Initial fixture review'}})).json()['publication']
+    approval = reviewed['approval_set']
+    queued = await client.post(url + '/advance', json={'command': {'type': 'dry_run',
+        'approval_set_id': approval['approval_set_id'],
+        'expected_approval_digest': approval['approval_digest']}})
+    await run_wikidata_publication_dry_run_job(
+        uuid.UUID(queued.json()['operation']['operation_id']))
+    current = (await client.post(url + '/read', json={'query': {'type': 'summary'}})).json()['publication']
+    assert current['plan']['action_counts']['blocked'] == 3
+
+    started = await client.post(url + '/ai-review', json={'plan_id': current['plan']['plan_id'],
+        'plan_digest': current['plan']['plan_digest'], 'tier_model': 'gemini-3.5-flash',
+        'automatic': True, 'automatic_scope': 'blocked'})
+    assert started.status_code == 200, started.text
+    await run_wikidata_publication_ai_review_job(uuid.UUID(started.json()['job_id']))
+    saved = (await client.get(url + '/ai-review')).json()
+    assert saved['status'] == 'succeeded', saved
+    report = saved['report']
+    statuses = {row['entity_key']: row for row in report['items']}
+    assert set(statuses) == {'manuscript:1', 'person:2', 'person:3'}
+    assert statuses['manuscript:1']['status'] == 'update_existing'
+    assert statuses['manuscript:1']['qid'] == 'Q134619072'
+    assert statuses['person:2']['status'] == 'deferred'
+    assert statuses['person:2']['reason'] == ('A live-wiki item exists but shares no '
+        'verifiable identifier; curator review required.')
+    assert statuses['person:3']['status'] == 'reuse_existing'
+    assert judge_calls == [('person:3', 'assessment'), ('person:3', 'independent_verification')]
+    assert any('Sweeping 3 blocked items: 2 re-routed, 1 deferred.' in str(event.get('message'))
+        for event in progress_events)
+
+    result = (await client.post(
+        f"/api/runs/{run_id}/wikidata-publications/{report['result_publication_id']}/read",
+        json={'query': {'type': 'summary'}})).json()['publication']
+    # The deferred person leaves the subset Release entirely (Studio keeps it
+    # for curator follow-up); the plan covers only the stamped update and the
+    # reference-only reuse.
+    assert result['plan']['action_counts'] == {'create': 0, 'update': 1, 'skip': 1, 'blocked': 0}
+    assert result['current_release']['entity_count'] == 2
+    assert result['dry_run_receipt']['status'] == 'valid'

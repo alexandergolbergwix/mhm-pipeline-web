@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, cast
@@ -18,6 +19,8 @@ from app.publication.gateway import (
 )
 from app.publication.types import PublicationEntity, TargetRef
 
+logger = logging.getLogger(__name__)
+
 
 class _WritableItem(Protocol):
     def write(self, **kwargs: object) -> object: ...
@@ -28,7 +31,11 @@ class _CurrentUploader(Protocol):
 
     def ensure_authenticated(self) -> None: ...
 
-    def _is_our_item(self, qid: str) -> bool: ...
+    def _is_our_item(self, qid: str, *, our_p3959: str | None = None) -> bool: ...
+
+    def _our_p3959(self, item: object) -> str | None: ...
+
+    def _p3959_identity_accepts(self, qid: str, our_p3959: str | None) -> bool: ...
 
     def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]: ...
 
@@ -43,7 +50,13 @@ class _CurrentUploader(Protocol):
         read_only: bool = False,
     ) -> tuple[_WritableItem, int, list[str]]: ...
 
-    def _assert_modifiable(self, qid: str, *, stage: str) -> None: ...
+    def _assert_modifiable(
+        self,
+        qid: str,
+        *,
+        stage: str,
+        our_p3959: str | None = None,
+    ) -> None: ...
 
     def _refresh_edit_token(self) -> None: ...
 
@@ -423,16 +436,22 @@ class CurrentWikidataBoundary:
                 qid=snapshot.qid,
                 fingerprint=snapshot.fingerprint,
                 remote_revision=snapshot.revision,
+                method="reference-only",
             )
 
         items = [self._native_item(entity) for _, entity in generic_entities]
         outcomes = _reconcile_sync(items) if items else []
-        for (index, entity), outcome in zip(generic_entities, outcomes, strict=True):
+        for (index, entity), outcome, item in zip(
+            generic_entities, outcomes, items, strict=True,
+        ):
             if outcome.method == "error":
                 observations[index] = TargetObservation.unknown(entity.entity_key, outcome.message)
                 continue
             if not outcome.existing_qid:
-                observations[index] = TargetObservation.absent(entity.entity_key)
+                observations[index] = TargetObservation.absent(
+                    entity.entity_key,
+                    method=outcome.method,
+                )
                 continue
             snapshot = self._fetch_entity_sync(outcome.existing_qid)
             if snapshot is None:
@@ -445,14 +464,20 @@ class CurrentWikidataBoundary:
                 # duplicate beside a vanished reconciled target is the
                 # W-98 incident class.
                 if getattr(self._uploader, "_is_test", False):
-                    observations[index] = TargetObservation.absent(entity.entity_key)
+                    observations[index] = TargetObservation.absent(
+                        entity.entity_key,
+                        method=outcome.method,
+                    )
                 else:
                     observations[index] = TargetObservation.unknown(
                         entity.entity_key,
                         f"The reconciled target {outcome.existing_qid} is absent",
                     )
                 continue
-            is_ours = self._uploader._is_our_item(snapshot.qid)
+            is_ours = self._uploader._is_our_item(
+                snapshot.qid,
+                our_p3959=self._uploader._our_p3959(item),
+            )
             constructor = (
                 TargetObservation.present_owned
                 if is_ours
@@ -463,6 +488,7 @@ class CurrentWikidataBoundary:
                 qid=snapshot.qid,
                 fingerprint=snapshot.fingerprint,
                 remote_revision=snapshot.revision,
+                method=outcome.method,
             )
         if any(observation is None for observation in observations):
             raise RuntimeError("The Wikidata reconciliation did not return every observation")
@@ -535,11 +561,38 @@ class CurrentWikidataBoundary:
             if mutation.allow_foreign_update and mutation.target_qid:
                 self._uploader.register_foreign_accept(mutation.target_qid)
             self._uploader._check_moratorium_for_live()
-            wbi_item, _, _ = self._uploader._build_wbi_item(item)
-            self._uploader._assert_modifiable(
-                mutation.target_qid or "",
-                stage="publication_pre_write",
+            our_p3959 = self._uploader._our_p3959(item)
+            # A creator-check refusal on a manuscript whose live target
+            # carries our exact P3959 control number is project-owned data
+            # (a former project member created it): accept the update once
+            # the identity channel re-verifies the equality fail-closed.
+            from converter.wikidata.uploader import (  # noqa: PLC0415
+                UnauthorisedModificationError,
             )
+
+            wbi_item: _WritableItem
+            for ownership_attempt in range(2):
+                try:
+                    wbi_item, _, _ = self._uploader._build_wbi_item(item)
+                    self._uploader._assert_modifiable(
+                        mutation.target_qid or "",
+                        stage="publication_pre_write",
+                        our_p3959=our_p3959,
+                    )
+                    break
+                except UnauthorisedModificationError as exc:
+                    accepted = (
+                        ownership_attempt == 0
+                        and bool(exc.qid)
+                        and self._uploader._p3959_identity_accepts(exc.qid, our_p3959)
+                    )
+                    if not accepted:
+                        raise
+                    logger.info(
+                        "P3959_IDENTITY_ACCEPTED qid=%s — the target carries our "
+                        "NNL catalog control number; proceeding as an owned update",
+                        exc.qid,
+                    )
             kwargs: dict[str, object] = {
                 "summary": (
                     f"MHM Pipeline publication; local_id={mutation.entity_key}; "

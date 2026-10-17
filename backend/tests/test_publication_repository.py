@@ -75,8 +75,15 @@ async def test_sql_repository_persists_the_publication_lifecycle(
     gateway = _TransactionBoundaryGateway(
         db_session,
         observations={
-            "manuscript:1": TargetObservation.absent("manuscript:1"),
-            "work:2": TargetObservation.present_owned("work:2", qid="Q200"),
+            "manuscript:1": TargetObservation.absent(
+                "manuscript:1",
+                method="p3959/shelfmark",
+            ),
+            "work:2": TargetObservation.present_owned(
+                "work:2",
+                qid="Q200",
+                method="label+author",
+            ),
         },
     )
     repository = SqlAlchemyPublicationRepository(db_session)
@@ -125,6 +132,11 @@ async def test_sql_repository_persists_the_publication_lifecycle(
         ),
     )
     publishable = await module.read(SummaryQuery(prepared.publication_id))
+    stored_observations = await repository.previous_plan_observations(
+        prepared.publication_id,
+    )
+    assert stored_observations["manuscript:1"].reconcile_method == "p3959/shelfmark"
+    assert stored_observations["work:2"].reconcile_method == "label+author"
     await module.advance(
         prepared.publication_id,
         PublishCommand(

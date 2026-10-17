@@ -314,6 +314,7 @@ class WikidataUploader:
         self._authenticated_user: str | None = None  # Set after first auth
         self._creator_cache: dict[str, str] = {}  # qid → first revision author
         self._is_our_item_cache: dict[str, bool] = {}  # qid → creator-check result
+        self._q3959_cache: dict[str, frozenset[str]] = {}  # qid → remote P3959 values
         self._test_property_datatypes: dict[str, str | None] = {}
         self._test_entity_exists: dict[str, bool] = {}
         self._test_pid_map: dict[str, str] = {}
@@ -687,7 +688,11 @@ class WikidataUploader:
         # other code paths too (tests, scripts). Re-assert here so no
         # mutation can happen on someone else's item.
         if not read_only:
-            self._assert_modifiable(item.existing_qid or "", stage="_build_wbi_item")
+            self._assert_modifiable(
+                item.existing_qid or "",
+                stage="_build_wbi_item",
+                our_p3959=self._our_p3959(item),
+            )
 
         if item.existing_qid:
             wbi_item = wbi.item.get(item.existing_qid)
@@ -1254,7 +1259,64 @@ class WikidataUploader:
         self._test_item_descriptions[qid] = val
         return val
 
-    def _is_our_item(self, qid: str) -> bool:
+    @staticmethod
+    def _our_p3959(item: object) -> str | None:
+        """The record's NNL catalog control number (P3959) — manuscripts only.
+
+        Persons and works keep the strict creator check: their identifiers
+        are not minted by our catalog feed (Rule: F1 ownership override).
+        """
+        if str(getattr(item, "entity_type", "") or "").lower() != "manuscript":
+            return None
+        for statement in getattr(item, "statements", ()) or ():
+            if getattr(statement, "property_id", None) != "P3959":
+                continue
+            value = getattr(statement, "value", None)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    def _remote_p3959_values(self, qid: str) -> frozenset[str]:
+        """The P3959 values on the live *qid* item (cached per QID).
+
+        Returns an empty set on any failure: absence is not identity, so a
+        missing or unreadable claim never accepts a foreign item.
+        """
+        cached = self._q3959_cache.get(qid)
+        if cached is not None:
+            return cached
+        values: set[str] = set()
+        payload = self._wbgetentities([qid], props="claims")
+        entity = payload.get(qid)
+        if isinstance(entity, dict) and "missing" not in entity:
+            claims = entity.get("claims") or {}
+            statements = claims.get("P3959") or [] if isinstance(claims, dict) else []
+            for statement in statements:
+                if not isinstance(statement, dict):
+                    continue
+                mainsnak = statement.get("mainsnak") or {}
+                datavalue = mainsnak.get("datavalue") or {}
+                value = datavalue.get("value") if isinstance(datavalue, dict) else None
+                if isinstance(value, str) and value.strip():
+                    values.add(value.strip())
+        result = frozenset(values)
+        self._q3959_cache[qid] = result
+        return result
+
+    def _p3959_identity_accepts(self, qid: str, our_p3959: str | None) -> bool:
+        """True when the live item carries exactly our record's P3959 control number.
+
+        The control number is minted by our catalog feed (NLI / Ktiv) and is
+        globally unique, so equal values prove the item is project-owned data
+        regardless of who created it. Two independent values must be equal:
+        no prefix or fuzzy compare, never on test.wikidata.org (P-numbers are
+        remapped there), never when the remote item lacks P3959.
+        """
+        if self._is_test or not our_p3959:
+            return False
+        return our_p3959 in self._remote_p3959_values(qid)
+
+    def _is_our_item(self, qid: str, *, our_p3959: str | None = None) -> bool:
         """Return True iff the authenticated user is the first-revision author of *qid*.
 
         TRIPLE-VERIFICATION contract (re-hardened 2026-04-24 per user
@@ -1303,6 +1365,15 @@ class WikidataUploader:
         single upload are O(1) and cannot race with a concurrent edit
         that might change the first revision.
         """
+        if self._p3959_identity_accepts(qid, our_p3959):
+            logger.info(
+                "P3959_IDENTITY_ACCEPTED qid=%s — the target carries our NNL "
+                "catalog control number (project-owned manuscript data)",
+                qid,
+            )
+            self._is_our_item_cache[qid] = True
+            return True
+
         cached = self._is_our_item_cache.get(qid)
         if cached is not None:
             return cached
@@ -1399,18 +1470,25 @@ class WikidataUploader:
         self._is_our_item_cache[qid] = True
         return True
 
-    def _assert_modifiable(self, qid: str, stage: str) -> None:
+    def _assert_modifiable(
+        self,
+        qid: str,
+        stage: str,
+        *,
+        our_p3959: str | None = None,
+    ) -> None:
         """Defense-in-depth guard: raise if *qid* must not be modified.
 
         Called from EVERY stage of the modification pipeline so a single
         missed check at the entry point cannot let an unauthorised edit
         slip through. Raises :class:`UnauthorisedModificationError` —
         the uploader catches it and converts to a ``skipped`` result
-        rather than a crash.
+        rather than a crash. ``our_p3959`` enables the project-owned
+        manuscript identity channel (see :meth:`_is_our_item`).
         """
         if not qid:
             return  # new-item creation path; no existing item at risk
-        if not self._is_our_item(qid):
+        if not self._is_our_item(qid, our_p3959=our_p3959):
             raise UnauthorisedModificationError(qid=qid, stage=stage)
 
     def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
@@ -2045,7 +2123,10 @@ class WikidataUploader:
 
         # Ownership BEFORE test adapt: never stub-CREATE properties/classes
         # for an item we are about to skip (Rule W-184).
-        if item.existing_qid and not self._is_our_item(item.existing_qid):
+        if item.existing_qid and not self._is_our_item(
+            item.existing_qid,
+            our_p3959=self._our_p3959(item),
+        ):
             if self._is_test:
                 logger.info(
                     "test upload: clearing foreign existing_qid %s for CREATE "
@@ -2163,7 +2244,9 @@ class WikidataUploader:
                 # introduces a new upload path or bypasses the earlier
                 # guards, this one fires. FAIL CLOSED.
                 self._assert_modifiable(
-                    item.existing_qid or "", stage="pre_write",
+                    item.existing_qid or "",
+                    stage="pre_write",
+                    our_p3959=self._our_p3959(item),
                 )
                 # WikibaseIntegrator ≥0.12 takes ``is_bot`` (never bare ``bot=``;
                 # Rule W-180). Default is_bot=False — accounts without the

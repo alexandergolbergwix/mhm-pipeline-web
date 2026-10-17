@@ -21,6 +21,7 @@ from app.models.publication import (
     PublicationApprovalDecision,
     PublicationApprovalSet,
     PublicationDryRunReceipt,
+    PublicationEntityRow,
     PublicationExecution,
     PublicationFinding,
     PublicationJournalEvent,
@@ -829,15 +830,65 @@ class PublicationRuntime:
             blocked_rows = (await self._session.execute(select(PublicationPlanAction).where(
                 PublicationPlanAction.plan_id == plan.id, PublicationPlanAction.action == "block"
             ).order_by(PublicationPlanAction.entity_key).limit(50))).scalars().all()
-            plan_view = PlanSummary(
-                blocked_actions=[BlockedPlanAction(entity_key=row.entity_key, target_qid=row.target_qid,
+            accepted_foreign_updates = (await self._session.execute(
+                select(func.count()).select_from(PublicationPlanAction).where(
+                    PublicationPlanAction.plan_id == plan.id,
+                    PublicationPlanAction.action == "update",
+                    PublicationPlanAction.allow_foreign_update.is_(True),
+                )
+            )).scalar_one()
+            blocked_documents: dict[str, dict] = {}
+            if blocked_rows:
+                entity_rows = (await self._session.execute(select(PublicationEntityRow).where(
+                    PublicationEntityRow.release_id == plan.release_id,
+                    PublicationEntityRow.entity_key.in_(
+                        [row.entity_key for row in blocked_rows]
+                    ),
+                ))).scalars().all()
+                for entity_row in entity_rows:
+                    if isinstance(entity_row.document, dict):
+                        blocked_documents[entity_row.entity_key] = entity_row.document
+
+            def blocked_action_view(row: PublicationPlanAction) -> BlockedPlanAction:
+                document = blocked_documents.get(row.entity_key) or {}
+                labels = (
+                    document.get("labels")
+                    if isinstance(document.get("labels"), dict)
+                    else {}
+                )
+                statements = (
+                    document.get("statements")
+                    if isinstance(document.get("statements"), list)
+                    else []
+                )
+                return BlockedPlanAction(
+                    entity_key=row.entity_key,
+                    target_qid=row.target_qid,
                     reason=row.detail or "The target check did not pass.",
                     consent=PublicationForeignQidConsent(
                         entity_key=row.entity_key, qid=row.target_qid,
-                        remote_revision=row.target_revision, entity_digest=row.entity_digest,
-                    ) if row.observation_status == "present_foreign" and row.target_qid
-                        and row.target_revision is not None and row.target_revision > 0 else None,
-                ) for row in blocked_rows],
+                        remote_revision=row.target_revision,
+                        entity_digest=row.entity_digest,
+                    ) if row.target_qid
+                        and row.target_revision is not None and row.target_revision > 0
+                        else None,
+                    entity_label=str(
+                        labels.get("en") or labels.get("he") or row.entity_key
+                    ),
+                    our_statements=[
+                        {
+                            "property": statement.get("property")
+                            or statement.get("property_id"),
+                            "value": statement.get("value"),
+                            "value_type": statement.get("value_type"),
+                        }
+                        for statement in statements
+                        if isinstance(statement, dict)
+                    ],
+                )
+
+            plan_view = PlanSummary(
+                blocked_actions=[blocked_action_view(row) for row in blocked_rows],
                 plan_id=str(plan.id),
                 plan_digest=summary.plan_digest,
                 release_id=str(plan.release_id),
@@ -851,6 +902,7 @@ class PublicationRuntime:
                     "skip": summary.plan_skip_count,
                     "blocked": summary.plan_blocked_count,
                 },
+                accepted_foreign_update_count=accepted_foreign_updates,
             )
             if receipt is not None:
                 receipt_status = "valid"

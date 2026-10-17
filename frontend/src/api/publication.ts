@@ -64,8 +64,21 @@ export interface ApprovalSetSummary {
   created_at: string;
 }
 
+export interface PublicationPlanActionStatement {
+  property?: string | null;
+  value?: unknown;
+  value_type?: string | null;
+}
+
 export interface PlanSummary {
-  blocked_actions?: Array<{entity_key: string; target_qid: string | null; reason: string; consent?: PublicationForeignQidConsent | null}>;
+  blocked_actions?: Array<{
+    entity_key: string;
+    target_qid: string | null;
+    reason: string;
+    consent?: PublicationForeignQidConsent | null;
+    entity_label?: string | null;
+    our_statements?: PublicationPlanActionStatement[];
+  }>;
   plan_id: string;
   plan_digest: string;
   release_id: string;
@@ -74,6 +87,7 @@ export interface PlanSummary {
   status: "ready" | "blocked" | "expired" | "executed";
   expires_at: string | null;
   action_counts: Record<string, number>;
+  accepted_foreign_update_count?: number;
 }
 
 export interface DryRunReceiptSummary {

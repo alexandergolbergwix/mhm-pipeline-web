@@ -83,6 +83,7 @@ class PlanActionRecord:
     target_revision: int | None
     allow_foreign_update: bool
     detail: str | None
+    reconcile_method: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

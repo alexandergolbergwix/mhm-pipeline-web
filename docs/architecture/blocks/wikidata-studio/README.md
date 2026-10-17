@@ -67,3 +67,5 @@ The sealed Publication path is the only path for a live wikidata.org write
 - [Existing items without updates](reference-only.md) — explicit identity choices and write exclusion.
 
 - [Automatic resolution](automatic-resolution.md) — source checks, reuse, subset, and honest deferral.
+
+- [Foreign-block resolution](foreign-block-resolution.md) — P3959 ownership override, reconcile-method stamping, the blocked-item sweep, and the accept drawer (W-270).

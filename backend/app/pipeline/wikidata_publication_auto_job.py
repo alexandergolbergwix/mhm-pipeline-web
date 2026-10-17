@@ -12,7 +12,12 @@ from app.pipeline.run_job_service import finish_job, update_job_progress
 from app.pipeline.wikidata_publication_ai_review_job import _judge, _cancel_check, ReviewCancelled
 from app.publication.ai_review import checked_plan, review_version
 from app.publication.automatic_evidence import collect_evidence, search_candidates
-from app.publication.automatic_policy import POLICY_VERSION, decide, preserve_checked_plan_action
+from app.publication.automatic_policy import (
+    POLICY_VERSION,
+    decide,
+    preserve_checked_plan_action,
+    route_blocked_target,
+)
 from app.publication.automatic_projection import build_documents
 from app.publication.credentials import ExecutionCredentialResolver
 from app.publication.digests import thaw_json, canonical_digest
@@ -108,6 +113,7 @@ async def run_automatic_publication(job_id):
                     target_revision=row.target_revision,
                     allow_foreign_update=row.allow_foreign_update,
                     detail=row.detail,
+                    reconcile_method=row.reconcile_method,
                 )
                 for row in actions
             }
@@ -138,10 +144,11 @@ async def run_automatic_publication(job_id):
                 if blocked_only
                 else len(actions)
             )
+            sweep_message = 'The blocked-item identity sweep did not run.'
             async def save(phase='automatic_review'):
                 await update_job_progress(job_id, {'phase': phase, 'processed': len(report.items), 'total': total,
                     'message': {'prepare_subset': 'Prepare the supported subset.', 'approve_subset': 'Record automatic policy approval.',
-                        'dry_run': 'Check the retained subset against Wikidata.'}.get(phase, f'Automatic preparation: up to {ASSESSMENT_CONCURRENCY} items at once. {sum(row.status == "deferred" for row in report.items)} deferred; {len(report.items)} processed.'),
+                        'dry_run': 'Check the retained subset against Wikidata.', 'sweep': sweep_message}.get(phase, f'Automatic preparation: up to {ASSESSMENT_CONCURRENCY} items at once. {sum(row.status == "deferred" for row in report.items)} deferred; {len(report.items)} processed.'),
                     'report': report.model_dump(mode='json')})
             await db.commit()
             work = []
@@ -170,6 +177,86 @@ async def run_automatic_publication(job_id):
                     continue
                 work.append((entity, document, action.target_qid, action.target_revision))
             await db.commit()
+
+            # F3: sweep blocked items the drawer flow never reached. An item
+            # blocked with no existing_qid on its release entity has no
+            # designed resolution path; route it deterministically instead of
+            # leaving it "needing attention" (F-CAUSE-2 / F-CAUSE-3).
+            action_by_key = {row.entity_key: row for row in actions}
+            sweep_targets = []
+            kept_work = []
+            for work_item in work:
+                entity, document, target_qid, _target_revision = work_item
+                action = action_by_key.get(entity.entity_key)
+                if (
+                    action is not None
+                    and action.action == 'block'
+                    and not document.get('existing_qid')
+                    and target_qid
+                ):
+                    sweep_targets.append(work_item)
+                else:
+                    kept_work.append(work_item)
+            routed, deferred = 0, 0
+            if sweep_targets:
+                sweep_boundary = await CurrentWikidataBoundaryFactory().open(credential)
+                sweep_gate = asyncio.Semaphore(8)
+
+                async def sweep_one(work_item):
+                    entity, document, target_qid, _target_revision = work_item
+                    async with sweep_gate:
+                        snapshot = await sweep_boundary.fetch_entity(target_qid)
+                    if snapshot is None or snapshot.document is None:
+                        return 'defer', 'The live-wiki target could not be fetched for the identity sweep; curator review required.'
+                    remote = dict(snapshot.document)
+                    route = route_blocked_target(document, remote, entity.entity_type)
+                    if route == 'update_existing':
+                        reason = ('The target carries this record\'s P3959 catalog control '
+                            'number; the item is project-owned data.')
+                        retained[entity.entity_key] = {'action': 'update_existing', 'qid': target_qid,
+                            'remote_revision': snapshot.revision,
+                            'statement_indices': list(range(len(document.get('statements') or []))),
+                            'reason': reason}
+                        document['existing_qid'] = target_qid
+                        return 'update_existing', reason
+                    if route == 'judge':
+                        return 'judge', ''
+                    return 'defer', ('A live-wiki item exists but shares no verifiable '
+                        'identifier; curator review required.')
+
+                sweep_results = await asyncio.gather(
+                    *(sweep_one(work_item) for work_item in sweep_targets)
+                )
+                for work_item, (route, reason) in zip(sweep_targets, sweep_results, strict=True):
+                    entity, document, target_qid, _target_revision = work_item
+                    if route == 'judge':
+                        kept_work.append(work_item)
+                        routed += 1
+                        continue
+                    if route == 'update_existing':
+                        routed += 1
+                        status = 'update_existing'
+                        resolution = retained[entity.entity_key]
+                    else:
+                        deferred += 1
+                        status = 'deferred'
+                        resolution = {'action': 'defer', 'statement_indices': [], 'reason': reason}
+                        retained[entity.entity_key] = resolution
+                    labels = document.get('labels') or {}
+                    report.items.append(PublicationAiReviewItem(
+                        entity_key=entity.entity_key,
+                        label=str(labels.get('en') or labels.get('he') or entity.entity_key),
+                        qid=target_qid,
+                        status=status,
+                        reason=reason,
+                        resolution=resolution,
+                    ))
+                work = kept_work
+                report.items.sort(key=lambda row: row.entity_key)
+            sweep_message = (f'Sweeping {len(sweep_targets)} blocked items: '
+                f'{routed} re-routed, {deferred} deferred.')
+            if sweep_targets:
+                await save('sweep')
 
             async def assess(work_item):
                 entity, document, target_qid, target_revision = work_item

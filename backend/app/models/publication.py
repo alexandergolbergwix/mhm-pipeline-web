@@ -285,6 +285,7 @@ class PublicationPlanAction(Base):
         default=False,
     )
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reconcile_method: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class PublicationDryRunReceipt(Base):

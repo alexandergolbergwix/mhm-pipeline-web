@@ -84,3 +84,36 @@ def test_blocked_only_resolution_preserves_only_safe_checked_plan_actions():
         'reason': 'The checked Plan permits this owned-item update.',
     }
     assert preserve_checked_plan_action('update', 'present_foreign', 'Q42', 7, 1) is None
+
+
+def test_shared_p3959_requires_exact_catalog_identity():
+    from app.publication.automatic_policy import shared_p3959
+
+    document = {'statements': [{'property': 'P3959', 'value': '990000533850205171'}]}
+    matching = {'claims': {'P3959': [
+        {'mainsnak': {'datavalue': {'value': '990000533850205171'}}}]}}
+    assert shared_p3959(document, matching) == {'990000533850205171'}
+    assert shared_p3959(document, {'claims': {}}) == set()
+    assert shared_p3959(document, {'claims': {'P3959': [
+        {'mainsnak': {'datavalue': {'value': '990000533850205172'}}}]}}) == set()
+    assert shared_p3959(document, {'claims': {'P3959': [
+        {'mainsnak': {'datavalue': {'value': '9900005338502'}}}]}}) == set()
+    assert shared_p3959(document, None) == set()
+
+
+def test_route_blocked_target_never_accepts_a_community_item_implicitly():
+    from app.publication.automatic_policy import route_blocked_target
+
+    manuscript = {'statements': [{'property': 'P3959', 'value': '990000533850205171'}]}
+    remote_ours = {'claims': {'P3959': [
+        {'mainsnak': {'datavalue': {'value': '990000533850205171'}}}]}}
+    remote_theirs = {'claims': {'P3959': [
+        {'mainsnak': {'datavalue': {'value': '990000533850205172'}}}]}}
+    assert route_blocked_target(manuscript, remote_ours, 'manuscript') == 'update_existing'
+    assert route_blocked_target(manuscript, remote_theirs, 'manuscript') == 'defer'
+    assert route_blocked_target(manuscript, remote_ours, 'work') == 'judge'
+
+    person = {'statements': [{'property': 'P214', 'value': '123'}]}
+    remote_person = {'claims': {'P214': [{'mainsnak': {'datavalue': {'value': '123'}}}]}}
+    assert route_blocked_target(person, remote_person, 'person') == 'judge'
+    assert route_blocked_target(person, {'claims': {}}, 'person') == 'defer'

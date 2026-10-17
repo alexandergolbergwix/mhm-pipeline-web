@@ -78,6 +78,42 @@ def same_work_and_author(document, remote):
     return bool(titles & remote_titles and authors & remote_authors)
 
 
+def shared_p3959(document, remote):
+    """The P3959 catalog control numbers our record and the target share exactly.
+
+    The control number is minted by our catalog feed and is globally unique,
+    so an equal pair proves the target is project-owned manuscript data
+    (the F1 ownership override). No prefix or fuzzy compare: absence is not
+    identity.
+    """
+    matches = set()
+    for statement in document.get('statements') or []:
+        prop = statement.get('property') or statement.get('property_id')
+        value = str(statement.get('value') or '').strip()
+        if prop != 'P3959' or not value:
+            continue
+        for claim in (remote or {}).get('claims', {}).get('P3959', []):
+            other = claim.get('mainsnak', {}).get('datavalue', {}).get('value')
+            if str(other).strip() == value:
+                matches.add(value)
+    return matches
+
+
+def route_blocked_target(document, remote, entity_type):
+    """Deterministic routing for a blocked item the drawer flow never reached.
+
+    Returns 'update_existing' for project-owned manuscript data (exact
+    P3959 identity), 'judge' when the target shares a verifiable identifier
+    and the AI dual judge must decide, and 'defer' when nothing verifiable
+    is shared. The sweep never accepts a community item implicitly.
+    """
+    if entity_type == 'manuscript' and shared_p3959(document, remote):
+        return 'update_existing'
+    if shared_identifiers(document, remote):
+        return 'judge'
+    return 'defer'
+
+
 def decide(document, remote, observation, first, second, evidence):
     def defer(reason):
         return {'action': 'defer', 'statement_indices': [], 'reason': reason}

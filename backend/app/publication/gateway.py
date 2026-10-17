@@ -16,10 +16,11 @@ class TargetObservation:
     fingerprint: str | None = None
     remote_revision: int | None = None
     detail: str | None = None
+    method: str | None = None
 
     @classmethod
-    def absent(cls, entity_key: str) -> TargetObservation:
-        return cls(entity_key=entity_key, status="absent")
+    def absent(cls, entity_key: str, *, method: str | None = None) -> TargetObservation:
+        return cls(entity_key=entity_key, status="absent", method=method)
 
     @classmethod
     def present_owned(
@@ -29,6 +30,7 @@ class TargetObservation:
         qid: str,
         fingerprint: str | None = None,
         remote_revision: int | None = None,
+        method: str | None = None,
     ) -> TargetObservation:
         return cls(
             entity_key=entity_key,
@@ -36,6 +38,7 @@ class TargetObservation:
             qid=qid,
             fingerprint=fingerprint,
             remote_revision=remote_revision,
+            method=method,
         )
 
     @classmethod
@@ -46,6 +49,7 @@ class TargetObservation:
         qid: str,
         fingerprint: str | None = None,
         remote_revision: int | None = None,
+        method: str | None = None,
     ) -> TargetObservation:
         return cls(
             entity_key=entity_key,
@@ -53,6 +57,7 @@ class TargetObservation:
             qid=qid,
             fingerprint=fingerprint,
             remote_revision=remote_revision,
+            method=method,
         )
 
     @classmethod

@@ -2895,3 +2895,55 @@ After the run `3494ebf5` partial-scope rebuild (2026-10-03, 436 records rebuilt,
 ## Rule W-267 — A selected-scope rebuild MUST be a bounded patch that recomputes (added 2026-10-03)
 
 Curators need to pick up builder fixes or curator edits without a full-corpus build. `POST /runs/{id}/wikidata-studio/rebuild-selected` (Studio toolbar: **Rebuild visible**) rebuilds only the records behind the chosen items: legacy slice build + canonical subset assembly, merged into the cache blob and the review read model by `local_id` — a rebuilt record may mint a person/work local_id that other rows share, and those are replaced too. The endpoint always recomputes (skip-cache is inherent), caps at 200 items per call, and a full rebuild supersedes the patch: corpus-wide passes (person coalescing, label disambiguation) ran only over the selected subset. In DB-free form the per-chunk build holds no session during CPU work — the essential-tier Postgres drops idle-in-transaction connections past 120 s (Rule W-261 class); chunked scope rebuilds therefore load inputs, commit, build, and open a fresh session per write. Tests: `tests/unit/test_wikidata_studio_rebuild_selected.py`.
+
+### Rule W-270 — Foreign-block resolution: P3959 identity, block sweep, accept drawer (added 2026-10-17)
+
+Release `f0992dbf` (run `3494ebf5`) planned 107 `block (present_foreign)`
+actions, all reading "Foreign QID consent does not match the QID, revision,
+and entity digest": 16 manuscripts were project data created by a former
+project member, 54 works + ~33 persons were genuine scholarly matches, ~4
+persons were false string matches. Zero wrong writes reached the wiki, but no
+blocked item had an executed resolution path.
+
+**Invariants:**
+
+1. **P3959 identity is an ownership channel for manuscripts only.**
+   `WikidataUploader._is_our_item(qid, *, our_p3959=…)` accepts the item when
+   the live target carries the record's exact P3959 (NNL control number,
+   minted by our catalog feed). `_assert_modifiable` forwards the value;
+   `upload_item`, `_build_wbi_item`, and the publication gateway
+   `_write_once_sync` pass it only for `entity_type == "manuscript"`. Guards:
+   never on test.wikidata.org (P-numbers are remapped there), never when the
+   remote item lacks P3959 (absence is not identity), no prefix or fuzzy
+   compare. Persons and works keep the strict creator check (community
+   safety). The publication `_reconcile_sync` ownership split uses the same
+   channel, so a P3959-equal manuscript observes `present_owned` and plans
+   `update (present_owned)`.
+2. **Plan actions carry the reconcile method.**
+   `TargetObservation.method` / `PlanActionRecord.reconcile_method`
+   (migration `0051_plan_reconcile_method`, NULL = legacy) round-trip the
+   reconcile outcome method so F3 can distinguish strong catalog-ID equality
+   from a label match. The plan digest includes the method.
+3. **Unexecuted blocks are swept deterministically before assessment.**
+   `route_blocked_target` (`automatic_policy.py`): exact P3959 identity
+   (manuscript) → `update_existing` with `existing_qid` stamped on the entity
+   document; a shared strong identifier (P214/P8189/P244/P227/P213/P268;
+   P3959 on works) → the AI dual judge (unchanged); nothing verifiable
+   shared → defer with "A live-wiki item exists but shares no verifiable
+   identifier; curator review required." The sweep never accepts a community
+   item implicitly; reuse still requires the dual-judge same-entity verdict.
+4. **Every blocked row gets the accept drawer.**
+   `WikidataBlockedActionDrawer` renders for every blocked entity (not only
+   those with a stamped `existing_qid`): remote item from
+   `target_qid`/`target_revision`, a claims diff (`our_statements` /
+   `entity_label` on `BlockedPlanAction`), and three choices — reuse without
+   updates (reference-only), accept & update (sealed consent:
+   qid + remote_revision + entity_digest; each click re-plans), or leave it
+   out. The batch consent checkbox flow remains for multi-item consent
+   (W-221). `PlanSummary.accepted_foreign_update_count` splits the outcome
+   classes on the summary line.
+
+Code: `backend/converter/wikidata/uploader.py`,
+`backend/app/publication/wikidata_gateway.py`, `core.py`, `runtime.py`,
+`automatic_policy.py`, `backend/app/pipeline/wikidata_publication_auto_job.py`,
+`frontend/src/components/wikidata/WikidataBlockedActionDrawer.tsx`.

@@ -746,3 +746,135 @@ def test_upload_sync_aborts_on_permissiondenied(monkeypatch):
     assert calls["n"] == 1
     assert outcomes[0].status == "failed"
     assert len(outcomes) == 1
+
+
+# ── F1: P3959 identity ownership override ──────────────────────────────────
+
+
+def _p3959_uploader(monkeypatch, *, is_test: bool, remote_claims: dict, creator: str):
+    from converter.wikidata.uploader import WikidataUploader
+
+    up = WikidataUploader(token="User@Bot:deadbeef", is_test=is_test)
+    monkeypatch.setattr(up, "_get_authenticated_user", lambda: "MHMBot")
+    monkeypatch.setattr(up, "_get_first_revision_author", lambda _qid: creator)
+    monkeypatch.setattr(up, "_user_created_via_contribs", lambda *_a: True)
+    monkeypatch.setattr(up, "_item_exists_on_wikidata_sparql", lambda _qid: True)
+    monkeypatch.setattr(
+        up,
+        "_wbgetentities",
+        lambda ids, *, props: {
+            i: {"id": i, "lastrevid": 7, "claims": remote_claims} for i in ids
+        },
+    )
+    return up
+
+
+def _remote_p3959_claim(value: str) -> dict:
+    return {
+        "P3959": [
+            {
+                "mainsnak": {
+                    "snaktype": "value",
+                    "property": "P3959",
+                    "datavalue": {"value": value, "type": "string"},
+                }
+            }
+        ]
+    }
+
+
+def test_p3959_identity_accepts_a_foreign_created_manuscript(monkeypatch):
+    from converter.wikidata.uploader import WikidataUploader
+
+    up = _p3959_uploader(
+        monkeypatch,
+        is_test=False,
+        remote_claims=_remote_p3959_claim("990000533850205171"),
+        creator="Lapon-Kandelshein Essi",
+    )
+    item = _manuscript("990000533850205171", qid="Q134619072")
+
+    assert isinstance(up, WikidataUploader)
+    assert up._our_p3959(item) == "990000533850205171"
+    assert up._is_our_item("Q134619072", our_p3959=up._our_p3959(item)) is True
+    up._assert_modifiable(
+        "Q134619072",
+        stage="pre_write",
+        our_p3959=up._our_p3959(item),
+    )
+
+
+def test_p3959_absent_on_remote_refuses_modification(monkeypatch):
+    from converter.wikidata.uploader import UnauthorisedModificationError
+
+    up = _p3959_uploader(
+        monkeypatch,
+        is_test=False,
+        remote_claims={},
+        creator="A Community Member",
+    )
+    item = _manuscript("990000533850205171", qid="Q134619072")
+
+    assert up._is_our_item("Q134619072", our_p3959=up._our_p3959(item)) is False
+    with pytest.raises(UnauthorisedModificationError):
+        up._assert_modifiable(
+            "Q134619072",
+            stage="pre_write",
+            our_p3959=up._our_p3959(item),
+        )
+
+
+def test_p3959_different_on_remote_refuses_modification(monkeypatch):
+    from converter.wikidata.uploader import UnauthorisedModificationError
+
+    up = _p3959_uploader(
+        monkeypatch,
+        is_test=False,
+        remote_claims=_remote_p3959_claim("990000533850205172"),
+        creator="A Community Member",
+    )
+    item = _manuscript("990000533850205171", qid="Q134619072")
+
+    assert up._is_our_item("Q134619072", our_p3959=up._our_p3959(item)) is False
+    with pytest.raises(UnauthorisedModificationError):
+        up._assert_modifiable(
+            "Q134619072",
+            stage="pre_write",
+            our_p3959=up._our_p3959(item),
+        )
+
+
+def test_p3959_identity_never_applies_on_the_test_wiki(monkeypatch):
+    up = _p3959_uploader(
+        monkeypatch,
+        is_test=True,
+        remote_claims=_remote_p3959_claim("990000533850205171"),
+        creator="A Community Member",
+    )
+    item = _manuscript("990000533850205171", qid="Q134619072")
+
+    assert up._p3959_identity_accepts("Q134619072", up._our_p3959(item)) is False
+    assert up._is_our_item("Q134619072", our_p3959=up._our_p3959(item)) is False
+
+
+def test_p3959_channel_does_not_apply_to_persons_and_works(monkeypatch):
+    up = _p3959_uploader(
+        monkeypatch,
+        is_test=False,
+        remote_claims=_remote_p3959_claim("990000533850205171"),
+        creator="A Community Member",
+    )
+    person = _person(qid="Q16130567")
+    person.statements.append(_Stmt("P3959", "990000533850205171"))
+    work = _Item(
+        entity_type="work",
+        labels={"he": "משנה"},
+        statements=[_Stmt("P3959", "990000533850205171")],
+        existing_qid="Q191825",
+        local_id="work:1",
+    )
+
+    assert up._our_p3959(person) is None
+    assert up._our_p3959(work) is None
+    assert up._is_our_item("Q16130567", our_p3959=up._our_p3959(person)) is False
+    assert up._is_our_item("Q191825", our_p3959=up._our_p3959(work)) is False

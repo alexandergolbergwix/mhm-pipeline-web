@@ -978,3 +978,23 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    catalog id keep that id on the designation label.
    A work whose title matches the record title keeps the record author as
    P2093. *Why:* run 3494ebf5 job `89a2decf` failed with 317 gate findings.
+
+135. **R135 — The P3959 catalog identity is an accepted ownership channel for
+    manuscripts only (W-270).** An existing item whose P3959 exactly equals the
+    record's NNL control number is project-owned data regardless of creator;
+    `_assert_modifiable` forwards `our_p3959` and the publication gateway
+    re-accepts a creator refusal only on verified equality. Never on
+    test.wikidata.org, never when the remote item lacks P3959, no fuzzy
+    compare; persons/works keep the strict creator check.
+    *Why:* 16 project manuscripts (created by a former project member) were
+    planned as `block (present_foreign)` in release f0992dbf.
+136. **R136 — A blocked item with no resolution path is swept
+    deterministically (W-270).** Before assessment the automatic job routes
+    blocked entities without `existing_qid`: P3959 identity stamps
+    `update_existing`, a shared strong identifier goes to the AI dual judge,
+    and a label-only match defers out of the Release with a reason. The sweep
+    never accepts a community item implicitly. Plan actions carry
+    `reconcile_method` (migration `0051`) and blocked payloads carry
+    `our_statements`/`entity_label` so the accept drawer can show a claims
+    diff. *Why:* the 107 unexecuted blocks had no designed path — "Resolve
+    with AI" left them needing attention forever.

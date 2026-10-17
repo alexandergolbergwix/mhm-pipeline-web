@@ -471,6 +471,7 @@ class SqlAlchemyPublicationRepository:
                 target_revision=action.target_revision,
                 allow_foreign_update=action.allow_foreign_update,
                 detail=action.detail,
+                reconcile_method=action.reconcile_method,
             )
             for action in actions
         )
@@ -1182,6 +1183,7 @@ class SqlAlchemyPublicationRepository:
             target_revision=row.target_revision,
             allow_foreign_update=row.allow_foreign_update,
             detail=row.detail,
+            reconcile_method=row.reconcile_method,
         )
 
     @staticmethod

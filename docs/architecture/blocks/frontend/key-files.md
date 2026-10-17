@@ -52,7 +52,7 @@
 
 Publication restore (W-219) includes completed job progress and errors. The current plan can be reused; explicit cache override queues fresh checks.
 
-[Publication consent](../wikidata-studio/production-publication.md) requires an explicit checkbox per foreign QID and fresh worker checks (W-221).
+[Publication consent](../wikidata-studio/production-publication.md) requires an explicit checkbox per foreign QID and fresh worker checks (W-221). The accept drawer `WikidataBlockedActionDrawer.tsx` shows the claims diff per blocked row and offers reuse / accept & update / leave out (W-270).
 
 [AI review of blocked Publication items](../wikidata-studio/publication-ai-review.md) lists the route, job, evaluator, report component, and tests (W-222).
 

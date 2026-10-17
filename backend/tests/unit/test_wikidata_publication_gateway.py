@@ -28,8 +28,16 @@ class _ReadbackUploader:
     def __init__(self) -> None:
         self.read_only_arguments: list[bool] = []
 
-    def _is_our_item(self, qid: str) -> bool:
-        del qid
+    def _is_our_item(self, qid: str, *, our_p3959: str | None = None) -> bool:
+        del qid, our_p3959
+        return False
+
+    def _our_p3959(self, item: object) -> str | None:
+        del item
+        return None
+
+    def _p3959_identity_accepts(self, qid: str, our_p3959: str | None) -> bool:
+        del qid, our_p3959
         return False
 
     def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
@@ -74,8 +82,22 @@ class _CsrfRetryUploader:
         del item, read_only
         return self.item, 0, []
 
-    def _assert_modifiable(self, qid: str, *, stage: str) -> None:
-        del qid, stage
+    def _assert_modifiable(
+        self,
+        qid: str,
+        *,
+        stage: str,
+        our_p3959: str | None = None,
+    ) -> None:
+        del qid, stage, our_p3959
+
+    def _our_p3959(self, item: object) -> str | None:
+        del item
+        return None
+
+    def _p3959_identity_accepts(self, qid: str, our_p3959: str | None) -> bool:
+        del qid, our_p3959
+        return False
 
     def _check_moratorium_for_live(self) -> None:
         return
@@ -419,8 +441,16 @@ class _MissingTargetUploader:
     def __init__(self, *, is_test: bool) -> None:
         self._is_test = is_test
 
-    def _is_our_item(self, qid: str) -> bool:
-        del qid
+    def _is_our_item(self, qid: str, *, our_p3959: str | None = None) -> bool:
+        del qid, our_p3959
+        return False
+
+    def _our_p3959(self, item: object) -> str | None:
+        del item
+        return None
+
+    def _p3959_identity_accepts(self, qid: str, our_p3959: str | None) -> bool:
+        del qid, our_p3959
         return False
 
     def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
@@ -608,3 +638,191 @@ def test_native_item_coerces_lone_numeric_string_on_quantity_property() -> None:
 
     assert len(item.statements) == 1
     assert item.statements[0].value_type == "quantity"
+
+
+class _P3959Uploader:
+    _mark_as_bot = True
+    _is_test = False
+
+    def __init__(self) -> None:
+        self.assert_calls: list[str | None] = []
+        self.refuse_first_assert = True
+        self.accepted: list[tuple[str, str | None]] = []
+
+    def _is_our_item(self, qid: str, *, our_p3959: str | None = None) -> bool:
+        del qid, our_p3959
+        return False
+
+    def _our_p3959(self, item: object) -> str | None:
+        del item
+        return "990000533850205171"
+
+    def _p3959_identity_accepts(self, qid: str, our_p3959: str | None) -> bool:
+        self.accepted.append((qid, our_p3959))
+        return our_p3959 == "990000533850205171"
+
+    def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
+        del props
+        return {qid: {"id": qid, "lastrevid": 7, "claims": {}} for qid in ids}
+
+    def _build_wbi_item(
+        self,
+        item: object,
+        *,
+        read_only: bool = False,
+    ) -> tuple[object, int, list[str]]:
+        del item, read_only
+        return SimpleNamespace(write=lambda **kwargs: SimpleNamespace(id="Q134619072")), 1, ["P31"]
+
+    def _assert_modifiable(
+        self,
+        qid: str,
+        *,
+        stage: str,
+        our_p3959: str | None = None,
+    ) -> None:
+        self.assert_calls.append(our_p3959)
+        if self.refuse_first_assert:
+            self.refuse_first_assert = False
+            from converter.wikidata.uploader import UnauthorisedModificationError
+
+            raise UnauthorisedModificationError(qid=qid, stage=stage)
+
+    def _check_moratorium_for_live(self) -> None:
+        return
+
+    def register_foreign_accept(self, qid: str) -> None:
+        del qid
+
+
+@pytest.mark.asyncio
+async def test_write_once_accepts_p3959_identity_after_creator_refusal() -> None:
+    uploader = _P3959Uploader()
+    boundary = CurrentWikidataBoundary(uploader=uploader)
+    mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="update",
+        target_qid="Q134619072",
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={
+            "labels": {"en": "Manuscript"},
+            "statements": [{"property_id": "P3959", "value": "990000533850205171"}],
+        },
+        identity_assertions=("P3959:990000533850205171",),
+        expected_revision=7,
+    )
+
+    qid = await boundary.write_once(
+        GatewayWriteRequest(
+            intent_id="intent-1",
+            request_key="execution-1:manuscript:1:1",
+            mutation=mutation,
+        )
+    )
+
+    assert qid == "Q134619072"
+    assert uploader.accepted == [("Q134619072", "990000533850205171")]
+    assert uploader.assert_calls == ["990000533850205171", "990000533850205171"]
+
+
+@pytest.mark.asyncio
+async def test_write_once_refuses_when_p3959_identity_is_not_proven() -> None:
+    uploader = _P3959Uploader()
+    uploader._our_p3959 = lambda item: None  # type: ignore[method-assign]
+    boundary = CurrentWikidataBoundary(uploader=uploader)
+    mutation = GatewayMutation(
+        entity_key="work:1",
+        entity_type="work",
+        action="update",
+        target_qid="Q191825",
+        payload_digest="payload",
+        entity_digest="2" * 64,
+        document={"labels": {"he": "משנה"}, "statements": []},
+        identity_assertions=(),
+        expected_revision=7,
+    )
+
+    with pytest.raises(Exception) as raised:
+        await boundary.write_once(
+            GatewayWriteRequest(
+                intent_id="intent-1",
+                request_key="execution-1:work:1:1",
+                mutation=mutation,
+            )
+        )
+
+    assert "not authored by the authenticated user" in str(raised.value)
+    assert uploader.accepted == [("Q191825", None)]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_p3959_identity_marks_project_manuscripts_owned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.pipeline.wikidata_upload as wikidata_upload
+    from converter.wikidata.uploader import WikidataUploader
+
+    def reconcile_to_our_manuscript(items: list[object]) -> list[object]:
+        assert len(items) == 1
+        return [
+            SimpleNamespace(
+                local_id="ms:1",
+                label="Ms",
+                entity_type="manuscript",
+                existing_qid="Q134619072",
+                method="p3959/shelfmark",
+                message="Found Q134619072 via p3959",
+            )
+        ]
+
+    monkeypatch.setattr(wikidata_upload, "_reconcile_sync", reconcile_to_our_manuscript)
+    uploader = WikidataUploader(token="User@Bot:deadbeef", is_test=False)
+    monkeypatch.setattr(
+        uploader,
+        "_wbgetentities",
+        lambda ids, *, props: {
+            i: {
+                "id": i,
+                "lastrevid": 7,
+                "claims": {
+                    "P3959": [
+                        {
+                            "mainsnak": {
+                                "snaktype": "value",
+                                "property": "P3959",
+                                "datavalue": {
+                                    "value": "990000533850205171",
+                                    "type": "string",
+                                },
+                            }
+                        }
+                    ]
+                },
+            }
+            for i in ids
+        },
+    )
+    boundary = CurrentWikidataBoundary(uploader=uploader)
+    entity = PublicationEntity(
+        release_id="release-1",
+        entity_key="ms:1",
+        entity_type="manuscript",
+        entity_digest="1" * 64,
+        document={
+            "labels": {"en": "Ms"},
+            "statements": [{"property_id": "P3959", "value": "990000533850205171"}],
+        },
+        evidence_refs=(),
+        identity_assertions=("P3959:990000533850205171",),
+        local_references=(),
+    )
+
+    observations = await boundary.reconcile_batch((entity,))
+
+    assert len(observations) == 1
+    observation = observations[0]
+    assert observation.status == "present_owned"
+    assert observation.qid == "Q134619072"
+    assert observation.method == "p3959/shelfmark"

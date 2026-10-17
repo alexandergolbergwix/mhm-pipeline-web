@@ -223,3 +223,10 @@ Any new external-write path or reconcile change MUST extend
 
 - `backend/tests/test_publication_router.py` checks entity pages after approval and rejection, consent through the worker, and QID/revision/digest mismatches.
 - `frontend/e2e/wikidata-publication.spec.ts` checks explicit consent, the QID link, the submitted command, and selection reset.
+
+- `backend/tests/unit/test_wikidata_upload_guards.py` — the P3959 identity channel: equal accepts a foreign-created manuscript, absent/differing refuses, test wiki stays strict, persons/works keep the creator check (W-270).
+- `backend/tests/unit/test_wikidata_publication_gateway.py` — `write_once` re-accepts a creator refusal on verified P3959 equality and refuses without it; `_reconcile_sync` marks P3959-equal manuscripts `present_owned` (W-270).
+- `backend/tests/unit/test_publication_module.py` — `reconcile_method` stamps plan actions and round-trips the observation reuse cache (W-270).
+- `backend/tests/unit/test_publication_automatic_policy.py` — `shared_p3959` exact equality and `route_blocked_target` never accepts a community item implicitly (W-270).
+- `backend/tests/test_publication_router.py` — the blocked sweep: P3959-equal manuscript becomes `update_existing` with a stamped `existing_qid`, a label-only person defers with the reason, a shared-identifier person reaches the dual judge; blocked payloads carry `our_statements`/`entity_label` and `accepted_foreign_update_count` splits the outcome classes (W-270).
+- `frontend/tests/unit/wikidataPublicationControls.spec.tsx` — the accept drawer affordance for every blocked entity, the reuse/accept/defer actions, and the summary outcome line (W-270).

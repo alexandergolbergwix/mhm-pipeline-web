@@ -1056,3 +1056,92 @@ async def test_dry_run_observations_never_cross_targets() -> None:
     # nothing about production presence.
     await _run("release-live", "www.wikidata.org", "production")
     assert gateway.reconcile_sizes == [2, 2]
+
+
+@pytest.mark.asyncio
+async def test_dry_run_stamps_reconcile_method_on_plan_actions() -> None:
+    from app.publication.core import PublicationModule
+    from app.publication.repository import InMemoryPublicationRepository
+    from app.publication.testing import StaticProjectionSource
+
+    repository = InMemoryPublicationRepository()
+    gateway = FakeWikidataGateway(
+        observations={
+            "manuscript:1": TargetObservation.absent(
+                "manuscript:1",
+                method="p3959/shelfmark",
+            ),
+            "work:2": TargetObservation.present_foreign(
+                "work:2",
+                qid="Q200",
+                remote_revision=91,
+                fingerprint="remote",
+                method="label+author",
+            ),
+        }
+    )
+    module = PublicationModule(
+        projection_source=StaticProjectionSource(
+            {
+                "snapshot-7": (
+                    PublicationEntityInput(
+                        entity_key="manuscript:1",
+                        entity_type="manuscript",
+                        document={"labels": {"en": "Manuscript 1"}},
+                    ),
+                    PublicationEntityInput(
+                        entity_key="work:2",
+                        entity_type="work",
+                        document={"labels": {"he": "ספר ב"}},
+                    ),
+                )
+            }
+        ),
+        repository=repository,
+        gateway=gateway,
+        clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+    prepared_operation = await module.prepare(_prepare_request())
+    prepared = await module.read(SummaryQuery(prepared_operation.publication_id))
+    await module.advance(
+        prepared.publication_id,
+        ReviewCommand(
+            release_id=prepared.release_id,
+            expected_release_digest=prepared.release_digest,
+            selection=EntitySelection.all(),
+            decision="approve",
+            actor_id="curator-1",
+            reason="Approve the release.",
+            idempotency_key="review-before-method-stamp",
+        ),
+    )
+    reviewed = await module.read(SummaryQuery(prepared.publication_id))
+    await module.advance(
+        prepared.publication_id,
+        DryRunCommand(
+            approval_set_id=reviewed.approval_set_id or "",
+            expected_approval_digest=reviewed.approval_digest or "",
+            credential_ref="credential:wikidata:curator-1",
+            actor_id="curator-1",
+            idempotency_key="dry-run-method-stamp",
+        ),
+    )
+
+    observations = await repository.previous_plan_observations(prepared.publication_id)
+    assert observations["manuscript:1"].reconcile_method == "p3959/shelfmark"
+    assert observations["work:2"].reconcile_method == "label+author"
+
+    await module.advance(
+        prepared.publication_id,
+        DryRunCommand(
+            approval_set_id=reviewed.approval_set_id or "",
+            expected_approval_digest=reviewed.approval_digest or "",
+            credential_ref="credential:wikidata:curator-1",
+            actor_id="curator-1",
+            idempotency_key="dry-run-method-stamp-2",
+        ),
+    )
+    reused = await repository.previous_plan_observations(prepared.publication_id)
+    assert reused["manuscript:1"].reconcile_method == "p3959/shelfmark"
+    assert reused["work:2"].reconcile_method == "label+author"
+    assert gateway.reconcile_sizes == [2]

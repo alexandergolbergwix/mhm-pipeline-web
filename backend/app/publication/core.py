@@ -579,6 +579,7 @@ class PublicationModule:
                     fingerprint=record.target_fingerprint,
                     remote_revision=record.target_revision,
                     detail=record.detail,
+                    method=record.reconcile_method,
                 )
                 for key, record in reusable.items()
             )
@@ -618,6 +619,7 @@ class PublicationModule:
                     target_fingerprint = None
                     target_revision = None
                     allow_foreign_update = False
+                    reconcile_method = None
                     detail = "The gateway omitted the entity observation"
                 else:
                     consent = consents.get(entity.entity_key)
@@ -643,6 +645,7 @@ class PublicationModule:
                     target_fingerprint = observation.fingerprint
                     target_revision = observation.remote_revision
                     allow_foreign_update = consent_matches
+                    reconcile_method = observation.method
                     detail = (
                         observation.detail
                         if observation.status != "present_foreign" or consent_matches
@@ -667,6 +670,7 @@ class PublicationModule:
                     target_qid = None
                     target_revision = None
                     target_fingerprint = None
+                    reconcile_method = None
                     detail = "Deferred by automatic policy: " + str(entity.document["publication_deferred"])
                 action = PlanActionRecord(
                     plan_id=plan_id,
@@ -685,6 +689,7 @@ class PublicationModule:
                     target_revision=target_revision,
                     allow_foreign_update=allow_foreign_update,
                     detail=detail,
+                    reconcile_method=reconcile_method,
                 )
                 actions.append(action)
                 counts[action.action] += 1
@@ -698,6 +703,7 @@ class PublicationModule:
                         "target_fingerprint": action.target_fingerprint,
                         "target_revision": action.target_revision,
                         "allow_foreign_update": action.allow_foreign_update,
+                        "reconcile_method": action.reconcile_method,
                     }
                 )
             await self._repository.add_plan_actions(plan_id, tuple(actions))

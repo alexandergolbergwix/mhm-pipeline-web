@@ -977,7 +977,8 @@ def run(request_body: dict) -> dict:
     if not job_id or kind not in (
         "rdf_build", "hmo_item_build", "hmo_item_upload", "hmo_item_verify",
         "hmo_rule_verify", "wikidata_studio_build", "wikidata_verify",
-        "wikidata_upload",
+        "wikidata_upload", "wikidata_publication_ai_review",
+        "wikidata_publication_execution",
     ):
         raise HTTPException(status_code=422, detail="job_id and kind required")
 

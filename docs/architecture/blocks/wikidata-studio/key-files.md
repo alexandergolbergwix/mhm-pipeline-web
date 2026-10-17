@@ -106,3 +106,6 @@
 [Existing items without updates](../wikidata-studio/reference-only.md) lists the prepare contract, projection, executor, UI, and tests.
 
 [Automatic resolution](../wikidata-studio/automatic-resolution.md) lists the worker, evidence cache, structured verdict, subset, and tests.
+
+| `frontend/src/components/wikidata/WikidataBlockedActionDrawer.tsx` | Blocked-item accept drawer (W-270): remote item + claims diff, reuse without updates / accept & update (sealed consent) / leave out |
+| `backend/app/migrations/versions/0051_plan_reconcile_method.py` | `publication_plan_actions.reconcile_method` — how the target was found (W-270) |

@@ -250,6 +250,93 @@ describe("WikidataPublicationControls", () => {
     expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("7 existing items reused without updates");
   });
 
+  it("offers accept, reuse, and defer for every blocked item", async () => {
+    const onAdvance = vi.fn();
+    const onUseExisting = vi.fn().mockResolvedValue(undefined);
+    const consent = {
+      entity_key: "manuscript:1",
+      qid: "Q134619072",
+      remote_revision: 7,
+      entity_digest: "sha256:ms-1",
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({
+        entities: {
+          Q134619072: {
+            claims: {
+              P3959: [{mainsnak: {datavalue: {value: "990000533850205171"}}}],
+              P31: [{mainsnak: {datavalue: {value: {id: "Q87167"}}}}],
+            },
+          },
+        },
+      }),
+    }));
+    render(<WikidataPublicationControls
+      publication={publication({
+        approval_set: approval(),
+        plan: plan({
+          status: "blocked",
+          action_counts: {create: 0, update: 1, skip: 1, blocked: 2},
+          accepted_foreign_update_count: 1,
+          blocked_actions: [
+            {
+              entity_key: "manuscript:1",
+              target_qid: "Q134619072",
+              reason: "Foreign QID consent does not match the QID, revision, and entity digest",
+              consent,
+              entity_label: "Jerusalem, NLI, MS 1",
+              our_statements: [
+                {property: "P3959", value: "990000533850205171", value_type: "external-id"},
+              ],
+            },
+            {
+              entity_key: "person:2",
+              target_qid: null,
+              reason: "The gateway omitted the entity observation",
+              consent: null,
+              our_statements: [],
+            },
+          ],
+        }),
+        dry_run_receipt: receipt({status: "failed"}),
+      })}
+      entities={[]}
+      onAdvance={onAdvance}
+      onUseExisting={onUseExisting}
+      auditHref="/audit"
+    />);
+
+    expect(screen.getByText(/reused without updates: 1/)).toBeInTheDocument();
+    expect(screen.getByText(/accepted foreign updates: 1/)).toBeInTheDocument();
+
+    // The accept affordance appears for the blocked entity even though the
+    // release entity has no stamped existing_qid.
+    const toggles = screen.getAllByTestId("publication-accept-existing-toggle");
+    expect(toggles).toHaveLength(1);
+    expect(screen.getByTestId("publication-accept-unavailable")).toBeInTheDocument();
+
+    await userEvent.click(toggles[0]);
+    expect(await screen.findByTestId("publication-accept-diff")).toBeInTheDocument();
+    expect(screen.getByText("P3959: 990000533850205171")).toBeInTheDocument();
+    expect(screen.getByText("P31: Q87167")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("publication-accept-foreign-update"));
+    expect(onAdvance).toHaveBeenCalledWith({
+      type: "dry_run",
+      approval_set_id: "approval-1",
+      expected_approval_digest: "sha256:approval-1",
+      foreign_qid_consents: [consent],
+    });
+
+    await userEvent.click(screen.getByTestId("publication-reuse-existing"));
+    expect(onUseExisting).toHaveBeenCalledWith(["manuscript:1"]);
+
+    await userEvent.click(screen.getByTestId("publication-defer-foreign"));
+    expect(screen.queryByTestId("publication-accept-diff")).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
   it("shows a recoverable worker failure and offers resume", async () => {
     const onAdvance = vi.fn();
     render(<WikidataPublicationControls

@@ -258,3 +258,9 @@ For a fresh export, group partial/fail verdicts by `entity_type` and inspect
 English labels, P217, P195, and `property_label`/`value_label` nulls first.
 Re-run the build after mapper changes because old JSON exports retain the old
 labels and cannot validate the new projection.
+
+### Skill: approve a sealed Release and dry-run it from the CLI
+`cd backend && .venv/bin/python -m scripts.approve_and_dry_run_publication
+<RUN_ID> <PUBLICATION_ID> <ACTOR_ID>` — approves the sealed Release of a
+Publication and runs its dry-run with fresh checks (no live writes). Use it
+when the web UI cannot reach the release.

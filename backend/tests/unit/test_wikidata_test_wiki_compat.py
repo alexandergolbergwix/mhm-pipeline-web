@@ -397,7 +397,7 @@ def test_ensure_test_maps_resolves_property_and_item(monkeypatch) -> None:
     )
     monkeypatch.setattr(up, "_create_test_property", lambda *_a, **_k: None)
     monkeypatch.setattr(up, "_create_test_item_stub", lambda *_a, **_k: None)
-    monkeypatch.setattr(up, "_is_our_item", lambda qid: qid == "Q999")
+    monkeypatch.setattr(up, "_is_our_item", lambda qid, **_k: qid == "Q999")
 
     item = WikidataItem(
         statements=[
@@ -447,7 +447,7 @@ def test_ensure_test_maps_rejects_foreign_search_hit(monkeypatch) -> None:
             else []
         ),
     )
-    monkeypatch.setattr(up, "_is_our_item", lambda _qid: False)
+    monkeypatch.setattr(up, "_is_our_item", lambda _qid, **_k: False)
     created: dict[str, str] = {}
 
     def _stub(label: str, live_qid: str) -> str:
@@ -689,7 +689,7 @@ def test_foreign_existing_qid_creates_on_test(monkeypatch) -> None:
 
     monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
     monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
-    monkeypatch.setattr(up, "_is_our_item", lambda _qid: False)
+    monkeypatch.setattr(up, "_is_our_item", lambda _qid, **_k: False)
     monkeypatch.setattr(up, "_adapt_item_for_test_wiki", _adapt)
     monkeypatch.setattr(up, "_rate_limit", lambda: None)
     monkeypatch.setattr(
@@ -727,7 +727,7 @@ def test_foreign_existing_qid_skips_on_live(monkeypatch) -> None:
 
     monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
     monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
-    monkeypatch.setattr(up, "_is_our_item", lambda _qid: False)
+    monkeypatch.setattr(up, "_is_our_item", lambda _qid, **_k: False)
     monkeypatch.setattr(up, "_adapt_item_for_test_wiki", _adapt)
 
     result = up.upload_item(
@@ -793,7 +793,7 @@ def test_mhm_stub_search_hit_usable_without_is_our_item(monkeypatch) -> None:
         "_item_english_description",
         lambda qid: mhm_test_stub_description("Q9288") if qid == "Q777" else "",
     )
-    monkeypatch.setattr(up, "_is_our_item", lambda _qid: False)
+    monkeypatch.setattr(up, "_is_our_item", lambda _qid, **_k: False)
     assert up._item_usable_as_test_reference("Q777", live_qid="Q9288") is True
     assert up._item_usable_as_test_reference("Q777", live_qid="Q87167") is False
 
@@ -1208,7 +1208,7 @@ def test_upload_item_adopts_own_label_conflict(monkeypatch) -> None:
     monkeypatch.setattr(up, "_assert_modifiable", lambda *_a, **_k: None)
     monkeypatch.setattr(up, "_adapt_item_for_test_wiki", _adapt)
     monkeypatch.setattr(up, "_bot_excluded", lambda _qid: False)
-    monkeypatch.setattr(up, "_is_our_item", lambda qid: qid == "Q248005")
+    monkeypatch.setattr(up, "_is_our_item", lambda qid, **_k: qid == "Q248005")
 
     result = up.upload_item(
         WikidataItem(
@@ -1261,7 +1261,7 @@ def test_upload_item_uniquifies_foreign_label_conflict(monkeypatch) -> None:
     monkeypatch.setattr(up, "_build_wbi_item", _build)
     monkeypatch.setattr(up, "_assert_modifiable", lambda *_a, **_k: None)
     monkeypatch.setattr(up, "_adapt_item_for_test_wiki", _adapt)
-    monkeypatch.setattr(up, "_is_our_item", lambda _qid: False)
+    monkeypatch.setattr(up, "_is_our_item", lambda _qid, **_k: False)
 
     result = up.upload_item(
         WikidataItem(
