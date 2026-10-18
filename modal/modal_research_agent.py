@@ -64,7 +64,12 @@ app = modal.App("mhm-research-agent")
 
 # One prompt, one home (P3, 2026-10-17): the Modal planner uses the exact
 # text the local surface uses so the safety rails cannot drift apart.
-from app.services.research_agent.prompt import SYSTEM_PROMPT as _SYSTEM
+# Import is lazy: this module is also imported on the deploy machine, where
+# /root/backend does not exist (P0 image parity makes it in-container only).
+def _system_prompt() -> str:
+    from app.services.research_agent.prompt import SYSTEM_PROMPT  # noqa: PLC0415
+
+    return SYSTEM_PROMPT
 
 PLANNER_RETRIES = 3
 
@@ -239,7 +244,7 @@ def build_agent(grant: str, canvas_digest: str = "", model_config=None):
     async def call(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
         return await call_tool(grant, name, arguments or {})
 
-    system_prompt = _SYSTEM
+    system_prompt = _system_prompt()
     if canvas_digest:
         system_prompt += (
             "\n\nCanvas context (server-side truth, may be newer than this chat):\n"
