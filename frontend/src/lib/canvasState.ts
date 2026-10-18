@@ -29,6 +29,26 @@ const THINKING_TEXT_CAP = 2000;
 
 export const emptyCanvas: CanvasState = {artifacts: [], active_key: null};
 
+/** P0 (2026-10-17): optimistic sends and replayed history duplicated rows.
+ *  Dedupe by message id first, then by role+content for id-less rows. */
+export function dedupeMessages<T extends {id?: string; role?: string; content?: unknown}>(
+  messages: T[],
+): T[] {
+  const seenIds = new Set<string>();
+  const seenContent = new Set<string>();
+  const out: T[] = [];
+  for (const message of messages) {
+    const id = message.id || "";
+    const contentKey = `${message.role || ""}\u0000${typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? "")}`;
+    if (id && seenIds.has(id)) continue;
+    if (!id && seenContent.has(contentKey)) continue;
+    if (id) seenIds.add(id);
+    else seenContent.add(contentKey);
+    out.push(message);
+  }
+  return out;
+}
+
 export function humanizeAgentError(message: string): string {
   const raw = message.trim() || "The assistant could not finish that answer.";
   if (/insufficient_quota|insufficient credits|status_code: 402/i.test(raw)) {

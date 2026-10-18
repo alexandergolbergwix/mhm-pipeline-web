@@ -90,3 +90,24 @@ async def test_async_start_needs_modal(sample_run):
         },
     )
     assert resp.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_stream_without_terminal_event_reports_a_distinct_code():
+    """P0/P1 (W-274): silence surfaces as `stream_ended` with a retryable
+    code — never a fabricated look-alike of a run failure."""
+    from app.services.research_agent import async_run as ar
+
+    original_idle = ar._MAX_IDLE_S
+    ar._MAX_IDLE_S = 0.4
+    try:
+        await ar.register_run("thread-x", "run-x")
+        events = [e async for e in ar.iter_stream("thread-x", "run-x", last_id="$")]
+        ticks = [e for e in events if e is None]
+        errors = [e for e in events if isinstance(e, dict) and e.get("type") == "RUN_ERROR"]
+        assert ticks, "the bridge must heartbeat while waiting"
+        assert errors and errors[0].get("code") in {"stream_ended", "deadline_exceeded"}
+        assert errors[0].get("retryable") is True
+        assert "stopped responding" not in str(errors[0].get("message"))
+    finally:
+        ar._MAX_IDLE_S = original_idle

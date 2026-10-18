@@ -362,3 +362,32 @@ entries):
    plain recharge message (chat + `humanizeAgentError`) and the run retries
    once on the fallback model (`model_fallback.resolve_model_configs`:
    Qubrid `glm-5.3-flash` → Gemini OpenAI-compatible endpoint).
+
+### Rule W-274 — Remote-agent run contract (added 2026-10-17)
+
+The 2026-10-17 failure screenshot ("stopped responding", duplicated user
+rows, empty canvas) traced to a packaging slip on Modal that killed every
+run before the model call, and to a bridge that fabricated a look-alike
+error instead of relaying the real one. The contract that closes the class:
+
+1. **Exactly one terminal event per run**, with a machine code
+   (`model_quota_exhausted`, `model_unavailable`, `gate_refused`,
+   `stream_ended`, `stream_interrupted`, `deadline_exceeded`, `ok`). The
+   SSE bridge synthesizes a terminal ONLY when the stream ends without one,
+   and its message must never read like a run failure ("The connection to
+   the agent ended before a result arrived").
+2. **Run journal.** `research_agent_run_journal` (migration 0052) records
+   gate → dispatch → terminal stages with codes; `GET
+   /research-agent/runs/{id}/debug` shows WHY a run stopped.
+3. **Deterministic-first answering.** Fact/count questions ("how many
+   entities added to wikidata") are answered from the database at the
+   funnel (`answer_router.deterministic_answer`) — exact numbers, zero LLM
+   calls, immune to model outages.
+4. **Qubrid-only provider policy.** The model layer resolves Qubrid and
+   nothing else; a 402 opens a 10-minute circuit breaker and the terminal
+   message carries the recharge instruction. Resilience comes from the
+   breaker + deterministic answers + coded terminals, not from a second
+   provider.
+5. **Image parity.** The research Modal image mounts `/root/backend` and
+   sets `PYTHONPATH` exactly like `modal_jobs`; shared code imports must
+   degrade (local router) instead of crashing when packaging slips.

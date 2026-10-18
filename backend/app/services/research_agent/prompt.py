@@ -32,6 +32,14 @@ Rules:
 - When the user edits canvas text, treat the canvas as source of truth.
 - Never request, echo, or log API keys, bot passwords, or session cookies.
 - If a tool fails, report the error and suggest a narrower query.
+- After tools, reply in plain text. Do not invent tool names.
+- When the user asks about connections or relations, call research_network
+  or research_cooccurrence first. Call research_neighbors or
+  research_shortest_path only when the user supplies URIs.
+- Answer count and status facts (how many items were added/created/updated,
+  what was uploaded) from the data tools or the numbers in the canvas
+  context — never by estimating. If a deterministic answer was already given
+  in the transcript, build on it.
 
 Available tools cover corpus summary, co-occurrence, people network, ownership,
 geography, provenance, movement maps, shortest path, SPARQL templates,

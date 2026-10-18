@@ -131,6 +131,15 @@ async def iter_stream(
     """
     deadline = time.monotonic() + _MAX_TOTAL_S
     idle_deadline = time.monotonic() + _MAX_IDLE_S
+    # Terminal-event contract (P1, W-274): the bridge only EVER synthesizes
+    # a terminal event when the stream ends without one, and it must carry a
+    # DISTINCT machine code — "stopped responding" masked the real failure
+    # (2026-10-17: a ModuleNotFoundError on Modal surfaced as silence).
+    saw_terminal = False
+
+    def _is_terminal(event: dict[str, Any]) -> bool:
+        return str(event.get("type") or "") in {"RUN_FINISHED", "RUN_ERROR"}
+
     redis = await get_redis()
     key = _stream_key(thread_id, run_id)
     if redis is not None:
@@ -156,11 +165,16 @@ async def iter_stream(
                     raise
                 except redis_errors as exc:  # noqa: PERF203
                     logger.warning("agui stream xread failed for %s: %s", run_id, exc)
-                    yield {"type": "RUN_ERROR", "message": "The agent event stream was interrupted."}
+                    yield {"type": "RUN_ERROR",
+                           "message": "The agent event stream was interrupted. Send the question again.",
+                           "code": "stream_interrupted", "retryable": True}
                     return
                 if not resp:
                     if time.monotonic() > idle_deadline:
-                        yield {"type": "RUN_ERROR", "message": "The agent run stopped responding before finishing."}
+                        if not saw_terminal:
+                            yield {"type": "RUN_ERROR",
+                                   "message": "The connection to the agent ended before a result arrived. Send the question again.",
+                                   "code": "stream_ended", "retryable": True}
                         return
                     yield None
                     continue
@@ -171,12 +185,23 @@ async def iter_stream(
                         raw = fields.get(b"data") or fields.get("data")
                         payload = raw.decode() if isinstance(raw, bytes) else str(raw or "")
                         if payload == "__END__":
+                            if not saw_terminal:
+                                yield {"type": "RUN_ERROR",
+                                       "message": "The connection to the agent ended before a result arrived. Send the question again.",
+                                       "code": "stream_ended", "retryable": True}
                             return
                         try:
-                            yield json.loads(payload)
+                            event = json.loads(payload)
                         except (ValueError, TypeError):
                             continue
-            yield {"type": "RUN_ERROR", "message": "The agent run exceeded its total time budget."}
+                        if isinstance(event, dict):
+                            if _is_terminal(event):
+                                saw_terminal = True
+                            yield event
+            if not saw_terminal:
+                yield {"type": "RUN_ERROR",
+                       "message": "The agent run exceeded its total time budget.",
+                       "code": "deadline_exceeded", "retryable": True}
         finally:
             try:
                 await client.aclose()
@@ -192,6 +217,8 @@ async def iter_stream(
             index += 1
             if marker_id == "end":
                 return
+            if isinstance(event, dict) and _is_terminal(event):
+                saw_terminal = True
             if last_id not in ("0", "$") and marker_id <= last_id:
                 continue
             idle_deadline = time.monotonic() + _MAX_IDLE_S
@@ -199,8 +226,14 @@ async def iter_stream(
         if run.done:
             return
         if time.monotonic() > idle_deadline:
-            yield {"type": "RUN_ERROR", "message": "The agent run stopped responding before finishing."}
+            if not saw_terminal:
+                yield {"type": "RUN_ERROR",
+                       "message": "The connection to the agent ended before a result arrived. Send the question again.",
+                       "code": "stream_ended", "retryable": True}
             return
         await asyncio.sleep(0.3)
         yield None
-    yield {"type": "RUN_ERROR", "message": "The agent run exceeded its total time budget."}
+    if not saw_terminal:
+        yield {"type": "RUN_ERROR",
+               "message": "The agent run exceeded its total time budget.",
+               "code": "deadline_exceeded", "retryable": True}

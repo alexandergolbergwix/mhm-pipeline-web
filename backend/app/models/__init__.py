@@ -70,6 +70,7 @@ from app.models.research_agent import (
     ResearchAgentGrant,
     ResearchAgentThread,
 )
+from app.models.research_agent_run import ResearchAgentRunJournal
 from app.models.run import (
     RUN_STATUS_FAILED,
     RUN_STATUS_PENDING,

@@ -25,6 +25,7 @@ import {
   humanizeAgentError,
   emptyCanvas,
   type AssistantUiState,
+  dedupeMessages,
 } from "@/lib/canvasState";
 
 const DEFAULT_TITLE = "Research session";
@@ -59,7 +60,7 @@ export default function ResearchAssistant() {
       autoTitledRef.current = detail.title !== DEFAULT_TITLE;
       setUi((prev) => ({
         ...prev,
-        messages: detail.messages,
+        messages: dedupeMessages(detail.messages),
         canvas: detail.canvas_state?.artifacts ? detail.canvas_state : emptyCanvas,
         artifacts,
       }));
@@ -137,7 +138,7 @@ export default function ResearchAssistant() {
   const send = useCallback(async (text: string) => {
     if (!threadId || !toolGrant) return;
     const userMsg: AguiMessage = {id: crypto.randomUUID(), role: "user", content: text};
-    const nextMessages = [...ui.messages, userMsg];
+    const nextMessages = dedupeMessages([...ui.messages, userMsg]);
     setUi((prev) => ({
       ...prev,
       messages: nextMessages,

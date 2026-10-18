@@ -769,13 +769,22 @@ async def start_async_agui(
     verdict = await asyncio.to_thread(
         _prefilter_check, question, str(claims.project_id),
     )
+    from app.services.research_agent.journal import journal_stage  # noqa: PLC0415
+
+    await journal_stage(
+        db, run_id=run_id, project_id=str(claims.project_id),
+        thread_id=str(claims.thread_id), stage="gate",
+        ok=verdict.allowed, code=None if verdict.allowed else verdict.reason,
+        detail=verdict.source,
+    )
     if not verdict.allowed:
         from app.services.research_agent.jev_prefilter import (  # noqa: PLC0415
             prefilter_verdict_message,
         )
 
         await async_run.append_events(claims.thread_id, run_id, [
-            {"type": "RUN_ERROR", "message": prefilter_verdict_message(verdict)},
+            {"type": "RUN_ERROR", "message": prefilter_verdict_message(verdict),
+             "code": "gate_refused", "retryable": False},
             {"type": "RUN_FINISHED"},
         ])
         return {
@@ -783,6 +792,35 @@ async def start_async_agui(
             "stream_url": f"/api/research-agent/agui-stream?run_id={run_id}",
             "agent_mode": "modal-async",
             "refused": verdict.reason,
+        }
+
+    # P2 deterministic-first: fact/count questions are answered from the
+    # database here — exact numbers, zero LLM calls, immune to model outages.
+    from app.services.research_agent.answer_router import (  # noqa: PLC0415
+        deterministic_answer,
+    )
+
+    answer = await deterministic_answer(
+        question, db, project_id=str(claims.project_id),
+    )
+    if answer is not None:
+        await async_run.append_events(claims.thread_id, run_id, [
+            {"type": "RUN_STARTED"},
+            {"type": "TEXT_MESSAGE_START", "role": "assistant"},
+            {"type": "TEXT_MESSAGE_CONTENT", "delta": answer.text},
+            {"type": "TEXT_MESSAGE_END"},
+            {"type": "RUN_FINISHED"},
+        ])
+        await journal_stage(
+            db, run_id=run_id, project_id=str(claims.project_id),
+            thread_id=str(claims.thread_id), stage="deterministic_answer",
+            ok=True, code=answer.kind,
+        )
+        return {
+            "run_id": run_id,
+            "stream_url": f"/api/research-agent/agui-stream?run_id={run_id}",
+            "agent_mode": "deterministic",
+            "answer_kind": answer.kind,
         }
 
     dispatch_body = dict(body.model_dump())
@@ -809,6 +847,11 @@ async def start_async_agui(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Modal dispatch failed: {exc}") from exc
     if resp.status_code != 202:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Modal dispatch rejected: {resp.text[:300]}")
+    await journal_stage(
+        db, run_id=run_id, project_id=str(claims.project_id),
+        thread_id=str(claims.thread_id), stage="dispatched",
+        ok=True, code="modal-async",
+    )
     return {
         "run_id": run_id,
         "stream_url": f"/api/research-agent/agui-stream?run_id={run_id}",
@@ -849,7 +892,61 @@ async def agui_events(
     if bound is None or bound != str(claims.thread_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown run for this grant.")
     stored = await async_run.append_events(claims.thread_id, body.run_id, body.events)
+    # P1 observability (W-274): every terminal event lands in the run journal
+    # so a crashed remote run is diagnosable, not guessed at.
+    from app.services.research_agent.journal import journal_stage  # noqa: PLC0415
+
+    for event in body.events:
+        etype = str((event or {}).get("type") or "")
+        if etype in {"RUN_ERROR", "RUN_FINISHED"}:
+            await journal_stage(
+                db,
+                run_id=body.run_id,
+                project_id=str(claims.project_id),
+                thread_id=str(claims.thread_id),
+                stage="terminal",
+                ok=etype == "RUN_FINISHED",
+                code=str(event.get("code") or ("ok" if etype == "RUN_FINISHED" else "run_error")),
+                detail=str(event.get("message") or ""),
+            )
     return {"stored": stored}
+
+
+@router.get("/runs/{run_id}/debug")
+async def agent_run_debug(
+    run_id: str,
+    request: Request,
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Run journal for one remote agent run (P1, W-274).
+
+    Stages with timestamps + the terminal code: gate → dispatch → terminal.
+    The curator sees WHY a run stopped instead of a fabricated sentence.
+    """
+    from sqlalchemy import select as sa_select  # noqa: PLC0415
+
+    from app.models.research_agent_run import ResearchAgentRunJournal  # noqa: PLC0415
+
+    del request
+    row = (
+        await db.execute(
+            sa_select(ResearchAgentRunJournal).where(
+                ResearchAgentRunJournal.run_id == str(run_id)[:64]
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown run.")
+    await _require_membership(row.project_id, auth, db)
+    return {
+        "run_id": row.run_id,
+        "project_id": str(row.project_id),
+        "thread_id": str(row.thread_id) if row.thread_id else None,
+        "terminal_code": row.terminal_code,
+        "stages": row.stages,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
 
 
 @router.get("/agui-stream")

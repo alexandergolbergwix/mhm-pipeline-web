@@ -44,3 +44,13 @@
     retry on the fallback model (`model_fallback.resolve_model_configs`:
     Qubrid → Gemini OpenAI-compatible). *Why:* untrusted MARC text could
     steer the planner, and a Qubrid billing error killed the surface.
+31. **R31 — One terminal event with a code, journaled (W-274).** Every run
+    ends `RUN_FINISHED` or `RUN_ERROR{code}`; the bridge synthesizes
+    `stream_ended`/`deadline_exceeded` only when none arrived; stages land
+    in `research_agent_run_journal` (debug endpoint). *Why:* a Modal import
+    crash surfaced as "stopped responding" — undiagnosable.
+32. **R32 — Deterministic-first, Qubrid-only (W-274).** Fact/count
+    questions answer from the DB at the funnel (no LLM); the model layer is
+    Qubrid only, with a 402 circuit breaker and the recharge message.
+    *Why:* provider policy is Qubrid-only, and exact counts must survive
+    every model outage.

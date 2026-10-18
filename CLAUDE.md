@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-273)
+## Architectural rules (W-1…W-274)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -127,6 +127,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-271** — A publication worker must survive its own infrastructure: every gateway boundary call runs under a time budget (write 600 s / reconcile 300 s / fetch 120 s) so a hung Wikidata call is a retryable outcome; execution workers re-run on a fresh session on dead DB connections (bounded); the Modal app exposes `GET /healthz` naming missing secret keys (`MASTER_KEY`, `MODAL_JOBS_TOKEN`) and a 401 dispatch logs the token remediation (2026-10-17: five wedges and two secret breakages) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 - **W-272** — Stale `absent` plans adopt their own items, never duplicate: an `absent` observation expires once its plan executes, and a CREATE preflight that finds a `present_owned` target (exact P3959 identity or our creator) converts to an owned UPDATE (2026-10-17: 1,038 planned creates beside items the pass itself created the day before) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 - **W-273** — Research Assistant prompt gate: every user prompt passes the local scope router AND the TypeSafe Jev model check (jev-1.13.0) before any LLM call, enforced at both the Heroku dispatch and the Modal entries (dev-stub-only gating left production ungated); all retrieved text incl. MARC notes passes the quarantine; a provider 402 humanizes and retries once on the fallback model — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
+- **W-274** — Remote-agent run contract: every research-agent run emits exactly one terminal event with a machine code (`model_quota_exhausted`, `gate_refused`, `stream_ended`, `deadline_exceeded`), the SSE bridge only synthesizes a terminal when none arrived and never with a look-alike message; a run journal (research_agent_run_journal + `/research-agent/runs/{id}/debug`) records gate→dispatch→terminal; fact/count questions are answered deterministically from the DB (no LLM); the model layer is QUBRID-ONLY with a 402 circuit breaker (2026-10-17: a Modal ModuleNotFoundError surfaced as "stopped responding" and duplicated user rows) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
 - **W-162** — Every PID a projection can emit has a channel row; "unsupported" names its cause
 - **W-163** — The export-quality gate runs in the build path, on both sources
 - **W-164** — A manuscript's label is a designation; its inception is the audited year
