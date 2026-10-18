@@ -32,10 +32,13 @@ def fallback_title(first_user_text: str) -> str:
 
 
 async def generate_thread_title(first_user_text: str) -> str | None:
-    """Return a short AI title, or None when Qubrid is unavailable."""
-    settings = get_settings()
-    api_key = settings.qubrid_api_key
-    if not api_key:
+    """Return a short AI title, or None when every model is unavailable."""
+    from app.services.research_agent.model_fallback import (  # noqa: PLC0415
+        resolve_model_configs,
+    )
+
+    configs = resolve_model_configs()
+    if not configs:
         return None
     text = " ".join((first_user_text or "").split())[:_MAX_PROMPT_TEXT]
     if not text:
@@ -46,25 +49,33 @@ async def generate_thread_title(first_user_text: str) -> str | None:
         "Write a 3-6 word title for a research chat that starts with the "
         f'message below. Reply with the title text only, no quotes.\n\n"{text}"'
     )
-    model = settings.research_agent_title_model
-    base_url = settings.qubrid_base_url.rstrip("/")
-    try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.post(
-                f"{base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 512,
-                },
-            )
-            if resp.status_code >= 400:
-                logger.warning("Thread title generation failed: %s %s", resp.status_code, resp.text[:120])
-                return None
-            content = str(resp.json()["choices"][0]["message"]["content"] or "")
-    except Exception as exc:
-        logger.warning("Thread title generation failed: %s", exc)
+    content = ""
+    for config in configs:
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(
+                    f"{config.base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {config.api_key}"},
+                    json={
+                        "model": config.model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "max_tokens": 512,
+                    },
+                )
+                if resp.status_code >= 400:
+                    # 402 insufficient_quota: try the fallback model instead
+                    # of dying silently (2026-10-17).
+                    logger.warning(
+                        "Thread title generation failed on %s: %s %s",
+                        config.source, resp.status_code, resp.text[:120],
+                    )
+                    continue
+                content = str(resp.json()["choices"][0]["message"]["content"] or "")
+                break
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Thread title generation failed on %s: %s", config.source, exc)
+            continue
+    if not content:
         return None
     title = re.sub(r"^[\s\"'`*]+|[\s\"'`*]+$", "", content.splitlines()[0] if content.strip() else "")
     title = title[:_MAX_TITLE_LEN] or None

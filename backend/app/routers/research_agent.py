@@ -7,6 +7,7 @@ Heroku.
 from __future__ import annotations
 
 import logging
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -685,6 +686,21 @@ async def _grant_for_token(db: AsyncSession, token: str) -> tuple[GrantClaims, A
     return claims, grant
 
 
+def _prefilter_check(text: str, project_id: str):
+    """Run the two-stage prompt gate (local router + TypeSafe Jev)."""
+    import os  # noqa: PLC0415
+
+    from app.services.research_agent.jev_prefilter import (  # noqa: PLC0415
+        JevPreFilter,
+    )
+
+    settings = get_settings()
+    api_key = os.environ.get("TYPESAFE_API_KEY") or getattr(
+        settings, "typesafe_api_key", ""
+    )
+    return JevPreFilter(api_key=api_key).check(text, project_id=project_id)
+
+
 @router.post("/agui-async")
 @limiter.limit("30/minute")
 async def start_async_agui(
@@ -742,6 +758,32 @@ async def start_async_agui(
             "role": role,
             "content": content[:20_000],
         })
+
+    # F1/F2 gate chain (W-273): the local scope router + the TypeSafe Jev
+    # model check run BEFORE any LLM call. Rule R15/W-228 previously ran
+    # only in the dev stub — the production path was ungated (2026-10-17).
+    question = next(
+        (m["content"] for m in reversed(safe_messages) if m["role"] == "user"),
+        "",
+    )
+    verdict = await asyncio.to_thread(
+        _prefilter_check, question, str(claims.project_id),
+    )
+    if not verdict.allowed:
+        from app.services.research_agent.jev_prefilter import (  # noqa: PLC0415
+            prefilter_verdict_message,
+        )
+
+        await async_run.append_events(claims.thread_id, run_id, [
+            {"type": "RUN_ERROR", "message": prefilter_verdict_message(verdict)},
+            {"type": "RUN_FINISHED"},
+        ])
+        return {
+            "run_id": run_id,
+            "stream_url": f"/api/research-agent/agui-stream?run_id={run_id}",
+            "agent_mode": "modal-async",
+            "refused": verdict.reason,
+        }
 
     dispatch_body = dict(body.model_dump())
     dispatch_body["runId"] = run_id

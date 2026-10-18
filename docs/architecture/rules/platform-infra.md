@@ -335,3 +335,30 @@ MUST:
    a unit test on the compiled expression's `BindParameter` values.
 
 Tests: `backend/tests/test_rule_verify.py::test_verdict_rule_filter_binds_python_object`.
+
+### Rule W-273 — Research Assistant: gate every prompt, quarantine every text (added 2026-10-17)
+
+The 2026-10-17 review found the production prompt path ungated: Rule W-228's
+scope router ran only in the dev stub, so the Modal planner accepted any
+prompt, including paraphrased jailbreaks. Three guards now hold at both
+planes (Heroku `agui-async` dispatch and the Modal `/agui` + detached
+entries):
+
+1. **Two-stage gate before any LLM call.** `classify_scope` (free lexical +
+   cosine router) then `jev_prefilter.JevPreFilter` — the TypeSafe Jev
+   model (`jev-1.13.0`, `POST api.typesafe.ai/v1/systemone`) answering three
+   typed questions (relevance / instruction-override / harmful). ALLOW only
+   on relevance=yes ∧ override=no ∧ harmful=no. An obvious regex jailbreak
+   refuses WITHOUT the API call; a Jev outage falls back to the local
+   verdict and logs. Verdicts cache per (project, prompt) for 24 h — and
+   the gate runs BEFORE the reply cache so a refused prompt never echoes a
+   cached answer.
+2. **Quarantine every retrieved text.** `research_entity` /
+   `research_evidence` payloads pass `sanitize.quarantine_mapping` (MARC
+   notes included — the 2026-10-17 gap). The scope router's injection
+   patterns grow role-play jailbreaks, instruction extraction, and
+   encoding tricks.
+3. **Provider outage ≠ dead surface.** A 402 `insufficient_quota` becomes a
+   plain recharge message (chat + `humanizeAgentError`) and the run retries
+   once on the fallback model (`model_fallback.resolve_model_configs`:
+   Qubrid `glm-5.3-flash` → Gemini OpenAI-compatible endpoint).

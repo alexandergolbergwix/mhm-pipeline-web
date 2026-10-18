@@ -280,7 +280,7 @@ def project_id_from_grant(token: str) -> str:
         return ""
 
 
-def build_agent(grant: str, canvas_digest: str = ""):
+def build_agent(grant: str, canvas_digest: str = "", model_config=None):
     """Build the planner with every tool wired to Heroku via the grant.
 
     ``canvas_digest`` (server-side truth from the thread's artifacts) is
@@ -308,13 +308,29 @@ def build_agent(grant: str, canvas_digest: str = ""):
             "memory. For a fuller inventory (dataset columns and row counts), "
             "call canvas_describe."        )
 
-    model = OpenAIChatModel(
-        os.environ.get("RESEARCH_AGENT_MODEL") or DEFAULT_MODEL,
-        provider=OpenAIProvider(
-            base_url=(os.environ.get("QUBRID_BASE_URL") or QUBRID_BASE_URL).rstrip("/"),
-            api_key=os.environ.get("QUBRID_API_KEY") or "",
-        ),
-    )
+    if model_config is None:
+        from app.services.research_agent.model_fallback import (  # noqa: PLC0415
+            resolve_model_configs,
+        )
+
+        configs = resolve_model_configs()
+        model_config = configs[0] if configs else None
+    if model_config is not None:
+        model = OpenAIChatModel(
+            model_config.model,
+            provider=OpenAIProvider(
+                base_url=model_config.base_url,
+                api_key=model_config.api_key,
+            ),
+        )
+    else:
+        model = OpenAIChatModel(
+            os.environ.get("RESEARCH_AGENT_MODEL") or DEFAULT_MODEL,
+            provider=OpenAIProvider(
+                base_url=(os.environ.get("QUBRID_BASE_URL") or QUBRID_BASE_URL).rstrip("/"),
+                api_key=os.environ.get("QUBRID_API_KEY") or "",
+            ),
+        )
     agent_kwargs: dict[str, Any] = {
         "system_prompt": system_prompt,
         "retries": PLANNER_RETRIES,
@@ -699,8 +715,6 @@ async def run_agui_detached(body: dict[str, Any]) -> dict[str, Any]:
     async def receive():
         return {"type": "http.request", "body": payload, "more_body": False}
 
-    request = StarletteRequest(scope, receive)
-
     question = last_user_text(body.get("messages") or [])
     import hashlib
 
@@ -711,32 +725,70 @@ async def run_agui_detached(body: dict[str, Any]) -> dict[str, Any]:
     )
     project_id = project_id_from_grant(grant)
 
-    agent = build_agent(grant, canvas_digest=str(forwarded.get("canvas_digest") or ""))
-    outcome = "died"
-    try:
-        response = await AGUIAdapter.dispatch_request(request, agent=agent)
-        if not hasattr(response, "body_iterator"):
-            # Validation 422 (or similar) — relay the real reason so the
-            # curator sees why the run refused, not a generic failure.
-            body_bytes = getattr(response, "body", b"") or b""
-            try:
-                detail = body_bytes.decode("utf-8", "replace")[:600]
-            except Exception:  # noqa: BLE001
-                detail = "<unreadable body>"
-            print(f"[agui-async] non-stream response {getattr(response, 'status_code', '?')}: {detail}")
-            await post_events(grant, callback_url, run_id, [
-                {"type": "RUN_ERROR", "message": f"Planner rejected the run input ({getattr(response, 'status_code', '?')}): {detail}"}
-            ])
-            return {"ok": False, "error": detail}
-        outcome = await relay_agui_events_to_webhook(
-            grant, callback_url, run_id, response,
-            question=question, text_hash=text_hash, project_id=project_id,
-        )
-    except Exception as exc:  # noqa: BLE001
-        outcome = "error"
+    # F1 gate (W-273): local scope router + TypeSafe Jev BEFORE the planner.
+    # The Modal plane enforces the same gate as the Heroku funnel so neither
+    # entry can be called directly to skip it.
+    from app.services.research_agent.jev_prefilter import (  # noqa: PLC0415
+        JevPreFilter,
+        prefilter_verdict_message,
+    )
+
+    verdict = JevPreFilter(api_key=os.environ.get("TYPESAFE_API_KEY") or "").check(
+        question, project_id=project_id,
+    )
+    if not verdict.allowed:
         await post_events(grant, callback_url, run_id, [
-            {"type": "RUN_ERROR", "message": curator_run_error(str(exc))}
+            {"type": "RUN_ERROR", "message": prefilter_verdict_message(verdict)},
         ])
+        return {"ok": True, "outcome": "refused"}
+
+    from app.services.research_agent.model_fallback import (  # noqa: PLC0415
+        humanize_model_error,
+        is_quota_error,
+        resolve_model_configs,
+    )
+
+    configs = resolve_model_configs() or [None]
+    outcome = "died"
+    last_error = ""
+    for config in configs:
+        agent = build_agent(
+            grant,
+            canvas_digest=str(forwarded.get("canvas_digest") or ""),
+            model_config=config,
+        )
+        request = StarletteRequest(scope, receive)
+        try:
+            response = await AGUIAdapter.dispatch_request(request, agent=agent)
+            if not hasattr(response, "body_iterator"):
+                # Validation 422 (or similar) — relay the real reason so the
+                # curator sees why the run refused, not a generic failure.
+                body_bytes = getattr(response, "body", b"") or b""
+                try:
+                    detail = body_bytes.decode("utf-8", "replace")[:600]
+                except Exception:  # noqa: BLE001
+                    detail = "<unreadable body>"
+                print(f"[agui-async] non-stream response {getattr(response, 'status_code', '?')}: {detail}")
+                await post_events(grant, callback_url, run_id, [
+                    {"type": "RUN_ERROR", "message": f"Planner rejected the run input ({getattr(response, 'status_code', '?')}): {detail}"}
+                ])
+                return {"ok": False, "error": detail}
+            outcome = await relay_agui_events_to_webhook(
+                grant, callback_url, run_id, response,
+                question=question, text_hash=text_hash, project_id=project_id,
+            )
+            return {"ok": True, "outcome": outcome}
+        except Exception as exc:  # noqa: BLE001
+            last_error = str(exc)
+            outcome = "error"
+            if is_quota_error(last_error) and config is not configs[-1]:
+                # The provider is out of credit — retry on the fallback model.
+                print(f"[agui-async] model quota error, trying fallback: {last_error[:160]}")
+                continue
+            break
+    await post_events(grant, callback_url, run_id, [
+        {"type": "RUN_ERROR", "message": humanize_model_error(last_error)},
+    ])
     return {"ok": True, "outcome": outcome}
 
 
@@ -811,6 +863,28 @@ class ResearchAgent:
             )
             project_id = project_id_from_grant(grant)
 
+            # F1 gate (W-273) runs BEFORE the reply cache: a refused prompt
+            # must never echo a cached answer (R23 caches successes only).
+            from app.services.research_agent.jev_prefilter import (  # noqa: PLC0415
+                JevPreFilter,
+                prefilter_verdict_message,
+            )
+
+            verdict = JevPreFilter(
+                api_key=os.environ.get("TYPESAFE_API_KEY") or ""
+            ).check(question, project_id=project_id)
+            if not verdict.allowed:
+                refusal = prefilter_verdict_message(verdict)
+
+                def refuse_events():
+                    yield "data: " + json.dumps({"type": "RUN_STARTED"}) + "\n\n"
+                    yield "data: " + json.dumps({"type": "TEXT_MESSAGE_START", "role": "assistant"}) + "\n\n"
+                    yield "data: " + json.dumps({"type": "TEXT_MESSAGE_CONTENT", "delta": refusal}) + "\n\n"
+                    yield "data: " + json.dumps({"type": "TEXT_MESSAGE_END"}) + "\n\n"
+                    yield "data: " + json.dumps({"type": "RUN_FINISHED"}) + "\n\n"
+
+                return StreamingResponse(refuse_events(), media_type="text/event-stream")
+
             if self.heroku_base and question and text_hash and project_id:
                 cached = await reply_cache_lookup(grant, project_id, text_hash)
                 if cached:
@@ -823,24 +897,37 @@ class ResearchAgent:
 
                     return StreamingResponse(cache_events(), media_type="text/event-stream")
 
-            agent = build_agent(
-                grant,
-                canvas_digest=str((body.get("forwardedProps") or {}).get("canvas_digest") or ""),
+            from app.services.research_agent.model_fallback import (  # noqa: PLC0415
+                humanize_model_error,
+                is_quota_error,
+                resolve_model_configs,
             )
 
-            try:
-                response = await AGUIAdapter.dispatch_request(request, agent=agent)
-                if isinstance(response, StreamingResponse):
-                    return wrap_cache_capture(
-                        response,
-                        grant=grant,
-                        question=question,
-                        text_hash=text_hash,
-                        project_id=project_id,
-                    )
-                return response
-            except Exception as exc:  # noqa: BLE001
-                return sse_error(str(exc))
+            configs = resolve_model_configs() or [None]
+            last_error = ""
+            for config in configs:
+                agent = build_agent(
+                    grant,
+                    canvas_digest=str((body.get("forwardedProps") or {}).get("canvas_digest") or ""),
+                    model_config=config,
+                )
+                try:
+                    response = await AGUIAdapter.dispatch_request(request, agent=agent)
+                    if isinstance(response, StreamingResponse):
+                        return wrap_cache_capture(
+                            response,
+                            grant=grant,
+                            question=question,
+                            text_hash=text_hash,
+                            project_id=project_id,
+                        )
+                    return response
+                except Exception as exc:  # noqa: BLE001
+                    last_error = str(exc)
+                    if is_quota_error(last_error) and config is not configs[-1]:
+                        continue
+                    break
+            return sse_error(humanize_model_error(last_error))
 
         @api.post("/agui-async")
         async def agui_async(request: Request):

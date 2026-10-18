@@ -34,6 +34,18 @@ _INJECTION_PATTERNS = (
     re.compile(r"base64 (decode|encode)", re.I),
     re.compile(r"exfiltrat", re.I),
     re.compile(r"sudo |rm -rf|curl http", re.I),
+    # 2026-10-17 hardening: role-play jailbreaks, instruction extraction,
+    # safety-disable phrasing, and encoding tricks (W-273).
+    re.compile(r"act as (an? )?(unrestricted|jailbroken|dan|immoral|no[ -]rules)", re.I),
+    re.compile(r"pretend (to be|you('re| are)) (an? )?(unrestricted|jailbroken|dan|no[ -]rules)", re.I),
+    re.compile(r"(reveal|repeat|print|show|output) (your|the) (system|initial|hidden|original) (prompt|instructions?|message)", re.I),
+    re.compile(r"what (are|were|is) your (system|initial|hidden|original) (prompt|instructions?)", re.I),
+    re.compile(r"(disable|ignore|bypass|turn off) (your |all )?(safety|ethical|content|guardrail|filter|rules|restrictions)", re.I),
+    re.compile(r"(answer|respond|reply) (in|with) (base64|rot13|hex|code)", re.I),
+    re.compile(r"(encode|decode|obfuscate) (the|this|your) (prompt|instructions?|answer|response)", re.I),
+    re.compile(r"(do|will) (you )?have (any )?(ethical|moral|safety) (guidelines|restrictions|limits)", re.I),
+    re.compile(r"forget (everything|all|your) (you|that) (know|knew)", re.I),
+    re.compile(r"developer mode (enabled|on)", re.I),
 )
 
 # Academic context that must NOT over-refuse (historical violence, medicine, etc.).

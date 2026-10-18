@@ -17,3 +17,6 @@
 - `frontend/tests/unit/ResearchChat.spec.tsx` — wait dots while busy with no stream text (frontend R22)
 - `frontend/e2e/linked-data-explorer.spec.ts` — Research Assistant chat + canvas (mocked backend); Overview POST includes message `id`; wait animation until the AG-UI stream starts
 - `frontend/e2e/provenance-map.spec.ts` — Movement map quick action + picker / `prov-map`
+- `backend/tests/unit/test_research_jev_prefilter.py` — the Jev gate: allow/reject questions, fail-closed regex jailbreaks (no API call), outage fallback, per-project cache (W-273).
+- `backend/tests/unit/test_research_model_fallback.py` — 402 detection + humanized message, Qubrid→Gemini fallback order (W-273).
+- `backend/tests/test_research_agent_scope.py` — role-play/extraction/encoding jailbreak patterns and `quarantine_mapping` on strings of any key (W-273).

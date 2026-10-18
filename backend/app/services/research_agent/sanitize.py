@@ -35,10 +35,12 @@ def quarantine_text(raw: str | None, *, max_chars: int = _MAX_CHARS) -> dict[str
     }
 
 
-def quarantine_mapping(data: dict[str, Any], text_keys: tuple[str, ...] = ("value", "label", "description", "text")) -> dict[str, Any]:
+def quarantine_mapping(data: dict[str, Any], text_keys: tuple[str, ...] = ()) -> dict[str, Any]:
+    """Clean every string in a nested payload (R16: retrieved text of ANY
+    kind is untrusted — MARC notes included, 2026-10-17 review)."""
     out: dict[str, Any] = {}
     for key, val in data.items():
-        if key in text_keys and isinstance(val, str):
+        if isinstance(val, str):
             out[key] = quarantine_text(val)["value"]
         elif isinstance(val, dict):
             out[key] = quarantine_mapping(val, text_keys)

@@ -31,6 +31,13 @@ export const emptyCanvas: CanvasState = {artifacts: [], active_key: null};
 
 export function humanizeAgentError(message: string): string {
   const raw = message.trim() || "The assistant could not finish that answer.";
+  if (/insufficient_quota|insufficient credits|status_code: 402/i.test(raw)) {
+    return (
+      "The AI model account is out of credit, so the assistant cannot answer " +
+      "right now. The administrator must recharge it at " +
+      "platform.qubrid.com/billing. Your tools, canvas, and datasets keep working."
+    );
+  }
   if (/maximum output retries/i.test(raw) || /exceeded maximum retries/i.test(raw)) {
     return (
       "The assistant could not finish that answer. " +

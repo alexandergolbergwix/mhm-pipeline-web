@@ -301,20 +301,28 @@ def _cell_str(value: Any, limit: int = _DATASET_CELL_LIMIT) -> str | None:
 
 async def _tool_entity(ctx: ToolContext, args: dict[str, Any]) -> Any:
     from app.routers.research_entity import get_entity_detail
+    from app.services.research_agent.sanitize import quarantine_mapping
+
     uri = str(args.get("uri") or "")
     if not uri:
         raise HTTPException(status_code=400, detail="uri is required.")
     result = await get_entity_detail(ctx.claims.project_id, uri, ctx.auth, ctx.db)
-    return result.model_dump() if hasattr(result, "model_dump") else result
+    data = result.model_dump() if hasattr(result, "model_dump") else result
+    # R16: MARC note text is untrusted data — instruction-like content is
+    # redacted before the planner sees it (2026-10-17 review gap).
+    return quarantine_mapping(data) if isinstance(data, dict) else data
 
 
 async def _tool_evidence(ctx: ToolContext, args: dict[str, Any]) -> Any:
     from app.routers.research_evidence import get_evidence
+    from app.services.research_agent.sanitize import quarantine_mapping
+
     uri = str(args.get("uri") or "")
     if not uri:
         raise HTTPException(status_code=400, detail="uri is required.")
     result = await get_evidence(ctx.claims.project_id, uri, ctx.auth, ctx.db)
-    return result.model_dump() if hasattr(result, "model_dump") else result
+    data = result.model_dump() if hasattr(result, "model_dump") else result
+    return quarantine_mapping(data) if isinstance(data, dict) else data
 
 
 async def _tool_fetch_ttl(ctx: ToolContext, args: dict[str, Any]) -> Any:
