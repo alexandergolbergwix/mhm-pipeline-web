@@ -198,3 +198,86 @@ async def test_uploaded_items_includes_publication_execution_qids(sample_run, db
     assert info["row_count"] == 1
     row = (info.get("sample") or [[None] * 6])[0]
     assert row[0] == "Q2222" and row[5] == "publication:create"
+
+
+async def test_uploaded_items_derives_entity_type_and_backfills(sample_run, db_session):
+    """2026-10-18: 3,614 upload rows read as 'unknown' — the execution seed
+    carries no type and the Studio merge never backfilled it. The type is
+    derived from the release entity key; labels/statements backfill."""
+    from unittest.mock import AsyncMock, patch as _patch
+    import uuid as _uuid
+
+    from app.models.publication import (
+        Publication,
+        PublicationExecution,
+        PublicationExecutionAction,
+    )
+
+    publication = Publication(
+        run_id=sample_run["run_id"],
+        source_snapshot_id="snap-2",
+        source_revision="rev-2",
+        source_digest="d" * 64,
+        profile_name="default",
+        profile_version="1",
+        target_site="https://www.wikidata.org",
+        target_environment="live",
+        state="executed",
+        idempotency_key="uploads-test-2",
+        latest_release_id=_uuid.uuid4(),
+    )
+    db_session.add(publication)
+    await db_session.flush()
+    execution = PublicationExecution(
+        id=_uuid.uuid4(),
+        publication_id=publication.id,
+        plan_id=_uuid.uuid4(),
+        receipt_id=_uuid.uuid4(),
+        receipt_digest="r" * 64,
+        actor_id=str(sample_run["user_id"]),
+        idempotency_key="uploads-test-2-exec",
+        status="succeeded",
+        total_count=3,
+        succeeded_count=3,
+    )
+    db_session.add(execution)
+    for index, (key, qid) in enumerate((
+        ("QDraft_MS_990000533850205171", "Q134619072"),
+        ("QDraft_Person_914", "Q2001"),
+        ("QDraft_Work_325", "Q2002"),
+    )):
+        db_session.add(PublicationExecutionAction(
+            execution_id=execution.id,
+            action_key=f"typed-{index}",
+            entity_key=key,
+            ordinal=index,
+            phase="send",
+            state="succeeded",
+            action="create",
+            result_qid=qid,
+        ))
+    await db_session.commit()
+
+    minted = await _mint(sample_run)
+    studio_rows = [{
+        "existing_qid": "Q134619072",
+        "local_id": "QDraft_MS_990000533850205171",
+        "entity_type": "manuscript",
+        "labels": {"en": "Jerusalem, NLI, MS 1"},
+        "statements": [{"property": "P31"}],
+    }]
+
+    with _patch(
+        "app.routers.wikidata_studio.studio_items_for_project",
+        new=AsyncMock(return_value=studio_rows),
+    ):
+        result = await _call(sample_run, minted["headers"], "wikidata_uploaded_items", {})
+
+    assert result["uploaded_count"] == 3
+    assert result["by_type"] == {"manuscript": 1, "person": 1, "work": 1}
+    info = await _call(sample_run, minted["headers"], "data_info", {"artifact_key": "wikidata-uploads"})
+    rows = {r[0]: r for r in (info.get("sample") or [])}
+    assert rows["Q134619072"][2] == "manuscript"
+    assert rows["Q134619072"][3] == "Jerusalem, NLI, MS 1"
+    assert rows["Q2001"][2] == "person"
+    assert rows["Q2002"][2] == "work"

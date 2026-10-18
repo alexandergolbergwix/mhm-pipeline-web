@@ -780,6 +780,19 @@ async def _tool_wikidata_uploaded_items(ctx: ToolContext, _args: dict[str, Any])
     )
     from app.routers.wikidata_studio import studio_items_for_project
 
+    def _entity_type_from_key(entity_key: str) -> str | None:
+        """Type from the release entity key — the uploads table has no type
+        column of its own (2026-10-18: 3,614 rows read as 'unknown' and the
+        chat reported 'four manuscript items' for 800+)."""
+        key = (entity_key or "").strip()
+        if key.startswith("QDraft_MS_") or key.startswith("marc:"):
+            return "manuscript"
+        if key.startswith("QDraft_Person_") or key.startswith("person:"):
+            return "person"
+        if key.startswith("QDraft_Work_") or key.startswith("work:"):
+            return "work"
+        return None
+
     qid_row: dict[str, dict[str, Any]] = {}
 
     run_rows = (
@@ -813,7 +826,7 @@ async def _tool_wikidata_uploaded_items(ctx: ToolContext, _args: dict[str, Any])
             qid_row.setdefault(str(qid), {
                 "qid": str(qid),
                 "local_id": _cell_str(entity_key, 120),
-                "entity_type": None,
+                "entity_type": _entity_type_from_key(str(entity_key or "")),
                 "label": None,
                 "sources": {f"publication:{action}"},
             })
@@ -837,6 +850,19 @@ async def _tool_wikidata_uploaded_items(ctx: ToolContext, _args: dict[str, Any])
                 "statements": len(it.get("statements") or []),
                 "sources": set(),
             })
+            # Backfill what the execution seed could not know (labels,
+            # statements) and the type the seed derives from the entity key.
+            # setdefault alone left 3,614 rows untyped (2026-10-18).
+            if not entry.get("entity_type"):
+                entry["entity_type"] = _cell_str(
+                    it.get("entity_type"), 40
+                ) or _entity_type_from_key(str(it.get("local_id") or ""))
+            if not entry.get("label"):
+                entry["label"] = _cell_str(
+                    (labels.get("en") or labels.get("he") or ""), 160
+                )
+            if entry.get("statements") is None:
+                entry["statements"] = len(it.get("statements") or [])
             entry.setdefault("sources", set())
             if isinstance(entry.get("sources"), set):
                 entry["sources"].add(f"studio:{source}")
