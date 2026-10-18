@@ -584,9 +584,19 @@ class InMemoryPublicationRepository:
             return {}
         latest = max(plans, key=lambda plan: plan.plan_id)
         actions = self._plan_actions.get(latest.plan_id) or {}
+        # An `absent` observation expires once the plan EXECUTES: the writes
+        # create the very items the cache would deny (2026-10-17: 1,038
+        # planned creates beside our own items, caught only by the write
+        # preflight). Present observations stay reusable — the UPDATE
+        # preflight re-checks the revision fail-closed.
+        plan_executed = any(
+            execution.plan_id == latest.plan_id
+            for execution in self._executions.values()
+        )
         return {
             key: record for key, record in actions.items()
             if record.observation_status != "unknown"
+            and not (plan_executed and record.observation_status == "absent")
         }
 
     async def page_plan_actions(

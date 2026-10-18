@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -826,3 +827,187 @@ async def test_reconcile_p3959_identity_marks_project_manuscripts_owned(
     assert observation.status == "present_owned"
     assert observation.qid == "Q134619072"
     assert observation.method == "p3959/shelfmark"
+
+
+class _HangingBoundary(_Boundary):
+    async def reconcile_batch(self, entities):
+        await asyncio.sleep(60)
+        return await super().reconcile_batch(entities)
+
+    async def write_once(self, request):
+        await asyncio.sleep(60)
+        return await super().write_once(request)
+
+    async def fetch_entity(self, qid):
+        await asyncio.sleep(60)
+        return await super().fetch_entity(qid)
+
+
+@pytest.mark.asyncio
+async def test_hung_writes_and_reads_become_retryable_not_stalls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.publication.wikidata_gateway as gateway_module
+
+    monkeypatch.setattr(gateway_module, "_RECONCILE_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(gateway_module, "_FETCH_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(gateway_module, "_WRITE_TIMEOUT_S", 0.05)
+    session = _SafeWikidataGatewaySession(_HangingBoundary())
+    mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="create",
+        target_qid=None,
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Manuscript"}, "statements": []},
+        identity_assertions=("P217:shelf-1",),
+    )
+
+    outcome = await session.write(
+        GatewayWriteRequest(
+            intent_id="intent-1",
+            request_key="execution-1:manuscript-1:1",
+            mutation=mutation,
+        )
+    )
+    assert outcome.status == "pre_send_retryable"
+    assert "time budget" in (outcome.detail or "")
+
+    update_mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="update",
+        target_qid="Q1",
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Manuscript"}, "statements": []},
+        identity_assertions=(),
+        expected_revision=17,
+    )
+    outcome = await session.write(
+        GatewayWriteRequest(
+            intent_id="intent-2",
+            request_key="execution-1:manuscript-1:2",
+            mutation=update_mutation,
+        )
+    )
+    assert outcome.status == "pre_send_retryable"
+
+
+class _HangingWriteBoundary(_Boundary):
+    async def write_once(self, request):
+        await asyncio.sleep(60)
+        return await super().write_once(request)
+
+
+@pytest.mark.asyncio
+async def test_hung_wbi_write_returns_a_retryable_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.publication.wikidata_gateway as gateway_module
+
+    monkeypatch.setattr(gateway_module, "_WRITE_TIMEOUT_S", 0.05)
+    session = _SafeWikidataGatewaySession(_HangingWriteBoundary())
+    mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="create",
+        target_qid=None,
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Manuscript"}, "statements": []},
+        identity_assertions=("P217:shelf-1",),
+    )
+
+    outcome = await session.write(
+        GatewayWriteRequest(
+            intent_id="intent-1",
+            request_key="execution-1:manuscript-1:1",
+            mutation=mutation,
+        )
+    )
+
+    assert outcome.status == "pre_send_retryable"
+    assert "600 s time budget" in (outcome.detail or "") or "time budget" in (outcome.detail or "")
+
+
+class _OwnedTargetBoundary(_Boundary):
+    async def reconcile_batch(self, entities):
+        return tuple(
+            TargetObservation.present_owned(
+                entity.entity_key, qid="Q42", remote_revision=7, fingerprint="remote",
+                method="p3959/shelfmark",
+            )
+            for entity in entities
+        )
+
+
+class _ForeignTargetBoundary(_Boundary):
+    async def reconcile_batch(self, entities):
+        return tuple(
+            TargetObservation.present_foreign(
+                entity.entity_key, qid="Q42", remote_revision=7, fingerprint="remote",
+            )
+            for entity in entities
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_preflight_adopts_our_identity_target_as_update() -> None:
+    session = _SafeWikidataGatewaySession(_OwnedTargetBoundary())
+    mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="create",
+        target_qid=None,
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Manuscript"}, "statements": []},
+        identity_assertions=("P217:shelf-1",),
+    )
+
+    outcome = await session.write(
+        GatewayWriteRequest(
+            intent_id="intent-1",
+            request_key="execution-1:manuscript-1:1",
+            mutation=mutation,
+        )
+    )
+
+    assert outcome.status == "succeeded"
+    assert outcome.qid == "Q42"
+    boundary = session._boundary
+    assert len(boundary.write_calls) == 1
+    adopted = boundary.write_calls[0].mutation
+    assert adopted.action == "update"
+    assert adopted.target_qid == "Q42"
+    assert adopted.expected_revision == 7
+
+
+@pytest.mark.asyncio
+async def test_create_preflight_still_blocks_a_foreign_identity_target() -> None:
+    boundary = _ForeignTargetBoundary()
+    session = _SafeWikidataGatewaySession(boundary)
+    mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="create",
+        target_qid=None,
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Manuscript"}, "statements": []},
+        identity_assertions=("P217:shelf-1",),
+    )
+
+    outcome = await session.write(
+        GatewayWriteRequest(
+            intent_id="intent-1",
+            request_key="execution-1:manuscript-1:1",
+            mutation=mutation,
+        )
+    )
+
+    assert outcome.status == "blocked"
+    assert "found Q42" in (outcome.detail or "")
+    assert boundary.write_calls == []

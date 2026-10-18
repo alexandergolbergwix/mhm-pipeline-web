@@ -150,6 +150,11 @@ async def test_sql_repository_persists_the_publication_lifecycle(
     )
     queued = await module.read(SummaryQuery(prepared.publication_id))
     assert queued.execution_status == "queued"
+    # H4: once the plan executes, its `absent` observations expire — the
+    # writes create the very items the cache would deny.
+    after_publish = await repository.previous_plan_observations(prepared.publication_id)
+    assert "manuscript:1" not in after_publish
+    assert after_publish["work:2"].observation_status == "present_owned"
     assert gateway.write_calls == ()
     await module.advance(
         prepared.publication_id,

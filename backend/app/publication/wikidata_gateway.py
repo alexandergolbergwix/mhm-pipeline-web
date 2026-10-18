@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -20,6 +21,17 @@ from app.publication.gateway import (
 from app.publication.types import PublicationEntity, TargetRef
 
 logger = logging.getLogger(__name__)
+
+# A wedged execution worker is always a call that never returned: WBI's
+# synchronous HTTP has no timeout of its own, so one hung write parked a
+# worker forever while its heartbeat kept the job "running" (2026-10-17,
+# execution 9d18c5c3: claimable rows sat unclaimed behind 13 stale
+# leases). Every boundary call gets an outer time budget; a breach is an
+# outcome the durable claim queue can retry, never a silent stall.
+_RECONCILE_TIMEOUT_S = 300.0
+_FETCH_TIMEOUT_S = 120.0
+_WRITE_TIMEOUT_S = 600.0
+_CONFIRM_TIMEOUT_S = 300.0
 
 
 class _WritableItem(Protocol):
@@ -219,7 +231,10 @@ class _SafeWikidataGatewaySession:
     ) -> tuple[TargetObservation, ...]:
         observations: list[TargetObservation] = []
         for start in range(0, len(entities), 50):
-            observations.extend(await self._boundary.reconcile_batch(entities[start : start + 50]))
+            observations.extend(await asyncio.wait_for(
+                self._boundary.reconcile_batch(entities[start : start + 50]),
+                timeout=_RECONCILE_TIMEOUT_S,
+            ))
         return tuple(observations)
 
     async def compile_mutation(
@@ -256,11 +271,29 @@ class _SafeWikidataGatewaySession:
 
     async def write(self, request: GatewayWriteRequest) -> WriteOutcome:
         mutation = request.mutation
-        preflight = await self._preflight(mutation)
+        preflight, adopted = await self._preflight(mutation)
         if preflight is not None:
             return preflight
+        if adopted is not None:
+            # The CREATE identity check found our own item (P3959 identity or
+            # creator check): adopt it as an owned UPDATE instead of blocking
+            # beside it. The write gate re-verifies ownership below.
+            logger.info(
+                "P3959_IDENTITY_ADOPT qs=%s -> %s rev=%s: adopting the "
+                "identity-check target as an owned update",
+                mutation.entity_key, adopted.target_qid, adopted.expected_revision,
+            )
+            mutation = adopted
+            request = dataclasses.replace(request, mutation=adopted)
         try:
-            qid = await self._boundary.write_once(request)
+            qid = await asyncio.wait_for(
+                self._boundary.write_once(request),
+                timeout=_WRITE_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            return WriteOutcome.pre_send_retryable(
+                f"The Wikidata write exceeded its {int(_WRITE_TIMEOUT_S)} s time budget"
+            )
         except WikidataPreSendRetryableError as exc:
             return WriteOutcome.pre_send_retryable(str(exc))
         except WikidataRevisionConflictError as exc:
@@ -273,49 +306,96 @@ class _SafeWikidataGatewaySession:
             return WriteOutcome.outcome_unknown(str(exc))
         except Exception as exc:  # noqa: BLE001
             return WriteOutcome.outcome_unknown(str(exc))
-        confirmation = await self._boundary.confirm_mutation(mutation, qid=qid)
+        try:
+            confirmation = await asyncio.wait_for(
+                self._boundary.confirm_mutation(mutation, qid=qid),
+                timeout=_CONFIRM_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            return WriteOutcome.outcome_unknown(
+                "The write read-back exceeded its time budget"
+            )
         return self._confirmation_outcome(confirmation, after_write=True)
 
     async def recover_ambiguous(
         self,
         request: GatewayRecoveryRequest,
     ) -> WriteOutcome:
-        confirmation = await self._boundary.confirm_mutation(
-            request.mutation,
-            qid=request.mutation.target_qid,
+        confirmation = await asyncio.wait_for(
+            self._boundary.confirm_mutation(
+                request.mutation,
+                qid=request.mutation.target_qid,
+            ),
+            timeout=_CONFIRM_TIMEOUT_S,
         )
         return self._confirmation_outcome(confirmation, after_write=False)
 
-    async def _preflight(self, mutation: GatewayMutation) -> WriteOutcome | None:
+    async def _preflight(
+        self,
+        mutation: GatewayMutation,
+    ) -> tuple[WriteOutcome | None, GatewayMutation | None]:
+        """Return (blocked outcome, adopted update mutation)."""
         if mutation.action == "create":
             entity = _publication_entity_from_mutation(mutation)
             try:
-                observations = await self._boundary.reconcile_batch((entity,))
+                observations = await asyncio.wait_for(
+                    self._boundary.reconcile_batch((entity,)),
+                    timeout=_RECONCILE_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                return WriteOutcome.pre_send_retryable(
+                    "The final CREATE identity check exceeded its time budget"
+                ), None
             except WikidataPreSendRetryableError as exc:
-                return WriteOutcome.pre_send_retryable(str(exc))
+                return WriteOutcome.pre_send_retryable(str(exc)), None
             if len(observations) != 1 or observations[0].status == "unknown":
                 return WriteOutcome.pre_send_retryable(
                     "The final CREATE identity check is inconclusive"
+                ), None
+            observation = observations[0]
+            if observation.status == "absent":
+                return None, None
+            if (
+                observation.status == "present_owned"
+                and observation.qid
+                and observation.remote_revision is not None
+            ):
+                # The identity check found a target the ownership channels
+                # accept (exact P3959 catalog identity or our creator) — the
+                # 2026-10-17 adopt pass class. Convert to an owned update;
+                # `_assert_modifiable` re-verifies the ownership at write time.
+                return None, dataclasses.replace(
+                    mutation,
+                    action="update",
+                    target_qid=observation.qid,
+                    expected_revision=observation.remote_revision,
                 )
-            if observations[0].status != "absent":
-                return WriteOutcome.blocked(
-                    f"The final CREATE identity check found {observations[0].qid or 'a target'}"
-                )
-            return None
+            return WriteOutcome.blocked(
+                f"The final CREATE identity check found {observation.qid or 'a target'}"
+            ), None
         if mutation.target_qid is None or mutation.expected_revision is None:
-            return WriteOutcome.blocked("An UPDATE requires a target QID and remote revision")
+            return WriteOutcome.blocked(
+                "An UPDATE requires a target QID and remote revision"
+            ), None
         try:
-            snapshot = await self._boundary.fetch_entity(mutation.target_qid)
+            snapshot = await asyncio.wait_for(
+                self._boundary.fetch_entity(mutation.target_qid),
+                timeout=_FETCH_TIMEOUT_S,
+            )
+        except asyncio.TimeoutError:
+            return WriteOutcome.pre_send_retryable(
+                "The UPDATE target read exceeded its time budget"
+            ), None
         except WikidataPreSendRetryableError as exc:
-            return WriteOutcome.pre_send_retryable(str(exc))
+            return WriteOutcome.pre_send_retryable(str(exc)), None
         if snapshot is None:
-            return WriteOutcome.blocked("The planned UPDATE target no longer exists")
+            return WriteOutcome.blocked("The planned UPDATE target no longer exists"), None
         if snapshot.revision != mutation.expected_revision:
             return WriteOutcome.blocked(
                 f"The remote revision changed from {mutation.expected_revision} "
                 f"to {snapshot.revision}"
-            )
-        return None
+            ), None
+        return None, None
 
     @staticmethod
     def _confirmation_outcome(

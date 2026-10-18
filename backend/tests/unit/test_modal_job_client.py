@@ -373,3 +373,37 @@ async def test_owner_heartbeat_does_not_extend_wait_past_budget(
 def test_modal_wait_budget_matches_a_24_hour_build() -> None:
     """A live Studio build must not fall back to the web dyno before 24 hours."""
     assert modal_job_client._WAIT_BUDGET_S == 86400.0
+
+
+@pytest.mark.asyncio
+async def test_dispatch_401_names_the_token_mismatch(
+    monkeypatch, caplog,
+) -> None:
+    """A token mismatch is a config error: it must name the fix (H3)."""
+    import logging
+
+    _settings(monkeypatch)
+
+    class _Unauthorized(_Resp):
+        status_code = 401
+        text = '{"detail": "invalid token"}'
+
+        def json(self):
+            return {"detail": "invalid token"}
+
+    class _RejectingClient(_Client):
+        def __init__(self, *a, **kw):
+            pass
+
+        async def post(self, *a, **kw):
+            return _Unauthorized()
+
+    monkeypatch.setattr(modal_job_client.httpx, "AsyncClient", _RejectingClient)
+
+    with caplog.at_level(logging.ERROR):
+        accepted = await modal_job_client._dispatch(
+            str(uuid.uuid4()), JOB_KIND_WIKIDATA_VERIFY, "https://cb.example/modal-event", "tok",
+        )
+
+    assert accepted is False
+    assert any("MODAL_JOBS_TOKEN" in record.message for record in caplog.records)

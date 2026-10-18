@@ -8,6 +8,8 @@ import os
 import uuid
 from typing import Any
 
+import sqlalchemy
+
 from app.db import session_scope
 from app.models.publication import Publication, PublicationExecution
 from app.models.run_job import (
@@ -34,6 +36,21 @@ from app.publication.wikidata_gateway import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Heroku Postgres can drop a connection that a worker has held across long
+# network stretches; the next commit/rollback then raises
+# "cannot call Transaction.rollback(): the underlying connection is closed"
+# and killed the whole pass (2026-10-17, both live executions). The durable
+# claim rows survive a worker death, so the fix is to RE-RUN the worker on a
+# fresh session instead of crashing.
+_DEAD_CONNECTION_ERRORS: tuple[type[BaseException], ...] = (
+    sqlalchemy.exc.InterfaceError,
+    sqlalchemy.exc.OperationalError,
+    ConnectionError,
+    OSError,
+)
+_WORKER_ATTEMPTS = 3
+_CONNECTION_RETRY_BACKOFF_S = 2.0
 
 
 def _ledger_entity_type(entity_key: str) -> str:
@@ -159,6 +176,45 @@ def _required_param(job: RunJob, name: str) -> str:
     return value
 
 
+async def _run_with_connection_retries(worker_id: str, attempt_fn):
+    """Run ``attempt_fn``; re-run it on a dead database connection.
+
+    The durable claim rows survive a worker death, so the only cost of a
+    dropped connection is the retry. Bounded: after ``_WORKER_ATTEMPTS``
+    the last error propagates and the execution pauses for a resume.
+    """
+    last_error: BaseException | None = None
+    for attempt in range(_WORKER_ATTEMPTS):
+        try:
+            return await attempt_fn()
+        except _DEAD_CONNECTION_ERRORS as exc:
+            last_error = exc
+            logger.warning(
+                "Publication worker %s lost its database connection "
+                "(attempt %d/%d); retrying on a fresh session: %s",
+                worker_id, attempt + 1, _WORKER_ATTEMPTS, exc,
+            )
+            await asyncio.sleep(_CONNECTION_RETRY_BACKOFF_S * (attempt + 1))
+    assert last_error is not None
+    raise last_error
+
+
+async def _mark_execution_paused(execution_id: str) -> None:
+    """Return a crashed execution to `paused` on a FRESH session.
+
+    The run-scoped session can share the dead connection that just crashed a
+    worker; the pause mark must still land or the execution is unrecoverable.
+    """
+    try:
+        async with session_scope() as db:
+            execution = await db.get(PublicationExecution, uuid.UUID(execution_id))
+            if execution is not None and execution.status in {"queued", "running"}:
+                execution.status = "paused"
+                await db.commit()
+    except Exception:  # noqa: BLE001 — best-effort; the state reaper is the backstop
+        logger.exception("Marking execution %s paused failed", execution_id)
+
+
 def _progress(summary) -> dict[str, object]:
     execution = summary.execution
     if execution is None:
@@ -237,19 +293,24 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
         )))
 
         async def _run_worker(index: int) -> PublicationSummary:
-            async with session_scope() as worker_db:
-                worker_runtime = PublicationRuntime(
-                    session=worker_db,
-                    gateway_factory=gateway_factory,
-                    execution_progress=_make_execution_progress(job_id),
-                )
-                return await worker_runtime.execute(
-                    run_id=run_id,
-                    publication_id=publication_id,
-                    execution_id=execution_id,
-                    actor_id=actor_id,
-                    worker_id=f"publication-job:{job_id}:w{index}",
-                )
+            worker_id = f"publication-job:{job_id}:w{index}"
+
+            async def _attempt() -> PublicationSummary:
+                async with session_scope() as worker_db:
+                    worker_runtime = PublicationRuntime(
+                        session=worker_db,
+                        gateway_factory=gateway_factory,
+                        execution_progress=_make_execution_progress(job_id),
+                    )
+                    return await worker_runtime.execute(
+                        run_id=run_id,
+                        publication_id=publication_id,
+                        execution_id=execution_id,
+                        actor_id=actor_id,
+                        worker_id=worker_id,
+                    )
+
+            return await _run_with_connection_retries(worker_id, _attempt)
 
         try:
             worker_summaries = await asyncio.gather(
@@ -261,20 +322,15 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
             if not summaries:
                 # Every worker failed: the durable execution must go back to
                 # paused so a resume can retry it.
-                execution = await db.get(PublicationExecution, uuid.UUID(execution_id))
-                if execution is not None and execution.status in {"queued", "running"}:
-                    execution.status = "paused"
-                    await db.commit()
+                await _mark_execution_paused(execution_id)
                 raise failures[0] if failures else RuntimeError(
                     "The Publication execution produced no worker summary"
                 )
         except Exception:
             # Keep the durable execution resumable when a worker fails before
-            # the runtime can persist its normal paused state.
-            execution = await db.get(PublicationExecution, uuid.UUID(execution_id))
-            if execution is not None and execution.status in {"queued", "running"}:
-                execution.status = "paused"
-                await db.commit()
+            # the runtime can persist its normal paused state. A fresh
+            # session: the outer session may share the dead connection.
+            await _mark_execution_paused(execution_id)
             raise
         # Prefer a summary whose execution reached a terminal state; paused
         # beats failed-for-now because the durable rows keep the detail.

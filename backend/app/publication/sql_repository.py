@@ -575,7 +575,21 @@ class SqlAlchemyPublicationRepository:
                 select(PlanActionRow).where(PlanActionRow.plan_id == latest)
             )
         ).scalars().all()
-        return {row.entity_key: self._plan_action_record(row) for row in rows}
+        # An `absent` observation expires once the plan EXECUTES: the writes
+        # create the very items the cache would deny (2026-10-17: 1,038
+        # planned creates beside our own items, caught only by the write
+        # preflight). Present observations stay reusable — the UPDATE
+        # preflight re-checks the revision fail-closed.
+        executed = (
+            await self._session.execute(
+                select(ExecutionRow.id).where(ExecutionRow.plan_id == latest).limit(1)
+            )
+        ).scalar_one_or_none()
+        return {
+            row.entity_key: self._plan_action_record(row)
+            for row in rows
+            if not (executed is not None and row.observation_status == "absent")
+        }
 
     async def page_plan_actions(
         self,

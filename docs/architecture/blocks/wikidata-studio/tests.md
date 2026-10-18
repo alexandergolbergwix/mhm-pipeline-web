@@ -230,3 +230,7 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_publication_automatic_policy.py` — `shared_p3959` exact equality and `route_blocked_target` never accepts a community item implicitly (W-270).
 - `backend/tests/test_publication_router.py` — the blocked sweep: P3959-equal manuscript becomes `update_existing` with a stamped `existing_qid`, a label-only person defers with the reason, a shared-identifier person reaches the dual judge; blocked payloads carry `our_statements`/`entity_label` and `accepted_foreign_update_count` splits the outcome classes (W-270).
 - `frontend/tests/unit/wikidataPublicationControls.spec.tsx` — the accept drawer affordance for every blocked entity, the reuse/accept/defer actions, and the summary outcome line (W-270).
+
+- `backend/tests/unit/test_publication_execution_retries.py` — workers re-run on dead DB connections, `absent` observations expire once the plan executes (W-271 / W-272).
+- `backend/tests/unit/test_wikidata_publication_gateway.py` — hung writes/reads become retryable under the time budgets; a CREATE preflight adopts a `present_owned` target as an owned UPDATE and still blocks a foreign one (W-271 / W-272).
+- `backend/tests/unit/test_modal_job_client.py` — a 401 dispatch names the `MODAL_JOBS_TOKEN` remediation (W-271).

@@ -949,6 +949,37 @@ async def _run_wikidata_studio_build_sharded(job_id: str) -> None:
     await consume_wikidata_shard_results(plan, _results(), should_cancel=should_cancel)
 
 
+# The secret must carry these or EVERY dispatch fails (401 / decrypt
+# RuntimeError). 2026-10-17: a secret rebuild dropped both, one at a time.
+_REQUIRED_ENV_KEYS = ("MODAL_JOBS_TOKEN", "MASTER_KEY", "DATABASE_URL")
+_OPTIONAL_ENV_KEYS = ("QUBRID_API_KEY", "TYPESAFE_API_KEY")
+
+
+def _missing_required_env() -> list[str]:
+    import os as _os
+
+    return [key for key in _REQUIRED_ENV_KEYS if not _os.environ.get(key)]
+
+
+@app.function(
+    image=image,
+    cpu=1,
+    memory=512,
+    scaledown_window=300,
+    secrets=[modal.Secret.from_name("mhm-jobs2")],
+)
+@modal.fastapi_endpoint(label="mhm-jobs-healthz", method="GET")
+def healthz() -> dict:
+    """Deploy-time config check: names the missing secret keys, if any."""
+    import os as _os
+
+    return {
+        "ok": not _missing_required_env(),
+        "missing_required": _missing_required_env(),
+        "missing_optional": [k for k in _OPTIONAL_ENV_KEYS if not _os.environ.get(k)],
+    }
+
+
 @app.function(
     image=image,
     cpu=1,
@@ -966,6 +997,14 @@ def run(request_body: dict) -> dict:
     from fastapi import HTTPException
 
     assert isinstance(request_body, dict)
+
+    missing = _missing_required_env()
+    if missing:
+        # 503, not 401: the secret is incomplete, the caller's token is fine.
+        raise HTTPException(
+            status_code=503,
+            detail=f"mhm-jobs2 secret is missing: {', '.join(missing)}",
+        )
 
     # fastapi_endpoint injects no Request by default — auth comes from the body
     # token field to stay dependency-light.

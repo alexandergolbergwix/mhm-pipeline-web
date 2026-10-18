@@ -998,3 +998,19 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `our_statements`/`entity_label` so the accept drawer can show a claims
     diff. *Why:* the 107 unexecuted blocks had no designed path — "Resolve
     with AI" left them needing attention forever.
+
+137. **R137 — A publication worker must survive its own infrastructure
+    (W-271).** Every gateway boundary call runs under a time budget (write
+    600 s, reconcile 300 s, fetch/read-back 120 s) so a hung Wikidata call
+    becomes a retryable outcome, never a silent stall; execution workers
+    re-run on a fresh session when the database connection dies (bounded
+    attempts); the Modal `mhm-jobs` app exposes `GET /healthz` naming
+    missing secret keys and a 401 dispatch logs the `MODAL_JOBS_TOKEN`
+    remediation. *Why:* the 2026-10-17 passes wedged five times on hung
+    writes and dead connections, and two secret rebuilds killed dispatch.
+138. **R138 — Stale `absent` plans adopt their own items, never duplicate
+    (W-272).** An `absent` observation expires once its plan executes, and a
+    CREATE preflight that finds a `present_owned` target (exact P3959
+    identity or our creator) converts to an owned UPDATE instead of blocking
+    beside it. *Why:* the cache planned 1,038 creates beside items the pass
+    itself had created the day before (2026-10-17).

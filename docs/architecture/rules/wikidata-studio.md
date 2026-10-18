@@ -2947,3 +2947,45 @@ Code: `backend/converter/wikidata/uploader.py`,
 `backend/app/publication/wikidata_gateway.py`, `core.py`, `runtime.py`,
 `automatic_policy.py`, `backend/app/pipeline/wikidata_publication_auto_job.py`,
 `frontend/src/components/wikidata/WikidataBlockedActionDrawer.tsx`.
+
+### Rule W-271 — A publication worker must survive its own infrastructure (added 2026-10-17)
+
+The 2026-10-17 live passes wedged five times and crashed twice. Three
+infrastructure holes, three guards:
+
+1. **Bounded gateway calls.** WBI's synchronous HTTP has no timeout; one
+   hung write parked a worker forever while its heartbeat kept the job
+   "running" (claimable rows sat unclaimed behind stale leases). Every
+   boundary call in `_SafeWikidataGatewaySession` now runs under
+   `asyncio.wait_for` (write 600 s, reconcile 300 s, fetch/read-back
+   120 s); a breach is `pre_send_retryable` / `outcome_unknown` — a state
+   the durable claim queue retries.
+2. **Dead-connection retries.** Heroku Postgres drops held connections
+   after long network stretches and the next commit raises
+   `cannot call Transaction.rollback(): the underlying connection is
+   closed`, killing the whole pass. Execution workers re-run on a fresh
+   session (bounded attempts), and the crash path marks the execution
+   `paused` on a FRESH session so a resume can continue.
+3. **Modal env validation.** A `mhm-jobs2` secret rebuild dropped
+   `MASTER_KEY` (every sealed-credential decrypt crashed) and then
+   `MODAL_JOBS_TOKEN` (every dispatch 401'd and silently degraded to the
+   Heroku dyno). The app exposes `GET /healthz` naming missing keys; the
+   `run` endpoint answers 503 naming them; a 401 dispatch logs the exact
+   remediation.
+
+### Rule W-272 — Stale `absent` plans adopt their own items, never duplicate (added 2026-10-17)
+
+The run+target observation cache reuses `absent` across releases "by design
+(content-independent)". After a write pass creates items, the next dry-run
+still planned `create` for them (1,038 rows) and only the write preflight
+caught the collision. Two guards close the class:
+
+1. **`absent` expires on execution.** `previous_plan_observations` drops
+   `absent` rows once the source plan has an execution: the writes create
+   the very items the cache would deny.
+2. **Adopt on identity.** The CREATE preflight that finds a
+   `present_owned` target (exact P3959 catalog identity or our creator —
+   Rule W-270/W-272 channel) converts the mutation to an owned UPDATE with
+   `baserevid` instead of blocking beside it; `_assert_modifiable`
+   re-verifies ownership at write time. A `present_foreign` target stays
+   blocked (the consent gate is unchanged).

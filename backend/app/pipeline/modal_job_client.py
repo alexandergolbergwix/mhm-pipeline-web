@@ -119,6 +119,22 @@ async def _dispatch(job_id: str, kind: str, callback_url: str, token: str) -> bo
         body = None
     if 200 <= resp.status_code < 300 and isinstance(body, dict) and body.get("ok"):
         return True
+    if resp.status_code in {401, 403}:
+        # A token mismatch is a CONFIG error, not a transient rejection:
+        # every dispatch silently degrades to the Heroku-local runner until
+        # someone notices (2026-10-17: the mhm-jobs2 secret lost
+        # MODAL_JOBS_TOKEN and the execution writers never left the web
+        # dyno). Name the fix instead of logging a bare status code.
+        logger.error(
+            "modal dispatch for %s job %s REJECTED with %s — the "
+            "MODAL_JOBS_TOKEN sent from Heroku does not match the token in "
+            "the mhm-jobs2 Modal secret. Restore it with "
+            "`modal secret create --force mhm-jobs2 --from-dotenv <env>` "
+            "carrying MODAL_JOBS_TOKEN=<heroku config:get MODAL_JOBS_TOKEN>. "
+            "The job falls back to the Heroku-local runner meanwhile.",
+            kind, job_id, resp.status_code,
+        )
+        return False
     logger.warning(
         "modal dispatch for %s job %s rejected: %s %s",
         kind, job_id, resp.status_code, resp.text[:200],
