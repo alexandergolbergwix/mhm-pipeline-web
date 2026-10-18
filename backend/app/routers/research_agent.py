@@ -816,6 +816,23 @@ async def start_async_agui(
             thread_id=str(claims.thread_id), stage="deterministic_answer",
             ok=True, code=answer.kind,
         )
+        # The canvas holds lasting ANSWERS (2026-10-17: it showed a search
+        # log instead). Place the deterministic answer as a markdown note.
+        from app.services.research_agent.artifacts import (  # noqa: PLC0415
+            upsert_artifact,
+        )
+
+        thread = await db.get(ResearchAgentThread, claims.thread_id)
+        if thread is not None:
+            await upsert_artifact(
+                db, thread,
+                artifact_key="answer-note",
+                kind="markdown",
+                title=f"Answer — {question.strip()[:60]}",
+                content={"text": answer.text},
+                created_by="assistant",
+            )
+            await db.commit()
         return {
             "run_id": run_id,
             "stream_url": f"/api/research-agent/agui-stream?run_id={run_id}",

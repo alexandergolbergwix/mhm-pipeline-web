@@ -325,6 +325,8 @@ function TableView({content}: {content: Record<string, unknown>}) {
   );
 }
 
+import {renderChatMarkdown} from "./ResearchChat";
+
 function MarkdownEditor({
   threadId,
   artifact,
@@ -337,6 +339,7 @@ function MarkdownEditor({
   const initial = String(artifact.content.text ?? JSON.stringify(artifact.content, null, 2));
   const [text, setText] = useState(initial);
   const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     setText(String(artifact.content.text ?? JSON.stringify(artifact.content, null, 2)));
@@ -359,24 +362,47 @@ function MarkdownEditor({
 
   return (
     <div className="space-y-2">
-      <label className="sr-only" htmlFor="canvas-editor">Canvas text</label>
-      <textarea
-        id="canvas-editor"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={18}
-        className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-ink font-mono"
-      />
+      {editing ? (
+        <>
+          <label className="sr-only" htmlFor="canvas-editor">Canvas text</label>
+          <textarea
+            id="canvas-editor"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={18}
+            className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-ink font-mono"
+          />
+        </>
+      ) : (
+        <div
+          data-testid="canvas-markdown"
+          className="rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-ink space-y-2"
+          dangerouslySetInnerHTML={{__html: renderChatMarkdown(text)}}
+        />
+      )}
       <div className="flex items-center justify-between text-xs">
-        <span className="muted">Version {artifact.version} · edit directly, then save</span>
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={saving}
-          className="px-3 py-1 rounded-lg bg-biu-sky/20 text-biu-sky"
-        >
-          Save
-        </button>
+        <span className="muted">
+          Version {artifact.version} · {editing ? "edit the text, then save" : "rendered markdown"}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setEditing((value) => !value)}
+            className="px-3 py-1 rounded-lg border border-white/10 text-ink"
+          >
+            {editing ? "Preview" : "Edit"}
+          </button>
+          {editing && (
+            <button
+              type="button"
+              onClick={() => { void save().then(() => setEditing(false)); }}
+              disabled={saving}
+              className="px-3 py-1 rounded-lg bg-biu-sky/20 text-biu-sky"
+            >
+              Save
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

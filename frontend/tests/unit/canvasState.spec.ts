@@ -78,3 +78,28 @@ describe("buildAguiRunBody", () => {
     expect(body.context).toEqual([]);
   });
 });
+
+describe("dedupeMessages", () => {
+  it("drops echoed user rows even when each has a fresh id", async () => {
+    const {dedupeMessages} = await import("@/lib/canvasState");
+    const rows = [
+      {id: "a1", role: "user", content: "how many entities weve added to wikidata"},
+      {id: "b2", role: "user", content: "how many entities weve added to wikidata"},
+      {id: "c3", role: "user", content: "how many entities weve added to wikidata"},
+      {id: "d4", role: "assistant", content: "5801 items."},
+    ];
+    const deduped = dedupeMessages(rows);
+    expect(deduped).toHaveLength(2);
+    expect(deduped[0].id).toBe("a1");
+    expect(deduped[1].role).toBe("assistant");
+  });
+
+  it("keeps distinct content and id-unique rows", async () => {
+    const {dedupeMessages} = await import("@/lib/canvasState");
+    const rows = [
+      {id: "a1", role: "user", content: "q1"},
+      {id: "a2", role: "user", content: "q2"},
+    ];
+    expect(dedupeMessages(rows)).toHaveLength(2);
+  });
+});

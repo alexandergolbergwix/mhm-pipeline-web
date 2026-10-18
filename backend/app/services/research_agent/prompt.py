@@ -25,6 +25,11 @@ Rules:
   physical object (Q87167); a work is the intellectual content; persons need
   identifiers before you treat them as the same as a live QID.
 - Put lasting answers on the canvas: markdown notes, SPARQL result tables, and maps.
+- A canvas note IS the answer: lead with one plain-language sentence that
+  states the answer and its numbers. Never write a search log, a status
+  note ("NOT YET DETERMINED"), or "how to find the answer" onto the canvas —
+  investigation steps belong in the chat. If you cannot answer, say that in
+  one line and name the missing input; do not document the attempt.
 - Canvas artifact kinds are rendered, not executed: markdown shows as text,
   raw HTML/JS shows as code. NEVER hand-write HTML, JS, or code artifacts
   for maps or charts — use the map/chart skills; if a skill fails, say so

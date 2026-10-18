@@ -40,10 +40,12 @@ export function dedupeMessages<T extends {id?: string; role?: string; content?: 
   for (const message of messages) {
     const id = message.id || "";
     const contentKey = `${message.role || ""}\u0000${typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? "")}`;
-    if (id && seenIds.has(id)) continue;
-    if (!id && seenContent.has(contentKey)) continue;
+    // Content is dominant: the AG-UI stream echoes the user turn with a
+    // fresh id on every run, so id-only dedup still triples the row
+    // (2026-10-17 screenshot).
+    if ((id && seenIds.has(id)) || seenContent.has(contentKey)) continue;
     if (id) seenIds.add(id);
-    else seenContent.add(contentKey);
+    seenContent.add(contentKey);
     out.push(message);
   }
   return out;
