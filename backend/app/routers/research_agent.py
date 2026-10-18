@@ -802,6 +802,7 @@ async def start_async_agui(
 
     answer = await deterministic_answer(
         question, db, project_id=str(claims.project_id),
+        web_base=_public_base_url(request),
     )
     if answer is not None:
         await async_run.append_events(claims.thread_id, run_id, [

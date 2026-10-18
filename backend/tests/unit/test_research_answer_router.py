@@ -34,3 +34,39 @@ async def test_off_topic_and_synthesis_questions_route_to_the_agent(db_session, 
             question, db_session, project_id=str(sample_run["project_id"]),
         )
         assert answer is None, question
+
+
+@pytest.mark.asyncio
+async def test_wikidata_count_answer_separates_items_from_writes_and_cites_sources(
+    db_session, sample_run, monkeypatch,
+):
+    import app.services.research_agent.answer_router as answer_router
+
+    async def _stats(_db, *, project_id):
+        return {
+            "write_ops": 5801, "distinct_items": 3628,
+            "created_ops": 3409, "updated_ops": 2392,
+            "run_id": "3494ebf5-ceb0-4702-a94e-c8f10be7f251",
+            "publication_id": "f0992dbf-510e-4a61-906c-8b62622417ce",
+        }
+
+    monkeypatch.setattr(answer_router, "_wikidata_stats", _stats)
+
+    answer = await answer_router.deterministic_answer(
+        "how many entities weve added to wikidata",
+        db_session,
+        project_id=str(sample_run["project_id"]),
+        web_base="https://example.test",
+    )
+
+    assert answer is not None
+    # The two counts must be named distinctly — the 2026-10-18 conflation.
+    assert "distinct items" in answer.text
+    assert "3628" in answer.text
+    assert "write operations" in answer.text
+    assert "5801" in answer.text
+    # Every number ships with a link to its real source.
+    assert "Sources:" in answer.text
+    assert "](" in answer.text
+    assert "wikidata-studio" in answer.text
+    assert all(e["url"].startswith("https://example.test") for e in answer.evidence)
