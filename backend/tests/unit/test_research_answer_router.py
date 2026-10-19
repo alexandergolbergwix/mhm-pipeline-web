@@ -70,3 +70,21 @@ async def test_wikidata_count_answer_separates_items_from_writes_and_cites_sourc
     assert "](" in answer.text
     assert "wikidata-studio" in answer.text
     assert all(e["url"].startswith("https://example.test") for e in answer.evidence)
+
+
+def test_prompt_pins_the_live_verification_and_scope_rules():
+    """The 2026-10-18 lesson (1,740 'manuscripts' for an 897-record corpus)
+    must stay pinned: live-check numbers, name scope, respect the ceiling."""
+    import re as _re
+
+    from app.services.research_agent.prompt import SYSTEM_PROMPT
+
+    flat = _re.sub(r"\s+", " ", SYSTEM_PROMPT).lower()
+    for phrase in (
+        "checked against the live source",
+        "scope every number",
+        "source-count ceiling",
+        "never present a project-wide figure as a corpus figure",
+        "reconcile before you report",
+    ):
+        assert phrase in flat, phrase
