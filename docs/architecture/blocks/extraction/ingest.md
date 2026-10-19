@@ -5,7 +5,7 @@
 ## How it works — 1. Ingest (`marc_ingest.py`)
 
 `parse_marc_upload(raw, filename=...)` dispatches on suffix, with
-content-sniffing fallback (`marc_ingest.py:37-65`):
+content-sniffing fallback (`marc_ingest.py:83-95`):
 
 - **`.mrc` / `.marc`** — parsed via the vendored desktop
   `converter.parser.unified_reader.UnifiedReader` + `extract_all_data`, so
@@ -17,8 +17,19 @@ content-sniffing fallback (`marc_ingest.py:37-65`):
 
 `_normalise_records` guarantees a `_control_number` and, when raw
 `<tag>$<sub>` keys are present (NLI-style exports), calls
-`_collapse_marc_subfields` (`marc_ingest.py:244`), which derives the flat keys
+`_collapse_marc_subfields` (`marc_ingest.py:499`), which derives the flat keys
 the rest of the pipeline reads:
+
+- **Identity (W-276)**: `001` is the primary control number. When it is
+  absent, `035$a` falls back into the same channel —
+  `control_number_from_035` strips the agency prefix `(IsJJNL)` and the
+  `-Aleph` suffix, leaving the NLI Aleph number. Anything unrecognised fails
+  closed to no control number rather than an invented one.
+- **Linked fields (W-276)**: `resolve_linked_880` reads `880$6`
+  (`"245-01/(B"` — tag, occurrence, script) and projects the `880` row as its
+  linked tag. The romanized form reaches `marc_880` / `marc_880_name`, which
+  the label tier already probes; the vernacular is never overwritten. An
+  unparseable `880$6` is left in raw columns.
 
 - `title` (245$a+$b), `authors` (100/110/111 with $e roles + $d dates),
   `contributors` (700/710/711/800/810/811), `subjects` (600/610/611/650/651
@@ -46,7 +57,7 @@ the rest of the pipeline reads:
   the `.mrc` path and the collapsed-key path emit byte-identical events
   (Rule W-32). Idempotent — skips when the `.mrc` path already filled it.
 
-`extract_named_entities(record)` (`marc_ingest.py:1018`) yields entity
+`extract_named_entities(record)` (`marc_ingest.py:1445`) yields entity
 candidates for the Authority block: contributors/authors/subjects, production
 place (260), related places (751/752), one `<type>_place` place entity per
 provenance event, provenance-institution corporates, `work_mentions` as
@@ -55,6 +66,6 @@ provenance event, provenance-institution corporates, `work_mentions` as
 contributor 3 > subject 2 > production_place 1 > place 0); losing roles are
 recorded in `alt_roles`. Different kinds with the same text are NOT collapsed.
 
-`prepare_record_for_pipeline(rec)` (`marc_ingest.py:827`) must be called by
+`prepare_record_for_pipeline(rec)` (`marc_ingest.py:1235`) must be called by
 every consumer that reads `run_records.marc` straight from the DB — it
 re-collapses legacy subfield-key rows and normalises genres/subjects/places.

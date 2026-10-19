@@ -1014,3 +1014,24 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     identity or our creator) converts to an owned UPDATE instead of blocking
     beside it. *Why:* the cache planned 1,038 creates beside items the pass
     itself had created the day before (2026-10-17).
+139. **R139 — Every MARC field has a deliberate Wikidata fate, recorded and
+    measured (W-275).** `converter/wikidata/marc_field_map.py` is the one
+    table: each field maps to named properties, or is held as evidence, or is
+    declared out-of-model. No field is silently absent. The coverage harness
+    (`scripts/marc_wikidata_coverage.py`) measures per-field and per-property
+    coverage against that table and exits non-zero when coverage regresses;
+    CI runs it on an in-repo fixture. A holding library is `710` → `P195`
+    (collection), never `P50` (author) — a library is not an author.
+    *Why:* the 2026-10-18 audit of 897 matched items found `710` documented as
+    `P50` at 0% (it should have been `P195`), `100$a`/`700$a` authorship at 0%,
+    and nine catalog-only fields carrying real data with no recorded fate.
+140. **R140 — Identity and linked-tag MARC channels are complete (W-276).**
+    `035$a` falls back into the same P3959 identity channel when `001` is
+    absent; the agency prefix and `-Aleph` suffix are stripped, and anything
+    unrecognised fails closed to no control number rather than an invented one.
+    A MARC `880` is not a field of its own — `880$6` names the tag it mirrors,
+    and its subfields project as that tag (the romanized form reaches
+    `marc_880` / `marc_880_name`, which the label tier already reads). An
+    `880$6` that cannot be parsed is left in raw columns. *Why:* records with
+    no `001` were unjoinable, and all 25 `880` rows in the 17th-century corpus
+    were dropped despite carrying the ALA-LC romanized title.

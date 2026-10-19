@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-274)
+## Architectural rules (W-1…W-276)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -447,3 +447,5 @@ plan doc, block docs (see [AGENTS.md](AGENTS.md)), and this file are updated.
   source of every safety guard listed above).
 - The eval-agent CLAUDE.md at
   `/Users/alexandergo/Documents/Doctorat/eval-agent/CLAUDE.md`.
+- **W-275** — Every MARC field has a deliberate Wikidata fate, recorded and measured: `converter/wikidata/marc_field_map.py` gives each field one fate (`map` / `evidence` / `out_of_model`), and `scripts/marc_wikidata_coverage.py` measures per-field and per-property coverage against it, exiting non-zero on regression (CI runs an in-repo fixture). A holding library is `710` → `P195` (collection), never `P50` (author) (2026-10-18: 897/897 records carried `710` documented as `P50` at 0%; `100$a`/`700$a` authorship 0%; nine catalog-only fields with no recorded fate) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
+- **W-276** — Identity and linked-tag MARC channels are complete: `035$a` falls back into the P3959 identity channel when `001` is absent (agency prefix and `-Aleph` stripped, anything unrecognised fails closed), and MARC `880` projects as its linked tag (`880$6` names the tag; the romanized form reaches `marc_880`/`marc_880_name`, the vernacular is never overwritten) (2026-10-18: records with no `001` were unjoinable; all 25 `880` rows were dropped despite carrying the ALA-LC romanized title) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)

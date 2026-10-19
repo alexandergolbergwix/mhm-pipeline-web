@@ -18,6 +18,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
@@ -33,6 +34,50 @@ _AUTHOR_HEADERS = ("author", "authors", "100a", "100")
 _CONTRIBUTOR_HEADERS = ("contributor", "contributors", "700a", "700")
 _SUBJECT_HEADERS = ("subject", "subjects", "600", "650")
 _MULTI_DELIMS = ("|", ";", "<--SEP-->")
+
+# 035$a system control number, e.g. ``(IsJJNL)000118870NNL01-Aleph``.
+# The parenthesised prefix is the OCLC/MARC agency symbol; the digits that
+# follow are the NLI Aleph record number.
+_035_AGENCY_RE = re.compile(r"^\s*\([^)]*\)\s*")
+_035_ALEPH_SUFFIX_RE = re.compile(r"NNL\d*-Aleph\s*$", re.IGNORECASE)
+
+
+def control_number_from_035(value: object) -> str:
+    """The NLI record number inside a MARC ``035$a`` system control number.
+
+    Returns ``""`` when the value is absent or carries no digits. A 9-digit
+    Aleph number is a valid P3959 value — the property accepts the legacy
+    9-digit form as well as the 18-digit system number (WP7.2).
+
+    Fails closed on anything unrecognised: an invented control number would
+    join a record to the wrong Wikidata item.
+    """
+    text = str(value or "").strip().strip("\"'")
+    if not text:
+        return ""
+    text = _035_AGENCY_RE.sub("", text)
+    text = _035_ALEPH_SUFFIX_RE.sub("", text)
+    text = text.strip()
+    if text.isdigit():
+        return text
+    digits = re.sub(r"\D", "", text)
+    # A single digit run is the record number; a value that mixes digits with
+    # unrelated words is not a control number we can name.
+    return digits if digits and re.fullmatch(r"[0-9]+", text.replace(" ", "")) else ""
+
+
+def _control_number_value(row: dict[str, Any]) -> str:
+    """The record's control number: ``001``, falling back to ``035$a`` (WP7.2).
+
+    ``001`` is the primary identity channel. ``035$a`` carries the same NLI
+    record number in the agency-qualified form, so it fills the channel when
+    ``001`` is missing rather than leaving the record unjoinable.
+    """
+    for key in (*_CN_HEADERS, "controlNumber"):
+        value = str(row.get(key) or "").strip().strip("\"'")
+        if value:
+            return value
+    return control_number_from_035(row.get("035$a"))
 
 
 def parse_marc_upload(raw: bytes, *, filename: str | None = None) -> list[dict[str, Any]]:
@@ -89,7 +134,7 @@ def _parse_mrc_via_desktop(raw: bytes) -> list[dict[str, Any]]:
                 rec = extracted.to_dict()
             else:
                 rec = dict(vars(extracted))
-            rec.setdefault("_control_number", rec.get("control_number") or rec.get("001") or "")
+            rec.setdefault("_control_number", _control_number_value(rec))
             out.append(rec)
         return _normalise_records(out)
     finally:
@@ -233,12 +278,7 @@ def _suffix(filename: str | None) -> str:
 def _normalise_records(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for i, row in enumerate(rows):
-        cn = (
-            row.get("_control_number")
-            or row.get("control_number")
-            or row.get("001")
-            or row.get("id")
-        )
+        cn = _control_number_value(row)
         if not cn:
             cn = f"row{i:04d}"
         record = dict(row)
@@ -477,6 +517,9 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     * ``contents``    — ``505$a`` split on ``--`` into title chunks
                         (the Contents-NER input + work-item driver)
     * ``colophon_text``— ``590$a`` (local notes — desktop convention)
+    * ``linked_880``  — ``880`` rows projected as their linked tag (WP7.3),
+                        with ``marc_880`` / ``marc_880_name`` carrying the
+                        romanized form for 245/100/700
 
     Date-source contract: ``marc_date_sources.py``.
 
@@ -489,6 +532,12 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     Modal is called with empty strings → 0 entities → 0 work items
     in the Studio. (Smoking gun, 2026-06-02.)
     """
+    # ── Linked fields (MARC 880) ────────────────────────────────────
+    # Resolve before any tag read: an 880 mirrors its linked tag in another
+    # script, so its romanized form must be available to the title/name
+    # channels below (WP7.3).
+    resolve_linked_880(record)
+
     # ── Title ────────────────────────────────────────────────────────
     title_a = _str(record.get("245$a"))
     title_b = _str(record.get("245$b"))
@@ -1064,6 +1113,67 @@ def _str(v: Any) -> str:
     return normalize_entity_text(v)
 
 
+# 880$6 links an alternate-graphic field to the tag it mirrors:
+# ``"245-01/(B"`` = field 245, occurrence 01, script B. The 880 carries the
+# romanized (Latin) form while the linked tag carries the vernacular. MARC
+# leaves the script code's paren open, so the closing ``)`` is optional.
+_LINKED_FIELD_6_RE = re.compile(r"^(\d{3})-(\d{2})/\((.)\)?$")
+
+# Where a linked 880 subfield lands, by linked tag. The romanized title has a
+# home the builder already reads (``hebrew_translit`` Tier 2 probes
+# ``marc_880``); other linked tags are recorded as structured evidence so the
+# row is never silently dropped.
+_LINKED_880_ROMANIZED_KEYS = {
+    "245": ("marc_880", "title_romanized"),
+    "100": ("marc_880_name", "name_romanized"),
+    "700": ("marc_880_name", "name_romanized"),
+}
+
+
+def resolve_linked_880(record: dict[str, Any]) -> None:
+    """Project MARC 880 rows as their linked tag (WP7.3).
+
+    An 880 is not a field of its own: ``880$6`` names the tag it mirrors, and
+    its subfields belong to that tag in another script. Rather than drop the
+    row, route it to the channel that tag's projection already reads.
+
+    Fails closed: an 880 whose ``$6`` we cannot parse is left in raw columns
+    rather than guessed onto a tag.
+    """
+    raw_six = list(_split_multi(_str(record.get("880$6"))))
+    if not raw_six:
+        return
+
+    linked: list[dict[str, Any]] = list(record.get("linked_880") or [])
+    for index, six in enumerate(raw_six):
+        match = _LINKED_FIELD_6_RE.match(six.strip())
+        if not match:
+            continue
+        tag, _occurrence, script = match.group(1), match.group(2), match.group(3)
+        subfields = {
+            code: _split_multi(_str(record.get(f"880${code}")))[index]
+            for code in ("a", "b", "c", "e", "k")
+            if record.get(f"880${code}")
+            and len(_split_multi(_str(record.get(f"880${code}")))) > index
+        }
+        if not subfields:
+            continue
+        linked.append(
+            {
+                "linked_tag": tag,
+                "script": script,
+                "source_field": "880",
+                "subfields": subfields,
+            }
+        )
+        for key in _LINKED_880_ROMANIZED_KEYS.get(tag, ()):
+            if subfields.get("a") and not record.get(key):
+                record[key] = subfields["a"]
+
+    if linked:
+        record["linked_880"] = linked
+
+
 def _label_from_marc_entry(
     entry: Any,
     *,
@@ -1140,14 +1250,7 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
     is idempotent for all non-subfield-key paths.
     """
     row = dict(rec)
-    control_number = (
-        row.get("_control_number")
-        or row.get("control_number")
-        or row.get("controlNumber")
-        or row.get("001")
-        or ""
-    )
-    row["_control_number"] = str(control_number).strip().strip("\"'")
+    row["_control_number"] = _control_number_value(row)
     if any("$" in k for k in row):
         _collapse_marc_subfields(row)
     if row.get("contributors"):

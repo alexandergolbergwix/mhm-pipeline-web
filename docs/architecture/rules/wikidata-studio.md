@@ -2989,3 +2989,74 @@ caught the collision. Two guards close the class:
    `baserevid` instead of blocking beside it; `_assert_modifiable`
    re-verifies ownership at write time. A `present_foreign` target stays
    blocked (the consent gate is unchanged).
+
+---
+
+### Rule W-275 — Every MARC field has a deliberate Wikidata fate, recorded and measured (added 2026-10-19)
+
+The 2026-10-18 coverage audit of the 897-record 17th-century corpus (897 items
+matched 1:1 by P3959) measured mapped fields against live `query.wikidata.org`
+claims. Three defects shared one root cause: nobody held a single table saying
+where each MARC field is supposed to land, so a field could drift to the wrong
+property, sit at 0% with no owner, or vanish without a decision.
+
+- `710` (the holding library, present on 897/897 records) was documented as
+  `P50` — author — and measured 0%. A library is not an author. It belongs in
+  `P195` (collection), which the projection already emitted at 71.7%.
+- `100$a` (456 records) and `700$a` (665 records) produced **zero** author
+  claims anywhere, because the WikiProject Manuscripts model puts authorship on
+  the WORK and the work link (`P1574`) existed on only 152/897 items.
+- Nine catalog-only fields carried real data (`907` digital-file ids, `952`
+  rights, `957` colophons, `958` script, `921/934/915` local ids, `336-338`
+  RDA, `034` coords) with no recorded fate at all.
+
+`converter/wikidata/marc_field_map.py` is now the one table. Every field has
+exactly one deliberate fate:
+
+- **`map`** — projected onto named properties.
+- **`evidence`** — preserved as source evidence or a reference, never a public
+  claim. Not a coverage failure to emit no claim.
+- **`out_of_model`** — deliberately not represented on Wikidata. The absence is
+  a decision, not a gap.
+
+`backend/scripts/marc_wikidata_coverage.py` measures the corpus against that
+table and prints per-field coverage (of the records that carry the field) plus
+per-property share. It exits non-zero when coverage regresses below a recorded
+baseline, and on `--fail-below-target` below the plan's targets. Three sources:
+`--projected` measures what the current code emits (how a work package's lift
+is priced *before* upload), `--claims` replays a snapshot (CI), `--live` joins
+real claims by P3959. CI runs it on the in-repo fixture
+`backend/tests/unit/fixtures/marc_coverage_{corpus.tsv,claims.json,baseline.json}`
+via `tests/unit/test_marc_wikidata_coverage.py`.
+
+A projection change that moves a field MUST update `marc_field_map.py` in the
+same change, then regenerate the fixture claims and baseline together so the
+regression gate stays honest. Do not retune a target downward to make a
+failure pass — record the shortfall and fix the projection.
+
+### Rule W-276 — Identity and linked-tag MARC channels are complete (added 2026-10-19)
+
+Two MARC channels were silently lossy in ingest:
+
+1. **`035$a` fills the P3959 identity channel when `001` is absent.** The
+   NLI export carries the same record number in agency-qualified form —
+   `(IsJJNL)000118870NNL01-Aleph` is record `000118870`, which is also embedded
+   in the 18-digit `001` `990001188700205171`. `control_number_from_035`
+   strips the agency prefix and the `-Aleph` suffix and returns the digits;
+   P3959 accepts the legacy 9-digit form as well as the 18-digit system number.
+   A value that is not a clean number fails closed to no control number — an
+   invented one would join a record to the wrong Wikidata item (the same
+   fail-closed family as Rule W-66's canonical-control-number boundary).
+   `001` remains the primary channel and always wins when present.
+2. **MARC `880` projects as its linked tag.** An `880` is not a field of its
+   own: `880$6` (`"245-01/(B"`) names the tag it mirrors (245), the occurrence,
+   and the script. The `880` carries the romanized (ALA-LC Latin) form while
+   the linked tag carries the vernacular. The row is no longer dropped —
+   `resolve_linked_880` records the link in `linked_880` and routes the
+   romanized form to `marc_880` / `marc_880_name`, which the label tier
+   already probes as trusted catalog romanization (Rule W-65). The vernacular
+   is never overwritten. An `880$6` that cannot be parsed is left in raw
+   columns rather than guessed onto a tag.
+
+All 25 `880` rows in the 17th-century corpus link to `245` and now supply the
+romanized title. Tests: `tests/unit/test_marc_field_mapping_wp7.py`.

@@ -1,0 +1,634 @@
+{
+  "records": 15,
+  "matched_items": 15,
+  "fields": [
+    {
+      "tag": "001",
+      "layer": "identity",
+      "kind": "claim",
+      "pids": [
+        "P3959"
+      ],
+      "with_field": 15,
+      "covered": 15,
+      "coverage": 1.0,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "tag": "035$a",
+      "layer": "identity",
+      "kind": "claim",
+      "pids": [
+        "P3959"
+      ],
+      "with_field": 15,
+      "covered": 15,
+      "coverage": 1.0,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "tag": "008",
+      "layer": "identity",
+      "kind": "claim",
+      "pids": [
+        "P571",
+        "P1319",
+        "P1326",
+        "P407"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "tag": "041$a",
+      "layer": "identity",
+      "kind": "claim",
+      "pids": [
+        "P407"
+      ],
+      "with_field": 15,
+      "covered": 15,
+      "coverage": 1.0,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "tag": "024$a",
+      "layer": "identity",
+      "kind": "ref",
+      "pids": [
+        "P2888"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "tag": "245$a",
+      "layer": "title",
+      "kind": "claim",
+      "pids": [
+        "P1476"
+      ],
+      "with_field": 15,
+      "covered": 15,
+      "coverage": 1.0,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "tag": "245$b",
+      "layer": "title",
+      "kind": "claim",
+      "pids": [
+        "P1680"
+      ],
+      "with_field": 1,
+      "covered": 1,
+      "coverage": 1.0,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "tag": "245$c",
+      "layer": "work",
+      "kind": "claim",
+      "pids": [
+        "P2093"
+      ],
+      "with_field": 1,
+      "covered": 0,
+      "coverage": 0.0,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "100$a",
+      "layer": "work",
+      "kind": "claim",
+      "pids": [
+        "P50",
+        "P2093"
+      ],
+      "with_field": 2,
+      "covered": 0,
+      "coverage": 0.0,
+      "target": 0.6,
+      "meets_target": false
+    },
+    {
+      "tag": "100$d",
+      "layer": "work",
+      "kind": "claim",
+      "pids": [
+        "P569",
+        "P570"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "700$a",
+      "layer": "work",
+      "kind": "claim",
+      "pids": [
+        "P50",
+        "P2093"
+      ],
+      "with_field": 1,
+      "covered": 0,
+      "coverage": 0.0,
+      "target": 0.6,
+      "meets_target": false
+    },
+    {
+      "tag": "505$a",
+      "layer": "work",
+      "kind": "claim",
+      "pids": [
+        "P1574"
+      ],
+      "with_field": 1,
+      "covered": 1,
+      "coverage": 1.0,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "730$a",
+      "layer": "work",
+      "kind": "claim",
+      "pids": [
+        "P1574"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "740$a",
+      "layer": "work",
+      "kind": "claim",
+      "pids": [
+        "P1574"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "260$c",
+      "layer": "identity",
+      "kind": "claim",
+      "pids": [
+        "P571"
+      ],
+      "with_field": 1,
+      "covered": 1,
+      "coverage": 1.0,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "tag": "264$c",
+      "layer": "identity",
+      "kind": "claim",
+      "pids": [
+        "P571"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "300$a",
+      "layer": "physical",
+      "kind": "claim",
+      "pids": [
+        "P1104"
+      ],
+      "with_field": 15,
+      "covered": 15,
+      "coverage": 1.0,
+      "target": 0.9,
+      "meets_target": true
+    },
+    {
+      "tag": "300$c",
+      "layer": "physical",
+      "kind": "claim",
+      "pids": [
+        "P2048",
+        "P2049"
+      ],
+      "with_field": 2,
+      "covered": 2,
+      "coverage": 1.0,
+      "target": 0.5,
+      "meets_target": true
+    },
+    {
+      "tag": "340$a",
+      "layer": "physical",
+      "kind": "claim",
+      "pids": [
+        "P186"
+      ],
+      "with_field": 1,
+      "covered": 1,
+      "coverage": 1.0,
+      "target": 0.4,
+      "meets_target": true
+    },
+    {
+      "tag": "563$a",
+      "layer": "physical",
+      "kind": "claim",
+      "pids": [
+        "P1552"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "260$a",
+      "layer": "place",
+      "kind": "claim",
+      "pids": [
+        "P1071",
+        "P276"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "264$a",
+      "layer": "place",
+      "kind": "claim",
+      "pids": [
+        "P1071",
+        "P276"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "751$a",
+      "layer": "place",
+      "kind": "claim",
+      "pids": [
+        "P7153"
+      ],
+      "with_field": 2,
+      "covered": 0,
+      "coverage": 0.0,
+      "target": 0.4,
+      "meets_target": false
+    },
+    {
+      "tag": "752$a",
+      "layer": "place",
+      "kind": "claim",
+      "pids": [
+        "P1071",
+        "P276"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": 0.6,
+      "meets_target": true
+    },
+    {
+      "tag": "520$a",
+      "layer": "note",
+      "kind": "claim",
+      "pids": [
+        "P7535"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": 0.5,
+      "meets_target": true
+    },
+    {
+      "tag": "500$a",
+      "layer": "note",
+      "kind": "claim",
+      "pids": [
+        "P1684",
+        "P5102",
+        "P1922",
+        "P3132",
+        "P9302"
+      ],
+      "with_field": 1,
+      "covered": 1,
+      "coverage": 1.0,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "561$a",
+      "layer": "note",
+      "kind": "claim",
+      "pids": [
+        "P3342",
+        "P11811",
+        "P11812"
+      ],
+      "with_field": 2,
+      "covered": 0,
+      "coverage": 0.0,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "593$a",
+      "layer": "note",
+      "kind": "claim",
+      "pids": [
+        "P9302"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "597$a",
+      "layer": "note",
+      "kind": "claim",
+      "pids": [
+        "P9302"
+      ],
+      "with_field": 0,
+      "covered": 0,
+      "coverage": null,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "957$a",
+      "layer": "note",
+      "kind": "claim",
+      "pids": [
+        "P7535",
+        "P1684"
+      ],
+      "with_field": 1,
+      "covered": 0,
+      "coverage": 0.0,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "958$a",
+      "layer": "note",
+      "kind": "claim",
+      "pids": [
+        "P9302"
+      ],
+      "with_field": 15,
+      "covered": 1,
+      "coverage": 0.06666666666666667,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "650$a",
+      "layer": "subject",
+      "kind": "claim",
+      "pids": [
+        "P921"
+      ],
+      "with_field": 14,
+      "covered": 0,
+      "coverage": 0.0,
+      "target": 0.6,
+      "meets_target": false
+    },
+    {
+      "tag": "655$a",
+      "layer": "subject",
+      "kind": "claim",
+      "pids": [
+        "P136"
+      ],
+      "with_field": 13,
+      "covered": 12,
+      "coverage": 0.9230769230769231,
+      "target": 0.8,
+      "meets_target": true
+    },
+    {
+      "tag": "710$a",
+      "layer": "place",
+      "kind": "claim",
+      "pids": [
+        "P195"
+      ],
+      "with_field": 15,
+      "covered": 15,
+      "coverage": 1.0,
+      "target": 0.75,
+      "meets_target": true
+    },
+    {
+      "tag": "856$u",
+      "layer": "digital",
+      "kind": "claim",
+      "pids": [
+        "P953",
+        "P973",
+        "P6108"
+      ],
+      "with_field": 2,
+      "covered": 2,
+      "coverage": 1.0,
+      "target": 0.8,
+      "meets_target": true
+    },
+    {
+      "tag": "952$a",
+      "layer": "catalog-only",
+      "kind": "claim",
+      "pids": [
+        "P6216"
+      ],
+      "with_field": 15,
+      "covered": 0,
+      "coverage": 0.0,
+      "target": null,
+      "meets_target": true
+    },
+    {
+      "tag": "958$b",
+      "layer": "note",
+      "kind": "claim",
+      "pids": [
+        "P9302"
+      ],
+      "with_field": 1,
+      "covered": 1,
+      "coverage": 1.0,
+      "target": null,
+      "meets_target": true
+    }
+  ],
+  "properties": [
+    {
+      "pid": "P1071",
+      "items": 0,
+      "share": 0.0,
+      "target": 0.6,
+      "meets_target": false
+    },
+    {
+      "pid": "P1104",
+      "items": 15,
+      "share": 1.0,
+      "target": 0.85,
+      "meets_target": true
+    },
+    {
+      "pid": "P136",
+      "items": 12,
+      "share": 0.8,
+      "target": 0.8,
+      "meets_target": true
+    },
+    {
+      "pid": "P1476",
+      "items": 15,
+      "share": 1.0,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "pid": "P1574",
+      "items": 3,
+      "share": 0.2,
+      "target": 0.9,
+      "meets_target": false
+    },
+    {
+      "pid": "P186",
+      "items": 1,
+      "share": 0.06666666666666667,
+      "target": 0.4,
+      "meets_target": false
+    },
+    {
+      "pid": "P195",
+      "items": 15,
+      "share": 1.0,
+      "target": 0.7,
+      "meets_target": true
+    },
+    {
+      "pid": "P2048",
+      "items": 2,
+      "share": 0.13333333333333333,
+      "target": 0.5,
+      "meets_target": false
+    },
+    {
+      "pid": "P2093",
+      "items": 0,
+      "share": 0.0,
+      "target": 0.6,
+      "meets_target": false
+    },
+    {
+      "pid": "P217",
+      "items": 15,
+      "share": 1.0,
+      "target": 0.95,
+      "meets_target": true
+    },
+    {
+      "pid": "P3959",
+      "items": 15,
+      "share": 1.0,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "pid": "P407",
+      "items": 15,
+      "share": 1.0,
+      "target": 1.0,
+      "meets_target": true
+    },
+    {
+      "pid": "P50",
+      "items": 0,
+      "share": 0.0,
+      "target": 0.6,
+      "meets_target": false
+    },
+    {
+      "pid": "P571",
+      "items": 1,
+      "share": 0.06666666666666667,
+      "target": 1.0,
+      "meets_target": false
+    },
+    {
+      "pid": "P7153",
+      "items": 0,
+      "share": 0.0,
+      "target": 0.4,
+      "meets_target": false
+    },
+    {
+      "pid": "P7535",
+      "items": 0,
+      "share": 0.0,
+      "target": 0.5,
+      "meets_target": false
+    },
+    {
+      "pid": "P921",
+      "items": 0,
+      "share": 0.0,
+      "target": 0.6,
+      "meets_target": false
+    },
+    {
+      "pid": "P953",
+      "items": 0,
+      "share": 0.0,
+      "target": 0.8,
+      "meets_target": false
+    }
+  ]
+}

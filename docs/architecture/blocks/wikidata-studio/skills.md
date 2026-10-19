@@ -259,6 +259,36 @@ English labels, P217, P195, and `property_label`/`value_label` nulls first.
 Re-run the build after mapper changes because old JSON exports retain the old
 labels and cannot validate the new projection.
 
+### Skill: measure MARC → Wikidata coverage before and after a projection change
+
+Run the coverage harness from `backend/` against the corpus you care about.
+It prints one row per MARC field with the coverage of the records that carry
+it, plus the property share across the corpus and the plan's targets:
+
+```bash
+cd backend && .venv/bin/python -m scripts.marc_wikidata_coverage \
+  /path/to/corpus.tsv --projected
+```
+
+`--projected` measures what the *current code* emits — that is how a work
+package's lift is priced before anything is uploaded. `--claims FILE` replays
+a recorded snapshot (what CI does), `--live` joins real claims from
+`query.wikidata.org` by P3959. After a change, regenerate the CI snapshot and
+baseline together so the regression gate stays honest:
+
+```bash
+cd backend && .venv/bin/python -m scripts.marc_wikidata_coverage \
+  tests/unit/fixtures/marc_coverage_corpus.tsv --projected \
+  --write-claims tests/unit/fixtures/marc_coverage_claims.json \
+  --write-baseline tests/unit/fixtures/marc_coverage_baseline.json
+```
+
+`--baseline` exits non-zero when coverage falls below the recorded numbers;
+`--fail-below-target` exits non-zero below the plan's targets. The per-field
+mapping and its deliberate fate live in
+`converter/wikidata/marc_field_map.py` — update that table first, then the
+harness and the WP8 ledger follow.
+
 ### Skill: approve a sealed Release and dry-run it from the CLI
 `cd backend && .venv/bin/python -m scripts.approve_and_dry_run_publication
 <RUN_ID> <PUBLICATION_ID> <ACTOR_ID>` — approves the sealed Release of a

@@ -234,3 +234,6 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/unit/test_publication_execution_retries.py` — workers re-run on dead DB connections, `absent` observations expire once the plan executes (W-271 / W-272).
 - `backend/tests/unit/test_wikidata_publication_gateway.py` — hung writes/reads become retryable under the time budgets; a CREATE preflight adopts a `present_owned` target as an owned UPDATE and still blocks a foreign one (W-271 / W-272).
 - `backend/tests/unit/test_modal_job_client.py` — a 401 dispatch names the `MODAL_JOBS_TOKEN` remediation (W-271).
+
+- `backend/tests/unit/test_marc_wikidata_coverage.py` — the WP9 coverage harness (W-275): every field has a deliberate fate, `710` → `P195` never `P50`, `035` shares the `001` identity channel, RDA `336-338` are out-of-model, `880` projects as its linked tag, and coverage cannot regress below the in-repo baseline fixture. Fixtures live in `backend/tests/unit/fixtures/marc_coverage_{corpus.tsv,claims.json,baseline.json}`.
+- `backend/tests/unit/test_marc_field_mapping_wp7.py` — WP7 mapping corrections (W-276): `035$a` extracts the NLI Aleph number and fails closed on non-numeric values; `001` stays the primary identity channel; MARC `880` feeds the romanized title/name channels without overwriting the vernacular, and an unparseable `880$6` is left alone.
