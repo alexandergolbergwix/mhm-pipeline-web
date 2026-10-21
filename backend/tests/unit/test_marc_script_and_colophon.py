@@ -136,3 +136,68 @@ def test_590_apparatus_is_dropped_by_design() -> None:
     """
     prepared = prepare_record_for_pipeline({"001": "a", "590$a": "קולופון מקומי"})
     assert "colophon_text" not in prepared or not prepared["colophon_text"]
+
+
+# ── Rule W-282: two silent-total defects ─────────────────────────────────
+#
+# (a) `build_context` accepted `wikibase_endpoint` and never passed it to
+#     `RuleContext`, so it stayed "" and every live rule built a host-less
+#     "/w/api.php" and failed with "unknown url type".
+# (b) `_build_claim_spec` shaped an empty monolingualtext into a claim, so 885
+#     items carried {"text": "", "language": "he"} on P288 and every one failed
+#     `claims.datatype`.
+
+
+def test_build_context_passes_the_wikibase_endpoint() -> None:
+    """The endpoint must reach the rules, not die in the factory."""
+    from app.pipeline.rule_verify.scope import build_context
+
+    ctx = build_context(
+        run_id="r", items=[], api_enabled=True,
+        wikibase_endpoint="https://mhm-hmo.wikibase.cloud",
+    )
+    assert ctx.wikibase_endpoint == "https://mhm-hmo.wikibase.cloud"
+
+
+def test_build_context_defaults_to_an_empty_endpoint() -> None:
+    from app.pipeline.rule_verify.scope import build_context
+
+    assert build_context(run_id="r", items=[], api_enabled=True).wikibase_endpoint == ""
+
+
+def test_empty_monolingualtext_is_not_a_claim() -> None:
+    """An empty text is not a claim value — it becomes a skipped statement."""
+    from types import SimpleNamespace
+
+    from converter.wikibase.hmo_exporter import _build_claim_spec
+
+    for blank in ("", "   "):
+        spec = _build_claim_spec(
+            SimpleNamespace(wikibase_id="P288", datatype="monolingualtext"),
+            SimpleNamespace(value=blank, language="he"),
+        )
+        assert spec is None, repr(blank)
+
+
+def test_empty_string_is_not_a_claim() -> None:
+    from types import SimpleNamespace
+
+    from converter.wikibase.hmo_exporter import _build_claim_spec
+
+    assert _build_claim_spec(
+        SimpleNamespace(wikibase_id="P288", datatype="string"),
+        SimpleNamespace(value="", language=None),
+    ) is None
+
+
+def test_real_monolingualtext_still_shapes() -> None:
+    from types import SimpleNamespace
+
+    from converter.wikibase.hmo_exporter import _build_claim_spec
+
+    spec = _build_claim_spec(
+        SimpleNamespace(wikibase_id="P288", datatype="monolingualtext"),
+        SimpleNamespace(value="תם ונשלם", language="he"),
+    )
+    assert spec is not None
+    assert spec.value == {"text": "תם ונשלם", "language": "he"}

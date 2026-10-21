@@ -919,11 +919,20 @@ def _build_claim_spec(
             return None
         return ResolvedClaim(prop_entry.wikibase_id, "time", time_value)
     if datatype == "monolingualtext":
+        text = _truncate(str(stmt.value), _MAX_STRING_VALUE_LENGTH)
+        # An empty text is not a claim value. 885 items in run 47e03437
+        # carried {"text": "", "language": "he"} on P288 (the Production node's
+        # empty appellation) and every one of them failed `claims.datatype`
+        # with "value does not match declared datatype". Returning None lets
+        # the caller record it as a skipped statement instead (Rule W-282) —
+        # the same guard the url branch below already had.
+        if not text.strip():
+            return None
         return ResolvedClaim(
             prop_entry.wikibase_id,
             "monolingualtext",
             {
-                "text": _truncate(str(stmt.value), _MAX_STRING_VALUE_LENGTH),
+                "text": text,
                 "language": stmt.language or "en",
             },
         )
@@ -933,6 +942,8 @@ def _build_claim_spec(
             text = clean_url_value(text)
             if not text:
                 return None
+        if not text.strip():
+            return None
         return ResolvedClaim(
             prop_entry.wikibase_id, datatype,
             _truncate(text, _MAX_STRING_VALUE_LENGTH),

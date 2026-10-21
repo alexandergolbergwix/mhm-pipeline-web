@@ -1025,3 +1025,51 @@ Tests: `backend/tests/test_rule_verify.py`
 `test_prime_fetch_caches_batches_entity_ids`,
 `test_prime_fetch_caches_is_global_not_per_user`,
 `test_prime_fetch_caches_noops_without_endpoint`).
+
+---
+
+### Rule W-282 — A parameter that never reaches its target is a silent total failure (added 2026-10-21)
+
+Two defects, both invisible in the output and catastrophic in effect. The
+rule-verify run on `47e03437` read `error 72 / fail 976 / pass 17432` and
+neither had a visible symptom until the verdicts were read back.
+
+**1. `build_context` dropped `wikibase_endpoint`.** The factory accepted the
+parameter and never passed it to `RuleContext`, so the field kept its `""`
+default. Every live rule then built
+
+```
+/w/api.php?action=wbgetentities&ids=Q27085&…
+```
+
+— no host — and failed with `lookup failed: unknown url type`. That cost
+`hmo.live.alive` and `hmo.live.label_drift` every probe they made, all
+reported as `error`. The setting itself was correct the whole time
+(`WIKIBASE_CLOUD_BASE_URL` resolves to `https://mhm-hmo.wikibase.cloud` on
+the dyno); the value simply never arrived.
+
+Earlier work had made the *symptom* louder — a WARNING when the setting is
+missing, and `prime_fetch_caches` refusing to fetch — but the rules still
+built the broken URL. Diagnosing the message instead of the value is what
+hid it: `unknown url type: '/w/api.php…'` reads like a bad URL, and the real
+cause was an unpopulated field one call earlier.
+
+**2. `_build_claim_spec` shaped an empty text into a claim.** The
+`monolingualtext` branch had no empty check, so `{"text": "", "language":
+"he"}` became a claim on `P288` (the Production node's empty appellation)
+and `claims.datatype` correctly called it malformed. **885 of 976 fails** were
+this one shape. The `url` branch four lines below already returned `None` on
+empty; the string branch had the same gap. Both now do.
+
+**A constructor that omits a parameter it was given is a bug, and it will not
+raise.** When a value must reach a target, verify it *at the target* — a test
+that builds the context and reads the field back, not one that only checks the
+caller passed an argument. The same applies to a value-shaped claim: empty
+input is not a claim, and returning `None` for it lets the caller record a
+skipped statement instead of a malformed one.
+
+Tests: `backend/tests/unit/test_marc_script_and_colophon.py`
+(`test_build_context_passes_the_wikibase_endpoint`,
+`test_empty_monolingualtext_is_not_a_claim`,
+`test_empty_string_is_not_a_claim`,
+`test_real_monolingualtext_still_shapes`).

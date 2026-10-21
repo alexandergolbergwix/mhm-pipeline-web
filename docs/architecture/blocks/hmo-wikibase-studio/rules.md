@@ -423,4 +423,15 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
     *Why:* run 47e03437 made one throttled request per item and read
     `4100 / 18481` after 90+ minutes, and every later run paid the same
     price because the memo died with the pass.
+68. **R68 — A parameter that never reaches its target is a silent total
+    failure (Rule W-282).** `build_context` accepted `wikibase_endpoint` and
+    never passed it to `RuleContext`, so every live rule built a host-less
+    `/w/api.php` and failed with `unknown url type` (72 entities / 200 rule
+    errors on run 47e03437, while the setting was correct all along).
+    `_build_claim_spec` also shaped an empty `monolingualtext` into a claim,
+    so 885 items carried `{"text": ""}` on P288 and failed `claims.datatype`;
+    the `url` branch below it already returned `None` on empty, and both
+    `monolingualtext` and `string` now do too. *Why:* verify a value at its
+    target, not just at the caller — an omitted constructor argument does
+    not raise. And empty input is not a claim value.
 

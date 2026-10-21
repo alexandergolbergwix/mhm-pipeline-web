@@ -84,6 +84,11 @@ def build_context(  # noqa: ANN201 — dataclass return, see rule_verify.context
         run_id=run_id,
         api_enabled=api_enabled,
         fetcher=fetcher,
+        # Must reach the context. It used to be accepted and silently
+        # dropped, so `wikibase_endpoint` stayed "" and every live rule built
+        # a host-less "/w/api.php" and failed with "unknown url type"
+        # (Rule W-282).
+        wikibase_endpoint=wikibase_endpoint,
         on_progress=on_progress,
         in_run_dup_index=in_run_dup_index(items),
     )
