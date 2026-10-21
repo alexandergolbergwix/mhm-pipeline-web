@@ -1044,3 +1044,19 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     both. *Why:* the first harness reported `100$a`/`700$a` at 0% against
     real 89.5%/45.9% (prefix mismatch), and `P1476` at 167% (per-work
     counting) — a false 0% is indistinguishable from a broken join.
+142. **R142 — Read the field that holds the data; a gate must not hide a
+    filled one (Rule W-281).** `958$a`/`958$b` now feed `script_type`/
+    `script_mode` (P9302 5.4% → 73.7%); `957$a` feeds `colophon_text` after
+    its `קולופון:` **label** is stripped at ingest (P1684 0.9% → 62.8%) —
+    the Rule W-72 placeholder guard is untouched and still rejects
+    `בסופו קולופון` / `קולופון המחבר` / `(קולופון 4)`; P921's gate is a
+    *verified QID* rather than an explicit `primary` marker (2.3% → 50.9%),
+    with `Jews`/`Judaism` and unresolvable terms still withheld; genres
+    that name their Wikidata concept directly now project without a second
+    assertion, while `Illustrated works` stays gated (15.1% → 27.8%).
+    Unmapped traditions (`פרובנצלית`/`מערבית`/`קראית`) fail closed for lack
+    of a verified QID (R8). *Why:* four properties were far below what the
+    catalogue holds — an unread column or a gate rejecting evidence it
+    already had, not a data gap. Five others are genuinely corpus-capped
+    (`P1071` has zero source rows) and must not be chased.
+

@@ -237,3 +237,16 @@ Any new external-write path or reconcile change MUST extend
 
 - `backend/tests/unit/test_marc_wikidata_coverage.py` — the WP9 coverage harness (W-275): every field has a deliberate fate, `710` → `P195` never `P50`, `035` shares the `001` identity channel, RDA `336-338` are out-of-model, `880` projects as its linked tag, and coverage cannot regress below the in-repo baseline fixture. Also pins W-277: the `P1574` work join resolves through the `__LOCAL:` prefix, and no property share exceeds 100%. Fixtures live in `backend/tests/unit/fixtures/marc_coverage_{corpus.tsv,claims.json,baseline.json}`.
 - `backend/tests/unit/test_marc_field_mapping_wp7.py` — WP7 mapping corrections (W-276): `035$a` extracts the NLI Aleph number and fails closed on non-numeric values; `001` stays the primary identity channel; MARC `880` feeds the romanized title/name channels without overwriting the vernacular, and an unparseable `880$6` is left alone.
+- `backend/tests/unit/test_marc_script_and_colophon.py` — Rule W-281 / R142:
+  `958$a` script traditions reach `P9302` and unmapped ones fail closed;
+  `957$a` colophons reach `P1684` with the `קולופון:` label stripped while
+  `is_catalog_note_placeholder` still rejects `בסופו קולופון` /
+  `קולופון המחבר` / `(קולופון 4)`; one apparatus piece cannot poison a real
+  colophon.
+- `backend/tests/unit/test_marc_650_655_lod.py` — Rule W-281: a resolvable
+  secondary 650 now promotes to `P921` (verified QID is the gate),
+  `test_broad_subject_is_still_withheld_from_p921` keeps `Jews`/`Judaism` out,
+  and `test_unresolvable_subject_is_not_promoted_to_p921` keeps the fail-closed
+  side. The old `test_secondary_marc_subject_is_not_promoted_to_p921` encoded
+  the pre-W-281 policy and was replaced by the first of these.
+

@@ -53,13 +53,53 @@ class TestMarc650655Wikidata:
         prepared = prepare_record_for_pipeline(rec)
         assert prepared.get("genres") == []
 
-    def test_secondary_marc_subject_is_not_promoted_to_p921(self) -> None:
+    def test_resolvable_secondary_subject_is_promoted_to_p921(self) -> None:
+        """A verified QID is the evidence gate, not an explicit primary marker.
+
+        Rule W-281. ``resolve_subject_qid`` is fail-closed — it answers only
+        from the static crosswalk or a pre-stamped authority ``wikidata_id`` —
+        so a hit is the MARC/authority evidence Rule R26 requires. Requiring
+        a ``primary`` marker as well dropped 463 resolvable term-occurrences
+        in the 17th-century corpus and held P921 at 2.3%.
+
+        (This test previously asserted the opposite: a secondary 650 was
+        withheld from P921. The broad-term guard below keeps the part of that
+        rule that still holds.)
+        """
         rec = prepare_record_for_pipeline(_sample_record())
         item = WikidataItemBuilder(reconciler=None).build_manuscript_item(rec)
-        p921 = [s for s in item.statements if s.property_id == "P921"]
         p136 = [s for s in item.statements if s.property_id == "P136"]
-        assert p921 == []
+        assert any(
+            s.property_id == "P921" and s.value == "Q1845"
+            for s in item.statements
+        )
         assert any(s.value == "Q1749541" for s in p136)
+
+    def test_broad_subject_is_still_withheld_from_p921(self) -> None:
+        """Generic headings are never the main subject, however often they appear.
+
+        Rule R26 / W-71: ``Jews`` and ``Judaism`` are population/topic
+        containers, not the subject of one manuscript. This is the guard that
+        survives the W-281 widening.
+        """
+        for broad in ("Jews", "Judaism"):
+            rec = prepare_record_for_pipeline({
+                "_control_number": f"BROAD-{broad}",
+                "title": "כתב יד",
+                "subjects": [{"term": broad, "type": "topic", "field": "650"}],
+            })
+            item = WikidataItemBuilder(reconciler=None).build_manuscript_item(rec)
+            assert not any(s.property_id == "P921" for s in item.statements), broad
+
+    def test_unresolvable_subject_is_not_promoted_to_p921(self) -> None:
+        """No QID, no claim — fail closed (Rule R26 / W-71)."""
+        rec = prepare_record_for_pipeline({
+            "_control_number": "NOQID",
+            "title": "כתב יד",
+            "subjects": [{"term": "זבלוסט ויטש", "type": "topic", "field": "650"}],
+        })
+        item = WikidataItemBuilder(reconciler=None).build_manuscript_item(rec)
+        assert not any(s.property_id == "P921" for s in item.statements)
 
     def test_explicit_primary_subject_is_projected_to_p921(self) -> None:
         rec = prepare_record_for_pipeline({

@@ -725,18 +725,26 @@ class ContentProjectionMixin:
                 continue
             if term.casefold() in _BROAD_MAIN_SUBJECT_TERMS:
                 continue
+            if stype == "topic":
+                # The gate is a *verified QID*, not an explicit "primary"
+                # marker (Rule W-281). `resolve_subject_qid` is fail-closed:
+                # it answers only from the static crosswalk or a
+                # pre-stamped authority `wikidata_id`, never from a guess.
+                # A hit is therefore the MARC/authority evidence Rule R26
+                # requires for the exact Wikidata meaning. The earlier
+                # `_is_primary_subject` requirement dropped 463 resolvable
+                # term-occurrences in the 17th-century corpus and held P921
+                # at 2.3%.
+                qid = resolve_subject_qid(subj, allow_network=False)
+                if qid:
+                    _append_p921(qid)
+                continue
             if (
                 not _is_primary_subject(subj)
                 and term.casefold() not in _VERIFIED_PRIMARY_SUBJECT_TERMS
             ):
-                # MARC 650 is a secondary topical index by default. Keep it in
-                # source evidence, but do not assert that every topic is the
-                # manuscript's Wikidata main subject.
-                continue
-            if stype == "topic":
-                qid = resolve_subject_qid(subj, allow_network=False)
-                if qid:
-                    _append_p921(qid)
+                # Non-topic 6XX (person/place/corporate) still needs an
+                # explicit primary marker before it becomes a main subject.
                 continue
             if stype == "person":
                 person = self._get_or_create_person(

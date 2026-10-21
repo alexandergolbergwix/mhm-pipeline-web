@@ -3085,3 +3085,68 @@ non-zero covered count, and no property share may exceed 100%.
 The same discipline applies to any new measurement: when a field reads 0%,
 confirm the join resolves before reporting it as a data gap — and never set a
 plan target against an unverified 0%.
+
+---
+
+### Rule W-281 — Read the field that holds the data; a gate must not hide a filled one (added 2026-10-21)
+
+A coverage review of the 897-record 17th-century corpus found four
+properties sitting far below what the catalogue actually contains. None was a
+data gap — each was either an unread MARC column or a gate that rejected
+evidence it already had.
+
+| Property | Before | After | What was wrong |
+|---|---|---|---|
+| `P9302` script or style | 5.4% | **73.7%** | `958$a` (768 records) never read |
+| `P1684` inscription | 0.9% | **62.8%** | `957$a` (617 records) never read |
+| `P921` main subject | 2.3% | **50.9%** | gate demanded an explicit "primary" marker |
+| `P136` genre | 15.1% | **27.8%** | gate demanded a second assertion |
+
+**1. `958` script tradition was prose-only.** `script_type` came from keyword
+scanning inside 500 notes, so the dedicated `958$a` / `958$b` fields were
+invisible. The vocabulary already existed — `SCRIPT_TYPES` maps `תימנית` →
+`YemeniteScript`, `אשכנזית` → `AshkenaziScript` and so on. Reading the field
+was the whole fix. Three traditions (`פרובנצלית`, `מערבית`, `קראית`) have no
+verified QID and stay unmapped (Rule R8: never invent one).
+
+**2. `957` colophon was unreachable because its own label blocked it.**
+`is_catalog_note_placeholder` rejects any string containing `קולופון` — the
+scribe never names his own colophon, so the word marks cataloger apparatus
+(Rule W-72). But NLI *labels* `957$a` with that word: `קולופון: "תם ונשלם …"`.
+The fix strips the **label** at ingest rather than weaken the guard. One
+optional parenthetical is allowed (`קולופון (דף קצה ע"א): …`). Apparatus
+forms — `בסופו קולופון`, `קולופון המחבר בדף …`, `(קולופון 4)` — have no
+separator after the word and are still rejected.
+
+A second leak: pieces were joined into one compound *before* the check, so a
+single `רשומה זמנית` note sank a real colophon with it. Pieces are now
+filtered individually first.
+
+**3. `P921` gated on a marker nobody sets.** `_is_primary_subject` demanded an
+explicit `primary` flag or membership of a one-term allowlist, so 463
+resolvable term-occurrences never projected. The gate is now **a verified
+QID**: `resolve_subject_qid` is fail-closed and answers only from the static
+crosswalk or a pre-stamped authority `wikidata_id`, so a hit *is* the
+MARC/authority evidence Rule R26 asks for. Broad population containers
+(`Jews`, `Judaism`) and unresolvable terms still fail closed.
+
+**4. `P136` demanded two assertions where the term is the concept.** Of the
+genres needing evidence, most *name the Wikidata concept directly* —
+`Autograph manuscripts` → Q9026959 (autograph manuscript) is that exact idea,
+so the cataloguer's genre heading is the evidence. Those now project.
+`Illustrated works (Manuscript)` stays gated: "illustrated" is an attribute of
+the object and needs corroboration, which `illuminated_instance_supported`
+already provides for the P31 claim. The corpus sets **no** evidence flags at
+all, so the old gate could never open for it.
+
+**A gate must not hide a filled field.** When coverage is low, first check
+whether the code reads the column that holds the data, then whether the gate
+is rejecting evidence it already has. Only after both should you call it a
+data gap — five properties here were genuinely corpus-capped (`P1680` 13.8%,
+`P2048`/`P2049` 5.4%, `P1071` **0%**, `P953` 11.3%) and no change moves them.
+
+Tests: `backend/tests/unit/test_marc_script_and_colophon.py` (13 cases),
+`backend/tests/unit/test_marc_650_655_lod.py`
+(`test_resolvable_secondary_subject_is_promoted_to_p921`,
+`test_broad_subject_is_still_withheld_from_p921`,
+`test_unresolvable_subject_is_not_promoted_to_p921`).

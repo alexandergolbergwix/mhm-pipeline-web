@@ -36,8 +36,19 @@ the rest of the pipeline reads:
   with $0 authority ids), `genres` (655), `place` (260/264$a, 751 fallback),
   `dates` (260/264$c only — **never 008**; contract in `marc_date_sources.py`).
 - **NER inputs**: `notes` (500/590/541$a), `provenance` (561$a),
-  `contents` (505$a split on `--`), `colophon_text` (590$a plus
+  `contents` (505$a split on `--`), `colophon_text` (**957$a** plus 590$a plus
   keyword-detected 500$a: קולופון / colophon / כתב יד סופר).
+- **Script tradition (W-281)**: `958$a` → `script_type` and `958$b` →
+  `script_mode`, through the `SCRIPT_TYPES` / `SCRIPT_MODES` vocabulary.
+  A tradition with no verified QID (`פרובנצלית`, `מערבית`, `קראית`) is left
+  unmapped rather than guessed (Rule R8).
+- **Colophon label (W-281)**: NLI labels `957$a` with the field name
+  (`קולופון: "תם ונשלם …"`). That prefix is stripped at ingest, because
+  `is_catalog_note_placeholder` rejects any string containing `קולופון` (the
+  scribe never names his own colophon, Rule W-72). The guard itself is
+  untouched — `בסופו קולופון` / `קולופון המחבר` / `(קולופון 4)` are still
+  rejected. Placeholder pieces are dropped before the compound join so one
+  `רשומה זמנית` note cannot sink a real colophon.
 - **Structured colophon**: `_extract_colophon_fields` pulls `colophon_year`
   (Hebrew gematria via desktop `converter.transformer.gematria`, or a
   Gregorian 4-digit fallback) and `colophon_scribe` (patronymic בן / ב"ר

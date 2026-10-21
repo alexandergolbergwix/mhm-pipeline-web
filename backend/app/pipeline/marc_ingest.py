@@ -35,6 +35,12 @@ _CONTRIBUTOR_HEADERS = ("contributor", "contributors", "700a", "700")
 _SUBJECT_HEADERS = ("subject", "subjects", "600", "650")
 _MULTI_DELIMS = ("|", ";", "<--SEP-->")
 
+# NLI labels 957$a with the field name — ``קולופון: "תם ונשלם …"`` — and puts
+# the folio in a parenthetical before the separator
+# (``קולופון (דף קצה ע"א): …``). The prefix is catalog apparatus, not text
+# written on the object, so ingest strips it (Rule W-281).
+_COLOPHON_LABEL_RE = re.compile(r"^\s*קולופון(?:\s*\([^)]*\))?\s*[:：—–\-]\s*")
+
 # 035$a system control number, e.g. ``(IsJJNL)000118870NNL01-Aleph``.
 # The parenthesised prefix is the OCLC/MARC agency symbol; the digits that
 # follow are the NLI Aleph record number.
@@ -746,13 +752,65 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     if notes:
         record["notes"] = notes
 
-    # ── Colophon text (590$a + keyword-detected 500$a) ──────────────
-    # Some catalogues file the colophon as a 590$a local note. Others
-    # use a plain 500$a with a keyword marker (קולופון / colophon / כתב
-    # יד סופר). Detect both so the Hebrew-Person-NER sees the scribe's
-    # name and the structured extractor below can pull year + scribe.
+    # ── Script tradition (958) → script_type / script_mode ─────────
+    # MARC 958 carries the paleographic attribution as a dedicated field:
+    #   958$a = script tradition (תימנית / איטלקית / אשכנזית / מזרחית / ספרדית)
+    #   958$b = writing style (מרובעת / רהוטה / בינונית)
+    # It used to be read only as prose inside 500 notes, so 768 records
+    # that carry 958$a produced no P9302 at all (Rule W-281).
+    from converter.config.vocabularies import (  # noqa: PLC0415
+        SCRIPT_MODES,
+        SCRIPT_TYPES,
+    )
+
+    def _script_token(raw: str, table: dict[str, str]) -> str | None:
+        """Map one 958 token onto its canonical script vocabulary key.
+
+        A multi-word value (``מרובעת ורהוטה``) resolves when any one of its
+        tokens matches. Unmatched tokens return ``None`` — never guess a
+        script tradition, since a wrong one is a false paleographic claim.
+        """
+        for token in re.split(r"[\s,;|/&]+", raw):
+            token = token.strip().strip('"').strip(".;,")
+            if not token:
+                continue
+            for key, value in table.items():
+                if token.casefold() == key.casefold():
+                    return value
+        return None
+
+    for piece in _split_multi(_str(record.get("958$a"))):
+        mapped = _script_token(piece, SCRIPT_TYPES)
+        if mapped and not record.get("script_type"):
+            record["script_type"] = mapped
+    for piece in _split_multi(_str(record.get("958$b"))):
+        mapped = _script_token(piece, SCRIPT_MODES)
+        if mapped and not record.get("script_mode"):
+            record["script_mode"] = mapped
+
+    # ── Colophon text (590$a + 957$a + keyword-detected 500$a) ─────
+    # Some catalogues file the colophon as a 590$a local note; NLI uses a
+    # dedicated 957$a (617 records in the 17th-century corpus). Others use
+    # a plain 500$a with a keyword marker (קולופון / colophon / כתב יד סופר).
+    # Detect all three so the Hebrew-Person-NER sees the scribe's name and
+    # the structured extractor below can pull year + scribe (Rule W-281).
     _COLOPHON_KEYWORDS = ("קולופון", "colophon", "כתב יד סופר", "כתב-יד")
+    # NLI labels 957$a with the field name — ``קולופון: "תם ונשלם …"``.
+    # That prefix is catalog apparatus, not text written on the object, and
+    # `is_catalog_note_placeholder` rejects any string containing ``קולופון``
+    # (Rule W-72: the scribe never names his own colophon). Strip the label
+    # at ingest rather than weaken that guard, so the placeholder check sees
+    # the colophon itself. A mid-sentence mention (``בסופו קולופון``) or a
+    # prose form (``קולופון המחבר בדף …``) has no separator and is left
+    # alone to be rejected as apparatus.
+    def _strip_colophon_label(raw: str) -> str:
+        return _COLOPHON_LABEL_RE.sub("", raw, count=1).strip()
+
     colophon_pieces: list[str] = []
+    for piece in _split_multi(_str(record.get("957$a"))):
+        piece = _strip_colophon_label(piece)
+        if piece:
+            colophon_pieces.append(piece)
     for piece in _split_multi(_str(record.get("590$a"))):
         if piece:
             colophon_pieces.append(piece)
@@ -764,6 +822,17 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
         if any(kw in lower for kw in _COLOPHON_KEYWORDS):
             if piece not in colophon_pieces:
                 colophon_pieces.append(piece)
+    # One catalog-workflow piece (``רשומה זמנית``, a cross-reference, …) used
+    # to poison the whole compound: ``"<real colophon> | רשומה זמנית"`` then
+    # failed `is_catalog_note_placeholder` as a unit and the real colophon was
+    # never projected. Drop the apparatus pieces instead (Rule W-281).
+    from converter.wikidata.catalog_notes import (  # noqa: PLC0415
+        is_catalog_note_placeholder,
+    )
+
+    colophon_pieces = [
+        p for p in colophon_pieces if not is_catalog_note_placeholder(p)
+    ]
     if colophon_pieces and not record.get("colophon_text"):
         record["colophon_text"] = " | ".join(colophon_pieces)
 

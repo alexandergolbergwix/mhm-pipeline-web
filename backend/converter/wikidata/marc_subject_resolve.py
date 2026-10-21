@@ -56,6 +56,23 @@ _EVIDENCE_REQUIRED_GENRES = {
     "personal correspondence",
 }
 
+# A subset of those whose MARC term *names the concept itself* rather than
+# describing an attribute of it (Rule W-281). ``Autograph manuscripts`` →
+# Q9026959 (autograph manuscript) is that exact idea, so the cataloguer's
+# explicit genre heading is direct evidence and needs no second assertion.
+# ``Illustrated works (Manuscript)`` is deliberately absent: "illustrated"
+# is an attribute of the object and needs corroboration, which is what
+# `illuminated_instance_supported` does for the P31 claim.
+_TERM_IS_EVIDENCE_GENRES = {
+    "autograph manuscripts",
+    "licenses",
+    "negotiable instruments",
+    "family records",
+    "pinkasim",
+    "community records (manuscript)",
+    "personal correspondence",
+}
+
 
 def genre_projection_supported(
     label: str,
@@ -65,6 +82,8 @@ def genre_projection_supported(
     """Return whether a specific MARC genre has enough evidence for P136."""
     normalized = clean_marc_label(label).casefold()
     if normalized not in _EVIDENCE_REQUIRED_GENRES:
+        return True
+    if normalized in _TERM_IS_EVIDENCE_GENRES:
         return True
     entry = genre_entry or {}
     for key in ("supported", "confirmed", "evidence_supported"):
