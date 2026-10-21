@@ -184,3 +184,29 @@ evidence) attached. Two invariants (block R58, Rule W-247):
 - `rules.md` R55–R62 — rule-verify invariants (advisory, fail-closed
   API rules, one throttle domain for API rules, single-container API
   pass, shard/heartbeat rule).
+
+## Batched + globally cached probes (R67 / Rule W-280)
+
+`prime_fetch_caches(db, endpoint, qids, labels)` runs **before** the rule
+loop and seeds the fetcher:
+
+- **Batching.** `wbgetentities` is asked for up to `WIKI_ENTITY_BATCH` (50)
+  ids per request; the response is split back per id so each rule finds a hit
+  under its own single-id request shape. 18,481 items cost 370 requests, not
+  18,481.
+- **Global cache.** Every request goes through `cache_http_call(user_id=None)`
+  — the two-tier Redis L1 → Postgres L2 `inference_cache`, shared across
+  users and projects. A repeat run over the same corpus is nearly free.
+- **No date/time in the key.** `endpoint_query_summary` strips
+  `timestamp` / `date` / `datetime` / `fetched_at` / `now` / `nonce` /
+  `request_id` before hashing, so two identical requests hash the same
+  regardless of when they were made.
+- **TTL `wikidata.wiki_entity` (7 days).** `hmo.live.alive` and
+  `hmo.live.label_drift` share one fetch; the alive check must notice a
+  deletion, so the shared fetch takes the shorter tolerance rather than the
+  90-day label TTL. These two rules are therefore a *periodic* check, not a
+  live one — accepted in exchange for a pass that finishes in minutes.
+- **Empty endpoint is loud.** `wikibase_cloud_base_url` missing logs at
+  WARNING and priming returns empty warm maps instead of issuing a
+  host-less `/w/api.php` request.
+

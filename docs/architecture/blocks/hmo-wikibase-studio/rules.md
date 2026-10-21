@@ -410,4 +410,17 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
     number. Also note the Postgres role limit is 20 connections — under
     fan-out load, progress callbacks fail and the bar freezes while the job
     is still working (a moving `updated_at` means it is not dead).
+67. **R67 — External reads are batched and cached globally (Rule W-280).**
+    `prime_fetch_caches` batches `wbgetentities` 50 ids per request (18,481
+    items → 370 requests) and writes every request through
+    `cache_http_call(user_id=None)` — the Redis L1 → Postgres L2
+    `inference_cache`, shared across users and projects. The cache key is
+    endpoint + payload with volatile keys (timestamp/date/now/nonce/…)
+    stripped, so date and time never enter it. TTL `wikidata.wiki_entity`
+    (7 d), not the 90-day label TTL — `hmo.live.alive` must still notice a
+    deletion. A missing `wikibase_cloud_base_url` logs at WARNING and
+    priming refuses to fetch, instead of building a host-less relative URL.
+    *Why:* run 47e03437 made one throttled request per item and read
+    `4100 / 18481` after 90+ minutes, and every later run paid the same
+    price because the memo died with the pass.
 

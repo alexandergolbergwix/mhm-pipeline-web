@@ -96,6 +96,11 @@ KIND_TTL: dict[str, timedelta | None] = {
     # answers expire quickly; MARC prose does not change and the key already
     # carries the record text + model (Rule W-140).
     "wikidata.duplicate_probe": timedelta(days=7),
+    # Live Wikibase entity reads (info|labels) for the rule-verify live rules
+    # (W-280). Alive + label_drift share one fetch, and an alive check must
+    # notice a deletion, so this is the shorter of the two tolerances — not
+    # the 90-day label TTL. Batched and shared across users/runs.
+    "wikidata.wiki_entity": timedelta(days=7),
     "marc.llm_extract":         timedelta(days=90),
 }
 

@@ -617,8 +617,8 @@ async def test_load_rule_verify_scope_aborts_on_cancel(db_session) -> None:
     must abort it before the first merge, not after the whole load."""
     import uuid
 
-    from app.pipeline.run_job_service import JobCancelledError
     from app.pipeline.rule_verify.scope import load_rule_verify_scope
+    from app.pipeline.run_job_service import JobCancelledError
 
     async def cancelled() -> None:
         raise JobCancelledError("cancel requested")
@@ -779,7 +779,7 @@ async def test_api_pass_merges_and_reports_per_rule_only(monkeypatch) -> None:
     async def _fake_scope(db, run_id, *, item_ids=None, **_kw):  # type: ignore[no-untyped-def]
         return [_item()]
 
-    def _fake_fetcher() -> object:
+    def _fake_fetcher(**_warm: object) -> object:
         def fetch(call: object, arg: object = None) -> object:
             if call == "inlabel_search":
                 return []
@@ -853,7 +853,7 @@ async def test_api_pass_probes_each_item_exactly_once(monkeypatch) -> None:
     async def _fake_scope(db, run_id, *, item_ids=None, **_kw):  # type: ignore[no-untyped-def]
         return items
 
-    def _fake_fetcher() -> object:
+    def _fake_fetcher(**_warm: object) -> object:
         def fetch(call: object, arg: object = None) -> object:
             return [] if call == "inlabel_search" else {"Q2": True}
 
@@ -979,3 +979,108 @@ async def test_merge_api_rule_verdicts_replaces_stale_api_entries(
     assert merged["error_count"] == 0
     assert merged["fail_count"] == 1
     assert merged["overall"] == "fail"
+
+
+# ── Rule W-280: global cache + batched entity reads ───────────────────────
+
+
+def test_cache_key_ignores_date_and_time() -> None:
+    """Two identical requests must hash the same regardless of when."""
+    from app.pipeline.inference_cache import (
+        canonical_hash,
+        endpoint_query_summary,
+    )
+
+    payload = {"action": "wbgetentities", "ids": "Q1|Q2", "props": "info|labels"}
+    first = endpoint_query_summary(endpoint="https://x/w/api.php", payload={
+        **payload, "timestamp": "2026-10-21T10:00:00Z", "fetched_at": 1761030000,
+        "now": "2026-10-21", "request_id": "abc",
+    })
+    second = endpoint_query_summary(endpoint="https://x/w/api.php", payload={
+        **payload, "timestamp": "2027-01-01T00:00:00Z", "fetched_at": 1798765432,
+        "now": "2027-01-01", "request_id": "zzz",
+    })
+    assert canonical_hash(first) == canonical_hash(second)
+
+
+def test_cache_key_still_separates_different_requests() -> None:
+    """The date/time strip must not collapse genuinely different lookups."""
+    from app.pipeline.inference_cache import (
+        canonical_hash,
+        endpoint_query_summary,
+    )
+
+    a = endpoint_query_summary(
+        endpoint="https://x/w/api.php", payload={"action": "wbgetentities", "ids": "Q1"},
+    )
+    b = endpoint_query_summary(
+        endpoint="https://x/w/api.php", payload={"action": "wbgetentities", "ids": "Q2"},
+    )
+    assert canonical_hash(a) != canonical_hash(b)
+
+
+@pytest.mark.asyncio
+async def test_prime_fetch_caches_batches_entity_ids(monkeypatch) -> None:
+    """N ids cost ceil(N/BATCH) requests, not N (Rule W-280)."""
+    from app.pipeline.rule_verify import api_fetcher as af
+
+    calls: list[list[str]] = []
+
+    async def fake_cache_http_call(_db, **kw):  # type: ignore[no-untyped-def]
+        calls.append(str(kw["payload"].get("ids", "")).split("|"))
+        ids = calls[-1]
+        return {"entities": {i: {"id": i, "labels": {}} for i in ids}}
+
+    monkeypatch.setattr(af, "cache_http_call", fake_cache_http_call, raising=False)
+
+    n = af.WIKI_ENTITY_BATCH * 3 + 7
+    qids = [f"Q{i}" for i in range(n)]
+    wbget, alive, inlabel = await af.prime_fetch_caches(
+        None, endpoint="https://mhm-hmo.wikibase.cloud", qids=qids, labels=[],
+    )
+    assert len(calls) == 4, f"expected 4 batched requests, got {len(calls)}"
+    assert sum(len(c) for c in calls) == n
+    # each id is warmed under its own single-id request shape
+    assert len(wbget) == n
+    assert alive == {f"Q{i}": True for i in range(n)}
+
+
+@pytest.mark.asyncio
+async def test_prime_fetch_caches_is_global_not_per_user(monkeypatch) -> None:
+    """The cache must be shared across users and projects."""
+    from app.pipeline.rule_verify import api_fetcher as af
+
+    seen_user_ids: list[object] = []
+
+    async def fake_cache_http_call(_db, **kw):  # type: ignore[no-untyped-def]
+        seen_user_ids.append(kw.get("user_id"))
+        return {"entities": {}}
+
+    monkeypatch.setattr(af, "cache_http_call", fake_cache_http_call, raising=False)
+
+    await af.prime_fetch_caches(
+        None, endpoint="https://mhm-hmo.wikibase.cloud",
+        qids=["Q1", "Q2"], labels=["Codex A"],
+    )
+    assert seen_user_ids, "no cache calls were made"
+    assert all(uid is None for uid in seen_user_ids), (
+        f"cache must be global (user_id=None), got {seen_user_ids}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_prime_fetch_caches_noops_without_endpoint() -> None:
+    """An unset endpoint must not attempt a relative-URL request (W-280)."""
+    from app.pipeline.rule_verify import api_fetcher as af
+
+    async def boom(*_a, **_k):  # type: ignore[no-untyped-def]
+        raise AssertionError("must not fetch with an empty endpoint")
+
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(af, "cache_http_call", boom, raising=False)
+        assert await af.prime_fetch_caches(
+            None, endpoint="", qids=["Q1"], labels=["x"],
+        ) == ({}, {}, {})
+    finally:
+        monkeypatch.undo()

@@ -189,3 +189,11 @@
 - `backend/tests/unit/test_hmo_item_verify_spawn_failure.py` — a pre-spawn
   failure carries its real cause into `runner_error` / `session.end`
   (Rule W-258, eval-agent R45).
+- `backend/tests/test_rule_verify.py` — block R67 / Rule W-280:
+  `test_cache_key_ignores_date_and_time` (volatile keys never enter the
+  cache key), `test_cache_key_still_separates_different_requests`,
+  `test_prime_fetch_caches_batches_entity_ids` (N ids cost
+  `ceil(N/WIKI_ENTITY_BATCH)` requests, not N),
+  `test_prime_fetch_caches_is_global_not_per_user` (`user_id=None`),
+  `test_prime_fetch_caches_noops_without_endpoint`.
+

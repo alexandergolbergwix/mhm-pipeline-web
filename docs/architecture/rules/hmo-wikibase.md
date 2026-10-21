@@ -974,3 +974,54 @@ dead job — check `modal app list` for live tasks before cancelling.
 
 Tests: `backend/tests/test_rule_verify.py`
 (`test_api_pass_probes_each_item_exactly_once`).
+
+---
+
+### Rule W-280 — External reads are batched and cached globally (added 2026-10-21)
+
+The HMO rule-verify API pass probes live Wikidata and the project Wikibase
+for every item in scope. On run `47e03437` (18,481 items) it made **one
+throttled HTTP request per item** and ran for hours — the tray read
+`4100 / 18481 · Probing live Wikidata labels` after more than ninety
+minutes. Worse, the per-pass memo died with the pass, so every later run
+over the same corpus paid the full price again.
+
+Two changes close it.
+
+**1. Batch the entity reads.** `wbgetentities` accepts many ids per request.
+`prime_fetch_caches` asks for up to `WIKI_ENTITY_BATCH` (50) at a time and
+splits the response back per id under the single-id request shape the rules
+look up. 18,481 items now cost **370** requests instead of 18,481 — 50×
+fewer.
+
+**2. Cache globally, not per run.** Every priming request goes through
+`cache_http_call(user_id=None)` — the two-tier Redis L1 → Postgres L2
+`inference_cache`, **shared across users and projects**. A repeat run over
+the same corpus costs almost no network at all.
+
+The cache key is `endpoint` + payload with volatile keys stripped
+(`timestamp`, `date`, `datetime`, `fetched_at`, `now`, `nonce`,
+`request_id`, …). **Date and time never enter the key**, so two identical
+requests hash the same no matter when they are made. The strip must not
+collapse genuinely different lookups: `ids=Q1` and `ids=Q2` stay distinct.
+
+TTL is `wikidata.wiki_entity` (7 days), deliberately not the 90-day label
+TTL. `hmo.live.alive` and `hmo.live.label_drift` share one fetch, and an
+alive check must be able to notice a deletion — so the shared fetch takes
+the *shorter* of the two tolerances. Caching turns these two rules from a
+live probe into a periodic one; that is the accepted trade for a pass that
+finishes in minutes.
+
+**A missing endpoint must be loud.** `get_settings().wikibase_cloud_base_url`
+failure used to be swallowed at DEBUG, which hid a total outage: with an
+empty endpoint `_wikibase_entity` built `"/w/api.php"` — no host — and every
+live rule failed with `unknown url type`. Both the shard and the API pass
+now log at WARNING and `prime_fetch_caches` refuses to fetch at all when the
+endpoint is empty.
+
+Tests: `backend/tests/test_rule_verify.py`
+(`test_cache_key_ignores_date_and_time`,
+`test_cache_key_still_separates_different_requests`,
+`test_prime_fetch_caches_batches_entity_ids`,
+`test_prime_fetch_caches_is_global_not_per_user`,
+`test_prime_fetch_caches_noops_without_endpoint`).

@@ -120,8 +120,13 @@ async def _run_and_persist(
         from app.settings import get_settings  # noqa: PLC0415
 
         wikibase_endpoint = get_settings().wikibase_cloud_base_url
-    except Exception:  # noqa: BLE001 — settings missing → API rules abstain
-        pass
+    except Exception as exc:  # noqa: BLE001 — a missing setting must be loud
+        logger.warning("rule-verify shard: settings unavailable (%s)", exc)
+    if not wikibase_endpoint:
+        logger.warning(
+            "rule-verify shard: wikibase_cloud_base_url is empty — "
+            "hmo.live.* will abstain instead of probing"
+        )
     ctx = build_context(
         run_id=str(run_id),
         items=items,
@@ -284,6 +289,19 @@ def _api_pass_budgets() -> dict[str, int]:
     }
 
 
+def _label_strings(item: dict[str, Any]) -> list[str]:
+    """The search terms ``hmo.wikidata.label_candidates`` will probe.
+
+    Must mirror that rule's choice exactly — ``en`` else ``he`` — so the
+    primed cache entry is the one the rule later looks up (Rule W-280).
+    """
+    labels = item.get("labels")
+    if not isinstance(labels, dict):
+        return []
+    title = str(labels.get("en") or labels.get("he") or "").strip()
+    return [title] if title else []
+
+
 async def run_rule_verify_api_pass(job_id: str, run_id: uuid.UUID) -> dict[str, Any]:
     """The single-container API pass over the full scope (Rule W-256).
 
@@ -297,20 +315,57 @@ async def run_rule_verify_api_pass(job_id: str, run_id: uuid.UUID) -> dict[str, 
         items = await load_rule_verify_scope(db, run_id)
     if not items:
         return {"scope": 0, "overall_counts": {}, "per_rule": {}, "probed": 0}
-    from app.pipeline.rule_verify.api_fetcher import production_fetcher  # noqa: PLC0415
+    from app.pipeline.rule_verify.api_fetcher import (  # noqa: PLC0415
+        prime_fetch_caches,
+        production_fetcher,
+    )
 
     wikibase_endpoint = ""
     try:
         from app.settings import get_settings  # noqa: PLC0415
 
         wikibase_endpoint = get_settings().wikibase_cloud_base_url
-    except Exception as exc:  # noqa: BLE001 — settings missing → API rules abstain
-        logger.debug("rule-verify api pass: settings unavailable (%s)", exc)
+    except Exception as exc:  # noqa: BLE001 — a missing setting must be loud
+        # This used to be a debug log, which hid a total outage: with an
+        # empty endpoint `_wikibase_entity` built "/w/api.php" (no host) and
+        # every live rule failed with "unknown url type" (Rule W-280).
+        logger.warning("rule-verify api pass: settings unavailable (%s)", exc)
+    if not wikibase_endpoint:
+        logger.warning(
+            "rule-verify api pass: wikibase_cloud_base_url is empty — "
+            "hmo.live.* will abstain instead of probing"
+        )
+
+    # Seed the fetcher from the global cache and batch the entity reads
+    # (Rule W-280). Without this the pass made one throttled request per
+    # entity, so a first run over 18k items took hours and every later run
+    # paid the same price again.
+    qids: list[str] = []
+    labels: list[str] = []
+    for it in items:
+        qid = str(it.get("wikibase_id") or "").strip()
+        if qid:
+            qids.append(qid)
+        labels.extend(_label_strings(it))
+    async with session_scope() as db:
+        warm_wbget, warm_qid_alive, warm_inlabel = await prime_fetch_caches(
+            db, endpoint=wikibase_endpoint, qids=qids, labels=labels,
+        )
+    logger.info(
+        "rule-verify api pass: primed %d entity ids, %d labels "
+        "(%d entity cache hits, %d label cache hits)",
+        len(set(qids)), len(set(labels)), len(warm_wbget), len(warm_inlabel),
+    )
+
     ctx = build_context(
         run_id=str(run_id),
         items=items,
         api_enabled=True,
-        fetcher=production_fetcher(),
+        fetcher=production_fetcher(
+            warm_wbget=warm_wbget,
+            warm_qid_alive=warm_qid_alive,
+            warm_inlabel=warm_inlabel,
+        ),
         wikibase_endpoint=wikibase_endpoint,
     )
     ctx.counters.update(_api_pass_budgets())
