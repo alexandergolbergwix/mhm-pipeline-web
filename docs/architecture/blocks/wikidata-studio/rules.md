@@ -1035,3 +1035,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `880$6` that cannot be parsed is left in raw columns. *Why:* records with
     no `001` were unjoinable, and all 25 `880` rows in the 17th-century corpus
     were dropped despite carrying the ALA-LC romanized title.
+
+141. **R141 — A coverage measurement must prove its join works before it
+    reports 0% (W-277).** A projected work reference is `__LOCAL:<local_id>`
+    while the work is filed under `<local_id>`; the join normalises both
+    sides via `work_key`. Property share counts each PID once per record, so
+    a work shared by many manuscripts cannot inflate it past 100%. Tests pin
+    both. *Why:* the first harness reported `100$a`/`700$a` at 0% against
+    real 89.5%/45.9% (prefix mismatch), and `P1476` at 167% (per-work
+    counting) — a false 0% is indistinguishable from a broken join.

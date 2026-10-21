@@ -3060,3 +3060,28 @@ Two MARC channels were silently lossy in ingest:
 
 All 25 `880` rows in the 17th-century corpus link to `245` and now supply the
 romanized title. Tests: `tests/unit/test_marc_field_mapping_wp7.py`.
+
+---
+
+### Rule W-277 — A coverage measurement must prove its join works before it reports 0% (added 2026-10-19)
+
+The WP9 harness shipped with two defects that both understated coverage, and
+one of them made every work-layer field read exactly 0%:
+
+1. **Broken work join.** A projected work reference is `__LOCAL:<local_id>`
+   while the work object is filed under `<local_id>`. The lookup keyed on the
+   un-prefixed id, so `P1574` never resolved to a work and `100$a` / `700$a` /
+   `245$c` all reported 0% against real values of 89.5% / 45.9% / 100%.
+2. **Inflated property share.** The counter incremented once per work per
+   record. A work shared by many manuscripts pushed `P1476` to 167% of the
+   corpus.
+
+A coverage figure of 0% is indistinguishable from a broken join unless the
+harness proves otherwise. `work_key()` normalises the `__LOCAL:` prefix on both
+sides of the join, the property counter runs once per record, and
+`test_marc_wikidata_coverage.py` pins both: work-layer fields must report a
+non-zero covered count, and no property share may exceed 100%.
+
+The same discipline applies to any new measurement: when a field reads 0%,
+confirm the join resolves before reporting it as a data gap — and never set a
+plan target against an unverified 0%.

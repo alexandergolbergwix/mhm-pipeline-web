@@ -26,10 +26,12 @@ from converter.wikidata.marc_field_map import (
 )
 from scripts.marc_wikidata_coverage import (
     ClaimsIndex,
+    entry_works,
     load_corpus,
     main,
     measure,
     regressions,
+    work_key,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -97,9 +99,31 @@ def test_authorship_is_measured_on_works_not_manuscripts() -> None:
     by_tag = {row["tag"]: row for row in result["fields"]}
     assert by_tag["100$a"]["pids"] == ["P50", "P2093"]
     assert by_tag["700$a"]["pids"] == ["P50", "P2093"]
-    # The corpus carries 100$a but the works carry no author claims yet —
-    # that is the WP1 gap the plan prices, not a harness defect.
     assert by_tag["100$a"]["with_field"] > 0
+    # The join through P1574 must actually reach the work. A missing
+    # __LOCAL: prefix on the lookup key silently reported 0% for every
+    # work-layer field.
+    assert by_tag["100$a"]["covered"] > 0, by_tag["100$a"]
+
+
+def test_work_reference_keys_resolve_through_the_local_prefix() -> None:
+    """A projected work is `__LOCAL:<local_id>` but is filed under `<local_id>`."""
+    assert work_key("__LOCAL:work:עץ_חיים") == "work:עץ_חיים"
+    assert work_key("Q131068") == "Q131068"
+    entry = {
+        "claims": {"P1574": ["__LOCAL:work:עץ_חיים"]},
+        "works": {"work:עץ_חיים": {"P50": ["Q123"]}},
+    }
+    assert entry_works(entry) == [{"P50": ["Q123"]}]
+
+
+def test_property_share_counts_each_record_once() -> None:
+    """A work shared by many manuscripts must not inflate share past 100%."""
+    rows, _ = load_corpus(CORPUS)
+    result = measure(rows, ClaimsIndex.from_json(CLAIMS))
+    for row in result["properties"]:
+        assert 0.0 <= row["share"] <= 1.0 + 1e-9, row
+        assert row["items"] <= result["records"], row
 
 
 def test_coverage_does_not_regress_below_baseline() -> None:

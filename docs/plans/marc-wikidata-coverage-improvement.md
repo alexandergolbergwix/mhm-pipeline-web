@@ -50,7 +50,10 @@ is `957$a` (617); script tradition is `958$a` (768) / `958$b` (66), not `593`.
 ### WP9 projected baseline (897 records, current code)
 
 Measured with `--projected` — what the *code* emits, which already exceeds the
-live figures in the plan's baseline table:
+live figures in the plan's baseline table. **Corrected 2026-10-19** after two
+harness defects were fixed: the work-layer join missed the `__LOCAL:` prefix on
+`P1574` (every work-layer field read 0%), and the property counter incremented
+once per work per record (`P1476` read 167%).
 
 | Property | projected | live (plan) | target |
 |---|---|---|---|
@@ -59,6 +62,8 @@ live figures in the plan's baseline table:
 | P195 | 71.2% | 71.7% | 70% |
 | P217 | 99.3% | 98.9% | 95% |
 | P1574 | **58.4%** | 16.9% | 90% |
+| P2093 | **45.6%** | 0% | 60% |
+| P50 | 0% | 0% | 60% |
 | P136 | 12.9% | 15.1% | 80% |
 | P921 | 0.6% | 2.3% | 60% |
 | P2048 | 5.1% | 5.4% | 50% |
@@ -66,14 +71,26 @@ live figures in the plan's baseline table:
 | P7153 | 0.4% | 7.2% | 40% |
 | P1071 | 0% | 5.1% | 60% |
 | P7535 | 0% | 0% | 50% |
-| P50 / P2093 | 0% | 0% | 60% |
 | P953 | 0% | 12.8% | 80% |
 
-Two findings that change later packages: **P1574 is already 58.4% in code**
+Per-field authorship, now measured correctly through `P1574`: `100$a`
+**89.5%** (408/456), `700$a` **45.9%** (305/665). The author data is largely
+built; `P50` reads 0% because the built works carry the name string (`P2093`),
+not a resolved authority QID. WP1's remaining work is QID resolution and
+upload, not author extraction.
+
+Three findings that change later packages: **P1574 is already 58.4% in code**
 (the 16.9% live figure is an *upload* gap, not a projection gap — WP1's work is
-partly "upload what we already build"), and **P953 is 0% because the projection
+partly "upload what we already build"); **P2093 is already 45.6% in code**
+against 0% live, for the same reason; and **P953 is 0% because the projection
 emits `P973` (described at URL) for `856$u`, not `P953`** (full work available
 at URL). WP6 must decide which property is correct rather than assume P953.
+
+A raw rebuild must not overwrite live items: enrichment inputs (`kima_places`,
+authority matches, NER entities, `provenance_ner`) are absent from a raw-TSV
+run, so `P2888` (893 items), `P953` (115), `P1071` (46) and others read 0%.
+`P1433` (9) and `P6819` (6) have no emission site in the code at all and would
+be deleted. Use the Studio rebuild path, which joins enrichment.
 
 ### Remaining gates
 

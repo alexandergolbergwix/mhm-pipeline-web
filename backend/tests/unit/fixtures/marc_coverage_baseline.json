@@ -104,8 +104,8 @@
         "P2093"
       ],
       "with_field": 1,
-      "covered": 0,
-      "coverage": 0.0,
+      "covered": 1,
+      "coverage": 1.0,
       "target": null,
       "meets_target": true
     },
@@ -118,10 +118,10 @@
         "P2093"
       ],
       "with_field": 2,
-      "covered": 0,
-      "coverage": 0.0,
+      "covered": 2,
+      "coverage": 1.0,
       "target": 0.6,
-      "meets_target": false
+      "meets_target": true
     },
     {
       "tag": "100$d",
@@ -146,10 +146,10 @@
         "P2093"
       ],
       "with_field": 1,
-      "covered": 0,
-      "coverage": 0.0,
+      "covered": 1,
+      "coverage": 1.0,
       "target": 0.6,
-      "meets_target": false
+      "meets_target": true
     },
     {
       "tag": "505$a",
@@ -562,8 +562,8 @@
     },
     {
       "pid": "P2093",
-      "items": 0,
-      "share": 0.0,
+      "items": 2,
+      "share": 0.13333333333333333,
       "target": 0.6,
       "meets_target": false
     },

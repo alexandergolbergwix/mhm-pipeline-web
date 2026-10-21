@@ -115,14 +115,29 @@ class ClaimsIndex:
         return merged
 
 
+LOCAL_PREFIX = "__LOCAL:"
+
+
+def work_key(value: str) -> str:
+    """The key a work is filed under for a P1574 reference.
+
+    A projected work reference is ``__LOCAL:<local_id>`` while the work object
+    carries the bare ``<local_id>``; a live reference is a QID. Both must land
+    on one key or the work-layer join silently matches nothing.
+    """
+    text = str(value or "").strip()
+    return text[len(LOCAL_PREFIX):] if text.startswith(LOCAL_PREFIX) else text
+
+
 def entry_works(entry: dict[str, Any]) -> list[dict[str, list[str]]]:
     """Work-item claims referenced by a corpus entry's P1574 values."""
     claims = entry.get("claims") or {}
     works_by_id = entry.get("works") or {}
     out: list[dict[str, list[str]]] = []
     for work_id in claims.get("P1574") or []:
-        if work_id in works_by_id:
-            out.append(dict(works_by_id[work_id]))
+        key = work_key(work_id)
+        if key in works_by_id:
+            out.append(dict(works_by_id[key]))
     return out
 
 
@@ -155,12 +170,12 @@ def claims_from_projected(
             work_claims: dict[str, list[str]] = defaultdict(list)
             for statement in work.statements:
                 work_claims[statement.property_id].append(str(statement.value))
-            works[work.local_id] = dict(work_claims)
+            works[work_key(work.local_id)] = dict(work_claims)
 
         linked = {
-            work_id: works[work_id]
+            work_key(work_id): works[work_key(work_id)]
             for work_id in claims.get("P1574") or []
-            if work_id in works
+            if work_key(work_id) in works
         }
         out[control] = {"claims": dict(claims), "works": linked}
     return out
@@ -236,13 +251,19 @@ def measure(
             continue
         matched_items += 1
         entry = index.entry(control)
+        # Count each PID at most once per record. A work is shared by many
+        # manuscripts, so incrementing per work statement inflates the share
+        # past 100% (P1476 read 167% before this).
+        record_pids: set[str] = set()
         for pid, values in (entry.get("claims") or {}).items():
             if values:
-                property_presence[pid] += 1
+                record_pids.add(pid)
         for work_claims in entry_works(entry):
             for pid, values in work_claims.items():
                 if values:
-                    property_presence[pid] += 1
+                    record_pids.add(pid)
+        for pid in record_pids:
+            property_presence[pid] += 1
 
     for target in targets:
         with_field = 0
