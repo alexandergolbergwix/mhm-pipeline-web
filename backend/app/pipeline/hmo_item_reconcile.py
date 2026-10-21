@@ -5,18 +5,82 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.wikibase_entity_mapping import WikibaseEntityMapping
+from app.models.wikibase_entity_mapping import (
+    ENTITY_KIND_INSTANCE,
+    WikibaseEntityMapping,
+)
 from app.routers.linked_data_explorer import run_wikibase_sparql
 from app.settings import get_settings
 from converter.wikibase.hmo_exporter import HMO_SOURCE_URI
 
 logger = logging.getLogger(__name__)
+
+
+def live_instance_qids_select():
+    """The one definition of the live-instance ledger: every run, no ambiguity.
+
+    Every reader and the writer MUST resolve ``source_uri -> wikibase_id``
+    through this statement. Scoping it to a single run made the Studio table
+    report items that another run had already uploaded as "new (not
+    uploaded)" (Rule W-278): run ``47e03437`` built 18,480 items and owned zero
+    mapping rows, so its joins found nothing while 18,466 of those source URIs
+    already mapped to live QIDs under runs ``3494ebf5`` and ``48ba6c13``.
+
+    Two scopes apply:
+
+    * **All runs.** ``run_id IS NOT NULL`` — a mapping row written by any run
+      is a live Wikibase item for every run. Instance rows with a NULL
+      ``run_id`` are the *Wikidata Studio* QID ledger
+      (``wikidata_qid_ledger.py``), whose keys are the separate
+      ``wikidata:…`` namespace, so they are excluded here.
+    * **No ambiguity.** A QID that two source URIs claim, or a source URI that
+      carries two QIDs, is corrupt or replayed state. Trusting it updates the
+      wrong live item; trusting the wrong side of it on read shows a curator a
+      QID that is not this entity. Both directions drop out.
+    """
+    from sqlalchemy import and_, func, select
+
+    scoped = and_(
+        WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
+        WikibaseEntityMapping.run_id.is_not(None),
+    )
+    ambiguous_qid = (
+        select(WikibaseEntityMapping.wikibase_id)
+        .where(scoped)
+        .group_by(WikibaseEntityMapping.wikibase_id)
+        .having(func.count(func.distinct(WikibaseEntityMapping.ontology_uri)) > 1)
+    )
+    ambiguous_uri = (
+        select(WikibaseEntityMapping.ontology_uri)
+        .where(scoped)
+        .group_by(WikibaseEntityMapping.ontology_uri)
+        .having(func.count(func.distinct(WikibaseEntityMapping.wikibase_id)) > 1)
+    )
+    return (
+        select(
+            WikibaseEntityMapping.ontology_uri,
+            WikibaseEntityMapping.wikibase_id,
+        ).where(
+            scoped,
+            WikibaseEntityMapping.wikibase_id.not_in(ambiguous_qid),
+            WikibaseEntityMapping.ontology_uri.not_in(ambiguous_uri),
+        )
+    )
+
+
+async def load_live_instance_qids(db: AsyncSession) -> dict[str, str]:
+    """``source_uri -> live Wikibase id``, as a dict.
+
+    Same ledger as :func:`live_instance_qids_select`; use this where a dict is
+    handier than a subquery.
+    """
+    rows = (await db.execute(live_instance_qids_select())).all()
+    return {str(uri): str(qid) for uri, qid in rows}
 
 
 class ReconciliationUnavailableError(Exception):

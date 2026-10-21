@@ -6,6 +6,7 @@ raise (never silently read as "doesn't exist").
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -16,6 +17,7 @@ from app.pipeline import hmo_item_reconcile as reconcile_module
 from app.pipeline.hmo_item_reconcile import (
     HMO_SOURCE_URI,
     ReconciliationUnavailableError,
+    load_live_instance_qids,
     reconcile_item,
     resolve_source_uri_pid,
 )
@@ -201,3 +203,125 @@ async def test_pre_resolved_pid_skips_the_redundant_lookup(db_session, monkeypat
         outcome = await reconcile_item(db_session, "http://example.org/MS1", pid=pid)
 
     assert outcome.found is False
+
+
+# ── Rule W-278: the live-instance ledger is cross-run ──────────────────────
+#
+# A shared entity (place, language, restriction) uploaded by one run is on the
+# wikibase for every run. Scoping the ledger to a single run made the Studio
+# table report 18,466 already-live items as "new (not uploaded)".
+
+
+async def _seed_instance_mapping(
+    db_session,
+    *,
+    source_uri: str,
+    wikibase_id: str,
+    run_id,
+    entity_kind: str = "instance",
+    label: str = "x",
+) -> None:
+    db_session.add(
+        WikibaseEntityMapping(
+            ontology_uri=source_uri,
+            entity_kind=entity_kind,
+            wikibase_id=wikibase_id,
+            run_id=run_id,
+            label=label,
+        )
+    )
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_ledger_sees_another_runs_mapping(db_session) -> None:
+    """A mapping written by run A must resolve for run B."""
+    run_a, run_b = uuid.uuid4(), uuid.uuid4()
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#Aleppo", wikibase_id="Q100", run_id=run_a
+    )
+
+    ledger = await load_live_instance_qids(db_session)
+
+    assert ledger == {"http://ex.org#Aleppo": "Q100"}
+    # run_b never wrote a row, but the item is live for it too
+    assert run_b != run_a
+
+
+@pytest.mark.asyncio
+async def test_ledger_excludes_the_wikidata_qid_ledger_namespace(db_session) -> None:
+    """``wikidata:…`` keys are the Wikidata Studio ledger, not HMO items."""
+    await _seed_instance_mapping(
+        db_session,
+        source_uri="wikidata:marc:990001188700205171",
+        wikibase_id="Q999",
+        run_id=None,
+    )
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#MS1", wikibase_id="Q1", run_id=uuid.uuid4()
+    )
+
+    ledger = await load_live_instance_qids(db_session)
+
+    assert ledger == {"http://ex.org#MS1": "Q1"}
+
+
+@pytest.mark.asyncio
+async def test_ledger_drops_a_qid_claimed_by_two_source_uris(db_session) -> None:
+    """Never trust a QID that two source URIs claim — it is not one entity."""
+    run = uuid.uuid4()
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#Jerusalem", wikibase_id="Q1389", run_id=run
+    )
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#Other", wikibase_id="Q1389", run_id=run
+    )
+
+    ledger = await load_live_instance_qids(db_session)
+
+    assert ledger == {}
+
+
+@pytest.mark.asyncio
+async def test_ledger_drops_a_source_uri_with_two_qids(db_session) -> None:
+    """One URI with two QIDs is replayed state — fail closed, never pick one."""
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#MS1", wikibase_id="Q1", run_id=uuid.uuid4()
+    )
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#MS1", wikibase_id="Q2", run_id=uuid.uuid4()
+    )
+
+    ledger = await load_live_instance_qids(db_session)
+
+    assert ledger == {}
+
+
+@pytest.mark.asyncio
+async def test_ledger_keeps_unrelated_rows_when_one_is_ambiguous(db_session) -> None:
+    """Dropping an ambiguous row must not hide the unambiguous ones."""
+    run = uuid.uuid4()
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#A", wikibase_id="Q1", run_id=run
+    )
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#B", wikibase_id="Q2", run_id=run
+    )
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#Amb1", wikibase_id="Q7", run_id=run
+    )
+    await _seed_instance_mapping(
+        db_session, source_uri="http://ex.org#Amb2", wikibase_id="Q7", run_id=run
+    )
+
+    ledger = await load_live_instance_qids(db_session)
+
+    assert ledger == {"http://ex.org#A": "Q1", "http://ex.org#B": "Q2"}
+
+
+@pytest.mark.asyncio
+async def test_ledger_excludes_schema_rows(db_session) -> None:
+    """Classes/properties are schema rows and never an instance QID."""
+    await _seed_source_uri_mapping(db_session, pid="P42")
+
+    assert await load_live_instance_qids(db_session) == {}

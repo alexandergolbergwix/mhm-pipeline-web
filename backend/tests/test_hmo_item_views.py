@@ -7,7 +7,93 @@ import uuid
 import pytest
 
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
-from app.pipeline.hmo_item_views import fetch_validation_error_items
+from app.models.wikibase_entity_mapping import WikibaseEntityMapping
+from app.pipeline.hmo_item_views import (
+    fetch_merged_hmo_items,
+    fetch_validation_error_items,
+)
+
+
+@pytest.mark.asyncio
+async def test_status_is_on_wiki_when_another_run_uploaded_the_entity(db_session) -> None:
+    """Rule W-278: the data-status badge reads the cross-run ledger.
+
+    Run A uploaded the shared entity; run B rebuilt it and must not show
+    "new (not uploaded)" for an item that is already live.
+    """
+    source_uri = "http://ex.org#Aleppo"
+    run_a, run_b = uuid.uuid4(), uuid.uuid4()
+    db_session.add(
+        WikibaseEntityMapping(
+            ontology_uri=source_uri,
+            entity_kind="instance",
+            wikibase_id="Q22",
+            run_id=run_a,
+            label="Aleppo",
+        )
+    )
+    db_session.add(
+        HmoStudioItemCache(
+            run_id=run_b,
+            input_fingerprint="0" * 64,
+            resolved_entities=[
+                {
+                    "local_id": "QDraft_Aleppo",
+                    "labels": {"en": "Aleppo (Syria)"},
+                    "descriptions": {"en": "place"},
+                    "class_qid": "Q22",
+                    "source_uri": source_uri,
+                    "claims": [],
+                    "deferred_links": [],
+                    "skipped_statements": [],
+                },
+            ],
+            entity_count=1,
+            deferred_link_count=0,
+            skipped_statement_count=0,
+        )
+    )
+    await db_session.commit()
+
+    items = await fetch_merged_hmo_items(db_session, run_b)
+
+    assert len(items) == 1
+    assert items[0]["wikibase_id"] == "Q22"
+    assert items[0]["status"] == "created"
+    assert items[0]["status"] != "would_create"
+
+
+@pytest.mark.asyncio
+async def test_status_stays_new_when_no_run_uploaded_the_entity(db_session) -> None:
+    """The other half of the rule: a genuinely new item must still read new."""
+    run_id = uuid.uuid4()
+    db_session.add(
+        HmoStudioItemCache(
+            run_id=run_id,
+            input_fingerprint="0" * 64,
+            resolved_entities=[
+                {
+                    "local_id": "QDraft_New",
+                    "labels": {"en": "Never uploaded"},
+                    "descriptions": {"en": "place"},
+                    "class_qid": "Q22",
+                    "source_uri": "http://ex.org#New",
+                    "claims": [],
+                    "deferred_links": [],
+                    "skipped_statements": [],
+                },
+            ],
+            entity_count=1,
+            deferred_link_count=0,
+            skipped_statement_count=0,
+        )
+    )
+    await db_session.commit()
+
+    items = await fetch_merged_hmo_items(db_session, run_id)
+
+    assert items[0]["wikibase_id"] is None
+    assert items[0]["status"] == "would_create"
 
 
 @pytest.mark.asyncio

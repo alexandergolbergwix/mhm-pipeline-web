@@ -63,7 +63,9 @@
   `push_single_item` cases), `test_hmo_item_upload_job.py`,
   `test_hmo_studio_upload_items_router.py` — two-pass upload, job, R2, R16, R17, R19.
 - `backend/tests/test_hmo_item_views.py` — `fetch_validation_error_items`,
-  `has_blocking_shacl` on merged items.
+  `has_blocking_shacl` on merged items; Rule W-278: the data-status badge reads
+  the cross-run ledger (an entity another run uploaded is `created` here, a
+  genuinely new one stays `would_create`).
 - `backend/tests/unit/test_hmo_item_shacl_gate.py` — blocking severity filter,
   `und` label sanitization.
 - `backend/tests/test_hmo_studio_items_push_router.py` — single-item
@@ -79,7 +81,10 @@
   also job-service and eval-agent blocks).
 - `backend/tests/unit/test_hmo_item_reconcile.py`
   (`test_pid_lookup_transaction_is_closed_before_the_sparql_call`) and
-  `test_hmo_studio_items_reconcile_router.py` — fail-closed reconcile.
+  `test_hmo_studio_items_reconcile_router.py` — fail-closed reconcile. Rule
+  W-278: `test_ledger_*` pin the cross-run live-instance ledger — sees another
+  run's mapping, excludes the `wikidata:…` QID-ledger namespace and schema
+  rows, drops ambiguity in both directions, keeps unrelated rows.
 - `backend/tests/unit/test_hmo_item_shacl.py`, `test_hmo_item_merge.py`,
   `test_hmo_studio_item_override.py` — SHACL bucketing + override merge.
 - `backend/tests/test_hmo_studio_coverage_router.py`

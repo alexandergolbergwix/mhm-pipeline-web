@@ -864,3 +864,64 @@ Tests: `backend/tests/unit/test_hmo_exporter_resolution.py`
 `test_resolve_keeps_uri_link_when_individual_class_is_unmapped`,
 `test_ontology_index_declares_certain`),
 `backend/tests/test_hmo_item_upload.py::test_live_upload_disambiguates_against_foreign_run_labels`.
+
+---
+
+### Rule W-278 — The live-instance ledger is cross-run; readers and the writer must share it (added 2026-10-19)
+
+On run `47e03437` the HMO Studio table showed **18,480 items as "new (not
+uploaded)"** and the build bar read `0/18481 ON WIKI`, while **18,466 of
+those items were already live** on `mhm-hmo.wikibase.cloud` — 16,977 of
+them uploaded by run `3494ebf5`, 1,489 by run `48ba6c13`. Only 14 items were
+genuinely new. A curator was one click from a pointless `Rebuild (skip
+cache)` on data that was already correct.
+
+The cause was a scope mismatch between the reader and the writer of one
+table. `wikibase_entity_mappings` is the write-dedup ledger — one row per
+`ontology_uri` that already has a live Wikibase QID (see the model
+docstring). The writer read it **globally**
+(`_load_run_instance_mappings(..., include_global=True)`), while every
+reader scoped it to `run_id == run_id`:
+
+- `hmo_studio_items.py` `mapping_sq` — the data-status badge and the facets
+- `hmo_item_views.py` `uri_to_qid` — both merged-item views
+- `hmo_studio.py` `uploaded_count` — the `X/Y on wiki` counter
+- `hmo_item_views.py` `mapping_latest` — the **cache-invalidation key**, so a
+  stale build cache also kept re-rendering the wrong badge
+
+A new run reuses the same canonical entities — places, languages,
+restrictions, institutions — that earlier runs already uploaded. Those
+entities are shared by design; a run-scoped ledger cannot represent them.
+
+`hmo_item_reconcile.live_instance_qids_select()` is now the **one**
+definition of that ledger, used by the writer and every reader:
+
+- **Scope: all runs.** `run_id IS NOT NULL`. A mapping row written by any run
+  is a live item for every run. Instance rows with a NULL `run_id` are the
+  *Wikidata Studio* QID ledger (`wikidata_qid_ledger.py`) whose keys are the
+  separate `wikidata:…` namespace, so they stay excluded.
+- **No ambiguity, both directions.** A QID that two source URIs claim, or a
+  `source_uri` that carries two QIDs, is corrupt or replayed state. Neither
+  side is trusted. The writer previously guarded only the first direction and
+  silently picked the last row in the second; the readers guarded neither.
+
+The create path was never at risk — `push_single_item` reconciles by
+`hmo_source_uri` over SPARQL before creating and **adopts** what it finds —
+so this was a display defect, not data damage. That is exactly why it is
+worth a rule: a status badge that disagrees with the ledger teaches curators
+to distrust the table and reach for rebuilds that make things worse.
+
+**A status badge must read the same ledger the writer writes.** When a
+surface reports "not uploaded", the query behind it must be the one the
+upload path consults. Never scope a shared-entity ledger to the current run.
+
+Tests: `backend/tests/unit/test_hmo_item_reconcile.py`
+(`test_ledger_sees_another_runs_mapping`,
+`test_ledger_excludes_the_wikidata_qid_ledger_namespace`,
+`test_ledger_drops_a_qid_claimed_by_two_source_uris`,
+`test_ledger_drops_a_source_uri_with_two_qids`,
+`test_ledger_keeps_unrelated_rows_when_one_is_ambiguous`,
+`test_ledger_excludes_schema_rows`),
+`backend/tests/test_hmo_item_views.py`
+(`test_status_is_on_wiki_when_another_run_uploaded_the_entity`,
+`test_status_stays_new_when_no_run_uploaded_the_entity`).

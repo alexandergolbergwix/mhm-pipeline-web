@@ -14,7 +14,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Integer as _SQL_INT, cast, func, select
+from sqlalchemy import Integer as _SQL_INT
+from sqlalchemy import cast, func, select
 from sqlalchemy.dialects.postgresql import JSONB as _JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +40,7 @@ from app.pipeline.agent_runner import (
 from app.pipeline.hmo_item_merge import override_row_to_dict
 from app.pipeline.hmo_item_reconcile import (
     ReconciliationUnavailableError,
+    live_instance_qids_select,
     reconcile_item,
 )
 from app.pipeline.hmo_item_verdict_cache import (
@@ -244,7 +246,6 @@ async def _page_from_rows(
     from app.models.hmo_studio_item_override import HmoStudioItemOverride
     from app.models.hmo_studio_item_row import HmoStudioItemRow
     from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD, TARGET_ITEM, WikibaseCloudWrite
-    from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 
     sort_col = (
         HmoStudioItemRow.local_id if sort == "local_id" else HmoStudioItemRow.label_sort
@@ -252,15 +253,7 @@ async def _page_from_rows(
     descending = dir == "desc"
     col_filters = _parse_col_filters(filters)
 
-    mapping_sq = (
-        select(
-            WikibaseEntityMapping.ontology_uri,
-            WikibaseEntityMapping.wikibase_id,
-        ).where(
-            WikibaseEntityMapping.run_id == run_id,
-            WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
-        ).subquery()
-    )
+    mapping_sq = live_instance_qids_select().subquery()
     latest_write_sq = (
         select(
             WikibaseCloudWrite.target_key.label("source_uri"),
@@ -635,7 +628,6 @@ async def _facet_counts(db: AsyncSession, run_id: uuid.UUID) -> dict[str, dict[s
     from app.models.hmo_studio_item_override import HmoStudioItemOverride
     from app.models.hmo_studio_item_row import HmoStudioItemRow
     from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD, TARGET_ITEM, WikibaseCloudWrite
-    from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 
     rv = HmoStudioItemOverride.rule_verdict
     rv_fails = cast(rv["fail_count"], _SQL_INT).label("rv_fails")
@@ -697,13 +689,7 @@ async def _facet_counts(db: AsyncSession, run_id: uuid.UUID) -> dict[str, dict[s
     facets.update(counts)
 
     # data_status + upload_outcome need the write join.
-    mapping_sq = select(
-        WikibaseEntityMapping.ontology_uri,
-        WikibaseEntityMapping.wikibase_id,
-    ).where(
-        WikibaseEntityMapping.run_id == run_id,
-        WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
-    ).subquery()
+    mapping_sq = live_instance_qids_select().subquery()
     writes_sq = (
         select(
             WikibaseCloudWrite.target_key.label("source_uri"),
@@ -1127,6 +1113,8 @@ async def push_hmo_item(
     label_overrides = await compute_label_overrides(db, run_id, cache_entities)
     from app.models.wikibase_entity_mapping import (  # noqa: PLC0415
         ENTITY_KIND_INSTANCE as _EK_INSTANCE,
+    )
+    from app.models.wikibase_entity_mapping import (
         WikibaseEntityMapping as _WbEntityMapping,
     )
     known_qids = {

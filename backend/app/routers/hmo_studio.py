@@ -46,19 +46,20 @@ from app.models.event import (
     ProjectEvent,
 )
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
+from app.models.hmo_studio_item_row import HmoStudioItemRow
 from app.models.run_job import (
     JOB_KIND_HMO_ITEM_BUILD,
     JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_HMO_MANIFEST_BUILD,
     JOB_KIND_HMO_MANIFEST_UPLOAD,
 )
-from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
 from app.pipeline import hmo_studio as hmo_pipeline
 from app.pipeline.hmo_authority_conflict_resolve import (
     load_run_authority_matches,
     resolve_authority_conflicts,
 )
 from app.pipeline.hmo_authority_gate import build_authority_conflict_report
+from app.pipeline.hmo_item_reconcile import live_instance_qids_select
 from app.pipeline.rdf_build import (
     ensure_ttl_on_disk,
     rdf_output_path_for_run,
@@ -793,11 +794,17 @@ async def item_status(
             ).where(HmoStudioItemCache.run_id == run_id)
         )
     ).first()
+    # "X/Y on wiki" must count this run's items that have a live QID anywhere
+    # in the ledger, not mapping rows this run wrote — a shared entity
+    # uploaded by another run is on the wikibase for this one too (W-278).
+    # Without this the bar read 0/18481 while 18,466 of those items were live.
     uploaded_count = (
         await db.execute(
-            select(func.count(WikibaseEntityMapping.id)).where(
-                WikibaseEntityMapping.run_id == run_id,
-                WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
+            select(func.count()).select_from(HmoStudioItemRow).where(
+                HmoStudioItemRow.run_id == run_id,
+                HmoStudioItemRow.source_uri.in_(
+                    select(live_instance_qids_select().subquery().c.ontology_uri)
+                ),
             )
         )
     ).scalar_one()

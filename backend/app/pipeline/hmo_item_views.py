@@ -23,6 +23,7 @@ from app.models.wikibase_entity_mapping import (
 )
 from app.pipeline.ai_verdict_cache_common import normalise_public_verdict
 from app.pipeline.hmo_item_merge import apply_hmo_item_override, override_row_to_dict
+from app.pipeline.hmo_item_reconcile import load_live_instance_qids
 from app.pipeline.hmo_item_shacl import item_has_blocking_shacl
 from app.pipeline.hmo_item_verdict_cache import sanitise_stale_hmo_item_verdict
 from app.pipeline.marc_verify_context import (
@@ -71,7 +72,10 @@ async def hmo_items_fingerprint(db: AsyncSession, run_id: uuid.UUID) -> str:
     )
     mapping_latest = await db.scalar(
         select(func.max(WikibaseEntityMapping.created_at)).where(
-            WikibaseEntityMapping.run_id == run_id,
+            # Any run's mapping changes this run's data-status badges (a
+            # shared entity uploaded by run A is "on wiki" for run B), so the
+            # cache key must move on any of them (Rule W-278).
+            WikibaseEntityMapping.run_id.is_not(None),
             WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
         )
     )
@@ -137,18 +141,9 @@ async def fetch_merged_hmo_items(
     ).scalars().all()
     overrides_by_id = {r.local_id: r for r in override_rows}
 
-    mapping_rows = (
-        await db.execute(
-            select(
-                WikibaseEntityMapping.ontology_uri,
-                WikibaseEntityMapping.wikibase_id,
-            ).where(
-                WikibaseEntityMapping.run_id == run_id,
-                WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
-            )
-        )
-    ).all()
-    uri_to_qid = {uri: qid for uri, qid in mapping_rows}
+    # The live-instance ledger is cross-run: a shared entity uploaded by any
+    # run is on the wikibase for this one too (Rule W-278).
+    uri_to_qid = await load_live_instance_qids(db)
 
     latest_writes = await fetch_latest_wikibase_writes(
         db, run_id, channel=CHANNEL_ITEM_UPLOAD, target_kind=TARGET_ITEM,
@@ -435,18 +430,9 @@ async def iter_rule_verify_export_rows(
         return
     ids = list(verdicts)
 
-    mapping_rows = (
-        await db.execute(
-            select(
-                WikibaseEntityMapping.ontology_uri,
-                WikibaseEntityMapping.wikibase_id,
-            ).where(
-                WikibaseEntityMapping.run_id == run_id,
-                WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
-            )
-        )
-    ).all()
-    uri_to_qid = {uri: qid for uri, qid in mapping_rows}
+    # The live-instance ledger is cross-run: a shared entity uploaded by any
+    # run is on the wikibase for this one too (Rule W-278).
+    uri_to_qid = await load_live_instance_qids(db)
     shacl = {
         str(key): value
         for key, value in (

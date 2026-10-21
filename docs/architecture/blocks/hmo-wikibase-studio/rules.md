@@ -388,3 +388,15 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
     run 3494ebf5 kept every retry failing identically and made the
     `unresolved == 0` canonical gate unreachable — the Wikidata Studio
     canonical build stayed blocked.
+65. **R65 — A status badge MUST read the same ledger the writer writes
+    (Rule W-278).** `hmo_item_reconcile.live_instance_qids_select()` is the
+    one definition of the live-instance ledger: all runs
+    (`run_id IS NOT NULL`), no ambiguity in either direction (a QID claimed
+    by two source URIs, or a `source_uri` with two QIDs, is dropped). The
+    upload path and every reader (data-status badge, facets, merged views,
+    `X/Y on wiki` counter, cache-invalidation key) resolve through it.
+    *Why:* run 47e03437 showed 18,480 items as "new (not uploaded)" and
+    `0/18481 ON WIKI` while 18,466 were already live from runs 3494ebf5 and
+    48ba6c13 — the reader was run-scoped and the writer global. A shared
+    entity (place, language, restriction) is on the wikibase for every run.
+

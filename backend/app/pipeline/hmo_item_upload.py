@@ -49,8 +49,15 @@ from app.models.wikibase_cloud_write import (
     WikibaseCloudWrite,
 )
 from app.models.wikibase_entity_mapping import ENTITY_KIND_INSTANCE, WikibaseEntityMapping
+from app.pipeline.hmo_authority_gate import format_authority_gate_error, validate_authority_rows
+from app.pipeline.hmo_canonical import (
+    assert_canonical_entities,
+    canonical_snapshot_from_wikibase,
+    normalize_live_entity,
+)
 from app.pipeline.hmo_item_reconcile import (
     ReconciliationUnavailableError,
+    load_live_instance_qids,
     reconcile_item,
     resolve_source_uri_pid,
 )
@@ -64,9 +71,6 @@ from app.pipeline.hmo_item_shacl_gate import (
     sanitize_wikibase_labels,
 )
 from app.services.wikibase_audit import record_wikibase_write
-from app.pipeline.hmo_canonical import canonical_snapshot_from_wikibase
-from app.pipeline.hmo_canonical import assert_canonical_entities, normalize_live_entity
-from app.pipeline.hmo_authority_gate import format_authority_gate_error, validate_authority_rows
 from converter.wikibase.cloud_client import EntityEditOutcome
 from converter.wikibase.resolved_models import ResolvedClaim, ResolvedWikibaseEntity
 
@@ -218,7 +222,7 @@ async def upload_items_for_run(
         entities = all_entities
 
     shacl_by_local_id = cache_row.shacl_report or {}
-    existing = await _load_run_instance_mappings(db, run_id, include_global=True)
+    existing = await _load_run_instance_mappings(db, run_id)
     local_id_to_source_uri = {e.local_id: e.source_uri for e in all_entities}
     reconcile_pid = None if dry_run else await resolve_source_uri_pid(db)
 
@@ -1434,7 +1438,7 @@ async def compute_label_overrides(
     other run's Q3080).
     """
     if existing is None:
-        existing = await _load_run_instance_mappings(db, run_id, include_global=True)
+        existing = await _load_run_instance_mappings(db, run_id)
     own_uris = {e.source_uri for e in entities}
     foreign_uris = {uri for uri in existing if uri not in own_uris}
     pre_claimed: set[tuple[str, str, str]] = set()
@@ -1596,35 +1600,23 @@ async def _load_written_claim_keys(db: AsyncSession, run_id: uuid.UUID) -> set[s
 async def _load_run_instance_mappings(
     db: AsyncSession,
     run_id: uuid.UUID,
-    *,
-    include_global: bool = False,
 ) -> dict[str, str]:
-    """source_uri -> live Wikibase id for this run's already-uploaded instances."""
-    rows = (
-        await db.execute(
-            select(
-                WikibaseEntityMapping.ontology_uri, WikibaseEntityMapping.wikibase_id,
-            ).where(
-                WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE,
-                WikibaseEntityMapping.run_id == run_id
-                if not include_global
-                else WikibaseEntityMapping.run_id.is_not(None),
-            )
-        )
-    ).all()
-    # A corrupted/replayed upload can leave one live QID attached to multiple
-    # source URIs. Never trust an ambiguous mapping: doing so updates the
-    # wrong live item (e.g. Jerusalem resolving to an unrelated Q1389). Drop
-    # every colliding QID so source-URI reconciliation can recover correctly.
-    by_qid: dict[str, str] = {}
-    collisions: set[str] = set()
-    for uri, qid in rows:
-        previous_uri = by_qid.get(qid)
-        if previous_uri is not None and previous_uri != uri:
-            collisions.add(qid)
-        else:
-            by_qid[qid] = uri
-    return {uri: qid for uri, qid in rows if qid not in collisions}
+    """source_uri -> live Wikibase id for already-uploaded instances.
+
+    Reads the cross-run ledger through
+    :func:`hmo_item_reconcile.live_instance_qids_select` — the SAME statement
+    every reader uses, so a create/update decision and the curator-facing
+    data-status badge can never disagree (Rule W-278).
+
+    The select drops ambiguous mappings: a corrupted/replayed upload can leave
+    one live QID attached to multiple source URIs (or one URI with two QIDs).
+    Never trust one — doing so updates the wrong live item (e.g. Jerusalem
+    resolving to an unrelated Q1389).
+
+    ``run_id`` is accepted so callers read as "the ledger for this build"; the
+    ledger itself is deliberately cross-run.
+    """
+    return await load_live_instance_qids(db)
 
 
 async def _record_instance_mapping(

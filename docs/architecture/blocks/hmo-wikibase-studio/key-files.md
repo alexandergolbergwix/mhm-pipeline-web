@@ -19,7 +19,7 @@
 | `backend/app/pipeline/hmo_item_shacl.py` | Runs SHACL once, buckets violations by item `local_id` (signal, not gate) |
 | `backend/app/pipeline/hmo_item_merge.py` | Applies curator override rows onto built entities |
 | `backend/app/pipeline/hmo_item_views.py` | `fetch_merged_hmo_items` — build cache + overrides + QID mappings + SHACL + AI verdicts, merged for the UI |
-| `backend/app/pipeline/hmo_item_reconcile.py` | SPARQL exists-check by `hmo_source_uri` claim; fail-closed; `resolve_source_uri_pid` fast path |
+| `backend/app/pipeline/hmo_item_reconcile.py` | SPARQL exists-check by `hmo_source_uri` claim; fail-closed; `resolve_source_uri_pid` fast path. Also owns `live_instance_qids_select()` / `load_live_instance_qids()` — the one cross-run live-instance ledger every reader and the writer share (Rule W-278 / R65) |
 | `backend/app/pipeline/hmo_item_upload.py` | Two-pass upload: pass 1 create/adopt/update items (via shared `push_single_item`), pass 2 deferred item→item links; SHACL gate (R19) |
 | `backend/app/pipeline/hmo_item_shacl_gate.py` | `blocking_shacl_issues`, label/description sanitization for Wikibase writes |
 | `backend/app/pipeline/hmo_item_upload_job.py` | Background job wrapper for the live item upload |
