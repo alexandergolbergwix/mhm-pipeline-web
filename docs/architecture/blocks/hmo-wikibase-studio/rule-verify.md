@@ -126,6 +126,23 @@ added the columns (also on `wikidata_item_overrides` for phase 3).
   The pass merges + reports progress every 100 items
   (`_API_PASS_CHUNK`) so the tray shows live counts instead of sitting
   on the generic "Probing live Wikidata…" message for an hour.
+  The loop **steps and slices by that same constant** (R66 / Rule W-279).
+  They used to disagree — step `_API_PASS_CHUNK` (100), slice `CHUNK`
+  (1000) — so chunks overlapped by 900 items, every item was probed up to
+  ten times, and `done` ran to ~10x total. Verdicts survived because
+  `results` is keyed by `local_id`, which is exactly why the defect was
+  invisible in the output and loud only in the clock. On run 47e03437
+  (18,481 items) the pass ran 22 minutes without finishing.
+  `test_api_pass_probes_each_item_exactly_once` asserts each `local_id`
+  merges exactly once.
+
+  **Frozen progress bar ≠ dead job.** The Heroku Postgres role has a
+  **20-connection limit** (`pg_roles.rolconnlimit`). Under fan-out load the
+  progress callbacks fail with `too many connections for role`, so the bar
+  freezes at whatever the orchestrator last managed to write while the job
+  keeps working. Check `modal app list` for live tasks and the job row's
+  `updated_at` — a moving `updated_at` with a static payload means saturated
+  connections, not a hang. Cancel only when both are static.
 - Job result carries the per-rule summary only — per-entity data lives
   in the override rows and the results endpoint (R14 lesson).
 

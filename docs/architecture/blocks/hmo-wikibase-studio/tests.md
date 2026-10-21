@@ -148,6 +148,10 @@
   blank-node IDs and cross-run-capable deferred target serialization (R42/R43).
 - `backend/tests/test_hmo_studio_rule_verify_export_router.py` — rule-verify
   export: 409 without build, JSON/CSV shape per scope (block R58).
+- `backend/tests/test_rule_verify.py::test_api_pass_probes_each_item_exactly_once`
+  — block R66 / Rule W-279: the API-pass loop advances by the same size it
+  takes, so no `local_id` is merged twice. With the old step/slice mismatch
+  reintroduced the test sees 628 merges for 307 items.
 - `backend/tests/test_rule_verify.py::test_rule_verify_single_entity_endpoint` —
   one entity's non-pass results via `GET …/rule-verify/results/entities/{local_id}`
   (drawer Rule check card), unchecked fallback for unknown local ids.

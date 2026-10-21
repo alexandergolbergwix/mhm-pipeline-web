@@ -324,11 +324,16 @@ async def run_rule_verify_api_pass(job_id: str, run_id: uuid.UUID) -> dict[str, 
     total = len(items)
     done = 0
     cancelled = False
+    # Step AND slice are _API_PASS_CHUNK. They used to disagree — the loop
+    # stepped 100 but sliced CHUNK (1000), so consecutive chunks overlapped
+    # by 900 items: every item was probed up to ten times and `done` ran to
+    # ~10x total, which made the progress fraction meaningless and stretched
+    # the throttle-bound probe phase by an order of magnitude (W-279).
     for start in range(0, total, _API_PASS_CHUNK):
         if await is_cancel_requested(job_uuid):
             cancelled = True
             break
-        chunk = items[start : start + CHUNK]
+        chunk = items[start : start + _API_PASS_CHUNK]
         part = await _to_thread(engine.run_scope, chunk, api_only=True)
         results.update(part)
         chunk_by_id = {

@@ -821,6 +821,75 @@ async def test_api_pass_merges_and_reports_per_rule_only(monkeypatch) -> None:
     assert merged_calls and merged_calls[0]["job_id"] == job_id
 
 
+@pytest.mark.asyncio
+async def test_api_pass_probes_each_item_exactly_once(monkeypatch) -> None:
+    """The loop step and slice must agree, or chunks overlap (Rule W-279).
+
+    They used to step by ``_API_PASS_CHUNK`` (100) while slicing ``CHUNK``
+    (1000), so consecutive chunks overlapped by 900 items: every item was
+    probed up to ten times and ``done`` ran to ~10x total. Verdicts survived
+    (``results`` is keyed by local_id) but the throttle-bound probe phase
+    cost an order of magnitude more wall clock than it needed to.
+    """
+    import uuid
+
+    from app.pipeline import rule_verify_job as rvj
+
+    class _FakeSession:
+        async def __aenter__(self) -> _FakeSession:
+            return self
+
+        async def __aexit__(self, *exc: object) -> None:
+            return None
+
+    # More items than one chunk, so the loop actually iterates and an
+    # overlap would be visible.
+    count = rvj._API_PASS_CHUNK * 3 + 7
+    items = [
+        _item(local_id=f"QDraft_{i:05d}", source_uri=f"urn:hmo:ms{i:05d}")
+        for i in range(count)
+    ]
+
+    async def _fake_scope(db, run_id, *, item_ids=None, **_kw):  # type: ignore[no-untyped-def]
+        return items
+
+    def _fake_fetcher() -> object:
+        def fetch(call: object, arg: object = None) -> object:
+            return [] if call == "inlabel_search" else {"Q2": True}
+
+        return fetch
+
+    seen_in_merge: list[str] = []
+
+    async def _fake_merge(db, **kwargs):  # type: ignore[no-untyped-def]
+        seen_in_merge.extend(list(kwargs["results_by_local_id"]))
+        return 1
+
+    async def _fake_progress(job_id: object, progress: object) -> None:
+        return None
+
+    async def _fake_cancel(job_id: object) -> bool:
+        return False
+
+    monkeypatch.setattr(rvj, "session_scope", lambda: _FakeSession())
+    monkeypatch.setattr(rvj, "load_rule_verify_scope", _fake_scope)
+    monkeypatch.setattr(rvj, "merge_api_rule_verdicts", _fake_merge)
+    monkeypatch.setattr(rvj, "update_job_progress", _fake_progress)
+    monkeypatch.setattr(rvj, "is_cancel_requested", _fake_cancel)
+
+    import app.pipeline.rule_verify.api_fetcher as api_fetcher
+
+    monkeypatch.setattr(api_fetcher, "production_fetcher", _fake_fetcher)
+
+    summary = await rvj.run_rule_verify_api_pass(str(uuid.uuid4()), uuid.uuid4())
+
+    assert len(seen_in_merge) == len(set(seen_in_merge)), (
+        "an item was merged in more than one chunk — the loop step and slice disagree"
+    )
+    assert set(seen_in_merge) == {f"QDraft_{i:05d}" for i in range(count)}
+    assert summary["probed"] == count
+
+
 def test_api_pass_summary_merges_without_double_counting() -> None:
     """``merge_summaries`` must add the API pass's per-rule tallies but not
     a second copy of the scope or the per-entity overalls."""

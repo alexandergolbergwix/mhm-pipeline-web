@@ -925,3 +925,52 @@ Tests: `backend/tests/unit/test_hmo_item_reconcile.py`
 `backend/tests/test_hmo_item_views.py`
 (`test_status_is_on_wiki_when_another_run_uploaded_the_entity`,
 `test_status_stays_new_when_no_run_uploaded_the_entity`).
+
+---
+
+### Rule W-279 — A chunked loop's step and slice must agree (added 2026-10-21)
+
+The HMO rule-verify API pass (`run_rule_verify_api_pass`) probes live
+Wikidata labels for every item in scope. It chunks its work so the tray
+reports progress and the one throttle domain (Rule W-139) sees a steady
+rate. The chunking was written with two different constants:
+
+```python
+CHUNK = 1000            # the local worker loop's cadence
+_API_PASS_CHUNK = 100   # the API pass's merge/progress cadence
+
+for start in range(0, total, _API_PASS_CHUNK):   # step  100
+    chunk = items[start : start + CHUNK]          # slice 1000
+```
+
+The loop stepped 100 and sliced 1000, so consecutive chunks **overlined by
+900 items**. Each item was probed up to ten times, `done += len(chunk)` ran
+to roughly 10× `total`, and the throttle-bound probe phase cost an order of
+magnitude more wall clock than it needed. On run `47e03437` (18,481 items)
+the pass had already run 22 minutes without finishing or writing one
+readable progress number.
+
+Verdicts survived the bug — `results` is keyed by `local_id`, so a repeated
+probe simply overwrote its own entry — which is exactly what made it
+invisible in the output. Only the cost was wrong.
+
+Both sides of the loop now use `_API_PASS_CHUNK`, and a regression test
+(`test_api_pass_probes_each_item_exactly_once`) feeds the pass three chunks'
+worth of items and asserts every `local_id` is merged **exactly once**. With
+the bug reintroduced that test sees 628 merges for 307 items.
+
+**A chunked loop must advance by the same size it takes.** When a loop
+carries a step and a slice that can differ, name one constant and use it on
+both sides — a mismatch here is silent in the result and loud only in the
+clock.
+
+Operational note: the rule-verify fan-out writes progress from many
+containers at once, and the Heroku Postgres role here has a **20-connection
+limit** (`pg_roles.rolconnlimit`). Under load the callbacks fail with
+`too many connections for role`, which freezes the progress bar at the last
+number the orchestrator managed to write while the job is still working. A
+frozen bar plus a moving `updated_at` means saturated connections, not a
+dead job — check `modal app list` for live tasks before cancelling.
+
+Tests: `backend/tests/test_rule_verify.py`
+(`test_api_pass_probes_each_item_exactly_once`).

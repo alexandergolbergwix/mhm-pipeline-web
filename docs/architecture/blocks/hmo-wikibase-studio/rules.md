@@ -399,4 +399,15 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
     `0/18481 ON WIKI` while 18,466 were already live from runs 3494ebf5 and
     48ba6c13 — the reader was run-scoped and the writer global. A shared
     entity (place, language, restriction) is on the wikibase for every run.
+66. **R66 — A chunked loop's step and slice must agree (Rule W-279).**
+    `run_rule_verify_api_pass` steps and slices by `_API_PASS_CHUNK`; the
+    two used to differ (step 100, slice `CHUNK`=1000), overlapping chunks by
+    900 items. Verdicts survived (keyed by `local_id`) but every item was
+    probed up to 10x and `done` ran to ~10x total. One constant on both
+    sides; `test_api_pass_probes_each_item_exactly_once` asserts each
+    `local_id` merges exactly once. *Why:* on run 47e03437 (18,481 items)
+    the probe pass ran 22 minutes without finishing or reporting a readable
+    number. Also note the Postgres role limit is 20 connections — under
+    fan-out load, progress callbacks fail and the bar freezes while the job
+    is still working (a moving `updated_at` means it is not dead).
 
