@@ -1124,3 +1124,41 @@ Tests: `backend/tests/unit/test_marc_script_and_colophon.py`
 `test_label_candidates_are_reported_not_failed`),
 `backend/tests/test_rule_verify.py`
 (`test_label_candidates_mixed_linked_and_foreign_reports_both`).
+
+---
+
+### Rule W-284 — An empty value is silence, not an unresolved statement (added 2026-10-22)
+
+Fixing the empty `P288` claim (Rule W-282) exposed the other half of the same
+shape. `_build_claim_spec` returned `None` for an empty `{"text": "", "language":
+"he"}`, which stopped it becoming a malformed claim — correct. But the caller
+recorded **every** `None` as a skipped statement:
+
+```python
+if claim is None:
+    skipped.append(f"{stmt.property_name}: could not shape value …")
+```
+
+and `hmo.statements.resolved` fails on any skipped statement. So the same 885
+shapes moved from `claims.datatype` to `statements.resolved`. One defect
+replaced another.
+
+Two different reasons return `None`, and only one is a defect:
+
+- **Unshapeable** — an object property carrying a URI, an unparseable date.
+  That is a real resolution failure and belongs in `skipped_statements`.
+- **Blank** — an empty string, a monolingualtext with empty `text`, an empty
+  mapping, `None`. That is *nothing to say*. Silently dropped.
+
+`_is_blank_statement_value` now draws the line at the caller. A blank value
+dies quietly; an unshapeable one is still recorded and still fails.
+
+**A fix must not move a defect to a different column.** When a change stops one
+rule from firing, check what the *caller* does with the value it now returns —
+the same input can arrive at a second checker unchanged. Verify the whole
+path, not the branch you edited.
+
+Tests: `backend/tests/unit/test_marc_script_and_colophon.py`
+(`test_blank_statement_values_are_recognised`,
+`test_real_statement_values_are_not_blank`,
+`test_an_empty_value_becomes_silence_not_an_unresolved_statement`).

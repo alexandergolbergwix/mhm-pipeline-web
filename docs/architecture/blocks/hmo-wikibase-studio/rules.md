@@ -447,4 +447,14 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
     *Why:* `fail 976` on run 47e03437 was 91 hints and 885 empty-claim
     shapes — no bad data at all. Scoring hints as failures makes the count
     meaningless, and a meaningless count hides the real ones.
+70. **R70 — An empty value is silence, not an unresolved statement (Rule
+    W-284).** `_build_claim_spec` returning `None` has two causes and only
+    one is a defect. `_is_blank_statement_value` drops blank input (empty
+    string, empty `text` in a monolingualtext, empty mapping, `None`)
+    without recording it, while a genuinely unshapeable value still lands in
+    `skipped_statements` and still fails `hmo.statements.resolved`. *Why:*
+    the W-282 empty-claim fix moved the same 885 shapes from
+    `claims.datatype` to `statements.resolved` — one defect replaced
+    another. Check what the caller does with the value an edited branch now
+    returns; the same input can reach a second checker unchanged.
 

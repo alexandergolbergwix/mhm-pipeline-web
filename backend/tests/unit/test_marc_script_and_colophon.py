@@ -274,3 +274,52 @@ def test_label_candidates_are_reported_not_failed() -> None:
     assert cand.state == "pass", cand.message
     assert cand.evidence["requires_curator_confirmation"] is True
     assert cand.evidence["candidates"][0]["qid"] == "Q777"
+
+
+# ── Rule W-284: empty value ≠ unresolved statement ───────────────────────
+#
+# Fixing the empty-P288 claim (W-282) exposed the other half: returning None
+# from `_build_claim_spec` made the caller record the value as a skipped
+# statement, so the same 885 shapes failed `hmo.statements.resolved` instead
+# of `hmo.claims.datatype`. An empty value is not a resolution failure — it is
+# nothing to say.
+
+
+def test_blank_statement_values_are_recognised() -> None:
+    from converter.wikibase.hmo_exporter import _is_blank_statement_value
+
+    for blank in ("", "   ", None, {}, {"text": "", "language": "he"},
+                  {"text": "  ", "language": "he"}):
+        assert _is_blank_statement_value(blank) is True, repr(blank)
+
+
+def test_real_statement_values_are_not_blank() -> None:
+    from converter.wikibase.hmo_exporter import _is_blank_statement_value
+
+    for real in ("x", "תם ונשלם", {"text": "תם", "language": "he"}, {"lat": 1}):
+        assert _is_blank_statement_value(real) is False, repr(real)
+
+
+def test_an_empty_value_becomes_silence_not_an_unresolved_statement() -> None:
+    """The distinction that matters: empty drops quietly, a real
+    unshapeable value is still recorded as skipped."""
+    from types import SimpleNamespace
+
+    from converter.wikibase.hmo_exporter import (
+        _build_claim_spec,
+        _is_blank_statement_value,
+    )
+
+    # Empty: `_build_claim_spec` refuses it, and the caller drops it silently.
+    blank = SimpleNamespace(value="", language="he")
+    assert _build_claim_spec(
+        SimpleNamespace(wikibase_id="P288", datatype="monolingualtext"), blank,
+    ) is None
+    assert _is_blank_statement_value(blank.value) is True
+
+    # Present but unshapeable: still counts as unresolved.
+    unshapeable = SimpleNamespace(value="http://example.org/x", language=None)
+    assert _build_claim_spec(
+        SimpleNamespace(wikibase_id="P1", datatype="wikibase-item"), unshapeable,
+    ) is None
+    assert _is_blank_statement_value(unshapeable.value) is False

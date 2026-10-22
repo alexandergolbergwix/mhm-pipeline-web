@@ -839,6 +839,16 @@ def resolve_against_mappings(
 
             claim = _build_claim_spec(prop_entry, stmt)
             if claim is None:
+                # Two different reasons return None, and only one is a defect:
+                # a value that genuinely cannot be shaped (an object property
+                # carrying a URI, an unparseable date) belongs in
+                # `skipped_statements`; an EMPTY value is simply nothing to say
+                # and must not be recorded as unresolved. It used to be, and
+                # every empty `{"text": ""}` on P288 then failed
+                # `hmo.statements.resolved` — 885 items — after the same shape
+                # stopped failing `hmo.claims.datatype` (Rule W-284).
+                if _is_blank_statement_value(stmt.value):
+                    continue
                 skipped.append(
                     f"{stmt.property_name}: could not shape value "
                     f"{stmt.value!r} for datatype {prop_entry.datatype!r}"
@@ -903,6 +913,26 @@ def resolve_against_mappings(
         raise UnmappedOntologyUriError(sorted(missing_uris))
 
     return resolved
+
+
+def _is_blank_statement_value(value: object) -> bool:
+    """True when a statement value carries nothing worth a claim.
+
+    Covers the shapes a blank arrives in: an empty/whitespace string, a
+    monolingualtext with an empty ``text`` (``{"text": "", "language": "he"}``),
+    an empty mapping, and ``None``. Such a value is not a claim and not a
+    resolution failure — it is silence.
+    """
+    if value is None:
+        return True
+    if isinstance(value, dict):
+        text = value.get("text")
+        if text is not None:
+            return not str(text).strip()
+        return not value
+    if isinstance(value, str):
+        return not value.strip()
+    return False
 
 
 def _build_claim_spec(

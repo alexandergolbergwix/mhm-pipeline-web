@@ -196,4 +196,5 @@
   `ceil(N/WIKI_ENTITY_BATCH)` requests, not N),
   `test_prime_fetch_caches_is_global_not_per_user` (`user_id=None`),
   `test_prime_fetch_caches_noops_without_endpoint`.
+- `backend/tests/unit/test_marc_script_and_colophon.py` — Rule W-284 / R70: a blank statement value (empty string, empty `text` in a monolingualtext, empty mapping, `None`) is dropped without becoming a skipped statement, while a genuinely unshapeable value is still recorded as unresolved.
 
