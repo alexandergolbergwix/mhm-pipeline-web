@@ -150,12 +150,32 @@ def _run_class_qid(entity: dict[str, Any], ctx: Any) -> RuleResult:
     return warn_as_pass("hmo.class.present")
 
 
+# Ontology-declared individuals that are vocabulary terms, not scholarly
+# entities (Rule W-260 / R64, Rule W-283). They are auto-drafted so a
+# wikibase-item target resolves; a claim on one would be meaningless.
+_VOCABULARY_ENTITY_TYPES = {
+    "CertaintyLevel",
+    "DateFormatType",
+    "HierarchyType",
+    "AttributionSource",
+    "EpistemologicalStatus",
+}
+
+
 def _run_claims_present(entity: dict[str, Any], ctx: Any) -> RuleResult:
     claims = _claims(entity)
     if claims:
         return warn_as_pass("hmo.claims.present", f"{len(claims)} claim(s)")
     if str(entity.get("entity_type") or "") in {"E12_Production", "E52_Time-Span"}:
         return not_relevant("hmo.claims.present", "structural entity may be claim-free")
+    if str(entity.get("entity_type") or "") in _VOCABULARY_ENTITY_TYPES:
+        # Ontology-declared individuals (Rule W-260 / R64): certainty levels,
+        # date formats, hierarchy kinds, attribution sources, epistemic
+        # status. They are auto-drafted stubs that exist so a wikibase-item
+        # target resolves. They are vocabulary terms, not scholarly entities,
+        # and zero claims is correct for them. 11 of the 18,480 items in run
+        # 47e03437 were these stubs and every one failed this rule (W-283).
+        return not_relevant("hmo.claims.present", "ontology vocabulary term")
     return fail("hmo.claims.present", "claims", "item carries no claims")
 
 
@@ -611,8 +631,14 @@ def _run_wikidata_label_candidates(entity: dict[str, Any], ctx: RuleContext) -> 
     message = f"{len(unconfirmed)} live Wikidata item(s) carry this label — curator must confirm"
     if confirmed:
         message += f"; {len(confirmed)} match the item's own linked QID"
-    return fail(
-        "hmo.wikidata.label_candidates", "labels", message,
+    # These are LINK CANDIDATES, not defects — the rule's own purpose is to
+    # surface a Wikidata item the curator may want to connect to, and nothing
+    # is wrong with our item when one exists. Reporting them as `fail`
+    # inflated the failure count and trained curators to ignore it (W-283:
+    # 28 of 100 probed read `fail` for a hint). The signal stays in the
+    # message and evidence; it just no longer claims the item is broken.
+    return warn_as_pass(
+        "hmo.wikidata.label_candidates", message,
         {
             "candidates": unconfirmed[:8],
             "linked_candidates": [c.get("qid") for c in confirmed[:8]],

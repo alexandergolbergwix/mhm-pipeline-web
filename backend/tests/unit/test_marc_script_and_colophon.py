@@ -201,3 +201,76 @@ def test_real_monolingualtext_still_shapes() -> None:
     )
     assert spec is not None
     assert spec.value == {"text": "תם ונשלם", "language": "he"}
+
+
+# ── Rule W-283: the three remaining findings ─────────────────────────────
+#
+# run 47e03437 read `fail 976`: 52 within-run duplicates, 28 Wikidata label
+# collisions, 11 items with no claims. All three were classification defects
+# rather than bad data.
+
+
+def test_canon_ref_labels_keep_the_hierarchy() -> None:
+    """Mishnah: Berakhot and Talmud Bavli: Berakhot are different works.
+
+    The exporter used to strip everything before the colon
+    (`.split(":", 1)[-1]`), so every same-record canon-ref pair collapsed
+    onto one label and read as a within-run duplicate. All 52 duplicates in
+    run 47e03437 were this shape.
+    """
+    from rdflib import Graph, Literal, RDF, RDFS
+
+    from converter.config.namespaces import HM
+    from converter.wikibase.hmo_exporter import HmoWikibaseExporter
+
+    graph = Graph()
+    a, b = HM.CanonRef_A, HM.CanonRef_B
+    for node, hier in ((a, "Mishnah"), (b, "Talmud_Bavli")):
+        graph.add((node, RDF.type, HM.CanonicalReference))
+        graph.add((node, RDFS.label, Literal(f"{hier}: ברכות", lang="en")))
+
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    labels = {d.source_uri: (d.labels or {}).get("en") for d in drafts}
+    values = list(labels.values())
+    assert values[0] != values[1], labels
+    assert all("_" not in (v or "") for v in values), labels
+
+
+def test_vocabulary_stubs_are_not_claim_failures() -> None:
+    """Ontology-declared individuals are vocabulary terms, not entities."""
+    from app.pipeline.rule_verify.rules.hmo import _run_claims_present
+
+    for et in ("CertaintyLevel", "DateFormatType", "HierarchyType",
+               "AttributionSource", "EpistemologicalStatus"):
+        res = _run_claims_present({"entity_type": et, "claims": []}, None)
+        assert res.state == "not_relevant", et
+
+
+def test_a_real_entity_with_no_claims_still_fails() -> None:
+    from app.pipeline.rule_verify.rules.hmo import _run_claims_present
+
+    res = _run_claims_present(
+        {"entity_type": "F4_Manifestation_Singleton", "claims": []}, None,
+    )
+    assert res.state == "fail"
+
+
+def test_label_candidates_are_reported_not_failed() -> None:
+    """A same-label Wikidata item is a link candidate, not a defect."""
+    from tests.test_rule_verify import _engine as engine, _item
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        if call == "inlabel_search":
+            return [{"qid": "Q777", "label": arg}]
+        raise AssertionError(call)
+
+    item = _item(claims=[])
+    results = engine([item], api=True, fetcher=fetcher).run_scope(
+        [item], include_api=True,
+    )
+    cand = {r.rule_id: r for r in results["QDraft_MS1"]}[
+        "hmo.wikidata.label_candidates"
+    ]
+    assert cand.state == "pass", cand.message
+    assert cand.evidence["requires_curator_confirmation"] is True
+    assert cand.evidence["candidates"][0]["qid"] == "Q777"

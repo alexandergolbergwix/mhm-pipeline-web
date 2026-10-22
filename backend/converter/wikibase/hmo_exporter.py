@@ -174,11 +174,16 @@ class HmoWikibaseExporter:
             ]
             labels = _labels_for_node(graph, subject)
             if local_name(class_uri) == "CanonicalReference":
-                # Raw local names carry the source-class prefix
-                # ('Talmud_Bavli: שבת') — humanize to the referenced title.
+                # Humanize the raw hierarchy prefix ('Talmud_Bavli: שבת' →
+                # 'Talmud Bavli: שבת') but KEEP it. The hierarchy is exactly
+                # what distinguishes "Mishnah: Berakhot" from "Talmud Bavli:
+                # Berakhot" — two different works that share a book name.
+                # Dropping the prefix (`.split(":", 1)[-1]`) collapsed every
+                # same-record canon-ref pair onto one label, so the pair read
+                # as a within-run duplicate (Rule W-283). 52 of the 52
+                # duplicates in run 47e03437 were this shape.
                 labels = {
-                    lang: str(text).replace("_", " ").split(":", 1)[-1].strip()
-                    or text
+                    lang: str(text).replace("_", " ").strip() or text
                     for lang, text in labels.items()
                 }
             if local_name(class_uri) == "E21_Person":

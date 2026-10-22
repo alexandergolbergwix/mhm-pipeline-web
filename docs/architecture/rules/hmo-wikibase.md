@@ -1073,3 +1073,54 @@ Tests: `backend/tests/unit/test_marc_script_and_colophon.py`
 `test_empty_monolingualtext_is_not_a_claim`,
 `test_empty_string_is_not_a_claim`,
 `test_real_monolingualtext_still_shapes`).
+
+---
+
+### Rule W-283 — A finding must describe a defect, not a hint (added 2026-10-21)
+
+The run on `47e03437` reported `fail 976` after the two silent-total bugs
+were fixed. Three categories accounted for all of them, and **none was bad
+data** — each was a classification defect in the checker.
+
+| Finding | Count | Real cause |
+|---|---|---|
+| within-run duplicate | 52 | the label dropped the hierarchy |
+| item carries no claims | 11 | vocabulary stubs scored as entities |
+| Wikidata label collision | 28 | link candidates scored as failures |
+
+**1. CanonRef labels dropped the hierarchy (52).** `hmo_exporter` stripped
+everything before the colon (`.split(":", 1)[-1]`) to "humanize to the
+referenced title". But the hierarchy is exactly what separates
+`Mishnah: Berakhot` from `Talmud Bavli: Berakhot` — two different works that
+share a book name. Every same-record canon-ref pair collapsed onto one label
+and read as a duplicate. The pair really was indistinguishable *as labelled*,
+so the rule was right and the label was wrong. Now the prefix is humanized
+(`Talmud_Bavli` → `Talmud Bavli`) but kept.
+
+**2. Vocabulary stubs scored as entities (11).** `_run_claims_present`
+exempted `E12_Production` and `E52_Time-Span` but not the ontology-declared
+individuals from Rule W-260 — `CertaintyLevel`, `DateFormatType`,
+`HierarchyType`, `AttributionSource`, `EpistemologicalStatus`. Those are
+auto-drafted so a `wikibase-item` target resolves; they are vocabulary terms,
+and zero claims is correct for them. A manuscript with no claims still fails.
+
+**3. Link candidates scored as failures (28).** `hmo.wikidata.label_candidates`
+exists to surface a live Wikidata item the curator may want to connect to.
+Its own message says *"candidates need curator confirmation"* — an action
+item. Nothing is wrong with our item when a name twin exists. Reporting that
+as `fail` inflated the count and trained curators to ignore failures. It now
+returns `warn_as_pass` with the candidate list kept in the evidence.
+
+**A rule must fail on a defect.** When a finding says "a human should look at
+this", it is not a failure — it is a note. Scoring hints as failures makes the
+failure count meaningless, and a meaningless count is worse than no count
+because it hides the real ones. Keep the signal in the message and evidence;
+just do not claim the item is broken.
+
+Tests: `backend/tests/unit/test_marc_script_and_colophon.py`
+(`test_canon_ref_labels_keep_the_hierarchy`,
+`test_vocabulary_stubs_are_not_claim_failures`,
+`test_a_real_entity_with_no_claims_still_fails`,
+`test_label_candidates_are_reported_not_failed`),
+`backend/tests/test_rule_verify.py`
+(`test_label_candidates_mixed_linked_and_foreign_reports_both`).

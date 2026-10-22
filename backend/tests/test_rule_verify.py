@@ -216,8 +216,10 @@ def test_api_rules_run_with_fetcher_and_report_dead_qid() -> None:
     assert alive.state == "fail"
     assert alive.evidence["dead"] == ["Q2"]
     cand = row["hmo.wikidata.label_candidates"]
-    assert cand.state == "fail"
+    # W-283: a same-label Wikidata item is a link CANDIDATE, not a defect.
+    assert cand.state == "pass"
     assert cand.evidence["candidates"][0]["qid"] == "Q777"
+    assert cand.evidence["requires_curator_confirmation"] is True
 
 
 def test_label_candidate_matching_own_linked_qid_is_confirmed() -> None:
@@ -269,7 +271,7 @@ def test_label_candidate_matches_url_claim_identity() -> None:
     assert cand.state == "pass"
 
 
-def test_label_candidates_mixed_linked_and_foreign_still_fail() -> None:
+def test_label_candidates_mixed_linked_and_foreign_reports_both() -> None:
     """Only the linked QID is confirmed; every foreign same-label item is
     still an unconfirmed collision that needs curator review."""
 
@@ -293,7 +295,8 @@ def test_label_candidates_mixed_linked_and_foreign_still_fail() -> None:
     )
     row = {r.rule_id: r for r in results["QDraft_MS1"]}
     cand = row["hmo.wikidata.label_candidates"]
-    assert cand.state == "fail"
+    # W-283: the foreign candidate is surfaced, not scored as a failure.
+    assert cand.state == "pass"
     assert [c["qid"] for c in cand.evidence["candidates"]] == ["Q777"]
     assert cand.evidence["linked_candidates"] == ["Q220"]
     assert "1 match the item's own linked QID" in cand.message
@@ -320,7 +323,11 @@ def test_unaccepted_wikidata_evidence_does_not_confirm() -> None:
     )
     row = {r.rule_id: r for r in results["QDraft_MS1"]}
     cand = row["hmo.wikidata.label_candidates"]
-    assert cand.state == "fail"
+    # W-283: the withheld evidence still fails to confirm, and the candidate
+    # is still surfaced — it just does not score as a defect.
+    assert cand.state == "pass"
+    assert [c["qid"] for c in cand.evidence["candidates"]] == ["Q777"]
+    assert cand.evidence["linked_candidates"] == []
 
 
 def test_worst_state_ordering() -> None:

@@ -434,4 +434,17 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
     `monolingualtext` and `string` now do too. *Why:* verify a value at its
     target, not just at the caller — an omitted constructor argument does
     not raise. And empty input is not a claim value.
+69. **R69 — A finding must describe a defect, not a hint (Rule W-283).**
+    Three checkers misclassified good output as failure: the CanonRef label
+    dropped its hierarchy so `Mishnah: Berakhot` and `Talmud Bavli: Berakhot`
+    collapsed onto one label (52 false duplicates); `_run_claims_present`
+    scored Rule W-260 vocabulary stubs (`CertaintyLevel`, `DateFormatType`,
+    `HierarchyType`, `AttributionSource`, `EpistemologicalStatus`) as
+    entities with no claims (11); and `hmo.wikidata.label_candidates`
+    scored a link candidate as a failure (28). The label now keeps its
+    hierarchy, vocabulary stubs are `not_relevant`, and link candidates
+    return `warn_as_pass` with the candidates kept in the evidence.
+    *Why:* `fail 976` on run 47e03437 was 91 hints and 885 empty-claim
+    shapes — no bad data at all. Scoring hints as failures makes the count
+    meaningless, and a meaningless count hides the real ones.
 
