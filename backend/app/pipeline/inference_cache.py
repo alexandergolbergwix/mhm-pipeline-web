@@ -60,7 +60,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -341,6 +341,57 @@ async def _read(
     except Exception:  # noqa: BLE001
         await db.rollback()
     return row.result
+
+
+async def cache_batch_warm(
+    db: AsyncSession,
+    *,
+    kind: str,
+    summaries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Batched L2-only warm for priming: canonical hash → cached result.
+
+    One SELECT and one hit-bump per 500 keys instead of :func:`_read`'s
+    per-key SELECT+commit — from a container that commit round-trip costs
+    ~2 s, so priming 18k labels sequentially took hours (W-280 follow-up:
+    batching must cover every cache-primed key shape, not just entity
+    batches). Misses are simply absent from the return; the caller falls
+    back to the fetch-and-cache path for them. Redis L1 is not touched —
+    the priming consumer keeps the results in its own run-scoped warm map.
+    """
+    now = datetime.now(timezone.utc)
+    found: dict[str, Any] = {}
+    keyed = [(canonical_hash(s), s) for s in summaries]
+    for start in range(0, len(keyed), 500):
+        batch_hashes = [h for h, _ in keyed[start : start + 500]]
+        rows = (
+            await db.execute(
+                select(InferenceCache).where(
+                    InferenceCache.kind == kind,
+                    InferenceCache.query_hash.in_(batch_hashes),
+                )
+            )
+        ).scalars().all()
+        live = [r for r in rows if r.expires_at is None or r.expires_at >= now]
+        for row in live:
+            found[row.query_hash] = row.result
+        if live:
+            await db.execute(
+                update(InferenceCache)
+                .where(
+                    InferenceCache.kind == kind,
+                    InferenceCache.query_hash.in_([r.query_hash for r in live]),
+                )
+                .values(
+                    hit_count=InferenceCache.hit_count + 1,
+                    last_hit_at=now,
+                )
+            )
+    try:
+        await db.commit()
+    except Exception:  # noqa: BLE001
+        await db.rollback()
+    return {h: found[h] for h, _ in keyed if h in found}
 
 
 async def _write(

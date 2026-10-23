@@ -19,7 +19,7 @@ from typing import Any
 
 # Module-level so tests can patch it and so the per-request cost of the
 # import is not paid inside the throttle loop.
-from app.pipeline.inference_cache import cache_http_call
+from app.pipeline.inference_cache import cache_batch_warm, cache_http_call
 
 logger = logging.getLogger(__name__)
 
@@ -193,23 +193,54 @@ async def prime_fetch_caches(
                 qid_alive_warm[qid] = True
 
     inlabel_warm: dict[str, Any] = {}
+    # Batch the L2 lookups first (W-280 follow-up): one SELECT + one
+    # hit-bump per 500 titles. The sequential path paid one commit
+    # round-trip per title (~2 s from a container), so priming the 18k
+    # labels of a full corpus took hours and stalled every API pass.
+    from app.pipeline.inference_cache import (  # noqa: PLC0415
+        canonical_hash,
+        endpoint_query_summary,
+    )
+    from app.pipeline.wikidata_duplicate_probe import _search_url  # noqa: PLC0415
+
+    prepared: list[tuple[str, str, dict[str, Any]]] = []
     for title in dict.fromkeys(labels):
         if not title:
             continue
-        try:
-            from app.pipeline.wikidata_duplicate_probe import _search_url  # noqa: PLC0415
+        url = _search_url(f'inlabel:"{title}"', limit=10)
+        prepared.append((title, url, endpoint_query_summary(endpoint=url, payload={})))
+    try:
+        cached_bodies = await cache_batch_warm(
+            db,
+            kind="wikidata.duplicate_probe",
+            summaries=[summary for _title, _url, summary in prepared],
+        )
+    except Exception as exc:  # noqa: BLE001 — priming is best-effort
+        logger.warning("prime_fetch_caches: label batch warm skipped: %s", exc)
+        cached_bodies = {}
 
-            url = _search_url(f'inlabel:"{title}"', limit=10)
-            body = await _get(url, {}, "wikidata.duplicate_probe")
-        except Exception as exc:  # noqa: BLE001 — priming is best-effort
-            logger.debug("prime_fetch_caches: label %r skipped: %s", title, exc)
-            continue
+    def _label_hits(title: str, body: Any) -> list[dict[str, str]]:
         rows = ((body or {}).get("query") or {}).get("search") or []
-        inlabel_warm[title] = [
+        return [
             {"qid": str(r.get("title") or ""), "label": title}
             for r in rows
             if isinstance(r, dict) and str(r.get("title") or "").startswith("Q")
         ]
+
+    misses: list[tuple[str, str]] = []
+    for title, url, summary in prepared:
+        body = cached_bodies.get(canonical_hash(summary))
+        if body is not None:
+            inlabel_warm[title] = _label_hits(title, body)
+        else:
+            misses.append((title, url))
+    for title, url in misses:
+        try:
+            body = await _get(url, {}, "wikidata.duplicate_probe")
+        except Exception as exc:  # noqa: BLE001 — priming is best-effort
+            logger.debug("prime_fetch_caches: label %r skipped: %s", title, exc)
+            continue
+        inlabel_warm[title] = _label_hits(title, body)
 
     return wbget_warm, qid_alive_warm, inlabel_warm
 

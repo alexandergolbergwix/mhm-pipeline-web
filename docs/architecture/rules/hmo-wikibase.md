@@ -1005,6 +1005,14 @@ The cache key is `endpoint` + payload with volatile keys stripped
 requests hash the same no matter when they are made. The strip must not
 collapse genuinely different lookups: `ids=Q1` and `ids=Q2` stay distinct.
 
+**Follow-up (2026-10-23):** batching must cover every cache-primed key
+shape, not just entity ids. The per-label `inlabel:` priming still walked
+one `cache_lookup_or_call` per title, and that path pays a per-key
+SELECT+commit round-trip on L2 — ~2 s from a container, hours for 18k
+labels. `cache_batch_warm` now resolves the label set in one query per 500
+hashes (`hit_count`/`last_hit_at` bumped in bulk); misses fall back to the
+throttled fetch as before.
+
 TTL is `wikidata.wiki_entity` (7 days), deliberately not the 90-day label
 TTL. `hmo.live.alive` and `hmo.live.label_drift` share one fetch, and an
 alive check must be able to notice a deletion — so the shared fetch takes
@@ -1162,3 +1170,57 @@ Tests: `backend/tests/unit/test_marc_script_and_colophon.py`
 (`test_blank_statement_values_are_recognised`,
 `test_real_statement_values_are_not_blank`,
 `test_an_empty_value_becomes_silence_not_an_unresolved_statement`).
+
+---
+
+### Rule W-285 — The connection budget belongs to the deployment, not to every process (added 2026-10-22)
+
+Production Postgres is `essential-1` with a **hard 20-connection cap**
+(`heroku pg:info` → `Connections: N/20`). `ALTER ROLE` is denied because the
+number comes from the plan, not a setting the app can change. The app was
+built as if that budget were far larger: `app/db.py` gave every process
+`pool_size=5 + max_overflow=10` = **15 connections**, and a single run fans
+out several processes at once.
+
+| Process | Count | Before | After |
+|---|---|---|---|
+| web dyno (`WEB_CONCURRENCY=1`) | 1 | 15 | 3 |
+| worker dyno | 1 | 15 | 3 |
+| Modal rule-verify shards | 4 | 60 | 6 |
+| Modal RDF shards | 5 | 75 | 6 |
+| Modal Wikidata shards | 37 | 555 | 30 |
+
+A rule-verify wanted ~90 connections against a ceiling of 20. That is what
+killed a build mid-"Refreshing authority evidence", dropped progress
+callbacks behind `too many connections for role`, and froze the progress bar
+for five hours while the job was in fact working.
+
+Three changes:
+
+**1. Small, tunable pools.** `pool_size=1, max_overflow=2` by default, raised
+or lowered by `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`. The pool is a *per-process*
+share of a *deployment-wide* budget; a process must not assume it may have
+15. `pool_pre_ping` and `pool_recycle=240` stay — they matter more, not less,
+when the budget is tight.
+
+**2. An optional PgBouncer route for the shared engine.** When
+`pg_bouncer_url` is set, the engine multiplexes through it. Empty means the
+direct `database_url`, so nothing changes without the addon.
+
+**3. The LISTEN bridge is pinned to a direct session.** `app.realtime` uses a
+raw `asyncpg.connect` on `database_url` and must **never** use
+`pg_bouncer_url`: `LISTEN` is session-level state and dies under transaction
+pooling — the listener subscribes, gets a different server backend on the
+next statement, and silently loses every `NOTIFY`. That one long-lived
+session is exactly why the rest of the app may use the pooler.
+
+Shard sizes were raised to match (rule-verify and RDF 6000/4000 → 9500,
+Wikidata 500 → 2000, all env-tunable), halving the number of concurrent
+containers.
+
+**Size the pool to the deployment, not to the process.** When several
+processes share one budget, the sum of their maximums must fit — a per-process
+default chosen in isolation will always oversubscribe it. And anything that
+needs session state must be declared and kept off the pooler.
+
+Tests: `backend/tests/unit/test_db_connection_budget.py`.
