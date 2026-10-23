@@ -343,3 +343,24 @@ def test_a_stray_open_paren_does_not_delete_the_value() -> None:
     )
     assert claim is not None
     assert claim.value["text"] == "'תכלאל"
+
+
+def test_a_stray_open_paren_does_not_delete_the_value() -> None:
+    """A MARC comment like "('?תכלאל" (closing paren lost upstream) used to
+    clip to empty inside `_truncate`'s paren balancing — the empty result
+    read as unshapeable and 885 items failed `hmo.statements.resolved`
+    (Rule W-285). The whole value must survive with the dangling bracket
+    dropped, and balanced values pass through untouched."""
+    from types import SimpleNamespace
+
+    from converter.wikibase.hmo_exporter import _build_claim_spec, _truncate
+
+    assert _truncate("('תכלאל", 400) == "'תכלאל"
+    assert _truncate("normal (x) text", 400) == "normal (x) text"
+    assert _truncate("abc)", 400) == "abc"
+    claim = _build_claim_spec(
+        SimpleNamespace(wikibase_id="P288", datatype="monolingualtext"),
+        SimpleNamespace(value="('תכלאל", language="he"),
+    )
+    assert claim is not None
+    assert claim.value["text"] == "'תכלאל"
