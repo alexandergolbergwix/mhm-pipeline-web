@@ -64,7 +64,7 @@ HMO_SOURCE_URI = str(HM.hmo_source_uri)
 # Bumped whenever the export/resolve logic changes output shape, so cached
 # builds (keyed by RDF bytes + schema version) recompute. v2: auto-draft
 # ontology-declared individuals referenced as wikibase-item targets.
-EXPORTER_VERSION = "2"
+EXPORTER_VERSION = "3"
 
 _ONTOLOGY_TTL = Path(__file__).resolve().parents[2] / "ontology" / "hebrew-manuscripts.ttl"
 
@@ -656,7 +656,17 @@ def _truncate(text: str, max_length: int) -> str:
             last_open = text.rfind("(")
             if last_open < 0:
                 break
-            text = text[:last_open].rstrip()
+            clipped = text[:last_open].rstrip()
+            if not clipped:
+                # The whole value sits inside the stray parenthetical
+                # ("('תכלאל" — a MARC comment whose closing paren was
+                # lost upstream). Clipping would delete everything and
+                # the empty result then read as an unshapeable value —
+                # 885 items failed `hmo.statements.resolved` on exactly
+                # this (Rule W-285). Drop the dangling bracket instead.
+                text = text.replace("(", "").replace(")", "")
+            else:
+                text = clipped
         else:
             text = text.replace(")", "", 1)
     return text
