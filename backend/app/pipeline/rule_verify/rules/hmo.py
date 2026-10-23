@@ -490,14 +490,29 @@ def _run_wikibase_label_drift(entity: dict[str, Any], ctx: RuleContext) -> RuleR
         )
     live_labels = (((payload or {}).get("entities") or {}).get(qid) or {}).get("labels") or {}
     drift: list[dict[str, str]] = []
+    tolerated = 0
     for lang, built in _labels(entity).items():
         if lang not in ("en", "he"):
             continue
         cell = live_labels.get(lang) or {}
         live = str((cell.get("value") if isinstance(cell, dict) else cell) or "")
-        if live and live != str(built):
-            drift.append({"lang": lang, "built": str(built)[:80], "live": live[:80]})
+        if not live or live == str(built):
+            continue
+        # The upload disambiguates colliding (label, description) pairs with
+        # " — <control number>" (hmo_item_shacl_gate.compute_disambiguated_labels).
+        # That suffix is the pipeline's own marker, not divergence — a live
+        # label that extends the built one with it passes; a changed base
+        # label still drifts (Rule W-286).
+        if live.startswith(f"{built} — "):
+            tolerated += 1
+            continue
+        drift.append({"lang": lang, "built": str(built)[:80], "live": live[:80]})
     if not drift:
+        if tolerated:
+            return warn_as_pass(
+                "hmo.live.label_drift",
+                f"{tolerated} live label(s) carry the upload disambiguation suffix",
+            )
         return warn_as_pass("hmo.live.label_drift")
     return fail(
         "hmo.live.label_drift", "labels",

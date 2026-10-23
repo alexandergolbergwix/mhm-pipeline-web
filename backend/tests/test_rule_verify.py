@@ -1091,3 +1091,43 @@ async def test_prime_fetch_caches_noops_without_endpoint() -> None:
         ) == ({}, {}, {})
     finally:
         monkeypatch.undo()
+
+
+def test_label_drift_tolerates_the_upload_disambiguation_suffix() -> None:
+    """The upload disambiguates colliding (label, description) pairs with
+    " — <control number>" — that suffix is the pipeline's own marker, not
+    divergence (Rule W-286). A live label extending the built one with it
+    passes; a changed base label (e.g. a renamed person heading) still
+    drifts."""
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        url, params = call
+        if params.get("action") == "wbgetentities":
+            qid = params["ids"]
+            payloads = {
+                "Q77": {"labels": {"he": {"value": "כתב יד א — CN1 (2)"}}},
+                "Q78": {"labels": {"he": {"value": "א, כתב יד"}}},
+                "Q79": {"labels": {"he": {"value": "כתב יד א"}}},
+            }
+            return {"entities": {qid: payloads[qid]}}
+        raise AssertionError(f"unexpected call {call!r}")
+
+    items = [
+        _item(local_id="QDraft_A", source_uri="urn:hmo:a",
+              wikibase_id="Q77"),  # suffixed live label -> tolerated
+        _item(local_id="QDraft_B", source_uri="urn:hmo:b",
+              wikibase_id="Q78"),  # reordered base label -> still drifts
+        _item(local_id="QDraft_C", source_uri="urn:hmo:c",
+              wikibase_id="Q79"),  # identical -> pass
+    ]
+    results = _engine(items, api=True, fetcher=fetcher).run_scope(
+        items, api_only=True,
+    )
+    by_id = {r.rule_id: r for r in results["QDraft_A"]
+             if r.rule_id == "hmo.live.label_drift"}
+    assert by_id["hmo.live.label_drift"].state == "pass"
+    drift_b = {r.rule_id: r for r in results["QDraft_B"]
+               if r.rule_id == "hmo.live.label_drift"}
+    assert drift_b["hmo.live.label_drift"].state == "fail"
+    drift_c = {r.rule_id: r for r in results["QDraft_C"]
+               if r.rule_id == "hmo.live.label_drift"}
+    assert drift_c["hmo.live.label_drift"].state == "pass"

@@ -457,4 +457,27 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
     `claims.datatype` to `statements.resolved` — one defect replaced
     another. Check what the caller does with the value an edited branch now
     returns; the same input can reach a second checker unchanged.
+71. **R71 — The connection budget belongs to the deployment, not to every
+    process (Rule W-285).** `essential-1` caps Postgres at 20 connections and
+    `app/db.py` gave every process 15 (`pool_size=5 + max_overflow=10`), so a
+    rule-verify fan-out wanted ~90. Pools are now 1+2 by default, tunable via
+    `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`; `pg_bouncer_url` routes the shared
+    engine through PgBouncer when set; `app.realtime`'s LISTEN bridge is
+    pinned to `database_url` because LISTEN is session-level and dies under
+    transaction pooling. Shard sizes raised (9500 / 9500 / 2000, all
+    env-tunable). *Why:* a build died mid-refresh, progress callbacks went
+    missing behind `too many connections for role`, and the bar froze for
+    five hours while the job worked. Sum of per-process maximums must fit
+    the shared budget, and session state stays off the pooler.
 
+
+72. **R72 — The live-label drift check must tolerate the pipeline's own
+    disambiguation suffix (Rule W-286).** The upload suffixes colliding
+    `(label, description)` pairs with `" — <control number>"`; the wiki
+    legitimately holds that label while the build stores the clean one. A
+    live label that *extends* the built one with the suffix passes
+    (`warn_as_pass`); a changed base label — e.g. the person-name flip the
+    build now emits while the wiki still holds the comma form — still
+    drifts and still fails. *Why:* the first API pass that ever completed
+    flagged 2804 items as drift; 1579 were the pipeline's own suffixes and
+    1179 were a real pending rename the rule must keep catching.
