@@ -753,41 +753,53 @@ class WikibaseCloudWriter:
         ``claims``) is left untouched — this is a merge, not a
         wholesale replace of the item's claims.
         """
-        try:
-            entity = self._get_wbi_entity(entity_id)
-        except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
-            msg = format_wbi_exception(exc)
-            logger.warning("Wikibase entity fetch failed for update %s: %s", entity_id, msg)
+        for attempt in range(2):
+            try:
+                entity = self._get_wbi_entity(entity_id)
+            except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
+                msg = format_wbi_exception(exc)
+                logger.warning("Wikibase entity fetch failed for update %s: %s", entity_id, msg)
+                return EntityEditOutcome(
+                    entity_id=entity_id, status="failed", message=msg,
+                    page_url=self.page_url(_entity_page_title(entity_id)),
+                )
+
+            _apply_labels_descriptions_aliases(entity, labels, descriptions, aliases)
+            if claims:
+                from wikibaseintegrator.wbi_enums import ActionIfExists  # noqa: PLC0415
+
+                entity.claims.add(claims, action_if_exists=ActionIfExists.APPEND_OR_REPLACE)
+
+            try:
+                write_kwargs: dict[str, Any] = {
+                    "summary": summary or wikibase_edit_summary("entity update"),
+                }
+                if isinstance(self._auth, WikibaseBotCredentials):
+                    write_kwargs["bot"] = True
+                written = entity.write(**write_kwargs)
+            except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
+                msg = format_wbi_exception(exc)
+                # WBI caches its CSRF token per client; a long run expires
+                # it and every write fails with badtoken until the client is
+                # rebuilt. Refresh once and retry the write.
+                if attempt == 0 and ("badtoken" in msg or "notoken" in msg):
+                    self._wbi = None
+                    self._csrf_token = None
+                    continue
+                logger.warning("Wikibase entity update failed for %s: %s", entity_id, msg)
+                return EntityEditOutcome(
+                    entity_id=entity_id, status="failed", message=msg,
+                    page_url=self.page_url(_entity_page_title(entity_id)),
+                )
             return EntityEditOutcome(
-                entity_id=entity_id, status="failed", message=msg,
-                page_url=self.page_url(_entity_page_title(entity_id)),
-            )
-
-        _apply_labels_descriptions_aliases(entity, labels, descriptions, aliases)
-        if claims:
-            from wikibaseintegrator.wbi_enums import ActionIfExists  # noqa: PLC0415
-
-            entity.claims.add(claims, action_if_exists=ActionIfExists.APPEND_OR_REPLACE)
-
-        try:
-            write_kwargs: dict[str, Any] = {
-                "summary": summary or wikibase_edit_summary("entity update"),
-            }
-            if isinstance(self._auth, WikibaseBotCredentials):
-                write_kwargs["bot"] = True
-            written = entity.write(**write_kwargs)
-        except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
-            msg = format_wbi_exception(exc)
-            logger.warning("Wikibase entity update failed for %s: %s", entity_id, msg)
-            return EntityEditOutcome(
-                entity_id=entity_id, status="failed", message=msg,
-                page_url=self.page_url(_entity_page_title(entity_id)),
+                entity_id=written.id,
+                status="updated",
+                message="ok",
+                page_url=self.page_url(_entity_page_title(written.id)),
             )
         return EntityEditOutcome(
-            entity_id=written.id,
-            status="updated",
-            message="ok",
-            page_url=self.page_url(_entity_page_title(written.id)),
+            entity_id=entity_id, status="failed", message="badtoken retry exhausted",
+            page_url=self.page_url(_entity_page_title(entity_id)),
         )
 
     def create_property(
@@ -852,30 +864,38 @@ class WikibaseCloudWriter:
 
         Same semantics as repeated :meth:`add_claim` calls (plain ADD, one
         fetch + one write) — batching collapses an item's deferred links
-        from N×2 HTTP calls to 2 (32,946 links on run 47e03437).
+        from N×2 HTTP calls to 2 (32,946 links on run 47e03437). A stale
+        CSRF token is refreshed once and the write retried: WBI caches its
+        token per client and a long run expires it, failing every write
+        with ``badtoken`` until the client is rebuilt.
         """
-        try:
-            self._wait_for_entity_write_slot()
-            entity = self._get_wbi_entity(entity_id)
-            entity.claims.add(claims)
-            write_kwargs: dict[str, Any] = {
-                "summary": summary or wikibase_edit_summary("add claims"),
-            }
-            if isinstance(self._auth, WikibaseBotCredentials):
-                write_kwargs["bot"] = True
-            written = entity.write(**write_kwargs)
-        except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
-            msg = format_wbi_exception(exc)
-            logger.warning("Wikibase claim write failed on %s: %s", entity_id, msg)
+        for attempt in range(2):
+            try:
+                self._wait_for_entity_write_slot()
+                entity = self._get_wbi_entity(entity_id)
+                entity.claims.add(claims)
+                write_kwargs: dict[str, Any] = {
+                    "summary": summary or wikibase_edit_summary("add claims"),
+                }
+                if isinstance(self._auth, WikibaseBotCredentials):
+                    write_kwargs["bot"] = True
+                written = entity.write(**write_kwargs)
+            except Exception as exc:  # noqa: BLE001 - report, never raise into the caller
+                msg = format_wbi_exception(exc)
+                if attempt == 0 and ("badtoken" in msg or "notoken" in msg):
+                    self._wbi = None
+                    self._csrf_token = None
+                    continue
+                logger.warning("Wikibase claim write failed on %s: %s", entity_id, msg)
+                return EntityEditOutcome(
+                    entity_id=entity_id,
+                    status="failed",
+                    message=msg,
+                    page_url=self.page_url(_entity_page_title(entity_id)),
+                )
             return EntityEditOutcome(
-                entity_id=entity_id,
-                status="failed",
-                message=msg,
-                page_url=self.page_url(_entity_page_title(entity_id)),
-            )
-        return EntityEditOutcome(
-            entity_id=written.id,
-            status="updated",
+                entity_id=written.id,
+                status="updated",
             message="ok",
             page_url=self.page_url(_entity_page_title(written.id)),
         )
