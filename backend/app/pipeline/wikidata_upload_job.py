@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -418,6 +419,28 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 )
                 return
 
+    # Per-slot uploaders: each instance owns one login session and
+    # requests.Session is not safe for concurrent writers, so the item and
+    # link stages lease a slot per in-flight write (4× overlap of the
+    # network waits; the wiki sees the same per-slot rate limit).
+    slot_uploaders: list[Any] = [shared_uploader]
+    if token and not mode.dry_run:
+        for _ in range(3):
+            try:
+                extra = WikidataUploader(
+                    token=token,
+                    is_test=mode.is_test,
+                    batch_mode=True,
+                    allow_live=mode.allow_live,
+                )
+                await run_in_threadpool(extra.ensure_authenticated)
+                slot_uploaders.append(extra)
+            except Exception:  # noqa: BLE001 — degrade to fewer slots
+                break
+    uploader_slots: asyncio.Queue = asyncio.Queue()
+    for _up in slot_uploaders:
+        uploader_slots.put_nowait(_up)
+
     from app.pipeline.wikidata_existence import confirm_qids_alive  # noqa: PLC0415
 
     prefetch_qids = sorted({
@@ -449,6 +472,126 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
         job_id=job_id,
     )
     step1_started = time.monotonic()
+    last_emit_at = 0.0
+
+    async def _emit(payload: dict, *, force: bool = False) -> None:
+        """Throttled progress writes.
+
+        Per-item emissions carry a 200-outcome window and a NOTIFY —
+        writing one per item made both stages crawl on the shared Postgres
+        (run 47e03437). Step transitions and terminal states pass
+        ``force``; per-item ticks drop at most 2 s of freshness.
+        """
+        nonlocal last_emit_at
+        now = time.monotonic()
+        if not force and now - last_emit_at < 2.0:
+            return
+        last_emit_at = now
+        await update_job_progress(job_id, payload)
+
+    inflight: list[Any] = []
+
+    async def _drain_one(entry: Any) -> bool:
+        """Await one in-flight write and apply its outcome.
+
+        Four writes overlap (per-slot uploaders own their sessions); results
+        are applied in submission order so created_qids and the outcome
+        list stay deterministic. Returns True when an auth failure aborted
+        the run.
+        """
+        batch_idx, batch_item, batch_local_id, batch_current, batch_task = entry
+        batch_outcomes = await batch_task
+        outcomes.extend(batch_outcomes)
+        if not batch_outcomes:
+            elapsed = time.monotonic() - step1_started
+            await _emit(build_upload_progress(
+                phase="uploading",
+                message="Step 1 of 2: writing items",
+                upload_target=mode.target,
+                step=STEP_WRITE_ITEMS,
+                item_done=batch_idx + 1,
+                item_total=item_total,
+                link_done=0,
+                link_total=link_total,
+                current_label=batch_current,
+                eta_seconds=estimate_remaining_seconds(batch_idx + 1, item_total, elapsed),
+                elapsed_seconds=elapsed,
+                processing_local_id=None,
+                item_outcome=None,
+                recent_item_outcomes=[
+                    slim_upload_progress_outcome(o) for o in outcomes[-200:]
+                ],
+                outcome_counts=upload_outcome_counts(outcomes),
+            ))
+            return False
+        last = batch_outcomes[-1]
+        wikidata_upload.remember_created_qid(
+            created_qids, batch_local_id, last.qid, last.status,
+            dry_run=mode.dry_run,
+            entity_type=last.entity_type,
+        )
+        if (
+            last.status in {"failed", "skipped"}
+            and wikidata_upload._is_auth_failure_message(last.message)
+        ):
+            await finish_job(
+                job_id,
+                status=JOB_STATUS_FAILED,
+                error=(
+                    "Wikidata authentication failed; aborted remaining "
+                    f"items to avoid login rate-limits. {last.message}"
+                ),
+                result={
+                    "dry_run": mode.dry_run,
+                    "upload_target": mode.target,
+                    "moratorium_lifted": mode.moratorium_lifted,
+                    "test_mode": mode.test_mode,
+                    "outcomes": [o.__dict__ for o in outcomes],
+                    "link_outcomes": [],
+                    "aborted_auth": True,
+                },
+                progress=build_upload_progress(
+                    phase="failed",
+                    message="Aborted: Wikidata login failure",
+                    upload_target=mode.target,
+                    step=STEP_WRITE_ITEMS,
+                    item_done=batch_idx + 1,
+                    item_total=item_total,
+                    link_done=0,
+                    link_total=link_total,
+                    current_label="Aborted",
+                    eta_seconds=None,
+                    elapsed_seconds=time.monotonic() - step1_started,
+                    item_outcome=slim_upload_progress_outcome(last),
+                    recent_item_outcomes=[
+                        slim_upload_progress_outcome(o) for o in outcomes[-200:]
+                    ],
+                    outcome_counts=upload_outcome_counts(outcomes),
+                ),
+            )
+            return True
+        elapsed = time.monotonic() - step1_started
+        await _emit(build_upload_progress(
+            phase="uploading",
+            message="Step 1 of 2: writing items",
+            upload_target=mode.target,
+            step=STEP_WRITE_ITEMS,
+            item_done=batch_idx + 1,
+            item_total=item_total,
+            link_done=0,
+            link_total=link_total,
+            current_label=batch_current,
+            eta_seconds=estimate_remaining_seconds(batch_idx + 1, item_total, elapsed),
+            elapsed_seconds=elapsed,
+            processing_local_id=None,
+            item_outcome=slim_upload_progress_outcome(last),
+            recent_item_outcomes=[
+                slim_upload_progress_outcome(o) for o in outcomes[-200:]
+            ],
+            outcome_counts=upload_outcome_counts(outcomes),
+        ))
+        return False
+
     try:
         for idx, item in enumerate(pass1_native):
             if await is_cancel_requested(job_id):
@@ -498,7 +641,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 "wikibase_id": None,
                 "message": "Processing…",
             }
-            await update_job_progress(job_id, build_upload_progress(
+            await _emit(build_upload_progress(
                 phase="uploading",
                 message="Step 1 of 2: writing items",
                 upload_target=mode.target,
@@ -523,91 +666,35 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 deferred_by_local_id[local_id] = deferred
                 link_total = sum(len(v) for v in deferred_by_local_id.values())
 
-            async with session_scope() as db:
-                batch_outcomes = await wikidata_upload.upload_items(
-                    [write_item], token=token or "", mode=mode,
-                    audit_ctx=audit_ctx, db=db, ledger=ledger,
-                    run_id=run_id,
-                    uploader=shared_uploader,
-                    existence_cache=existence_cache,
-                    created_qids=created_qids,
-                    quality_preflight=quality_preflight,
-                )
-            outcomes.extend(batch_outcomes)
-            if batch_outcomes:
-                last = batch_outcomes[-1]
-                wikidata_upload.remember_created_qid(
-                    created_qids, local_id, last.qid, last.status,
-                    dry_run=mode.dry_run,
-                    entity_type=last.entity_type,
-                )
-                if (
-                    last.status in {"failed", "skipped"}
-                    and wikidata_upload._is_auth_failure_message(last.message)
-                ):
-                    await finish_job(
-                        job_id,
-                        status=JOB_STATUS_FAILED,
-                        error=(
-                            "Wikidata authentication failed; aborted remaining "
-                            f"items to avoid login rate-limits. {last.message}"
-                        ),
-                        result={
-                            "dry_run": mode.dry_run,
-                            "upload_target": mode.target,
-                            "moratorium_lifted": mode.moratorium_lifted,
-                            "test_mode": mode.test_mode,
-                            "outcomes": [o.__dict__ for o in outcomes],
-                            "link_outcomes": [],
-                            "aborted_auth": True,
-                        },
-                        progress=build_upload_progress(
-                            phase="failed",
-                            message="Aborted: Wikidata login failure",
-                            upload_target=mode.target,
-                            step=STEP_WRITE_ITEMS,
-                            item_done=idx + 1,
-                            item_total=item_total,
-                            link_done=0,
-                            link_total=link_total,
-                            current_label="Aborted",
-                            eta_seconds=None,
-                            elapsed_seconds=time.monotonic() - step1_started,
-                            item_outcome=slim_upload_progress_outcome(last),
-                            recent_item_outcomes=[
-                                slim_upload_progress_outcome(o) for o in outcomes[-200:]
-                            ],
-                            outcome_counts=upload_outcome_counts(outcomes),
-                        ),
-                    )
+            async def _do_write(payload: Any = write_item) -> list[Any]:
+                slot = await uploader_slots.get()
+                try:
+                    async with session_scope() as db:
+                        return await wikidata_upload.upload_items(
+                            [payload], token=token or "", mode=mode,
+                            audit_ctx=audit_ctx, db=db, ledger=ledger,
+                            run_id=run_id,
+                            uploader=slot,
+                            existence_cache=existence_cache,
+                            created_qids=created_qids,
+                            quality_preflight=quality_preflight,
+                        )
+                finally:
+                    uploader_slots.put_nowait(slot)
+
+            inflight.append((idx, item, local_id, current, asyncio.create_task(_do_write())))
+            if len(inflight) >= 4:
+                if await _drain_one(inflight.pop(0)):
                     return
-            elapsed = time.monotonic() - step1_started
-            await update_job_progress(job_id, build_upload_progress(
-                phase="uploading",
-                message="Step 1 of 2: writing items",
-                upload_target=mode.target,
-                step=STEP_WRITE_ITEMS,
-                item_done=idx + 1,
-                item_total=item_total,
-                link_done=0,
-                link_total=link_total,
-                current_label=current,
-                eta_seconds=estimate_remaining_seconds(idx + 1, item_total, elapsed),
-                elapsed_seconds=elapsed,
-                processing_local_id=None,
-                item_outcome=(
-                    slim_upload_progress_outcome(batch_outcomes[-1])
-                    if batch_outcomes else None
-                ),
-                recent_item_outcomes=[
-                    slim_upload_progress_outcome(o) for o in outcomes[-200:]
-                ],
-                outcome_counts=upload_outcome_counts(outcomes),
-            ))
     except Exception as exc:  # noqa: BLE001
         logger.exception("wikidata upload job failed for %s", run_id)
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
         return
+
+    for entry in inflight:
+        if await _drain_one(entry):
+            return
+    inflight.clear()
 
     link_total = sum(len(v) for v in deferred_by_local_id.values())
     link_done = 0
@@ -653,6 +740,104 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
     if not deferred_by_local_id:
         await _finish_success()
         return
+
+    link_inflight: list[Any] = []
+
+    async def _drain_link_one(entry: Any) -> bool:
+        """Await one in-flight connection write and apply its outcome.
+
+        Four writes overlap via the per-slot uploaders; results apply in
+        submission order so the link outcome list stays deterministic.
+        Returns True when an auth failure aborted the run.
+        """
+        nonlocal link_done
+        (src_id, src_label, src_item, src_resolved, src_targets,
+         src_current, src_qid, task) = entry
+        batch_outcomes = await task
+        last = batch_outcomes[-1] if batch_outcomes else None
+        status = last.status if last else "failed"
+        message = last.message if last else "no outcome"
+        qid = last.qid if last else src_qid
+        if last and (
+            last.status in {"failed", "skipped"}
+            and wikidata_upload._is_auth_failure_message(last.message)
+        ):
+            await finish_job(
+                job_id,
+                status=JOB_STATUS_FAILED,
+                error=(
+                    "Wikidata authentication failed during connection pass; "
+                    f"aborted. {last.message}"
+                ),
+                result={
+                    "dry_run": mode.dry_run,
+                    "upload_target": mode.target,
+                    "moratorium_lifted": mode.moratorium_lifted,
+                    "test_mode": mode.test_mode,
+                    "outcomes": [o.__dict__ for o in outcomes],
+                    "link_outcomes": [_link_outcome_dict(r) for r in link_outcomes],
+                    "aborted_auth": True,
+                },
+                progress=build_upload_progress(
+                    phase="failed",
+                    message="Aborted: Wikidata login failure",
+                    upload_target=mode.target,
+                    step=STEP_ADD_LINKS,
+                    item_done=item_total,
+                    item_total=item_total,
+                    link_done=link_done,
+                    link_total=link_total,
+                    current_label="Aborted",
+                    eta_seconds=None,
+                    elapsed_seconds=time.monotonic() - step2_started,
+                ),
+            )
+            return True
+        link_status = "linked"
+        if status in {"blocked", "failed", "skipped"}:
+            link_status = "failed" if status == "failed" else status
+        pids = ", ".join(s.property_id for s in src_resolved)
+        patch = {
+            "local_id": src_id,
+            "label": src_label or None,
+            "entity_type": getattr(src_item, "entity_type", None),
+            "status": "updated" if link_status == "linked" else status,
+            "qid": qid,
+            "wikibase_id": qid,
+            "message": f"+{pids} {message}",
+        }
+        for stmt, target in zip(src_resolved, src_targets, strict=True):
+            link_outcomes.append(wikidata_upload.DeferredLinkOutcome(
+                source_local_id=src_id,
+                property_id=stmt.property_id,
+                target_local_id=target,
+                status=link_status if link_status != "updated" else "linked",
+                message=message,
+                qid=qid,
+            ))
+            link_done += 1
+        await _emit(build_upload_progress(
+            phase="uploading",
+            message="Step 2 of 2: adding connections",
+            upload_target=mode.target,
+            step=STEP_ADD_LINKS,
+            item_done=item_total,
+            item_total=item_total,
+            link_done=link_done,
+            link_total=link_total,
+            current_label=src_current,
+            eta_seconds=estimate_remaining_seconds(
+                link_done, link_total, time.monotonic() - step2_started,
+            ),
+            elapsed_seconds=time.monotonic() - step2_started,
+            processing_local_id=None,
+            item_outcome=patch,
+            recent_item_outcomes=[
+                slim_upload_progress_outcome(o) for o in outcomes[-199:]
+            ] + [patch],
+            outcome_counts=upload_outcome_counts(outcomes),
+        ))
+        return False
 
     def _link_in_retry_scope(source_id: str, stmts: list[Any]) -> bool:
         if scope is None:
@@ -713,7 +898,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             source_label = _item_display_label(source_item) if source_item is not None else source_id
             current = f"links · {source_label or source_id}"
             elapsed = time.monotonic() - step2_started
-            await update_job_progress(job_id, build_upload_progress(
+            await _emit(build_upload_progress(
                 phase="uploading",
                 message="Step 2 of 2: adding connections",
                 upload_target=mode.target,
@@ -822,7 +1007,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                         qid=patch["qid"],
                     ))
                     link_done += 1
-                await update_job_progress(job_id, build_upload_progress(
+                await _emit(build_upload_progress(
                     phase="uploading",
                     message="Step 2 of 2: adding connections",
                     upload_target=mode.target,
@@ -850,102 +1035,38 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 existing_qid=source_qid,
                 statements=resolved,
             )
-            async with session_scope() as db:
-                batch_outcomes = await wikidata_upload.upload_items(
-                    [clone], token=token or "", mode=mode,
-                    audit_ctx=audit_ctx, db=db, ledger=ledger,
-                    run_id=run_id,
-                    uploader=shared_uploader,
-                    existence_cache=existence_cache,
-                    created_qids=created_qids,
-                    quality_preflight=quality_preflight,
-                )
-            last = batch_outcomes[-1] if batch_outcomes else None
-            status = last.status if last else "failed"
-            message = last.message if last else "no outcome"
-            qid = last.qid if last else source_qid
-            if last and (
-                last.status in {"failed", "skipped"}
-                and wikidata_upload._is_auth_failure_message(last.message)
-            ):
-                await finish_job(
-                    job_id,
-                    status=JOB_STATUS_FAILED,
-                    error=(
-                        "Wikidata authentication failed during connection pass; "
-                        f"aborted. {last.message}"
-                    ),
-                    result={
-                        "dry_run": mode.dry_run,
-                        "upload_target": mode.target,
-                        "moratorium_lifted": mode.moratorium_lifted,
-                        "test_mode": mode.test_mode,
-                        "outcomes": [o.__dict__ for o in outcomes],
-                        "link_outcomes": [_link_outcome_dict(r) for r in link_outcomes],
-                        "aborted_auth": True,
-                    },
-                    progress=build_upload_progress(
-                        phase="failed",
-                        message="Aborted: Wikidata login failure",
-                        upload_target=mode.target,
-                        step=STEP_ADD_LINKS,
-                        item_done=item_total,
-                        item_total=item_total,
-                        link_done=link_done,
-                        link_total=link_total,
-                        current_label="Aborted",
-                        eta_seconds=None,
-                        elapsed_seconds=time.monotonic() - step2_started,
-                    ),
-                )
-                return
-            link_status = "linked"
-            if status in {"blocked", "failed", "skipped"}:
-                link_status = "failed" if status == "failed" else status
-            pids = ", ".join(s.property_id for s in resolved)
-            patch = {
-                "local_id": source_id,
-                "label": source_label or None,
-                "entity_type": getattr(source_item, "entity_type", None),
-                "status": "updated" if link_status == "linked" else status,
-                "qid": qid,
-                "wikibase_id": qid,
-                "message": f"+{pids} {message}",
-            }
-            for stmt, target in zip(resolved, resolved_targets, strict=True):
-                link_outcomes.append(wikidata_upload.DeferredLinkOutcome(
-                    source_local_id=source_id,
-                    property_id=stmt.property_id,
-                    target_local_id=target,
-                    status=link_status if link_status != "updated" else "linked",
-                    message=message,
-                    qid=qid,
-                ))
-                link_done += 1
-            await update_job_progress(job_id, build_upload_progress(
-                phase="uploading",
-                message="Step 2 of 2: adding connections",
-                upload_target=mode.target,
-                step=STEP_ADD_LINKS,
-                item_done=item_total,
-                item_total=item_total,
-                link_done=link_done,
-                link_total=link_total,
-                current_label=current,
-                eta_seconds=estimate_remaining_seconds(
-                    link_done, link_total, time.monotonic() - step2_started,
-                ),
-                elapsed_seconds=time.monotonic() - step2_started,
-                processing_local_id=None,
-                item_outcome=patch,
-                recent_item_outcomes=[
-                    slim_upload_progress_outcome(o) for o in outcomes[-199:]
-                ] + [patch],
-                outcome_counts=upload_outcome_counts(outcomes),
+
+            async def _do_link_write(payload: Any = clone) -> list[Any]:
+                slot = await uploader_slots.get()
+                try:
+                    async with session_scope() as db:
+                        return await wikidata_upload.upload_items(
+                            [payload], token=token or "", mode=mode,
+                            audit_ctx=audit_ctx, db=db, ledger=ledger,
+                            run_id=run_id,
+                            uploader=slot,
+                            existence_cache=existence_cache,
+                            created_qids=created_qids,
+                            quality_preflight=quality_preflight,
+                        )
+                finally:
+                    uploader_slots.put_nowait(slot)
+
+            link_inflight.append((
+                source_id, source_label, source_item, resolved, resolved_targets,
+                current, source_qid, asyncio.create_task(_do_link_write()),
             ))
+            if len(link_inflight) >= 4:
+                if await _drain_link_one(link_inflight.pop(0)):
+                    return
     except Exception as exc:  # noqa: BLE001
         logger.exception("wikidata upload link pass failed for %s", run_id)
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
         return
+
+    for entry in link_inflight:
+        if await _drain_link_one(entry):
+            return
+    link_inflight.clear()
 
     await _finish_success()
