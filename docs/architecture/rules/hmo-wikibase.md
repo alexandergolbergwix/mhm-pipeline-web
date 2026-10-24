@@ -1173,6 +1173,18 @@ Tests: `backend/tests/unit/test_marc_script_and_colophon.py`
 
 ---
 
+### Rule W-287 — The write path publishes build labels verbatim (added 2026-10-24)
+
+Two transforms silently rewrote labels between the build and the wiki, and
+`hmo.live.label_drift` failed on the difference forever (11 stragglers on
+run `47e03437`). `sanitize_monolingual_map` re-ran `clean_marc_label`,
+which strips trailing `'`/`.` — a built `…אלחגאג'` reached the wiki as
+`…אלחגאג`. And Wikibase stores NFC while the build emitted decomposed
+diacritics. The write path now passes build labels through verbatim
+(whitespace only) and the drift check compares NFC-normalized forms with
+trailing whitespace stripped. Build output is the source of truth; no
+layer downstream may re-clean it.
+
 ### Rule W-285 — The connection budget belongs to the deployment, not to every process (added 2026-10-22)
 
 Production Postgres is `essential-1` with a **hard 20-connection cap**

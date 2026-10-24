@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from converter.rdf.rdf_helpers import clean_marc_label
-
 _UNSUPPORTED_LANGS = frozenset({"und", ""})
 
 
@@ -18,10 +16,19 @@ def normalize_wikibase_language(lang: str | None) -> str:
 
 
 def sanitize_monolingual_map(values: Mapping[str, str]) -> dict[str, str]:
-    """Normalize language codes for Wikibase monolingual text fields."""
+    """Normalize language codes for Wikibase monolingual text fields.
+
+    The text passes through verbatim (whitespace only): the exporter
+    already ran its MARC hygiene at build time, and re-running
+    ``clean_marc_label`` here silently rewrote what was written — it
+    strips trailing ``'``/``.``, so a built label like ``…אלחגאג'``
+    reached the wiki as ``…אלחגאג`` and the drift check failed on the
+    difference forever. Build output is the source of truth; the write
+    path publishes it as-is (11 items on run 47e03437).
+    """
     out: dict[str, str] = {}
     for lang, value in values.items():
-        text = clean_marc_label(str(value or ""))
+        text = str(value or "").strip()
         if not text:
             continue
         code = str(lang or "").strip().lower()

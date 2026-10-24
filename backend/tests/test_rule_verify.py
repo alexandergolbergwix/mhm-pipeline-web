@@ -1131,3 +1131,34 @@ def test_label_drift_tolerates_the_upload_disambiguation_suffix() -> None:
     drift_c = {r.rule_id: r for r in results["QDraft_C"]
                if r.rule_id == "hmo.live.label_drift"}
     assert drift_c["hmo.live.label_drift"].state == "pass"
+
+
+def test_label_drift_ignores_unicode_normalization_and_trailing_space() -> None:
+    """Wikibase stores NFC (MediaWiki normalizes on save) — a decomposed
+    spelling of the same text is not drift, and trailing whitespace is
+    noise (7 of the 11 stragglers on run 47e03437)."""
+    nfd_u = "Fu\u0308rth (Bavaria, Germany)"  # u + combining diaeresis
+    nfc_u = "Fürth (Bavaria, Germany)"
+
+    def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
+        url, params = call
+        if params.get("action") == "wbgetentities":
+            payloads = {
+                "Q71": {"labels": {"en": {"value": nfc_u}}},
+                "Q72": {"labels": {"en": {"value": "Trailing "}}},
+            }
+            return {"entities": {params["ids"]: payloads[params["ids"]]}}
+        raise AssertionError(f"unexpected call {call!r}")
+
+    items = [
+        _item(local_id="QDraft_A", source_uri="urn:hmo:a", wikibase_id="Q71",
+              labels={"en": nfd_u}),
+        _item(local_id="QDraft_B", source_uri="urn:hmo:b", wikibase_id="Q72",
+              labels={"en": "Trailing"}),
+    ]
+    results = _engine(items, api=True, fetcher=fetcher).run_scope(
+        items, api_only=True,
+    )
+    for lid in ("QDraft_A", "QDraft_B"):
+        row = {r.rule_id: r for r in results[lid]}
+        assert row["hmo.live.label_drift"].state == "pass", lid

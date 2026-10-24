@@ -20,6 +20,7 @@ guard, not a data defect.
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 from app.pipeline.rule_verify.base import (
@@ -491,12 +492,18 @@ def _run_wikibase_label_drift(entity: dict[str, Any], ctx: RuleContext) -> RuleR
     live_labels = (((payload or {}).get("entities") or {}).get(qid) or {}).get("labels") or {}
     drift: list[dict[str, str]] = []
     tolerated = 0
-    for lang, built in _labels(entity).items():
+    for lang, built_raw in _labels(entity).items():
         if lang not in ("en", "he"):
             continue
         cell = live_labels.get(lang) or {}
-        live = str((cell.get("value") if isinstance(cell, dict) else cell) or "")
-        if not live or live == str(built):
+        live_raw = str((cell.get("value") if isinstance(cell, dict) else cell) or "")
+        # Wikibase stores NFC (MediaWiki normalizes on save): a decomposed
+        # spelling of the same text is not drift, and trailing whitespace is
+        # noise. Compare the normalized forms (7 items on run 47e03437 were
+        # pure normalization artifacts).
+        built = unicodedata.normalize("NFC", str(built_raw)).rstrip()
+        live = unicodedata.normalize("NFC", live_raw).rstrip()
+        if not live or live == built:
             continue
         # The upload disambiguates colliding (label, description) pairs with
         # " — <control number>" (hmo_item_shacl_gate.compute_disambiguated_labels).
@@ -506,7 +513,7 @@ def _run_wikibase_label_drift(entity: dict[str, Any], ctx: RuleContext) -> RuleR
         if live.startswith(f"{built} — "):
             tolerated += 1
             continue
-        drift.append({"lang": lang, "built": str(built)[:80], "live": live[:80]})
+        drift.append({"lang": lang, "built": built[:80], "live": live[:80]})
     if not drift:
         if tolerated:
             return warn_as_pass(
