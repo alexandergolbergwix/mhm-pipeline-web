@@ -1119,15 +1119,23 @@ async def _notify_job_update(db: AsyncSession, job: RunJob) -> None:
     }
     body = json.dumps(payload, default=str)
     if len(body) > 7500:
-        # pg_notify caps payloads at 8000 bytes — the fat progress (a
-        # 200-outcome window) always overflowed, and the failed
-        # notify+rollback cost two DB round trips per emission. A slim
-        # ping tells clients to refetch; polling stays the source of truth.
-        payload["job"] = {
-            "id": str(job.id),
-            "status": job.status,
-            "updated_at": str(job.updated_at),
-        }
+        # pg_notify caps payloads at 8000 bytes. Trim only the rolling
+        # detail the next poll refills — never the fields the tray renders,
+        # or the UI flickers between the thin push and the full poll.
+        slim = dict(payload["job"])
+        prog = dict(slim.get("progress") or {})
+        if isinstance(prog.get("recent_item_outcomes"), list):
+            prog["recent_item_outcomes"] = prog["recent_item_outcomes"][-10:]
+        if isinstance(prog.get("item_outcome"), dict):
+            prog.pop("item_outcome", None)
+        slim["progress"] = prog
+        res = slim.get("result")
+        if isinstance(res, dict):
+            slim["result"] = {
+                k: v for k, v in res.items()
+                if k not in ("outcomes", "link_outcomes", "session_snapshot")
+            }
+        payload["job"] = slim
         body = json.dumps(payload, default=str)
     try:
         await db.execute(
