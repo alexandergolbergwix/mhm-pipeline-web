@@ -33,6 +33,8 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import session_scope
+
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.hmo_item_write_fingerprint import HmoItemWriteFingerprint
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
@@ -225,6 +227,23 @@ async def upload_items_for_run(
     existing = await _load_run_instance_mappings(db, run_id)
     local_id_to_source_uri = {e.local_id: e.source_uri for e in all_entities}
     reconcile_pid = None if dry_run else await resolve_source_uri_pid(db)
+
+    # Shape claims for the properties' LIVE datatypes before any write.
+    # The mapped type can disagree with the wiki (quantity vs string) and
+    # every mismatch costs a failed write plus a per-claim fallback rewrite
+    # — the single biggest drag on upload throughput (run 47e03437).
+    if not dry_run and writer is not None:
+        from app.settings import get_settings  # noqa: PLC0415
+
+        live_prop_datatypes = await _fetch_live_property_datatypes(
+            get_settings().wikibase_cloud_base_url,
+            [c.property_id for e in entities for c in e.claims],
+        )
+        if live_prop_datatypes:
+            entities = [
+                _coerce_claims_to_live_datatypes(e, live_prop_datatypes)
+                for e in entities
+            ]
 
     # Deterministic (label, description) disambiguation — purely content-based
     # so every call (full upload, scoped retry, single-item push) yields the
@@ -570,111 +589,120 @@ async def _pass_one_create(
             step_total=len(entities),
         )
 
-    for entity in entities:
-        if not dry_run and should_cancel is not None and await should_cancel():
-            cancelled = True
-            break
-        before_len = len(outcomes)
+    async def _process_one(
+        entity: ResolvedWikibaseEntity,
+    ) -> tuple[HmoItemUploadOutcome, str | None] | None:
+        """One item's branch in its own DB session.
 
+        The per-item cost is network-bound (a live fetch plus a write), so
+        items run concurrently; each task owns its session so audit writes
+        stay per-item committed and the pool is not shared mid-transaction.
+        Returns ``None`` when the cancel flag landed before any work.
+        """
+        if not dry_run and should_cancel is not None and await should_cancel():
+            return None
         block_issues = blocking_shacl_issues(shacl_index.get(entity.local_id))
         if block_issues and not allow_shacl_errors:
             block_message = format_shacl_block_message(block_issues)
             block_status = "would_block" if dry_run else "blocked"
-            outcomes.append(
-                HmoItemUploadOutcome(
-                    entity.local_id, entity.source_uri, block_status,
-                    message=block_message,
-                )
-            )
-            blocked += 1
             if not dry_run and audit_ctx is not None:
-                await record_wikibase_write(
-                    db, audit_ctx,
-                    operation=OPERATION_FAILED,
-                    target_kind=TARGET_ITEM,
-                    target_key=entity.source_uri,
-                    outcome_message=block_message,
-                )
-        elif entity.source_uri in existing:
-            existing_qid = existing[entity.source_uri]
-            if not update_existing:
-                outcomes.append(
-                    HmoItemUploadOutcome(
-                        entity.local_id, entity.source_uri, "skipped", existing_qid,
-                    )
-                )
-                skipped += 1
-                if audit_ctx is not None and not dry_run:
+                async with session_scope() as item_db:
                     await record_wikibase_write(
-                        db, audit_ctx,
-                        operation=OPERATION_SKIP,
+                        item_db, audit_ctx,
+                        operation=OPERATION_FAILED,
                         target_kind=TARGET_ITEM,
                         target_key=entity.source_uri,
-                        wikibase_id=existing_qid,
+                        outcome_message=block_message,
                     )
-            elif dry_run:
-                outcomes.append(
-                    HmoItemUploadOutcome(
-                        entity.local_id, entity.source_uri, "would_update", existing_qid,
-                    )
-                )
-                updated += 1
-            else:
-                outcome = await push_single_item(
-                    db, run_id, entity,
-                    writer=writer, audit_ctx=audit_ctx,
-                    update_existing=update_existing,
-                    reconcile_pid=reconcile_pid,
-                    existing_qid=existing_qid,
-                    allow_shacl_errors=allow_shacl_errors,
-                    shacl_issues=shacl_index.get(entity.local_id),
-                    label_overrides=label_overrides,
-                    known_qids=known_qids,
-                    recorded_fingerprints=recorded_fingerprints,
-                )
-                outcomes.append(outcome)
-                if outcome.status == "updated":
-                    updated += 1
-                elif outcome.status == "skipped":
-                    skipped += 1
-                elif outcome.status == "failed":
-                    failed += 1
-                elif outcome.status == "blocked":
-                    blocked += 1
+            return HmoItemUploadOutcome(
+                entity.local_id, entity.source_uri, block_status,
+                message=block_message,
+            ), None
+
+        existing_qid = existing.get(entity.source_uri)
+        if existing_qid is not None:
+            if not update_existing:
+                if audit_ctx is not None and not dry_run:
+                    async with session_scope() as item_db:
+                        await record_wikibase_write(
+                            item_db, audit_ctx,
+                            operation=OPERATION_SKIP,
+                            target_kind=TARGET_ITEM,
+                            target_key=entity.source_uri,
+                            wikibase_id=existing_qid,
+                        )
+                return HmoItemUploadOutcome(
+                    entity.local_id, entity.source_uri, "skipped", existing_qid,
+                ), None
+            if dry_run:
+                return HmoItemUploadOutcome(
+                    entity.local_id, entity.source_uri, "would_update", existing_qid,
+                ), None
         elif dry_run:
-            outcomes.append(
-                HmoItemUploadOutcome(entity.local_id, entity.source_uri, "would_create")
-            )
             # Placeholder id: pass 2 only needs to know "this entity is
             # resolvable" to report would_link vs. unresolved — the
             # value itself is never used for a real write in dry-run.
-            created_this_call[entity.source_uri] = "Q_PENDING"
-            created += 1
-        else:
+            return HmoItemUploadOutcome(
+                entity.local_id, entity.source_uri, "would_create",
+            ), "Q_PENDING"
+
+        async with session_scope() as item_db:
             outcome = await push_single_item(
-                db, run_id, entity,
+                item_db, run_id, entity,
                 writer=writer, audit_ctx=audit_ctx,
                 update_existing=update_existing,
                 reconcile_pid=reconcile_pid,
-                existing_qid=None,
+                existing_qid=existing_qid,
                 allow_shacl_errors=allow_shacl_errors,
                 shacl_issues=shacl_index.get(entity.local_id),
                 label_overrides=label_overrides,
                 known_qids=known_qids,
                 recorded_fingerprints=recorded_fingerprints,
             )
+        created_qid = (
+            outcome.wikibase_id
+            if outcome.status in ("created", "adopted") and outcome.wikibase_id
+            else None
+        )
+        return outcome, created_qid
+
+    # WBI opens a fresh HTTP session per call, so concurrent items are
+    # safe; 4 at a time keeps the polite single-writer contract while the
+    # network waits overlap (2 calls per item otherwise serialized).
+    concurrency = 1 if dry_run else 4
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _bounded_one(
+        entity: ResolvedWikibaseEntity,
+    ) -> tuple[HmoItemUploadOutcome, str | None] | None:
+        async with sem:
+            return await _process_one(entity)
+
+    for start in range(0, len(entities), concurrency):
+        if not dry_run and should_cancel is not None and await should_cancel():
+            cancelled = True
+            break
+        chunk = entities[start : start + concurrency]
+        results = await asyncio.gather(*(_bounded_one(e) for e in chunk))
+        for entity, result in zip(chunk, results):
+            if result is None:
+                cancelled = True
+                continue
+            outcome, created_qid = result
             outcomes.append(outcome)
-            if outcome.status in ("created", "adopted"):
+            if outcome.status in ("created", "adopted", "would_create"):
                 created += 1
-                if outcome.wikibase_id:
-                    created_this_call[entity.source_uri] = outcome.wikibase_id
+            elif outcome.status in ("updated", "would_update"):
+                updated += 1
+            elif outcome.status == "skipped":
+                skipped += 1
             elif outcome.status == "failed":
                 failed += 1
-            elif outcome.status == "blocked":
+            elif outcome.status in ("blocked", "would_block"):
                 blocked += 1
-
-        if len(outcomes) > before_len:
-            await _emit_item_progress(outcomes[-1])
+            if created_qid is not None:
+                created_this_call[entity.source_uri] = created_qid
+            await _emit_item_progress(outcome)
 
     return outcomes, created_this_call, created, skipped, failed, blocked, updated, cancelled
 
@@ -1086,6 +1114,70 @@ def _string_compatible_claim(claim: ResolvedClaim) -> ResolvedClaim:
     else:
         return claim
     return ResolvedClaim(claim.property_id, "string", value)
+
+
+# Scalar claim datatypes `_string_compatible_claim` can serialize as strings.
+_STRING_COERCIBLE_DATATYPES = frozenset({"boolean", "time", "monolingualtext", "quantity"})
+
+
+async def _fetch_live_property_datatypes(
+    base_url: str, prop_ids: list[str],
+) -> dict[str, str]:
+    """Live property datatypes from the public Action API, batched 50 ids.
+
+    The ontology mapping can disagree with the wiki (``max_nesting_depth``
+    is mapped ``quantity`` but the property exists as ``string``): sending
+    the mapped datatype fails with ``Bad value type …, expected string``,
+    and the per-claim fallback then rewrote the whole item once per claim
+    — 50 failed write attempts per 2.5 min on run 47e03437. Probe once per
+    run and coerce before the first write.
+    """
+    ids = [p for p in dict.fromkeys(prop_ids) if p]
+    found: dict[str, str] = {}
+
+    def _fetch(batch: list[str]) -> dict[str, str]:
+        import json as _json  # noqa: PLC0415
+        import urllib.request  # noqa: PLC0415
+
+        url = (
+            f"{base_url.rstrip('/')}/w/api.php?action=wbgetentities"
+            f"&ids={'|'.join(batch)}&props=datatype&format=json&formatversion=2"
+        )
+        with urllib.request.urlopen(url, timeout=45) as resp:
+            body = _json.loads(resp.read().decode())
+        out: dict[str, str] = {}
+        for ent in (body.get("entities") or []):
+            pid = str(ent.get("id") or "")
+            dtype = str(ent.get("datatype") or "")
+            if pid and dtype:
+                out[pid] = dtype
+        return out
+
+    for start in range(0, len(ids), 50):
+        try:
+            found.update(await asyncio.to_thread(_fetch, ids[start : start + 50]))
+        except Exception as exc:  # noqa: BLE001 — best-effort: unknown props keep the mapped type
+            logger.warning("live property datatype probe failed: %s", exc)
+    return found
+
+
+def _coerce_claims_to_live_datatypes(
+    entity: ResolvedWikibaseEntity,
+    live_prop_datatypes: dict[str, str],
+) -> ResolvedWikibaseEntity:
+    """Shape each claim for its property's LIVE datatype before any write."""
+    coerced: list[ResolvedClaim] = []
+    changed = False
+    for claim in entity.claims:
+        if (
+            live_prop_datatypes.get(claim.property_id) == "string"
+            and claim.datatype in _STRING_COERCIBLE_DATATYPES
+        ):
+            coerced.append(_string_compatible_claim(claim))
+            changed = True
+        else:
+            coerced.append(claim)
+    return dataclasses.replace(entity, claims=coerced) if changed else entity
 
 
 async def _retry_with_string_compatible_claims(
