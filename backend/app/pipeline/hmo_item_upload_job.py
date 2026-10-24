@@ -8,6 +8,7 @@ large runs (Rule W-107).
 
 from __future__ import annotations
 
+import time
 import uuid
 
 from app.db import session_scope
@@ -134,6 +135,7 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
     recent_item_outcomes: list[dict] = []
     current_step: str | None = None
     items_done = items_total = links_done = links_total = 0
+    last_emit_at = 0.0
     audit_ctx = None
     if not dry_run:
         audit_ctx = WikibaseAuditContext(
@@ -157,6 +159,7 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
     ) -> None:
         nonlocal last_seen_total, last_processed, persist_outer
         nonlocal current_step, items_done, items_total, links_done, links_total
+        nonlocal last_emit_at
         if persist_scope:
             # The canonical persist's read-back loop is its own progress
             # scope (nested sub_* bar, Rule W-113) — the outer counter
@@ -212,6 +215,14 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
             # Rolling window so a missed poll can still catch up without
             # rewriting thousands of outcomes into every progress row.
             progress["recent_item_outcomes"] = recent_item_outcomes[-200:]
+            # Per-item ticks may drop: the row carries the 200-outcome
+            # window (~50 KB JSONB) plus a NOTIFY, and writing it for every
+            # item made a 13k-skip pass take hours (run 47e03437). The
+            # window still fills in memory; the next write ships it.
+            now = time.monotonic()
+            if now - last_emit_at < 2.0:
+                return
+            last_emit_at = now
         await update_job_progress(job_id, progress)
 
     async def should_cancel() -> bool:

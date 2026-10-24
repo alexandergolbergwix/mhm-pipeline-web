@@ -30,7 +30,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session_scope
@@ -544,6 +544,24 @@ async def _persist_live_canonical_state(
     await db.flush()
 
 
+async def _bulk_audit(db: AsyncSession, rows: list[dict[str, Any]]) -> None:
+    """One multi-row INSERT for a batch of audit rows.
+
+    Per-row commits dominated mass-skip passes and the link stage on the
+    slow shared Postgres (13k single-row commits on run 47e03437); a batch
+    is one round trip. Failures are logged and swallowed — audit must
+    never break writes.
+    """
+    if not rows:
+        return
+    try:
+        await db.execute(insert(WikibaseCloudWrite), rows)
+        await db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("failed to bulk-record wikibase_cloud_write", exc_info=True)
+        await db.rollback()
+
+
 async def _pass_one_create(
     db: AsyncSession,
     run_id: uuid.UUID,
@@ -589,6 +607,8 @@ async def _pass_one_create(
             step_total=len(entities),
         )
 
+    audit_rows: list[dict[str, Any]] = []
+
     async def _process_one(
         entity: ResolvedWikibaseEntity,
     ) -> tuple[HmoItemUploadOutcome, str | None] | None:
@@ -606,14 +626,18 @@ async def _pass_one_create(
             block_message = format_shacl_block_message(block_issues)
             block_status = "would_block" if dry_run else "blocked"
             if not dry_run and audit_ctx is not None:
-                async with session_scope() as item_db:
-                    await record_wikibase_write(
-                        item_db, audit_ctx,
-                        operation=OPERATION_FAILED,
-                        target_kind=TARGET_ITEM,
-                        target_key=entity.source_uri,
-                        outcome_message=block_message,
-                    )
+                audit_rows.append({
+                    "id": uuid.uuid4(),
+                    "actor_user_id": audit_ctx.actor_user_id,
+                    "project_id": audit_ctx.project_id,
+                    "run_id": audit_ctx.run_id,
+                    "job_id": audit_ctx.job_id,
+                    "channel": audit_ctx.channel,
+                    "operation": OPERATION_FAILED,
+                    "target_kind": TARGET_ITEM,
+                    "target_key": entity.source_uri,
+                    "outcome_message": block_message,
+                })
             return HmoItemUploadOutcome(
                 entity.local_id, entity.source_uri, block_status,
                 message=block_message,
@@ -623,14 +647,19 @@ async def _pass_one_create(
         if existing_qid is not None:
             if not update_existing:
                 if audit_ctx is not None and not dry_run:
-                    async with session_scope() as item_db:
-                        await record_wikibase_write(
-                            item_db, audit_ctx,
-                            operation=OPERATION_SKIP,
-                            target_kind=TARGET_ITEM,
-                            target_key=entity.source_uri,
-                            wikibase_id=existing_qid,
-                        )
+                    audit_rows.append({
+                        "id": uuid.uuid4(),
+                        "actor_user_id": audit_ctx.actor_user_id,
+                        "project_id": audit_ctx.project_id,
+                        "run_id": audit_ctx.run_id,
+                        "job_id": audit_ctx.job_id,
+                        "channel": audit_ctx.channel,
+                        "operation": OPERATION_SKIP,
+                        "target_kind": TARGET_ITEM,
+                        "target_key": entity.source_uri,
+                        "wikibase_id": existing_qid,
+                        "outcome_message": "ok",
+                    })
                 return HmoItemUploadOutcome(
                     entity.local_id, entity.source_uri, "skipped", existing_qid,
                 ), None
@@ -684,6 +713,9 @@ async def _pass_one_create(
             break
         chunk = entities[start : start + concurrency]
         results = await asyncio.gather(*(_bounded_one(e) for e in chunk))
+        if audit_rows:
+            await _bulk_audit(db, audit_rows)
+            audit_rows.clear()
         for entity, result in zip(chunk, results):
             if result is None:
                 cancelled = True
@@ -1056,15 +1088,23 @@ async def _pass_two_link(
         ) -> None:
             if audit_ctx is None:
                 return
-            await record_wikibase_write(
-                item_db, audit_ctx,
-                operation=operation,
-                target_kind=TARGET_CLAIM,
-                target_key=f"{source_qid}|{link.property_id}|{target_qid}",
-                wikibase_id=source_qid if operation == OPERATION_CREATE else None,
-                outcome_message=message or "ok",
-            )
+            audit_rows.append({
+                "id": uuid.uuid4(),
+                "actor_user_id": audit_ctx.actor_user_id,
+                "project_id": audit_ctx.project_id,
+                "run_id": audit_ctx.run_id,
+                "job_id": audit_ctx.job_id,
+                "channel": audit_ctx.channel,
+                "operation": operation,
+                "target_kind": TARGET_CLAIM,
+                "target_key": f"{source_qid}|{link.property_id}|{target_qid}",
+                "wikibase_id": (
+                    source_qid if operation == OPERATION_CREATE else None
+                ),
+                "outcome_message": message or "ok",
+            })
 
+        audit_rows: list[dict[str, Any]] = []
         async with session_scope() as item_db:
             claims = [
                 _build_wbi_claim(ResolvedClaim(link.property_id, "wikibase-item", target_qid))
@@ -1079,6 +1119,7 @@ async def _pass_two_link(
                     await _audit(
                         item_db, link, target_qid, operation=OPERATION_CREATE,
                     )
+                await _bulk_audit(item_db, audit_rows)
                 return [o for o in local if o is not None]
             # One bad claim must not sink its batch siblings — fall back to
             # per-link writes for this entity only.
@@ -1098,6 +1139,7 @@ async def _pass_two_link(
                     await _audit(
                         item_db, link, target_qid, operation=OPERATION_CREATE,
                     )
+            await _bulk_audit(item_db, audit_rows)
         return [o for o in local if o is not None]
 
     # Same concurrency contract as pass 1: WBI opens a fresh HTTP session
