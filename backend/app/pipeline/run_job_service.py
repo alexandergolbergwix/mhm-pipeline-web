@@ -1117,10 +1117,22 @@ async def _notify_job_update(db: AsyncSession, job: RunJob) -> None:
         "project_id": str(job.project_id),
         "job": serialise_job(job),
     }
+    body = json.dumps(payload, default=str)
+    if len(body) > 7500:
+        # pg_notify caps payloads at 8000 bytes — the fat progress (a
+        # 200-outcome window) always overflowed, and the failed
+        # notify+rollback cost two DB round trips per emission. A slim
+        # ping tells clients to refetch; polling stays the source of truth.
+        payload["job"] = {
+            "id": str(job.id),
+            "status": job.status,
+            "updated_at": str(job.updated_at),
+        }
+        body = json.dumps(payload, default=str)
     try:
         await db.execute(
             text("SELECT pg_notify(:channel, :payload)"),
-            {"channel": NOTIFY_CHANNEL, "payload": json.dumps(payload, default=str)},
+            {"channel": NOTIFY_CHANNEL, "payload": body},
         )
         await db.commit()
     except Exception:  # noqa: BLE001 — a missed live-push must never fail the job

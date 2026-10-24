@@ -25,6 +25,7 @@ import dataclasses
 import hashlib
 import json
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -544,6 +545,11 @@ async def _persist_live_canonical_state(
     await db.flush()
 
 
+# Cooperative-cancel check window: one DB round trip per window instead of
+# per item (the mass-skip passes spent all their time in cancel checks).
+_CANCEL_GATE_SECONDS = 2.0
+
+
 async def _bulk_audit(db: AsyncSession, rows: list[dict[str, Any]]) -> None:
     """One multi-row INSERT for a batch of audit rows.
 
@@ -619,7 +625,7 @@ async def _pass_one_create(
         stay per-item committed and the pool is not shared mid-transaction.
         Returns ``None`` when the cancel flag landed before any work.
         """
-        if not dry_run and should_cancel is not None and await should_cancel():
+        if not dry_run and await _cancel_gate():
             return None
         block_issues = blocking_shacl_issues(shacl_index.get(entity.local_id))
         if block_issues and not allow_shacl_errors:
@@ -700,6 +706,22 @@ async def _pass_one_create(
     # network waits overlap (2 calls per item otherwise serialized).
     concurrency = 1 if dry_run else 4
     sem = asyncio.Semaphore(concurrency)
+    cancel_state = {"at": 0.0, "value": False}
+
+    async def _cancel_gate() -> bool:
+        """Cooperative cancel check, cached 2 s.
+
+        A DB round trip per item made the mass-skip passes crawl on the
+        shared Postgres (13k skips, run 47e03437); the flag lands within
+        one cache window instead of one item.
+        """
+        now = time.monotonic()
+        if now - cancel_state["at"] >= _CANCEL_GATE_SECONDS:
+            cancel_state["value"] = bool(
+                should_cancel is not None and await should_cancel()
+            )
+            cancel_state["at"] = now
+        return cancel_state["value"]
 
     async def _bounded_one(
         entity: ResolvedWikibaseEntity,
@@ -707,11 +729,12 @@ async def _pass_one_create(
         async with sem:
             return await _process_one(entity)
 
-    for start in range(0, len(entities), concurrency):
-        if not dry_run and should_cancel is not None and await should_cancel():
+    chunk_size = max(concurrency, 40)
+    for start in range(0, len(entities), chunk_size):
+        if not dry_run and await _cancel_gate():
             cancelled = True
             break
-        chunk = entities[start : start + concurrency]
+        chunk = entities[start : start + chunk_size]
         results = await asyncio.gather(*(_bounded_one(e) for e in chunk))
         if audit_rows:
             await _bulk_audit(db, audit_rows)

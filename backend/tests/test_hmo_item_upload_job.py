@@ -326,6 +326,9 @@ async def test_job_dedup_skips_unchanged_updates(sample_run, db_session, monkeyp
 @pytest.mark.asyncio
 async def test_job_stops_when_cancelled(sample_run, db_session, monkeypatch):
     monkeypatch.setattr(job_module, "build_server_wikibase_writer", lambda: _FakeWriter())
+    # Zero the cancel-gate cache window so the flag lands per call, as in
+    # production it lands per 2 s (one DB round trip per window).
+    monkeypatch.setattr("app.pipeline.hmo_item_upload._CANCEL_GATE_SECONDS", 0.0)
     job_id = await _seed(db_session, sample_run, _entities(5))
 
     calls = {"n": 0}
