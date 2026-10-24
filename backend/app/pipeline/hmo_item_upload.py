@@ -652,20 +652,10 @@ async def _pass_one_create(
         existing_qid = existing.get(entity.source_uri)
         if existing_qid is not None:
             if not update_existing:
-                if audit_ctx is not None and not dry_run:
-                    audit_rows.append({
-                        "id": uuid.uuid4(),
-                        "actor_user_id": audit_ctx.actor_user_id,
-                        "project_id": audit_ctx.project_id,
-                        "run_id": audit_ctx.run_id,
-                        "job_id": audit_ctx.job_id,
-                        "channel": audit_ctx.channel,
-                        "operation": OPERATION_SKIP,
-                        "target_kind": TARGET_ITEM,
-                        "target_key": entity.source_uri,
-                        "wikibase_id": existing_qid,
-                        "outcome_message": "ok",
-                    })
+                # No audit row for skips: nothing was written to the wiki,
+                # and a 13k-skip pass spent hours on per-skip commits to the
+                # audit table (run 47e03437). The job result's outcomes[]
+                # still records every skip.
                 return HmoItemUploadOutcome(
                     entity.local_id, entity.source_uri, "skipped", existing_qid,
                 ), None
