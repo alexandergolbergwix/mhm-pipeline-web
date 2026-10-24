@@ -64,6 +64,12 @@ class _FakeWriter:
         self._next_q += 1
         return _FakeOutcome(entity_id=qid)
 
+    def add_claims(self, entity_id, claims):
+        self.call_order.append("add_claims")
+        for claim in claims:
+            self.claim_calls.append((entity_id, claim))
+        return _FakeOutcome(entity_id=entity_id, status="updated")
+
     def add_claim(self, entity_id, claim):
         self.call_order.append("add_claim")
         self.claim_calls.append((entity_id, claim))
@@ -561,7 +567,8 @@ async def test_live_upload_persists_canonical_rows_from_source_uri_mappings(db_s
     assert {row.local_id for row in rows} == {"QDraft_MS1", "QDraft_Person1"}
     assert {row.wikibase_id for row in rows} == {"Q1", "Q2"}
     assert all(row.snapshot["canonical_source"] == "wikibase" for row in rows)
-    assert writer.call_order.index("add_claim") < len(writer.call_order) - 1
+    link_call = "add_claims" if "add_claims" in writer.call_order else "add_claim"
+    assert writer.call_order.index(link_call) < len(writer.call_order) - 1
     assert writer.call_order[-1] == "get_entity"
 
 
@@ -901,6 +908,17 @@ async def test_quantity_string_mismatch_retries_as_string() -> None:
             return SimpleNamespace(
                 entity_id="Q99", status="created", message="ok", page_url=None,
             )
+
+        def add_claims(self, entity_id, claims):
+            from types import SimpleNamespace
+            out = SimpleNamespace(
+                entity_id=entity_id, status="updated", message="ok", page_url=None,
+            )
+            for claim in claims:
+                out = self.add_claim(entity_id, claim)
+                if out.status == "failed":
+                    return out
+            return out
 
         def add_claim(self, entity_id, claim):
             from types import SimpleNamespace
@@ -1287,3 +1305,15 @@ async def test_local_ids_unknown_raises(db_session) -> None:
             db_session, run_id, writer=None, dry_run=True,
             local_ids=["QDraft_Missing"],
         )
+
+
+@pytest.fixture(autouse=True)
+def _no_live_property_probe(monkeypatch):
+    """Keep tests hermetic: the live property-datatype probe hits the wiki."""
+
+    async def _noop(base_url, prop_ids):
+        return {}
+
+    monkeypatch.setattr(
+        "app.pipeline.hmo_item_upload._fetch_live_property_datatypes", _noop,
+    )

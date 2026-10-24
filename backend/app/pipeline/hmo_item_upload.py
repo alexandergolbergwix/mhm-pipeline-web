@@ -953,28 +953,27 @@ async def _pass_two_link(
     seen_links = 0
     total_links = total - processed_offset
 
-    for entity in entities:
-        if cancelled:
-            break
+    async def _process_entity_links(
+        entity: ResolvedWikibaseEntity,
+    ) -> list[HmoDeferredLinkOutcome] | None:
+        """Resolve one entity's links and write them in ONE batched call.
+
+        Per-link semantics are preserved: unresolved/unresolvable and
+        dedup skips are decided per link, and a failed batch falls back to
+        per-link writes so one bad claim cannot sink its siblings.
+        Returns ``None`` when the cancel flag landed before any work.
+        """
+        if not dry_run and should_cancel is not None and await should_cancel():
+            return None
         source_qid = known_qids.get(entity.source_uri)
+        local: list[HmoDeferredLinkOutcome | None] = []
+        to_write: list[tuple[int, Any, str]] = []
         for link in entity.deferred_links:
             if link_scope_local_ids is not None and (
                 link.source_local_id not in link_scope_local_ids
                 and link.target_local_id not in link_scope_local_ids
             ):
                 continue
-            if not dry_run and should_cancel is not None and await should_cancel():
-                cancelled = True
-                break
-            seen_links += 1
-            if not dry_run and on_progress is not None:
-                await on_progress(
-                    processed_offset + seen_links, total,
-                    f"{seen_links}/{total_links} item links added",
-                    step_id=STEP_ADD_LINKS,
-                    step_processed=seen_links,
-                    step_total=total_links,
-                )
             target_source_uri = link.target_source_uri or local_id_to_source_uri.get(link.target_local_id)
             target_qid = known_qids.get(target_source_uri) if target_source_uri else None
 
@@ -995,7 +994,7 @@ async def _pass_two_link(
                     )
                 )
             ):
-                outcomes.append(
+                local.append(
                     HmoDeferredLinkOutcome(
                         link.source_local_id,
                         link.property_id,
@@ -1003,27 +1002,24 @@ async def _pass_two_link(
                         "unresolvable",
                     )
                 )
-                unresolvable += 1
                 continue
 
             if source_qid is None or target_qid is None:
-                outcomes.append(
+                local.append(
                     HmoDeferredLinkOutcome(
                         link.source_local_id, link.property_id, link.target_local_id,
                         "unresolved",
                     )
                 )
-                unresolved += 1
                 continue
 
             if dry_run:
-                outcomes.append(
+                local.append(
                     HmoDeferredLinkOutcome(
                         link.source_local_id, link.property_id, link.target_local_id,
                         "would_link",
                     )
                 )
-                linked += 1
                 continue
 
             # Link write-dedup: the audit log already records every claim
@@ -1033,47 +1029,118 @@ async def _pass_two_link(
             if written_claim_keys and (
                 f"{source_qid}|{link.property_id}|{target_qid}" in written_claim_keys
             ):
-                outcomes.append(
+                local.append(
                     HmoDeferredLinkOutcome(
                         link.source_local_id, link.property_id, link.target_local_id,
                         "linked", message="already on wiki (dedup)",
                     )
                 )
-                linked += 1
                 continue
-            claim = _build_wbi_claim(ResolvedClaim(link.property_id, "wikibase-item", target_qid))
-            result = await _bounded_writer_call(writer.add_claim, source_qid, claim)
-            if result.status == "failed":
-                outcomes.append(
-                    HmoDeferredLinkOutcome(
-                        link.source_local_id, link.property_id, link.target_local_id,
-                        "failed", message=result.message,
-                    )
-                )
-                failed += 1
-                if audit_ctx is not None:
-                    await record_wikibase_write(
-                        db, audit_ctx,
-                        operation=OPERATION_FAILED,
-                        target_kind=TARGET_CLAIM,
-                        target_key=f"{source_qid}|{link.property_id}|{target_qid}",
-                        outcome_message=result.message,
-                    )
-                continue
-            outcomes.append(
-                HmoDeferredLinkOutcome(
-                    link.source_local_id, link.property_id, link.target_local_id, "linked",
-                )
+            # Placeholder keeps the per-link outcome order intact once the
+            # batch write lands.
+            local.append(None)
+            to_write.append((len(local) - 1, link, target_qid))
+
+        if not to_write:
+            return [o for o in local if o is not None]
+
+        def _outcome(link: Any, status: str, message: str = "") -> HmoDeferredLinkOutcome:
+            return HmoDeferredLinkOutcome(
+                link.source_local_id, link.property_id, link.target_local_id,
+                status, message=message,
             )
-            linked += 1
-            if audit_ctx is not None:
-                await record_wikibase_write(
-                    db, audit_ctx,
-                    operation=OPERATION_CREATE,
-                    target_kind=TARGET_CLAIM,
-                    target_key=f"{source_qid}|{link.property_id}|{target_qid}",
-                    wikibase_id=source_qid,
+
+        async def _audit(
+            item_db: AsyncSession, link: Any, target_qid: str,
+            *, operation: str, message: str = "",
+        ) -> None:
+            if audit_ctx is None:
+                return
+            await record_wikibase_write(
+                item_db, audit_ctx,
+                operation=operation,
+                target_kind=TARGET_CLAIM,
+                target_key=f"{source_qid}|{link.property_id}|{target_qid}",
+                wikibase_id=source_qid if operation == OPERATION_CREATE else None,
+                outcome_message=message or "ok",
+            )
+
+        async with session_scope() as item_db:
+            claims = [
+                _build_wbi_claim(ResolvedClaim(link.property_id, "wikibase-item", target_qid))
+                for _idx, link, target_qid in to_write
+            ]
+            result = await _bounded_writer_call(
+                writer.add_claims, source_qid, claims,
+            )
+            if result.status != "failed":
+                for idx, link, target_qid in to_write:
+                    local[idx] = _outcome(link, "linked")
+                    await _audit(
+                        item_db, link, target_qid, operation=OPERATION_CREATE,
+                    )
+                return [o for o in local if o is not None]
+            # One bad claim must not sink its batch siblings — fall back to
+            # per-link writes for this entity only.
+            for idx, link, target_qid in to_write:
+                claim = _build_wbi_claim(
+                    ResolvedClaim(link.property_id, "wikibase-item", target_qid),
                 )
+                one = await _bounded_writer_call(writer.add_claim, source_qid, claim)
+                if one.status == "failed":
+                    local[idx] = _outcome(link, "failed", message=one.message)
+                    await _audit(
+                        item_db, link, target_qid,
+                        operation=OPERATION_FAILED, message=one.message,
+                    )
+                else:
+                    local[idx] = _outcome(link, "linked")
+                    await _audit(
+                        item_db, link, target_qid, operation=OPERATION_CREATE,
+                    )
+        return [o for o in local if o is not None]
+
+    # Same concurrency contract as pass 1: WBI opens a fresh HTTP session
+    # per call, each task owns its DB session, and outcomes stay in input
+    # order. Links are network-bound 2 calls per entity batch instead of
+    # 2 calls per link.
+    concurrency = 1 if dry_run else 4
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _bounded_links(
+        entity: ResolvedWikibaseEntity,
+    ) -> list[HmoDeferredLinkOutcome] | None:
+        async with sem:
+            return await _process_entity_links(entity)
+
+    for start in range(0, len(entities), concurrency):
+        if cancelled:
+            break
+        chunk = entities[start : start + concurrency]
+        results = await asyncio.gather(*(_bounded_links(e) for e in chunk))
+        for result in results:
+            if result is None:
+                cancelled = True
+                continue
+            for outcome in result:
+                seen_links += 1
+                if not dry_run and on_progress is not None:
+                    await on_progress(
+                        processed_offset + seen_links, total,
+                        f"{seen_links}/{total_links} item links added",
+                        step_id=STEP_ADD_LINKS,
+                        step_processed=seen_links,
+                        step_total=total_links,
+                    )
+                outcomes.append(outcome)
+                if outcome.status in ("linked", "would_link"):
+                    linked += 1
+                elif outcome.status == "failed":
+                    failed += 1
+                elif outcome.status == "unresolved":
+                    unresolved += 1
+                elif outcome.status == "unresolvable":
+                    unresolvable += 1
 
     return outcomes, linked, failed, unresolved, unresolvable, cancelled
 
@@ -1145,8 +1212,12 @@ async def _fetch_live_property_datatypes(
         )
         with urllib.request.urlopen(url, timeout=45) as resp:
             body = _json.loads(resp.read().decode())
+        entities = (body or {}).get("entities") or []
+        values = entities.values() if isinstance(entities, dict) else entities
         out: dict[str, str] = {}
-        for ent in (body.get("entities") or []):
+        for ent in values:
+            if not isinstance(ent, dict):
+                continue
             pid = str(ent.get("id") or "")
             dtype = str(ent.get("datatype") or "")
             if pid and dtype:

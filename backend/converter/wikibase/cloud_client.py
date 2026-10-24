@@ -843,12 +843,23 @@ class WikibaseCloudWriter:
         self, entity_id: str, claim: Any, *, summary: str = ""
     ) -> EntityEditOutcome:
         """Add one already-built claim to an existing item or property."""
+        return self.add_claims(entity_id, [claim], summary=summary)
+
+    def add_claims(
+        self, entity_id: str, claims: list[Any], *, summary: str = ""
+    ) -> EntityEditOutcome:
+        """Add already-built claims to an existing item in ONE write.
+
+        Same semantics as repeated :meth:`add_claim` calls (plain ADD, one
+        fetch + one write) — batching collapses an item's deferred links
+        from N×2 HTTP calls to 2 (32,946 links on run 47e03437).
+        """
         try:
             self._wait_for_entity_write_slot()
             entity = self._get_wbi_entity(entity_id)
-            entity.claims.add(claim)
+            entity.claims.add(claims)
             write_kwargs: dict[str, Any] = {
-                "summary": summary or wikibase_edit_summary("add claim"),
+                "summary": summary or wikibase_edit_summary("add claims"),
             }
             if isinstance(self._auth, WikibaseBotCredentials):
                 write_kwargs["bot"] = True

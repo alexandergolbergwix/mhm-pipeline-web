@@ -39,6 +39,9 @@ class _FakeWriter:
         self._next_q += 1
         return _FakeOutcome(entity_id=qid)
 
+    def add_claims(self, entity_id, claims):
+        return _FakeOutcome(entity_id=entity_id, status="updated")
+
     def add_claim(self, entity_id, claim):
         return _FakeOutcome(entity_id=entity_id, status="updated")
 
@@ -342,3 +345,15 @@ async def test_job_stops_when_cancelled(sample_run, db_session, monkeypatch):
     # Cancellation fired during pass 1, so both incomplete steps read skipped.
     assert job.progress["steps"][0]["status"] == "skipped"
     assert job.progress["steps"][1]["status"] == "skipped"
+
+
+@pytest.fixture(autouse=True)
+def _no_live_property_probe(monkeypatch):
+    """Keep tests hermetic: the live property-datatype probe hits the wiki."""
+
+    async def _noop(base_url, prop_ids):
+        return {}
+
+    monkeypatch.setattr(
+        "app.pipeline.hmo_item_upload._fetch_live_property_datatypes", _noop,
+    )
