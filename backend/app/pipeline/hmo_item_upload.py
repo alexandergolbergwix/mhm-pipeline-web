@@ -340,6 +340,13 @@ async def upload_items_for_run(
         and unresolved == 0
         and scope is None
     ):
+        # The shared session sat idle through the whole link pass while its
+        # pooled connection died server-side (120 s idle-in-transaction and
+        # the tier's silent drops) — the persist's first SELECT then raised
+        # "connection is closed" and the run reported crashed after every
+        # wiki write had landed (run 47e03437, twice). Release the
+        # connection; the persist re-checks-out a fresh, pre-pinged one.
+        await db.close()
         await _persist_live_canonical_state(
             db,
             cache_row,
