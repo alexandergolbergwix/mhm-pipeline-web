@@ -83,6 +83,29 @@ def _upload_steps(
 
 
 def serialise_upload_result(result: pipeline.HmoItemUploadResult) -> dict:
+    """Counts are exact; the row lists are capped.
+
+    A finishing pass can carry 75k outcome rows (~50 MB of JSONB) — writing
+    them into the job row at the terminal write killed the connection and
+    the run reported "crashed" after every wiki write had already landed
+    (run 47e03437 link pass). The UI acts on the failures (Retry N failed),
+    so those are kept in full; the rest is a capped sample.
+    """
+    _ACTIONABLE = {"failed", "blocked", "unresolved"}
+
+    def _rows(rows: list[Any], limit: int = 2000) -> list[dict[str, Any]]:
+        dicts = [o.__dict__ for o in rows]
+        if len(dicts) <= limit:
+            return dicts
+        out = [d for d in dicts if str(d.get("status") or "") in _ACTIONABLE]
+        for d in dicts:
+            if len(out) >= limit:
+                break
+            if str(d.get("status") or "") in _ACTIONABLE:
+                continue
+            out.append(d)
+        return out
+
     return {
         "dry_run": result.dry_run,
         "created": result.created,
@@ -93,8 +116,8 @@ def serialise_upload_result(result: pipeline.HmoItemUploadResult) -> dict:
         "linked": result.linked,
         "unresolved_links": result.unresolved_links,
         "unresolvable_links": result.unresolvable_links,
-        "outcomes": [o.__dict__ for o in result.outcomes],
-        "link_outcomes": [o.__dict__ for o in result.link_outcomes],
+        "outcomes": _rows(result.outcomes),
+        "link_outcomes": _rows(result.link_outcomes),
     }
 
 

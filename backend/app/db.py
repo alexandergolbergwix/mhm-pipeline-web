@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import ssl
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -14,7 +15,6 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.settings import get_settings
-
 
 # Postgres kills any connection that sits "idle in transaction" past this
 # many milliseconds. This is a backstop, not a fix for any specific bug:
@@ -70,10 +70,27 @@ def _ssl_connect_args(url: str) -> dict[str, Any]:
     }
 
 
+def _pool_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
 def _make_engine():
     settings = get_settings()
+    # Rule W-285: one engine per process, and a rule-verify fan-out runs
+    # several processes at once. `pool_size=5 + max_overflow=10` = 15 per
+    # process, so a 4-shard verify wanted ~90 connections against an
+    # `essential-1` plan cap of 20 — a build died mid-refresh and progress
+    # callbacks went missing. The pool is now small by default and tunable:
+    # the connection budget belongs to the deployment (PgBouncer / plan),
+    # not to every process assuming it may have 15.
     return create_async_engine(
-        settings.database_url,
+        settings.pg_bouncer_url or settings.database_url,
         echo=False,
         pool_pre_ping=True,
         # pool_recycle: Heroku Postgres's shared essential tier drops
@@ -84,11 +101,12 @@ def _make_engine():
         # closed" (run 3494ebf5 canonical build, repeatedly). Recycle at
         # 4 min < the server-side kill window so a pooled connection is
         # always younger than the drop threshold; pool_pre_ping guards the
-        # residual race.
+        # residual race. It matters more through PgBouncer, which reaps idle
+        # server-side handles aggressively.
         pool_recycle=240,
-        pool_size=5,
-        max_overflow=10,
-        connect_args=_ssl_connect_args(settings.database_url),
+        pool_size=_pool_int("DB_POOL_SIZE", 1),
+        max_overflow=_pool_int("DB_MAX_OVERFLOW", 2),
+        connect_args=_ssl_connect_args(settings.pg_bouncer_url or settings.database_url),
     )
 
 
@@ -123,6 +141,19 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 @asynccontextmanager
 async def session_scope() -> AsyncIterator[AsyncSession]:
-    """Plain async context manager for scripts and tests."""
-    async with SessionLocal() as session:
+    """Plain async context manager for scripts and tests.
+
+    The teardown close is best-effort: on the shared tier a pooled
+    connection can die while a task waits on network I/O, and the implicit
+    rollback on close then raises "the underlying connection is closed"
+    out of an innocent ``async with`` — killing upload jobs after their
+    writes had already landed (run 47e03437 link pass).
+    """
+    session = SessionLocal()
+    try:
         yield session
+    finally:
+        try:
+            await session.close()
+        except Exception:  # noqa: BLE001 — dead-connection rollback noise
+            pass
