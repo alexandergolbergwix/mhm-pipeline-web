@@ -188,7 +188,8 @@ async def upload_items_for_run(
     if not authority_gate["ready"]:
         raise RuntimeError(format_authority_gate_error(authority_gate))
 
-    all_entities = [ResolvedWikibaseEntity.from_dict(e) for e in cache_row.resolved_entities]
+    raw_entities = list(cache_row.resolved_entities)
+    all_entities = [ResolvedWikibaseEntity.from_dict(e) for e in raw_entities]
 
     # Deterministic local_id dedup: the builder's ASCII normalization can
     # collapse two distinct Hebrew-named entities onto one local_id (run
@@ -354,6 +355,7 @@ async def upload_items_for_run(
                 all_entities,
                 known_qids,
                 writer,
+                raw_entities=raw_entities,
                 label_overrides=label_overrides,
                 recorded_fingerprints=recorded_fingerprints,
                 on_progress=on_progress,
@@ -369,6 +371,7 @@ async def upload_items_for_run(
                 all_entities,
                 known_qids,
                 writer,
+                raw_entities=raw_entities,
                 label_overrides=label_overrides,
                 recorded_fingerprints=recorded_fingerprints,
                 on_progress=on_progress,
@@ -397,14 +400,19 @@ async def _persist_live_canonical_state(
     known_qids: dict[str, str],
     writer: Any,
     *,
+    raw_entities: list[dict[str, Any]] | None = None,
     label_overrides: dict[str, dict[str, str]] | None = None,
     recorded_fingerprints: dict[str, str] | None = None,
     on_progress: Callable[..., Awaitable[None]] | None = None,
 ) -> None:
     # Audit writes commit/rollback on the shared session. Refresh the cache
     # after that boundary before reading ORM attributes, because a rollback
-    # can expire an otherwise non-expiring instance.
-    await db.refresh(cache_row, attribute_names=["id", "run_id", "resolved_entities"])
+    # can expire an otherwise non-expiring instance. Only the light columns:
+    # re-reading the 100 MB ``resolved_entities`` blob over the shared tier
+    # killed the connection mid-transfer twice (run 47e03437) — the blob
+    # dicts ride in via ``raw_entities``, loaded once at the top of the
+    # upload, and the final flush rewrites the column wholesale.
+    await db.refresh(cache_row, attribute_names=["id", "run_id"])
     property_rows = (
         await db.execute(
             select(WikibaseEntityMapping).where(
@@ -563,7 +571,7 @@ async def _persist_live_canonical_state(
     cache_row.resolved_entities = [
         {**raw, "canonical_live": snapshots[str(raw.get("local_id") or "")]}
         if str(raw.get("local_id") or "") in snapshots else raw
-        for raw in cache_row.resolved_entities
+        for raw in (raw_entities if raw_entities is not None else cache_row.resolved_entities)
     ]
     await db.flush()
 
@@ -675,10 +683,23 @@ async def _pass_one_create(
         existing_qid = existing.get(entity.source_uri)
         if existing_qid is not None:
             if not update_existing:
-                # No audit row for skips: nothing was written to the wiki,
-                # and a 13k-skip pass spent hours on per-skip commits to the
-                # audit table (run 47e03437). The job result's outcomes[]
-                # still records every skip.
+                if audit_ctx is not None and not dry_run:
+                    # Bulk-inserted per chunk; the row carries why nothing
+                    # was written so the review table can show the item as
+                    # up-to-date instead of eternally "will update".
+                    audit_rows.append({
+                        "id": uuid.uuid4(),
+                        "actor_user_id": audit_ctx.actor_user_id,
+                        "project_id": audit_ctx.project_id,
+                        "run_id": audit_ctx.run_id,
+                        "job_id": audit_ctx.job_id,
+                        "channel": audit_ctx.channel,
+                        "operation": OPERATION_SKIP,
+                        "target_kind": TARGET_ITEM,
+                        "target_key": entity.source_uri,
+                        "wikibase_id": existing_qid,
+                        "outcome_message": "update not requested",
+                    })
                 return HmoItemUploadOutcome(
                     entity.local_id, entity.source_uri, "skipped", existing_qid,
                 ), None
@@ -707,6 +728,27 @@ async def _pass_one_create(
                 known_qids=known_qids,
                 recorded_fingerprints=recorded_fingerprints,
             )
+        if (
+            outcome.status == "skipped"
+            and audit_ctx is not None
+            and not dry_run
+        ):
+            # Fingerprint match: the wiki already carries this payload. The
+            # bulk-inserted row lets the review table read the item as up to
+            # date instead of eternally "will update".
+            audit_rows.append({
+                "id": uuid.uuid4(),
+                "actor_user_id": audit_ctx.actor_user_id,
+                "project_id": audit_ctx.project_id,
+                "run_id": audit_ctx.run_id,
+                "job_id": audit_ctx.job_id,
+                "channel": audit_ctx.channel,
+                "operation": OPERATION_SKIP,
+                "target_kind": TARGET_ITEM,
+                "target_key": entity.source_uri,
+                "wikibase_id": existing_qid,
+                "outcome_message": str(outcome.message or "content matches the last write"),
+            })
         created_qid = (
             outcome.wikibase_id
             if outcome.status in ("created", "adopted") and outcome.wikibase_id

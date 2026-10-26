@@ -694,6 +694,7 @@ async def _facet_counts(db: AsyncSession, run_id: uuid.UUID) -> dict[str, dict[s
         select(
             WikibaseCloudWrite.target_key.label("source_uri"),
             WikibaseCloudWrite.operation,
+            WikibaseCloudWrite.outcome_message,
             func.row_number().over(
                 partition_by=WikibaseCloudWrite.target_key,
                 order_by=WikibaseCloudWrite.created_at.desc(),
@@ -705,7 +706,7 @@ async def _facet_counts(db: AsyncSession, run_id: uuid.UUID) -> dict[str, dict[s
         ).subquery()
     )
     writes_sq = select(
-        writes_sq.c.source_uri, writes_sq.c.operation,
+        writes_sq.c.source_uri, writes_sq.c.operation, writes_sq.c.outcome_message,
     ).where(writes_sq.c.rn == 1).subquery()
     wrows = (
         await db.execute(
@@ -713,6 +714,7 @@ async def _facet_counts(db: AsyncSession, run_id: uuid.UUID) -> dict[str, dict[s
                 HmoStudioItemRow.source_uri,
                 mapping_sq.c.wikibase_id,
                 writes_sq.c.operation,
+                writes_sq.c.outcome_message,
             ).join(
                 mapping_sq,
                 mapping_sq.c.ontology_uri == HmoStudioItemRow.source_uri,
@@ -725,13 +727,18 @@ async def _facet_counts(db: AsyncSession, run_id: uuid.UUID) -> dict[str, dict[s
     ).all()
     ds: dict[str, int] = {}
     uo: dict[str, int] = {}
-    for source_uri, wikibase_id, operation in wrows:
+    for source_uri, wikibase_id, operation, outcome_message in wrows:
         failed = operation == "failed"
         if failed:
             d = "failed"
         elif wikibase_id is None:
             d = "new"
-        elif operation == "update":
+        elif operation == "update" or (
+            operation == "skip"
+            and str(outcome_message or "").startswith("content matches")
+        ):
+            # A write-dedup skip verified the wiki already carries this
+            # payload — the item is up to date, not pending an update.
             d = "updated"
         else:
             d = "will_update"
@@ -765,6 +772,10 @@ def _item_data_status(item: dict[str, Any]) -> str:
     if item.get("status") == "would_create":
         return "new"
     if item.get("upload_outcome") == "update":
+        return "updated"
+    if item.get("upload_outcome") == "skip" and str(
+        item.get("upload_message") or ""
+    ).startswith("content matches"):
         return "updated"
     return "will_update"
 
