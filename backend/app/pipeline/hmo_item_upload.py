@@ -344,19 +344,35 @@ async def upload_items_for_run(
         # pooled connection died server-side (120 s idle-in-transaction and
         # the tier's silent drops) — the persist's first SELECT then raised
         # "connection is closed" and the run reported crashed after every
-        # wiki write had landed (run 47e03437, twice). Release the
-        # connection; the persist re-checks-out a fresh, pre-pinged one.
-        await db.close()
-        await _persist_live_canonical_state(
-            db,
-            cache_row,
-            all_entities,
-            known_qids,
-            writer,
-            label_overrides=label_overrides,
-            recorded_fingerprints=recorded_fingerprints,
-            on_progress=on_progress,
-        )
+        # wiki write had landed (run 47e03437, twice). The persist is
+        # read-mostly and idempotent: retry it once on the fresh connection
+        # the failed statement already forced into the pool.
+        try:
+            await _persist_live_canonical_state(
+                db,
+                cache_row,
+                all_entities,
+                known_qids,
+                writer,
+                label_overrides=label_overrides,
+                recorded_fingerprints=recorded_fingerprints,
+                on_progress=on_progress,
+            )
+        except Exception as exc:  # noqa: BLE001 — retry only dead-connection noise
+            msg = str(exc)
+            if "connection is closed" not in msg and "no active connection" not in msg:
+                raise
+            logger.warning("canonical persist retrying after dead connection: %s", exc)
+            await _persist_live_canonical_state(
+                db,
+                cache_row,
+                all_entities,
+                known_qids,
+                writer,
+                label_overrides=label_overrides,
+                recorded_fingerprints=recorded_fingerprints,
+                on_progress=on_progress,
+            )
 
     return HmoItemUploadResult(
         dry_run=dry_run,
