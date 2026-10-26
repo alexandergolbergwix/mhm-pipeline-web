@@ -365,6 +365,10 @@ async def upload_items_for_run(
             if "connection is closed" not in msg and "no active connection" not in msg:
                 raise
             logger.warning("canonical persist retrying after dead connection: %s", exc)
+            # SQLAlchemy does not classify asyncpg's InterfaceError as a
+            # disconnect, so the session would hand the SAME dead connection
+            # to the retry. Invalidate drops it (instances stay mapped).
+            await db.invalidate()
             await _persist_live_canonical_state(
                 db,
                 cache_row,
