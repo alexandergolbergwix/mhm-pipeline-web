@@ -14,5 +14,13 @@ export function resolveHmoItemDataStatus(item: HmoStudioItem): HmoItemDataStatus
   if (item.upload_outcome === "failed") return "failed";
   if (item.status === "would_create") return "new";
   if (item.upload_outcome === "update") return "updated";
+  // A write-dedup skip verified the wiki already carries this payload —
+  // up to date, not pending (same rule as the server-side facet).
+  if (
+    item.upload_outcome === "skip" &&
+    (item.upload_message || "").startsWith("content matches")
+  ) {
+    return "updated";
+  }
   return "will_update";
 }
