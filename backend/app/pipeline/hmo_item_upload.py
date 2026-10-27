@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, func, insert, select
+from sqlalchemy.orm import load_only
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session_scope
@@ -189,6 +190,7 @@ async def upload_items_for_run(
     if not authority_gate["ready"]:
         raise RuntimeError(format_authority_gate_error(authority_gate))
 
+    cache_row_id = cache_row.id
     raw_entities = list(cache_row.resolved_entities)
     all_entities = [ResolvedWikibaseEntity.from_dict(e) for e in raw_entities]
 
@@ -342,13 +344,11 @@ async def upload_items_for_run(
         and unresolved == 0
         and scope is None
     ):
-        # The shared session sat idle through the whole link pass while its
-        # pooled connection died server-side (120 s idle-in-transaction and
-        # the tier's silent drops) — the persist's first SELECT then raised
-        # "connection is closed" and the run reported crashed after every
-        # wiki write had landed (run 47e03437, twice). The persist is
-        # read-mostly and idempotent: retry it once on the fresh connection
-        # the failed statement already forced into the pool.
+        # The upload's long-lived session sits idle across the link pass and
+        # its connection is often dead by the persist (run 47e03437 died
+        # here five times). Try the caller's session first; on the dead-
+        # connection signature, retry once on a FRESH session — the persist
+        # is read-mostly and idempotent.
         try:
             await _persist_live_canonical_state(
                 db,
@@ -357,6 +357,7 @@ async def upload_items_for_run(
                 known_qids,
                 writer,
                 raw_entities=raw_entities,
+                cache_row_id=cache_row_id,
                 label_overrides=label_overrides,
                 recorded_fingerprints=recorded_fingerprints,
                 on_progress=on_progress,
@@ -366,21 +367,19 @@ async def upload_items_for_run(
             if "connection is closed" not in msg and "no active connection" not in msg:
                 raise
             logger.warning("canonical persist retrying after dead connection: %s", exc)
-            # SQLAlchemy does not classify asyncpg's InterfaceError as a
-            # disconnect, so the session would hand the SAME dead connection
-            # to the retry. Invalidate drops it (instances stay mapped).
-            await db.invalidate()
-            await _persist_live_canonical_state(
-                db,
-                cache_row,
-                all_entities,
-                known_qids,
-                writer,
-                raw_entities=raw_entities,
-                label_overrides=label_overrides,
-                recorded_fingerprints=recorded_fingerprints,
-                on_progress=on_progress,
-            )
+            async with session_scope() as pdb:
+                await _persist_live_canonical_state(
+                    pdb,
+                    cache_row,
+                    all_entities,
+                    known_qids,
+                    writer,
+                    raw_entities=raw_entities,
+                    cache_row_id=cache_row_id,
+                    label_overrides=label_overrides,
+                    recorded_fingerprints=recorded_fingerprints,
+                    on_progress=on_progress,
+                )
 
     return HmoItemUploadResult(
         dry_run=dry_run,
@@ -406,6 +405,7 @@ async def _persist_live_canonical_state(
     writer: Any,
     *,
     raw_entities: list[dict[str, Any]] | None = None,
+    cache_row_id: uuid.UUID | None = None,
     label_overrides: dict[str, dict[str, str]] | None = None,
     recorded_fingerprints: dict[str, str] | None = None,
     on_progress: Callable[..., Awaitable[None]] | None = None,
@@ -417,7 +417,18 @@ async def _persist_live_canonical_state(
     # killed the connection mid-transfer twice (run 47e03437) — the blob
     # dicts ride in via ``raw_entities``, loaded once at the top of the
     # upload, and the final flush rewrites the column wholesale.
-    await db.refresh(cache_row, attribute_names=["id", "run_id"])
+    # Re-fetch on this session with light columns only: the row belongs to
+    # the upload's long-lived session whose connection dies during the link
+    # pass, and a full get would stream the 100 MB blob over a fragile
+    # connection (run 47e03437 died here five times).
+    # The caller passes the id captured while the row was fresh: touching
+    # cache_row.id after the link pass's rollbacks trips an expired-instance
+    # lazy load (run 47e03437).
+    cache_row = await db.get(
+        HmoStudioItemCache,
+        cache_row_id or cache_row.id,
+        options=(load_only(HmoStudioItemCache.id, HmoStudioItemCache.run_id),),
+    )
     property_rows = (
         await db.execute(
             select(WikibaseEntityMapping).where(
@@ -671,7 +682,10 @@ async def _bulk_audit(db: AsyncSession, rows: list[dict[str, Any]]) -> None:
         await db.commit()
     except Exception:  # noqa: BLE001
         logger.warning("failed to bulk-record wikibase_cloud_write", exc_info=True)
-        await db.rollback()
+        try:
+            await db.rollback()
+        except Exception:  # noqa: BLE001 — the connection is already gone
+            pass
 
 
 async def _pass_one_create(
