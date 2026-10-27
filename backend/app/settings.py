@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import re
 from functools import lru_cache
-from uuid import UUID
 from pathlib import Path
+from uuid import UUID
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+asyncpg://mhm:mhm@localhost:5432/mhm_pipeline_web",
     )
+    # Transaction-pooling endpoint (Heroku PgBouncer). When set, the shared
+    # SQLAlchemy engine goes through it so many processes multiplex over few
+    # server connections (Rule W-285). Empty means use `database_url` directly.
+    # The Postgres LISTEN bridge in `app.realtime` MUST NOT use this — LISTEN
+    # is session-level and breaks under transaction pooling; it always binds
+    # to `database_url`.
+    pg_bouncer_url: str = Field(default="")
 
     # ── Redis (L1 inference cache + optional slowapi storage) ─────────
     # Heroku sets REDIS_URL when heroku-redis:mini is provisioned.
