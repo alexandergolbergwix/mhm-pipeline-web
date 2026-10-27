@@ -31,7 +31,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.orm import load_only
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -651,11 +651,35 @@ async def _persist_live_canonical_state(
             ))
         await db.commit()
 
-    cache_row.resolved_entities = [
-        {**raw, "canonical_live": snapshots[str(raw.get("local_id") or "")]}
-        if str(raw.get("local_id") or "") in snapshots else raw
-        for raw in (raw_entities if raw_entities is not None else cache_row.resolved_entities)
-    ]
+    # Attach the canonical snapshots server-side. The old client-side
+    # rebuild streamed the 100 MB blob to the app and back on every run —
+    # a single statement that large died mid-transfer on the shared tier
+    # five times (run 47e03437). The snapshots already sit in the
+    # fingerprint rows; this UPDATE never moves them over the wire.
+    if db.get_bind().dialect.name == "postgresql":
+        await db.execute(
+            text(
+                "UPDATE hmo_studio_item_cache AS c "
+                "SET resolved_entities = ("
+                "  SELECT COALESCE(jsonb_agg("
+                "    CASE WHEN f.canonical_snapshot IS NOT NULL "
+                "    THEN e.el || jsonb_build_object('canonical_live', f.canonical_snapshot) "
+                "    ELSE e.el END), '[]'::jsonb) "
+                "  FROM jsonb_array_elements(c.resolved_entities) AS e(el) "
+                "  LEFT JOIN hmo_item_write_fingerprints f "
+                "    ON f.run_id = c.run_id AND f.local_id = e.el->>'local_id'"
+                ") WHERE c.id = :cid"
+            ),
+            {"cid": cache_row_id or cache_row.id},
+        )
+    else:
+        # SQLite (tests): the jsonb helpers are Postgres-only — build the
+        # merged blob in Python.
+        cache_row.resolved_entities = [
+            {**raw, "canonical_live": snapshots[str(raw.get("local_id") or "")]}
+            if str(raw.get("local_id") or "") in snapshots else raw
+            for raw in (raw_entities if raw_entities is not None else cache_row.resolved_entities)
+        ]
     # The commit here is load-bearing: session teardown rolls back, which
     # silently discarded every canonical row and the blob update before.
     await db.commit()
