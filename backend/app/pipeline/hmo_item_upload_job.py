@@ -20,7 +20,11 @@ from app.models.run_job import (
 )
 from app.models.wikibase_cloud_write import CHANNEL_ITEM_UPLOAD
 from app.pipeline import hmo_item_upload as pipeline
-from app.pipeline.hmo_item_upload import STEP_ADD_LINKS, STEP_UPLOAD_ITEMS
+from app.pipeline.hmo_item_upload import (
+    STEP_ADD_LINKS,
+    STEP_PERSIST,
+    STEP_UPLOAD_ITEMS,
+)
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
 from app.services.wikibase_audit import WikibaseAuditContext
 from app.services.wikibase_credentials import build_server_wikibase_writer
@@ -33,6 +37,8 @@ def _upload_steps(
     items_total: int,
     links_done: int,
     links_total: int,
+    persist_done: int = 0,
+    persist_total: int = 0,
     terminal: str | None = None,
 ) -> list[dict]:
     """``steps[]`` strip for the upload UI (same shape as the Wikidata
@@ -46,6 +52,8 @@ def _upload_steps(
         step_no = 1
     elif current_step == STEP_ADD_LINKS:
         step_no = 2
+    elif current_step == STEP_PERSIST:
+        step_no = 3
     if terminal == "succeeded":
         step1_status = step2_status = "done"
     elif terminal is not None:  # cancelled/failed: incomplete steps are skipped
@@ -61,6 +69,15 @@ def _upload_steps(
         step2_status = (
             "done" if links_total > 0 and links_done >= links_total
             else "running" if step_no == 2 else "pending"
+        )
+    if terminal == "succeeded":
+        step3_status = "done"
+    elif terminal is not None:
+        step3_status = "done" if (persist_total > 0 and persist_done >= persist_total) else "skipped"
+    else:
+        step3_status = (
+            "done" if persist_total > 0 and persist_done >= persist_total
+            else "running" if step_no == 3 else "pending"
         )
     return [
         {
@@ -78,6 +95,14 @@ def _upload_steps(
             "processed": links_done,
             "total": links_total,
             "unit": "links",
+        },
+        {
+            "id": STEP_PERSIST,
+            "label": "Canonical read-back",
+            "status": step3_status,
+            "processed": persist_done,
+            "total": persist_total,
+            "unit": "items",
         },
     ]
 
@@ -179,6 +204,8 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
         step_processed: int | None = None,
         step_total: int | None = None,
         persist_scope: bool = False,
+        elapsed_seconds: float | None = None,
+        eta_seconds: float | None = None,
     ) -> None:
         nonlocal last_seen_total, last_processed, persist_outer
         nonlocal current_step, items_done, items_total, links_done, links_total
@@ -187,9 +214,15 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
             # The canonical persist's read-back loop is its own progress
             # scope (nested sub_* bar, Rule W-113) — the outer counter
             # freezes at the upload's final state so the tray/inline
-            # "(overall)" label stays honest.
+            # "(overall)" label stays honest. It is a first-class step with
+            # its own live x/y, elapsed, and ETA: an invisible hour-long
+            # phase reads as a stuck job (run 47e03437).
             if persist_outer is None:
                 persist_outer = (last_processed, last_seen_total)
+            now = time.monotonic()
+            if now - last_emit_at < 2.0 and processed < total:
+                return
+            last_emit_at = now
             await update_job_progress(job_id, {
                 "phase": "running",
                 "processed": persist_outer[0],
@@ -199,12 +232,16 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
                 "sub_total": total,
                 "sub_unit": "items",
                 "sub_message": message,
+                **({"elapsed_seconds": elapsed_seconds} if elapsed_seconds is not None else {}),
+                **({"eta_seconds": eta_seconds} if eta_seconds is not None else {}),
                 "steps": _upload_steps(
-                    current_step=current_step,
+                    current_step=STEP_PERSIST,
                     items_done=items_done,
                     items_total=items_total,
                     links_done=links_done,
                     links_total=links_total,
+                    persist_done=processed,
+                    persist_total=total,
                 ),
             })
             return

@@ -83,6 +83,7 @@ logger = logging.getLogger(__name__)
 # pass 1 uploads items, pass 2 adds the deferred item-to-item links.
 STEP_UPLOAD_ITEMS = "upload_items"
 STEP_ADD_LINKS = "add_links"
+STEP_PERSIST = "persist_canonical"
 
 
 if TYPE_CHECKING:
@@ -464,79 +465,133 @@ async def _persist_live_canonical_state(
         if row.canonical_snapshot is not None
     }
     resumed = 0
+    persist_started = time.monotonic()
+    persist_total = len(entities)
+
+    def _dur(seconds: float) -> str:
+        seconds = int(seconds)
+        if seconds < 60:
+            return f"{seconds}s"
+        if seconds < 3600:
+            return f"{seconds // 60} min"
+        return f"{seconds // 3600} h {(seconds % 3600) // 60} min"
+
+    async def _emit_persist(done: int) -> None:
+        """Live x/y with elapsed and ETA — this phase used to be invisible
+        and an hour of it reads as a stuck job (run 47e03437)."""
+        if on_progress is None:
+            return
+        elapsed = time.monotonic() - persist_started
+        eta = (elapsed / done * (persist_total - done)) if done and elapsed > 20 else None
+        tail = f" \u00b7 ~{_dur(eta)} left" if eta is not None else ""
+        await on_progress(
+            done, persist_total,
+            f"Persisting canonical read-back: {done}/{persist_total}"
+            f" \u2014 elapsed {_dur(elapsed)}{tail}",
+            persist_scope=True,
+            elapsed_seconds=round(elapsed, 1),
+            eta_seconds=(round(eta, 1) if eta is not None else None),
+        )
+
+    await _emit_persist(0)
+
+    # Phase 1: resume reuse + planning, no network. A stored snapshot whose
+    # fingerprint still matches the payload was verified by a previous pass
+    # (possibly killed mid-loop) and is reused without a wiki read.
+    to_fetch: list[tuple[Any, str, str]] = []
     for entity in entities:
         # Upload mappings are keyed by source URI, not the local display id.
         qid = known_qids.get(entity.source_uri)
         if not qid or qid == "Q_PENDING":
             missing_local_ids.append(entity.local_id)
             continue
-        try:
-            labels, descriptions = _prepare_entity_payload(entity, label_overrides)
-            fingerprint = _payload_fingerprint(entity, labels, descriptions, known_qids)
-            verified_snapshot = verified.get(entity.local_id)
-            if verified_snapshot is not None and verified_snapshot[0] == fingerprint:
-                # Resume checkpoint: this exact payload was already verified
-                # by a previous persist pass — reuse its snapshot.
-                snapshot = dict(verified_snapshot[1])
-                resumed += 1
-            else:
-                live = await asyncio.wait_for(
-                    asyncio.to_thread(writer.get_entity, qid),
-                    timeout=90.0,
-                )
-                if not live:
-                    logger.warning("canonical HMO read-back missing for %s (%s)", entity.local_id, qid)
+        labels, descriptions = _prepare_entity_payload(entity, label_overrides)
+        fingerprint = _payload_fingerprint(entity, labels, descriptions, known_qids)
+        verified_snapshot = verified.get(entity.local_id)
+        if verified_snapshot is not None and verified_snapshot[0] == fingerprint:
+            snapshots[entity.local_id] = dict(verified_snapshot[1])
+            resumed += 1
+            continue
+        to_fetch.append((entity, qid, fingerprint))
+
+    # Phase 2: read-back 4 deep — the wiki reads dominate wall time.
+    async def _fetch_live(qid: str) -> Any:
+        return await asyncio.wait_for(
+            asyncio.to_thread(writer.get_entity, qid), timeout=90.0,
+        )
+
+    for start in range(0, len(to_fetch), 4):
+        chunk = to_fetch[start : start + 4]
+        lives = await asyncio.gather(
+            *(_fetch_live(qid) for _e, qid, _f in chunk), return_exceptions=True,
+        )
+        for (entity, qid, fingerprint), live in zip(chunk, lives):
+            if isinstance(live, Exception):
+                if isinstance(live, asyncio.TimeoutError):
                     missing_local_ids.append(entity.local_id)
                     continue
-                live_id = str(live.get("id") or "").strip()
-                if live_id and live_id != qid:
-                    raise RuntimeError(
-                        f"HMO canonical read-back identity mismatch for {entity.local_id}: "
-                        f"mapped {qid}, received {live_id}"
-                    )
-                snapshot = canonical_snapshot_from_wikibase(
-                    live,
-                    local_id=entity.local_id,
-                    source_uri=entity.source_uri,
-                    authority_evidence=list(entity.authority_evidence),
-                    entity_type=entity.entity_type,
-                    control_numbers=list(entity.control_numbers),
-                    property_uris=property_uris,
-                    target_uris=target_uris,
+                raise live
+            if not live:
+                logger.warning(
+                    "canonical HMO read-back missing for %s (%s)", entity.local_id, qid,
                 )
-                snapshot["wikibase_id"] = qid
-        except asyncio.TimeoutError:
-            missing_local_ids.append(entity.local_id)
-            continue
-        snapshots[entity.local_id] = snapshot
-        # Record the write fingerprint right after the verified read-back:
-        # one DB commit per item keeps the session alive across this
-        # multi-hour read-back loop (an idle connection would be dropped —
-        # 2026-09-28: the persist died on `connection is closed` after pass
-        # 2 had already written everything), and the next update pass skips
-        # these items without re-writing or re-reading. The verified
-        # snapshot rides along as the persist's resume checkpoint.
-        payload_labels, payload_descriptions = _prepare_entity_payload(
-            entity,
-            label_overrides,
-        )
-        await _record_write_fingerprint(
-            db, cache_row.run_id, entity.local_id, qid,
-            _payload_fingerprint(entity, payload_labels, payload_descriptions, known_qids),
-            snapshot,
-        )
-        processed = len(snapshots)
-        if on_progress is not None and (
-            processed % 100 == 0 or processed == len(entities)
-        ):
-            # persist_scope: the read-back loop is NOT the upload's overall
-            # counter — the job wrapper routes it to the nested sub_* bar
-            # and freezes the outer counter at the upload's final state.
-            await on_progress(
-                processed, len(entities),
-                f"Persisting canonical read-back: {processed}/{len(entities)}…",
-                persist_scope=True,
+                missing_local_ids.append(entity.local_id)
+                continue
+            live_id = str(live.get("id") or "").strip()
+            if live_id and live_id != qid:
+                raise RuntimeError(
+                    f"HMO canonical read-back identity mismatch for {entity.local_id}: "
+                    f"mapped {qid}, received {live_id}"
+                )
+            snapshot = canonical_snapshot_from_wikibase(
+                live,
+                local_id=entity.local_id,
+                source_uri=entity.source_uri,
+                authority_evidence=list(entity.authority_evidence),
+                entity_type=entity.entity_type,
+                control_numbers=list(entity.control_numbers),
+                property_uris=property_uris,
+                target_uris=target_uris,
             )
+            snapshot["wikibase_id"] = qid
+            snapshots[entity.local_id] = snapshot
+        rows = {
+            e.local_id: {
+                "id": uuid.uuid4(),
+                "run_id": cache_row.run_id,
+                "local_id": e.local_id,
+                "wikibase_id": qid,
+                "payload_fingerprint": fp,
+                "canonical_snapshot": snapshots[e.local_id],
+            }
+            for e, qid, fp in chunk
+            if e.local_id in snapshots
+        }
+        if rows:
+            # Insert-vs-update split: a blind bulk insert trips the
+            # (run_id, local_id) unique key on any row a prior pass left.
+            existing_ids = set(
+                (
+                    await db.execute(
+                        select(HmoItemWriteFingerprint.local_id).where(
+                            HmoItemWriteFingerprint.run_id == cache_row.run_id,
+                            HmoItemWriteFingerprint.local_id.in_(list(rows)),
+                        )
+                    )
+                ).scalars().all()
+            )
+            fresh = [r for r in rows.values() if r["local_id"] not in existing_ids]
+            if fresh:
+                await db.execute(insert(HmoItemWriteFingerprint), fresh)
+                await db.commit()
+            for r in rows.values():
+                if r["local_id"] in existing_ids:
+                    await _record_write_fingerprint(
+                        db, cache_row.run_id, r["local_id"], r["wikibase_id"],
+                        r["payload_fingerprint"], r["canonical_snapshot"],
+                    )
+        await _emit_persist(len(snapshots))
+
     if resumed:
         logger.info("canonical persist resumed %d verified snapshots", resumed)
     if missing_local_ids:
@@ -554,30 +609,40 @@ async def _persist_live_canonical_state(
         delete(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == cache_row.run_id)
     )
     await db.flush()
-    for snapshot in snapshots.values():
-        db.add(HmoCanonicalEntity(
-            run_id=cache_row.run_id,
-            local_id=str(snapshot["local_id"]),
-            source_uri=str(snapshot["source_uri"]),
-            entity_type=str(snapshot.get("entity_type") or ""),
-            wikibase_id=str(snapshot["wikibase_id"]),
-            source_fingerprint=str(snapshot["source_fingerprint"]),
-            labels=dict(snapshot.get("labels") or {}),
-            descriptions=dict(snapshot.get("descriptions") or {}),
-            aliases=dict(snapshot.get("aliases") or {}),
-            claims=list(snapshot.get("claims") or []),
-            authority_evidence=list(snapshot.get("authority_evidence") or []),
-            provenance={"control_numbers": list(snapshot.get("control_numbers") or []), "canonical_source": "wikibase"},
-            status="live",
-            snapshot=snapshot,
-        ))
+
+    # Phase 3: the canonical rows, committed in chunks. One giant flush of
+    # 18k inserts plus the blob update killed the connection mid-write —
+    # chunked commits make the phase incremental and survivable.
+    snapshot_values = list(snapshots.values())
+    for start in range(0, len(snapshot_values), 500):
+        for snapshot in snapshot_values[start : start + 500]:
+            db.add(HmoCanonicalEntity(
+                run_id=cache_row.run_id,
+                local_id=str(snapshot["local_id"]),
+                source_uri=str(snapshot["source_uri"]),
+                entity_type=str(snapshot.get("entity_type") or ""),
+                wikibase_id=str(snapshot["wikibase_id"]),
+                source_fingerprint=str(snapshot["source_fingerprint"]),
+                labels=dict(snapshot.get("labels") or {}),
+                descriptions=dict(snapshot.get("descriptions") or {}),
+                aliases=dict(snapshot.get("aliases") or {}),
+                claims=list(snapshot.get("claims") or []),
+                authority_evidence=list(snapshot.get("authority_evidence") or []),
+                provenance={"control_numbers": list(snapshot.get("control_numbers") or []), "canonical_source": "wikibase"},
+                status="live",
+                snapshot=snapshot,
+            ))
+        await db.commit()
 
     cache_row.resolved_entities = [
         {**raw, "canonical_live": snapshots[str(raw.get("local_id") or "")]}
         if str(raw.get("local_id") or "") in snapshots else raw
         for raw in (raw_entities if raw_entities is not None else cache_row.resolved_entities)
     ]
-    await db.flush()
+    # The commit here is load-bearing: session teardown rolls back, which
+    # silently discarded every canonical row and the blob update before.
+    await db.commit()
+
 
 
 # Cooperative-cancel check window: one DB round trip per window instead of

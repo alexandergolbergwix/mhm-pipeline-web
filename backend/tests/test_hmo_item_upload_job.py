@@ -180,7 +180,7 @@ async def test_job_reports_progress_and_succeeds(sample_run, db_session, monkeyp
     # 3 items + 2 links, both passes counted against one shared total.
     assert job.progress["processed"] == job.progress["total"] == 5
     steps = job.progress["steps"]
-    assert [s["id"] for s in steps] == ["upload_items", "add_links"]
+    assert [s["id"] for s in steps] == ["upload_items", "add_links", "persist_canonical"]
 
 
 @pytest.mark.asyncio
