@@ -8,6 +8,7 @@ large runs (Rule W-107).
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 
@@ -288,19 +289,40 @@ async def run_hmo_item_upload_job(job_id: uuid.UUID) -> None:
     async def should_cancel() -> bool:
         return await is_cancel_requested(job_id)
 
+    # Heartbeat: the startup loads and the canonical persist can go quiet
+    # for minutes, and the stale reaper killed live jobs for it
+    # ("Job interrupted — the server restarted…", run 47e03437).
+    async def _heartbeat() -> None:
+        while True:
+            try:
+                from sqlalchemy import text as _text  # noqa: PLC0415
+
+                async with session_scope() as hb:
+                    await hb.execute(_text(
+                        "UPDATE run_jobs SET updated_at = now() "
+                        "WHERE id = :jid AND status = 'running'"
+                    ), {"jid": job_id})
+            except Exception:  # noqa: BLE001 — keep-alive is best-effort
+                pass
+            await asyncio.sleep(60)
+
     build_missing: str | None = None
-    async with session_scope() as db:
-        try:
-            result = await pipeline.upload_items_for_run(
-                db, run_id, writer=writer, dry_run=dry_run,
-                update_existing=update_existing,
-                allow_shacl_errors=allow_shacl_errors,
-                local_ids=local_ids,
-                audit_ctx=audit_ctx,
-                on_progress=on_progress, should_cancel=should_cancel,
-            )
-        except pipeline.ItemBuildMissingError as exc:
-            build_missing = str(exc)
+    hb_task = asyncio.create_task(_heartbeat())
+    try:
+        async with session_scope() as db:
+            try:
+                result = await pipeline.upload_items_for_run(
+                    db, run_id, writer=writer, dry_run=dry_run,
+                    update_existing=update_existing,
+                    allow_shacl_errors=allow_shacl_errors,
+                    local_ids=local_ids,
+                    audit_ctx=audit_ctx,
+                    on_progress=on_progress, should_cancel=should_cancel,
+                )
+            except pipeline.ItemBuildMissingError as exc:
+                build_missing = str(exc)
+    finally:
+        hb_task.cancel()
     if build_missing is not None:
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=build_missing)
         return

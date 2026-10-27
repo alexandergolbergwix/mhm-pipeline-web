@@ -443,17 +443,23 @@ async def _persist_live_canonical_state(
         )
         missing_local_ids: list[str] = []
     missing_local_ids: list[str] = []
-    resume_rows = (
-        (
+    # Streamed in batches: the rows carry the canonical snapshots and a
+    # single 1 GB SELECT died mid-transfer on the shared tier (run 47e03437).
+    resume_rows: list[Any] = []
+    last_local_id = ""
+    while True:
+        batch = (
             await db.execute(
                 select(HmoItemWriteFingerprint).where(
                     HmoItemWriteFingerprint.run_id == cache_row.run_id,
-                )
+                    HmoItemWriteFingerprint.local_id > last_local_id,
+                ).order_by(HmoItemWriteFingerprint.local_id).limit(500)
             )
-        )
-        .scalars()
-        .all()
-    )
+        ).scalars().all()
+        if not batch:
+            break
+        resume_rows.extend(batch)
+        last_local_id = batch[-1].local_id
     # local_id -> (fingerprint, verified snapshot) — a stored snapshot whose
     # fingerprint still matches the current payload was verified by a
     # previous persist pass (possibly killed mid-loop): reuse it instead of
@@ -1805,14 +1811,22 @@ async def _load_write_fingerprints(
 ) -> dict[str, str]:
     """local_id -> payload fingerprint recorded after the last successful
     write. Lets an 'Update published entries' pass skip items whose live
-    content already equals the payload (a re-write would be a no-op)."""
+    content already equals the payload (a re-write would be a no-op).
+
+    Project only the two columns: the full rows carry the canonical
+    snapshots and the 1 GB load went silent for minutes — long enough for
+    the stale reaper to kill the job (run 47e03437).
+    """
     rows = (
         await db.execute(
-            select(HmoItemWriteFingerprint).where(
+            select(
+                HmoItemWriteFingerprint.local_id,
+                HmoItemWriteFingerprint.payload_fingerprint,
+            ).where(
                 HmoItemWriteFingerprint.run_id == run_id,
             )
         )
-    ).scalars().all()
+    ).all()
     return {row.local_id: row.payload_fingerprint for row in rows}
 
 
