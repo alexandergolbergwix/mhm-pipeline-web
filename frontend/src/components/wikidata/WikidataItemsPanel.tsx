@@ -539,10 +539,10 @@ export function WikidataItemsPanel({
             judgingIds={judgingIds}
           />
         )}
-        {!buildPresent && !loading && (
+        {!buildPresent && !loading && !error && (
           <p className="muted text-sm">
             {source === "canonical"
-              ? "No HMO canonical records yet — complete the HMO upload read-back first."
+              ? "No Wikidata Studio build items yet."
               : "No items yet — rebuild after approving authority matches."}
           </p>
         )}

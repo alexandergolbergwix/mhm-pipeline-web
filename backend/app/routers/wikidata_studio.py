@@ -2043,7 +2043,30 @@ async def list_wikidata_items_page(
     try:
         await ensure_rows_backfilled(db, run_id, approved_only=approved_only, source=source)
     except LookupError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        # No build exists. Say which prerequisite is actually missing: the
+        # empty-state used to always blame the HMO read-back even when the
+        # canonical persist had long completed (run 47e03437), sending the
+        # curator to redo work that was done instead of to Rebuild.
+        canonical_count = int(await db.scalar(
+            select(func.count()).select_from(HmoCanonicalEntity).where(
+                HmoCanonicalEntity.run_id == run_id,
+            )
+        ) or 0)
+        if canonical_count:
+            detail = (
+                f"No Wikidata Studio build exists for run {run_id}. "
+                f"The HMO canonical read-back is complete ({canonical_count:,} "
+                f"records) — select Rebuild to build the Wikidata Studio items."
+            )
+        else:
+            detail = (
+                f"No Wikidata Studio build exists for run {run_id}. "
+                f"No HMO canonical records yet — complete the HMO upload "
+                f"read-back first."
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=detail,
+        ) from exc
     return await page_wikidata_items(
         db, run_id,
         cursor=cursor, limit=limit, q=q, entity_type=entity_type,
