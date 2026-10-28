@@ -235,3 +235,33 @@ class TestP921CitesTheChannelItCameFrom:
         assert build_claim_sources(item, {}, [])["P921"]["support_status"] == (
             SUPPORT_CHANNEL_EMPTY
         )
+
+
+class TestTranscriptionEvidence:
+    def test_unquoted_transcription_cites_the_hmo_layer(self) -> None:
+        """A temporary record's MARC never holds the colophon text verbatim."""
+        item = {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "source_uri": "https://w3id.org/mhm/ontology#MS_1",
+            "statements": [{"property_id": "P1684", "value": "נשלם זה הסדור ביום שלישי"}],
+        }
+        marc = {"notes": "רשומה זמנית | נושא נוסף: כתב-יד. מכירה"}
+        rows = build_claim_sources(item, marc, [])
+        row = rows["P1684"]
+        assert "hmo_extraction" in row["channels"]
+        assert row["support_status"] == SUPPORT_SUPPORTED
+        assert "נשלם זה הסדור" in row["evidence"]["hmo_extraction"]
+
+    def test_quoted_transcription_keeps_the_marc_channel_only(self) -> None:
+        item = {
+            "local_id": "QDraft_MS_1",
+            "entity_type": "manuscript",
+            "statements": [{"property_id": "P1684", "value": "נשלם זה הסדור ביום שלישי"}],
+        }
+        marc = {"notes": "קולופונים: נשלם זה הסדור ביום שלישי דהוא כ\"ד יומין"}
+        rows = build_claim_sources(item, marc, [])
+        row = rows["P1684"]
+        assert "hmo_extraction" not in row["channels"]
+        assert row["support_status"] == SUPPORT_SUPPORTED
+        assert row["evidence"]["notes"]

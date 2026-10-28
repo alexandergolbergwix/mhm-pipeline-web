@@ -1060,3 +1060,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     already had, not a data gap. Five others are genuinely corpus-capped
     (`P1071` has zero source rows) and must not be chased.
 
+
+- **R143 — One transcription claim per property, with the catalogue
+  reference.** `_merge_transcription_statements` (`hmo_canonical_wikidata.py`)
+  collapses per-fragment P1684/P1922/P3132 claims (one per colophon or scribal
+  intervention from the HMO stage) into a single claim per property — joined
+  value capped at 4000 chars, catalogue-note placeholders dropped before the
+  join (Rule W-72 filter), NLI reference attached. The build fingerprint salt
+  is `hmo-wikidata-v15`. *Why:* a manuscript carrying 62 inscription claims
+  pushed its P31 past the judge's 40-statement projection and 111 items failed
+  AI verify for "no instance of" that was present (run 47e03437, Rule W-286).

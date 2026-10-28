@@ -1081,3 +1081,47 @@ The `wikidata_item` claim checks treated every capped claim as a defect: claim-l
 ## Rule W-269 — Manuscript designation labels are the accepted identity for name_ok (added 2026-10-03)
 
 The run `3494ebf5` re-judge showed ~300 of 366 fresh partials on manuscripts whose labels are designation labels — `כתב יד עברי, {holder}, {shelfmark}` (Rules W-82/W-161: manuscripts have no titles, so the designation IS the identity). The `name_ok` brief had no manuscript exception, so the judge read deliberate designation labels as "weakened" (`name_ok=partial`, p≈0.3). The brief now carries the exception — judge whether holder and shelfmark/number are present and substantive, never whether the label reads like a work or person name. Because the prompt changed, the verdict key version bumps to `records_marc_v8` (Rule W-71). Same class as the W-265 fix: a brief change must ride a key bump or stale verdicts serve forever. Tests: `eval-agent/tests/test_jev_gates.py`.
+
+## Rule W-286 — Verdict inputs must keep structural claims visible and quote transcription provenance (added 2026-10-28)
+
+The first Wikidata Studio AI verify of run `47e03437` (1,850 items) returned
+**123 fails** (UI counts 101; 22 drop as stale fingerprints in the merged
+view) and not one was a data error. Three defects stacked: the HMO stage
+emits one P1684/P1922/P3132 claim per colophon fragment, so a manuscript
+carried **62 inscription claims**; `fingerprint_statements` caps the judge's
+statement projection at 40 rows in insertion order, so the item's **P31 sat
+at position ~64 and never reached the judge** — 111 items failed for "no
+instance of" that was present all along, and the fragment volume dragged in
+false "entity type needs attention" (116) and "remove the other record's
+data" (57, colophon text naming its scribe) on the same cascade; and the
+worst-hit records are temporary records (`רשומה זמנית`) whose stored MARC
+holds classifier stubs only, so the transcriptions read "unsupported:
+inscription (P1684)" against a 62-character notes slice. The invariants:
+
+- **One transcription claim per property.** `_merge_transcription_statements`
+  (`hmo_canonical_wikidata.py`) joins per-fragment P1684/P1922/P3132 claims
+  into one claim per property (capped at 4000 chars, catalogue-note
+  placeholders dropped before joining — Rule W-72 filter applied at merge),
+  and attaches the NLI catalogue reference. Build salt `hmo-wikidata-v15`
+  invalidates cached fragment-shaped projections.
+- **The statement cap may never drop the structure.** When an item exceeds
+  `FINGERPRINT_STATEMENT_LIMIT`, `fingerprint_statements` prioritises P31 /
+  P629 / P279 / P361 / P527 before truncation. Under-limit items keep their
+  projection order untouched so cache keys stay stable (Rule W-175).
+- **A transcription no slice quotes cites its real channel.**
+  `build_claim_sources` adds an `hmo_extraction` evidence row (value heads +
+  `source_uri` / `hmo_wikibase_id`) for P1684-family claims whose text no
+  MARC slice contains — the text was approved at the HMO stage, and a
+  temporary record never stores it verbatim. A claim that IS quoted keeps
+  the MARC channel only.
+- **The judge display is ordered and bounded.** The `wikidata_item` prompt
+  renders statements P31-first and truncates values over 400 chars with a
+  `…[truncated, N chars]` note (display only — fingerprints and cache keys
+  are untouched by the render).
+
+Spot-check the judge's structural complaint against the item before trusting
+it: "No P31" was false on every sampled item. Tests:
+`backend/tests/unit/test_hmo_native_claims.py`,
+`backend/tests/unit/test_wikidata_verdict_cache.py`,
+`backend/tests/unit/test_claim_provenance_completeness.py`,
+`eval-agent/tests/test_wikidata_item.py`.

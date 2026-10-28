@@ -357,7 +357,10 @@ def canonical_wikidata_fingerprint(
     # manuscript, generated descriptions, deduped claims).
     # v11 — Rule W-138 (unwrapped MARC values, one work title, evidence-gated
     # person dates, resolved local references).
-    salt = "hmo-wikidata-v14:"  # W-214 rejects identifiers for a different given name.
+    # v15 — merge per-fragment transcription claims (P1684/P1922/P3132) into
+    # one claim per property with an NLI reference (run 47e03437 AI-verdict
+    # fails: 62-claim spam drowned P31 in the judge prompt).
+    salt = "hmo-wikidata-v15:"  # W-214 rejects identifiers for a different given name.
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -489,6 +492,63 @@ def native_wikidata_claims(
             native.append({"property": P_INSTANCE_OF, "value": instance_qid})
 
     return native
+
+
+_TRANSCRIPTION_PIDS = frozenset({"P1684", "P1922", "P3132"})
+_MERGED_TRANSCRIPTION_CHARS = 4000
+
+
+def _merge_transcription_statements(
+    statements: list[WikidataStatement], *, control_number: str,
+) -> None:
+    """Collapse per-fragment transcription claims into one claim per property.
+
+    The HMO stage emits one P1684/P1922/P3132 claim per colophon or scribal
+    intervention — 60+ inscription rows on a single manuscript. On Wikidata
+    that is claim spam, and the AI judge drowns in it: it missed the P31
+    that sits behind the fragments and failed 111 items for "no instance of"
+    that was present all along (run 47e03437). Placeholder catalogue notes
+    are dropped before joining (same filter as the sanitize pass), and every
+    surviving transcription claim carries the NLI catalogue reference.
+    """
+    from converter.wikidata.catalog_notes import (  # noqa: PLC0415
+        is_catalog_note_placeholder,
+    )
+
+    for statement in statements:
+        if (
+            statement.property_id in _TRANSCRIPTION_PIDS
+            and not statement.references
+            and control_number
+        ):
+            statement.references = nli_reference(control_number)
+
+    grouped: dict[str, list[WikidataStatement]] = {}
+    for statement in statements:
+        if statement.property_id in _TRANSCRIPTION_PIDS:
+            grouped.setdefault(statement.property_id, []).append(statement)
+    for pid, rows in grouped.items():
+        if len(rows) < 2:
+            continue
+        texts: list[str] = []
+        for row in rows:
+            text = str(row.value or "").strip()
+            if not text or is_catalog_note_placeholder(text):
+                continue
+            texts.append(text)
+        texts = list(dict.fromkeys(texts))
+        if not texts:
+            continue
+        merged = "\n\n".join(texts)
+        if len(merged) > _MERGED_TRANSCRIPTION_CHARS:
+            merged = merged[:_MERGED_TRANSCRIPTION_CHARS].rstrip() + "…"
+        first = rows[0]
+        first.value = merged
+        kept: list[WikidataStatement] = []
+        for statement in statements:
+            if statement.property_id != pid or statement is first:
+                kept.append(statement)
+        statements[:] = kept
 
 
 def _split_work_title_claims(statements: list[WikidataStatement]) -> None:
@@ -645,6 +705,9 @@ def native_items_from_hmo(
         if wd_type == "work":
             _split_work_title_claims(statements)
         _append_manuscript_bridge_statements(entity, wd_type, statements)
+        _merge_transcription_statements(
+            statements, control_number=identity_control_number(entity),
+        )
         labels, aliases = _wikidata_labels_and_aliases(entity, wd_type, context=context)
         work_evidence = (
             _work_candidate_evidence_for(entity, context=context)

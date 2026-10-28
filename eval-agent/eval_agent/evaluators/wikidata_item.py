@@ -13,6 +13,48 @@ from eval_agent.evaluators._base import Candidate, Evaluator
 from eval_agent.ingest import marc_extract, wikidata_items
 from eval_agent.skills.wikidata_manuscripts import skill_context_from_payload
 
+_DISPLAY_PRIORITY_PIDS = ("P31", "P629", "P279", "P361", "P527")
+_DISPLAY_VALUE_CHARS = 400
+
+
+def _ordered_statements(statements: list[Any]) -> list[Any]:
+    """P31 first, then structural links, then a stable PID order.
+
+    A manuscript whose P31 sat behind 62 long inscription fragments made
+    the judge report "no instance of" on items that carry it (run
+    47e03437) — the entity type must be the first thing the judge reads.
+    """
+
+    def _key(row: Any) -> tuple[int, str, str]:
+        if not isinstance(row, dict):
+            return (len(_DISPLAY_PRIORITY_PIDS), "", "")
+        pid = str(row.get("property_id") or row.get("property") or "")
+        try:
+            rank = _DISPLAY_PRIORITY_PIDS.index(pid)
+        except ValueError:
+            rank = len(_DISPLAY_PRIORITY_PIDS)
+        return (rank, pid, str(row.get("value") or "")[:80])
+
+    return sorted(statements, key=_key)
+
+
+def _truncate_statement_values(
+    statements: list[Any], limit: int = _DISPLAY_VALUE_CHARS,
+) -> list[Any]:
+    """Display copy: long transcription values become head + length note."""
+    out: list[Any] = []
+    for row in statements:
+        if not isinstance(row, dict):
+            out.append(row)
+            continue
+        copy = dict(row)
+        for field in ("value", "value_label"):
+            text = copy.get(field)
+            if isinstance(text, str) and len(text) > limit:
+                copy[field] = f"{text[:limit]}…[truncated, {len(text)} chars]"
+        out.append(copy)
+    return out
+
 
 class WikidataItemEvaluator(Evaluator):
     id = "wikidata_item"
@@ -75,7 +117,8 @@ class WikidataItemEvaluator(Evaluator):
     def build_prompt(self, candidate: Candidate) -> str:
         p = candidate.payload
         statements_json = json.dumps(
-            p.get("statements") or [], ensure_ascii=False, indent=2
+            _truncate_statement_values(_ordered_statements(p.get("statements") or [])),
+            ensure_ascii=False, indent=2,
         )
         issues_json = json.dumps(
             p.get("validation_issues") or [], ensure_ascii=False, indent=2
@@ -138,7 +181,8 @@ class WikidataItemEvaluator(Evaluator):
             f"  aliases:           {json.dumps(p.get('aliases') or {}, ensure_ascii=False)}\n"
             f"  existing QID:      {p.get('existing_qid') or '(new item)'}\n"
             f"  statement count:   {p.get('statement_count', 0)}\n"
-            f"  statements sample:\n{statements_json}\n"
+            f"  statements (instance of first; long transcription values "
+            f"truncated for display):\n{statements_json}\n"
             f"  validation issues:\n{issues_json}\n"
             "Evidence channels (all first-class — MARC is necessary but not sufficient):\n"
             f"  MARC slice status: {marc_note}\n"

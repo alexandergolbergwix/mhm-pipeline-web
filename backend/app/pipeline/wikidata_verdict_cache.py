@@ -69,6 +69,22 @@ _FIXTURE_STATEMENT_KEYS = (
     "value", "value_id", "value_type", "value_label", "unit", "rank",
 )
 
+# Structural PIDs the judge must never lose to the statement cap: an item
+# whose 62 inscription fragments pushed P31 past position 40 failed AI
+# verify with "no instance of" on items that carry it (run 47e03437).
+_PRIORITY_PIDS = ("P31", "P629", "P279", "P361", "P527")
+
+
+def _statement_priority(statement: Any) -> tuple[int, str]:
+    if not isinstance(statement, dict):
+        return (len(_PRIORITY_PIDS), "")
+    pid = str(statement.get("property_id") or statement.get("property") or "")
+    try:
+        rank = _PRIORITY_PIDS.index(pid)
+    except ValueError:
+        rank = len(_PRIORITY_PIDS)
+    return (rank, pid)
+
 
 def fingerprint_statements(
     item: dict[str, Any],
@@ -86,10 +102,16 @@ def fingerprint_statements(
     Presentation ``value_label`` / ``property_label`` are included only when
     ``include_presentation_labels`` is true (judge fixtures). Cache keys omit
     them so a gloss-only enrich cannot bust sticky-full (Rule W-175).
+
+    When the item carries more statements than ``limit``, the projection is
+    prioritised (P31 / structural links first) before truncation so the cap
+    can never drop the instance-of the judge needs to see.
     """
     statements = item.get("statements")
     if not isinstance(statements, list):
         return []
+    if len(statements) > limit:
+        statements = sorted(statements, key=_statement_priority)
     keys = (
         _FIXTURE_STATEMENT_KEYS if include_presentation_labels
         else _FINGERPRINT_STATEMENT_KEYS

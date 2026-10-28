@@ -744,3 +744,26 @@ def test_fabricated_245_evidence_is_rejected() -> None:
     }]
     out2 = _reject_fabricated_245_evidence(rows2, context2, type("E", (), {"local_id": "y"})())
     assert out2[0]["accepted"] is True
+
+
+def test_fingerprint_statements_keeps_p31_over_the_cap() -> None:
+    """The 40-statement cap dropped P31 behind 62 inscription fragments."""
+    from app.pipeline.wikidata_verdict_cache import fingerprint_statements
+
+    statements = [{"property_id": "P1684", "value": f"t{i}"} for i in range(40)]
+    statements.append({"property_id": "P31", "value": "Q87167"})
+    rows = fingerprint_statements({"statements": statements}, limit=40)
+    assert len(rows) == 40
+    assert {"property_id": "P31", "value": "Q87167"} in rows
+
+
+def test_fingerprint_statements_preserves_order_under_the_cap() -> None:
+    """Under-limit items must keep their projection — cache keys stay stable."""
+    from app.pipeline.wikidata_verdict_cache import fingerprint_statements
+
+    statements = [
+        {"property_id": "P217", "value": "F 1"},
+        {"property_id": "P31", "value": "Q87167"},
+    ]
+    rows = fingerprint_statements({"statements": statements}, limit=40)
+    assert [r["property_id"] for r in rows] == ["P217", "P31"]

@@ -98,3 +98,25 @@ def test_wikidata_item_evaluator_emits_local_id_keyed_candidate():
 
 def test_wikidata_item_is_registered():
     assert REGISTRY["wikidata_item"] is WikidataItemEvaluator
+
+
+def test_statements_display_puts_instance_of_first():
+    from eval_agent.evaluators.wikidata_item import _ordered_statements
+
+    rows = [
+        {"property_id": "P1684", "value": "x"},
+        {"property_id": "P217", "value": "F 1"},
+        {"property_id": "P31", "value": "Q87167"},
+    ]
+    assert [r["property_id"] for r in _ordered_statements(rows)] == ["P31", "P1684", "P217"]
+
+
+def test_statements_display_truncates_long_transcriptions_without_mutating():
+    from eval_agent.evaluators.wikidata_item import _truncate_statement_values
+
+    long_value = "א" * 600
+    rows = [{"property_id": "P1684", "value": long_value}]
+    out = _truncate_statement_values(rows)
+    assert out[0]["value"].startswith("א" * 400)
+    assert "truncated, 600 chars" in out[0]["value"]
+    assert rows[0]["value"] == long_value

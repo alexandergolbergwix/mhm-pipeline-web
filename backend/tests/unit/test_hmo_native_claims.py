@@ -63,3 +63,64 @@ def test_quickstatements_uses_only_native_claims() -> None:
     assert 'LAST\tP217\t"F 1"' in text
     assert 'LAST\tP3959\t"990001"' in text
     assert "viaf_id" not in text
+
+
+def test_transcription_fragments_merge_into_one_claim_with_reference() -> None:
+    """60+ P1684 fragments drowned the judge's view of P31 (run 47e03437)."""
+    from app.pipeline.hmo_canonical_wikidata import _merge_transcription_statements
+    from converter.wikidata.item_models import WikidataStatement
+
+    statements = [
+        WikidataStatement(property_id="P1684", value="נשלם זה הסדור", value_type="monolingualtext"),
+        WikidataStatement(property_id="P1684", value="נעתק זה הספר", value_type="monolingualtext"),
+        WikidataStatement(property_id="P1684", value="רשומה זמנית", value_type="monolingualtext"),
+        WikidataStatement(property_id="P217", value="F 1", value_type="string"),
+        WikidataStatement(property_id="P31", value="Q87167", value_type="wikibase-item"),
+    ]
+    _merge_transcription_statements(statements, control_number="990001")
+    p1684 = [s for s in statements if s.property_id == "P1684"]
+    assert len(p1684) == 1
+    assert p1684[0].value == "נשלם זה הסדור\n\nנעתק זה הספר"
+    assert p1684[0].references
+    assert [s.property_id for s in statements] == ["P1684", "P217", "P31"]
+
+
+def test_single_transcription_claim_still_gets_the_catalog_reference() -> None:
+    from app.pipeline.hmo_canonical_wikidata import _merge_transcription_statements
+    from converter.wikidata.item_models import WikidataStatement
+
+    statements = [
+        WikidataStatement(property_id="P1684", value="נשלם זה הסדור", value_type="monolingualtext"),
+    ]
+    _merge_transcription_statements(statements, control_number="990001")
+    assert statements[0].references
+
+
+def test_merged_transcription_value_is_capped() -> None:
+    from app.pipeline.hmo_canonical_wikidata import (
+        _MERGED_TRANSCRIPTION_CHARS,
+        _merge_transcription_statements,
+    )
+    from converter.wikidata.item_models import WikidataStatement
+
+    statements = [
+        WikidataStatement(property_id="P1684", value="א" * 3000, value_type="monolingualtext"),
+        WikidataStatement(property_id="P1684", value="ב" * 3000, value_type="monolingualtext"),
+    ]
+    _merge_transcription_statements(statements, control_number="990001")
+    assert len(statements) == 1
+    assert len(statements[0].value) <= _MERGED_TRANSCRIPTION_CHARS + 1
+    assert statements[0].value.endswith("…")
+
+
+def test_duplicate_fragments_are_joined_once() -> None:
+    from app.pipeline.hmo_canonical_wikidata import _merge_transcription_statements
+    from converter.wikidata.item_models import WikidataStatement
+
+    statements = [
+        WikidataStatement(property_id="P1922", value="beginning", value_type="monolingualtext"),
+        WikidataStatement(property_id="P1922", value="beginning", value_type="monolingualtext"),
+    ]
+    _merge_transcription_statements(statements, control_number="990001")
+    assert len(statements) == 1
+    assert statements[0].value == "beginning"

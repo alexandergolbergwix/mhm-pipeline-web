@@ -247,6 +247,14 @@ _PERSON_LINK_CLAIM_PIDS: dict[str, tuple[str, ...]] = {
 # manuscript, so it has no MARC evidence to cite either.
 _STRUCTURAL_CLAIM_PIDS = frozenset({"P31", "P3959", "P5008"})
 
+# Verbatim transcriptions (inscription / first line / last line). Their text
+# is approved at the HMO stage, but a temporary catalogue record ("רשומה
+# זמנית") stores classifier stubs only — the stored MARC never contains the
+# text verbatim. When no slice quotes the value, the evidence must cite the
+# reviewed HMO layer instead, or the judge reads every transcription claim as
+# unsupported (run 47e03437: 123 AI-verdict fails on placeholder records).
+_TEXT_TRANSCRIPTION_PIDS = frozenset({"P1684", "P1922", "P3132"})
+
 # `supported` was one boolean for two different facts. These name them.
 SUPPORT_SUPPORTED = "supported"
 SUPPORT_STRUCTURAL = "structural"
@@ -451,6 +459,16 @@ def _person_link_evidence(pid: str, item: dict[str, Any], marc: dict[str, str]) 
     return {"person_link": _compact(rows[:3]), "roles": ", ".join(sorted(roles))}
 
 
+def _transcription_in_marc(pid: str, item: dict[str, Any], marc: dict[str, str]) -> bool:
+    """True when some slice actually quotes the claim's own text."""
+    texts = [str(text) for text in marc.values() if text]
+    for value in _claim_match_values(pid, item):
+        head = value.strip()[:40]
+        if len(head) >= 8 and any(head in text for text in texts):
+            return True
+    return False
+
+
 def build_claim_sources(
     item: dict[str, Any],
     marc: dict[str, str],
@@ -486,6 +504,18 @@ def build_claim_sources(
                 # or an author name inside a huge 505 list — the judge
                 # matched neither otherwise; 2026-10-06, 11 work partials).
                 evidence[name] = _evidence_window(text, pid, item)
+
+        if pid in _TEXT_TRANSCRIPTION_PIDS and not _transcription_in_marc(pid, item, marc):
+            channels.append("hmo_extraction")
+            evidence["hmo_extraction"] = _compact({
+                "values": _claim_match_values(pid, item)[:3],
+                "source_uri": item.get("source_uri"),
+                "hmo_wikibase_id": item.get("hmo_wikibase_id"),
+                "note": (
+                    "transcription text approved at the HMO stage — the "
+                    "catalogue record's stored MARC does not carry it verbatim"
+                ),
+            })
 
         channel = _AUTHORITY_CLAIM_PIDS.get(pid)
         if channel:
