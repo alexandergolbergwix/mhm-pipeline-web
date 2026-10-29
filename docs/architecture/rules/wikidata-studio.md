@@ -3150,3 +3150,17 @@ Tests: `backend/tests/unit/test_marc_script_and_colophon.py` (13 cases),
 (`test_resolvable_secondary_subject_is_promoted_to_p921`,
 `test_broad_subject_is_still_withheld_from_p921`,
 `test_unresolvable_subject_is_not_promoted_to_p921`).
+
+## Rule W-288 — A curator's drawer accept binds the QID on every judged path (added 2026-10-29)
+
+`apply_wikidata_item_override` now maps `accepted_foreign_qid` onto
+`existing_qid` when the item has none. Before, only the review-view layer
+merged the QID ledger, so the verify scope judged the item without the
+curator's binding and the duplicate axis kept failing it: run 47e03437's
+four adopted persons (bound to Q1176777 / Q118924679 / Q209579 /
+Q141175731) re-judged as live CREATE duplicates after the curator had
+already chosen. The binding is evidence, not authorisation — the upload
+path still requires the reconciled QID to match the accept (Rule W-99),
+and a pre-bound QID is still validated against label conflicts by
+`adopt_identifier_matched_duplicates`. Tests:
+`backend/tests/unit/test_wikidata_item_merge.py`.

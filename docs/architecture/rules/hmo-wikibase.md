@@ -1236,3 +1236,16 @@ default chosen in isolation will always oversubscribe it. And anything that
 needs session state must be declared and kept off the pooler.
 
 Tests: `backend/tests/unit/test_db_connection_budget.py`.
+
+## Rule W-289 — A batch job may not hold one session for its whole scope (added 2026-10-29)
+
+The bulk-approve job held a single `session_scope()` across all N items
+while `update_job_progress`, `is_cancel_requested` and the UI's job
+pollers each opened their own — under the 1+2 pool (Rule W-285) the
+fourth checkout waited past QueuePool's 30 s and the batch died at its
+next commit (run 47e03437: "Approved 250, skipped 0, failed 0
+(250/881)" + `QueuePool limit of size 1 overflow 2 reached`).
+`run_studio_item_bulk_approve_job` now processes ids in chunks of 50
+with a short-lived session per chunk; batch jobs under the small pool
+must release the connection between chunks. Tests:
+`backend/tests/test_studio_item_bulk_approve.py`.

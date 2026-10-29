@@ -69,16 +69,41 @@ async def run_studio_item_bulk_approve_job(job_id: uuid.UUID) -> None:
         return await is_cancel_requested(job_id)
 
     try:
-        async with session_scope() as db:
-            result = await bulk_approve_items(
-                db,
-                run_id=run_id,
-                channel=channel,
-                local_ids=[str(x) for x in local_ids],
-                actor_id=actor_user_id,
-                on_progress=on_progress,
-                should_cancel=should_cancel,
-            )
+        # Chunk across short-lived sessions: one session held for the whole
+        # scope starves the 1+2 connection pool (Rule W-285) — UI pollers and
+        # the job heartbeat then wait past QueuePool's 30 s and the batch
+        # dies at its next commit (run 47e03437: "Approved 250 … (250/881)").
+        chunk_size = 50
+        all_ids = [str(x) for x in local_ids]
+        result: dict[str, object] = {
+            "approved": 0, "unchanged": 0, "failed": 0,
+            "total": len(all_ids), "cancelled": False,
+        }
+        offset = 0
+        for start in range(0, len(all_ids), chunk_size):
+            chunk = all_ids[start:start + chunk_size]
+
+            async def chunk_progress(
+                processed: int, total: int, message: str, *, _off: int = offset,
+            ) -> None:
+                await on_progress(_off + processed, len(all_ids), message)
+
+            async with session_scope() as db:
+                part = await bulk_approve_items(
+                    db,
+                    run_id=run_id,
+                    channel=channel,
+                    local_ids=chunk,
+                    actor_id=actor_user_id,
+                    on_progress=chunk_progress,
+                    should_cancel=should_cancel,
+                )
+            offset += len(chunk)
+            for key in ("approved", "unchanged", "failed"):
+                result[key] = int(result[key]) + int(part.get(key) or 0)
+            if part.get("cancelled"):
+                result["cancelled"] = True
+                break
     except Exception as exc:  # noqa: BLE001
         await finish_job(job_id, status=JOB_STATUS_FAILED, error=str(exc))
         return

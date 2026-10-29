@@ -56,6 +56,14 @@ def apply_wikidata_item_override(entity: dict[str, Any], ov: dict[str, Any]) -> 
     if add:
         stmts.extend(add)
     out["statements"] = stmts
+    # The drawer accept binds an existing QID for good: every path that judges
+    # or exports this item must see that binding, or the judge keeps failing
+    # it as a live CREATE duplicate after the curator already chose (run
+    # 47e03437: 4 adopted persons stayed fail because only the view layer
+    # knew the QID).
+    accepted = str(ov.get("accepted_foreign_qid") or "").strip()
+    if accepted and not str(out.get("existing_qid") or "").strip():
+        out["existing_qid"] = accepted
     # Carry prior AI verdict for sticky-full reuse (Rule W-171). Editorial
     # fields above may change claims — the partitioner re-checks the fingerprint.
     if isinstance(ov.get("ai_verdict"), dict) and ov.get("ai_verdict"):

@@ -168,3 +168,56 @@ async def test_bulk_approve_wikidata_job_runner(db_session, sample_run, monkeypa
     ).scalars().all()
     assert {r.local_id for r in rows} == {"manuscript::A", "person::B"}
     assert all(r.approved is True for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_bulk_approve_chunks_across_sessions(db_session, sample_run, monkeypatch) -> None:
+    """55 ids span two chunks — the batch must survive session turnover."""
+    run_id = sample_run["run_id"]
+    project_id = sample_run["project_id"]
+    user_id = sample_run["user_id"]
+    ids = [f"item::{i}" for i in range(55)]
+
+    job = RunJob(
+        project_id=project_id,
+        run_id=run_id,
+        kind=JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE,
+        status="running",
+        params={"local_ids": ids},
+        created_by=user_id,
+        progress={},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    job_id = job.id
+
+    async def _noop_progress(*_a, **_k):
+        return None
+
+    async def _never_cancel(_jid):
+        return False
+
+    monkeypatch.setattr(
+        "app.pipeline.studio_item_bulk_approve_job.update_job_progress",
+        _noop_progress,
+    )
+    monkeypatch.setattr(
+        "app.pipeline.studio_item_bulk_approve_job.is_cancel_requested",
+        _never_cancel,
+    )
+
+    await run_studio_item_bulk_approve_job(job_id)
+
+    db_session.expire_all()
+    refreshed = await db_session.get(RunJob, job_id)
+    assert refreshed is not None
+    assert refreshed.status == JOB_STATUS_SUCCEEDED
+    assert refreshed.result["approved"] == 55
+
+    rows = (
+        await db_session.execute(
+            select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+        )
+    ).scalars().all()
+    assert len(rows) == 55
+    assert all(r.approved is True for r in rows)

@@ -1079,3 +1079,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   omitted; the he description keeps the Hebrew form. *Why:* two run-47e03437
   items shipped English descriptions quoting Hebrew names ("…, ורונה"),
   and an ugly consonantal romanisation is worse than a clean omission.
+
+- **R145 — The drawer accept binds the QID on the merged item (Rule W-288).**
+  `apply_wikidata_item_override` maps `accepted_foreign_qid` → `existing_qid`
+  when absent, so verify/export/judge paths see the curator's binding, not
+  only the review view. *Why:* four adopted persons kept failing the
+  duplicate axis as CREATEs after the curator had accepted their QIDs
+  (run 47e03437).
