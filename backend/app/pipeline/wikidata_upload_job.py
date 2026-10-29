@@ -462,6 +462,18 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             sum(1 for v in existence_cache.values() if v is None),
         )
 
+    # Batch-fill the reconciliation cache before the per-item loop: the
+    # uploader calls one item at a time and a per-item WDQS lookup costs
+    # seconds (run 47e03437 dry-run: ~1.3 items/min). One pre-warm of ~40
+    # identifiers per query turns the per-item lookups into cache hits.
+    from converter.wikidata.reconciler import (  # noqa: PLC0415
+        prewarm_reconciler_for_items,
+    )
+    from app.pipeline.wikidata_upload import _make_reconciler  # noqa: PLC0415
+
+    reconciler = _make_reconciler()
+    await run_in_threadpool(prewarm_reconciler_for_items, reconciler, pass1_native)
+
     outcomes: list[Any] = []
     link_outcomes: list[wikidata_upload.DeferredLinkOutcome] = []
     audit_ctx = None if mode.dry_run else WikibaseAuditContext(

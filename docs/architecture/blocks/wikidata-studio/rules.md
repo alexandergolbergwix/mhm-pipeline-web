@@ -1086,3 +1086,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   only the review view. *Why:* four adopted persons kept failing the
   duplicate axis as CREATEs after the curator had accepted their QIDs
   (run 47e03437).
+
+- **R146 — Reconciliation is batched and cached (Rule W-290).** The upload
+  job pre-warms the reconciler's per-item cache (one `VALUES` SPARQL per 40
+  identifiers) and shares one reconciler per process; per-item WDQS lookups
+  are a bug, not a pace. *Why:* run 47e03437's dry-run projected 15 h at
+  1.3 items/min on per-item SPARQL.

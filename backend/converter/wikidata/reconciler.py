@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 import requests
@@ -874,3 +874,132 @@ class WikidataReconciler:
             report.places_found,
         )
         return report
+
+
+def _sparql_escape(text: str) -> str:
+    return str(text).replace("\\", "\\\\").replace('"', '\\"')
+
+
+_PREWARM_BATCH = 40
+
+
+def prewarm_identifier_cache(
+    reconciler: WikidataReconciler,
+    probes: Iterable[tuple[str, str, str]],
+) -> None:
+    """Batch-fill single-property identifier lookups (Rule W-280).
+
+    One SPARQL per 40 values replaces one query per item — the run 47e03437
+    dry-run crawled at ~1.3 items/min on per-item WDQS lookups. Each probe is
+    ``(cache_prefix, property_pid, value)`` and must use the same key format
+    as the per-item methods (``person:viaf:…``, ``ms:nnl:…``, …).
+    """
+    pending: dict[tuple[str, str], list[str]] = {}
+    seen: set[str] = set()
+    for prefix, pid, value in probes:
+        value = str(value or "").strip()
+        key = f"{prefix}:{value}"
+        if not value or key in reconciler._cache or key in seen:
+            continue
+        seen.add(key)
+        pending.setdefault((prefix, pid), []).append(value)
+    for (prefix, pid), values in pending.items():
+        for start in range(0, len(values), _PREWARM_BATCH):
+            chunk = values[start:start + _PREWARM_BATCH]
+            values_expr = " ".join(f'"{_sparql_escape(v)}"' for v in chunk)
+            sparql = (
+                "SELECT ?id ?item WHERE { "
+                f"?item wdt:{pid} ?id . VALUES ?id {{ {values_expr} }} }}"
+            )
+            found: dict[str, str] = {}
+            try:
+                for row in reconciler._query(sparql):
+                    idv = str(row.get("id", {}).get("value", ""))
+                    qid = extract_wikidata_qid(
+                        str(row.get("item", {}).get("value", "")),
+                    )
+                    if idv and qid and idv not in found:
+                        found[idv] = qid
+            except ReconciliationUnavailableError:
+                continue
+            for v in chunk:
+                reconciler._cache[f"{prefix}:{v}"] = found.get(v)
+
+
+def prewarm_manuscript_shelfmarks(
+    reconciler: WikidataReconciler,
+    shelfmarks: Iterable[str],
+) -> None:
+    """Batch-fill ``ms:shelf:{Q_NLI}:{shelfmark}`` lookups (P195 + P217)."""
+    pending: list[str] = []
+    seen: set[str] = set()
+    for shelfmark in shelfmarks:
+        shelfmark = str(shelfmark or "").strip()
+        key = f"ms:shelf:{Q_NLI}:{shelfmark}"
+        if not shelfmark or key in reconciler._cache or key in seen:
+            continue
+        seen.add(key)
+        pending.append(shelfmark)
+    for start in range(0, len(pending), _PREWARM_BATCH):
+        chunk = pending[start:start + _PREWARM_BATCH]
+        values_expr = " ".join(f'"{_sparql_escape(v)}"' for v in chunk)
+        sparql = (
+            "SELECT ?shelf ?item WHERE { "
+            f"?item wdt:P195 wd:{Q_NLI} . ?item wdt:P217 ?shelf . "
+            f"VALUES ?shelf {{ {values_expr} }} }}"
+        )
+        found: dict[str, str] = {}
+        try:
+            for row in reconciler._query(sparql):
+                shelf = str(row.get("shelf", {}).get("value", ""))
+                qid = extract_wikidata_qid(str(row.get("item", {}).get("value", "")))
+                if shelf and qid and shelf not in found:
+                    found[shelf] = qid
+        except ReconciliationUnavailableError:
+            continue
+        for v in chunk:
+            reconciler._cache[f"ms:shelf:{Q_NLI}:{v}"] = found.get(v)
+
+
+_PERSON_PROBE_PREFIXES = (
+    ("person:viaf", "P214"),
+    ("person:nli", "P8189"),
+    ("person:P244", "P244"),
+    ("person:P227", "P227"),
+    ("person:P213", "P213"),
+)
+
+
+def prewarm_reconciler_for_items(
+    reconciler: WikidataReconciler,
+    items: Iterable[Any],
+) -> None:
+    """Collect identifier probes from built items and batch-fill the cache."""
+    probes: list[tuple[str, str, str]] = []
+    shelfmarks: list[str] = []
+    for item in items:
+        entity_type = str(getattr(item, "entity_type", "") or "")
+        statements = getattr(item, "statements", []) or []
+
+        def _value(pid: str) -> str:
+            for statement in statements:
+                if str(getattr(statement, "property_id", "") or "") == pid:
+                    value = getattr(statement, "value", None)
+                    if value not in (None, ""):
+                        return str(value)
+            return ""
+
+        if entity_type == "person":
+            for prefix, pid in _PERSON_PROBE_PREFIXES:
+                value = _value(pid)
+                if value:
+                    probes.append((prefix, pid, value))
+        elif entity_type == "manuscript":
+            nnl = _value("P3959")
+            if nnl:
+                probes.append(("ms:nnl", "P3959", nnl))
+            shelf = _value("P217")
+            if shelf:
+                shelfmarks.append(shelf)
+    prewarm_identifier_cache(reconciler, probes)
+    prewarm_manuscript_shelfmarks(reconciler, shelfmarks)

@@ -753,10 +753,18 @@ def _apply_existence_and_ownership(
     return prepared
 
 
-def _make_reconciler() -> Any:
-    from converter.wikidata.reconciler import WikidataReconciler  # noqa: PLC0415
+_RECONCILER: Any = None
 
-    return WikidataReconciler()
+
+def _make_reconciler() -> Any:
+    """Shared reconciler (Rule W-280): one instance per process so the
+    pre-warmed identifier cache survives the per-item upload calls."""
+    global _RECONCILER
+    if _RECONCILER is None:
+        from converter.wikidata.reconciler import WikidataReconciler  # noqa: PLC0415
+
+        _RECONCILER = WikidataReconciler()
+    return _RECONCILER
 
 
 def _reconcile_for_upload(

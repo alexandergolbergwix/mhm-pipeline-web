@@ -3170,3 +3170,16 @@ from both the override and the ledger. An identifier match still needs
 the name gate (Rule W-214), and a wrong binding must never authorise an
 UPDATE. Tests:
 `backend/tests/unit/test_wikidata_item_merge.py`.
+
+## Rule W-290 — Reconciliation reads are batched before the per-item loop (added 2026-10-29)
+
+The upload path reconciles each item against Wikidata through WDQS SPARQL,
+one query per identifier — and the job called `upload_items` per item with
+a fresh reconciler, so even the instance cache never helped. The dry-run of
+run 47e03437 crawled at **~1.3 items/min (18 of 1831 in 8 min, ETA ~15 h)**.
+`prewarm_reconciler_for_items` now batch-fills the per-item cache keys
+(`ms:nnl:`, `ms:shelf:`, `person:viaf:`, `person:nli:`, `person:P244/P227/P213:`)
+with one `VALUES` SPARQL per 40 identifiers before the loop, and
+`_make_reconciler` is a process singleton so the warm cache survives the
+per-item calls. Per-item lookups become cache hits. Tests:
+`backend/tests/unit/test_wikidata_reconciler_prewarm.py`.
