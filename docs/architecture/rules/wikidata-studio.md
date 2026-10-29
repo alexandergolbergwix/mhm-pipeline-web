@@ -3162,5 +3162,11 @@ Q141175731) re-judged as live CREATE duplicates after the curator had
 already chosen. The binding is evidence, not authorisation — the upload
 path still requires the reconciled QID to match the accept (Rule W-99),
 and a pre-bound QID is still validated against label conflicts by
-`adopt_identifier_matched_duplicates`. Tests:
+`adopt_identifier_matched_duplicates`. The first four bindings after the
+fix were re-judged at once: one clean (Q141175731 → full), one partial
+(Q209579, curator review), and two rejected on real name conflicts —
+P8189 exact matches that name materially different people — then reverted
+from both the override and the ledger. An identifier match still needs
+the name gate (Rule W-214), and a wrong binding must never authorise an
+UPDATE. Tests:
 `backend/tests/unit/test_wikidata_item_merge.py`.
