@@ -1145,6 +1145,16 @@ def _build_manuscript_description(record: dict[str, object]) -> str:
             parts.append(mat_label)
 
     holding_name = _holding_institution_name(record)
+    if holding_name and re.search(r"[\u0590-\u05ff]", holding_name):
+        # Rule W-70: an English description never embeds Hebrew names.
+        # Public-facing text follows the work-label policy — an ugly
+        # consonantal romanisation is worse than omitting the fragment
+        # (the he description keeps the Hebrew form).
+        holding_name = english_label_for_hebrew(
+            holding_name,
+            record if isinstance(record, dict) else None,
+            allow_algorithmic=False,
+        ) or ""
     if holding_name:
         parts.append(holding_name)
     # A Wikidata description disambiguates; it is not a subject summary. The

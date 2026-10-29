@@ -124,3 +124,18 @@ def test_duplicate_fragments_are_joined_once() -> None:
     _merge_transcription_statements(statements, control_number="990001")
     assert len(statements) == 1
     assert statements[0].value == "beginning"
+
+
+def test_english_description_never_embeds_hebrew_holder() -> None:
+    """Rule W-70 — a Hebrew holder name is romanised or omitted, never quoted."""
+    from converter.wikidata.item_builder import _build_manuscript_description
+
+    record = {
+        "languages": ["heb"],
+        "dates": {"year": 1639},
+        "holding_institution": "ורונה",
+        "_control_number": "990001",
+    }
+    desc = _build_manuscript_description(record)
+    assert not any("\u0590" <= ch <= "\u05ff" for ch in desc)
+    assert "1639" in desc

@@ -1070,3 +1070,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   is `hmo-wikidata-v15`. *Why:* a manuscript carrying 62 inscription claims
   pushed its P31 past the judge's 40-statement projection and 111 items failed
   AI verify for "no instance of" that was present (run 47e03437, Rule W-286).
+
+- **R144 — The English description builder romanises or omits Hebrew holder
+  fragments (enforcement of Rule W-70).** `_build_manuscript_description`
+  passes a Hebrew `holding_institution_name` through
+  `english_label_for_hebrew(..., allow_algorithmic=False)` — a verified
+  romanisation ("ורונה" → "Verona") is used, otherwise the fragment is
+  omitted; the he description keeps the Hebrew form. *Why:* two run-47e03437
+  items shipped English descriptions quoting Hebrew names ("…, ורונה"),
+  and an ugly consonantal romanisation is worse than a clean omission.
