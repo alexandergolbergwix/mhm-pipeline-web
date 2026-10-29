@@ -12,6 +12,8 @@ workflow's unit of truth (see Rule 54 in the desktop CLAUDE.md).
 
 from __future__ import annotations
 
+from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
+
 import asyncio
 import json
 import logging
@@ -546,9 +548,9 @@ async def start_verify_stream(
             ),
         )
 
-    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+    from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
-    judge_model = payload.tier_model or GEMINI_MODEL
+    judge_model = payload.tier_model or default_tier1_model()
     evaluator_id = action.evaluators[0] if action.evaluators else "wikidata_item"
     attach_wikidata_marc_context(items, marc_records)
     pre_cached, uncached, _cache_stats = await partition_wikidata_verify_cache(
@@ -1952,9 +1954,9 @@ async def get_cached_wikidata_item_verdicts(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, dict[str, Any]]:
     await _lookup_run_with_access(db, run_id, auth, write=False)
-    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+    from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
-    judge_model = tier_model or GEMINI_MODEL
+    judge_model = tier_model or default_tier1_model()
     try:
         items = await fetch_merged_wikidata_items(
             db, run_id, approved_only=approved_only, source=source,
@@ -3613,7 +3615,7 @@ async def _wikidata_verify_event_stream(
         persist_batch = WikidataVerdictPersistBatch(
             run_id=UUID(run_id),
             items_by_id=items_by_id,
-            judge_model=tier_model or "gemini-3.5-flash",
+            judge_model=tier_model or default_tier1_model(),
             marc_records=marc_records,
         )
 
@@ -3770,7 +3772,7 @@ async def _wikidata_verify_event_stream(
                     run_id=UUID(run_id),
                     items_by_id=items_by_id,
                     verdicts=verdicts_to_persist,
-                    judge_model=tier_model or "gemini-3.5-flash",
+                    judge_model=tier_model or default_tier1_model(),
                     marc_records=marc_records,
                 )
             except Exception:  # noqa: BLE001
@@ -3833,7 +3835,7 @@ def _write_wikidata_verify_fixture(
 
 def _wikidata_verdict_query_summary(
     item: dict[str, Any],
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
     *,
     evaluator: str = "wikidata_item",
 ) -> dict[str, Any]:

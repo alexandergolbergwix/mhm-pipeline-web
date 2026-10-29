@@ -714,7 +714,7 @@ async def _open_verify_stream(
             from types import SimpleNamespace  # noqa: PLC0415
 
             from app.pipeline import wikidata_actions  # noqa: PLC0415
-            from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+            from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
             from app.pipeline.wikidata_verdict_cache import (  # noqa: PLC0415
                 attach_wikidata_marc_context,
             )
@@ -771,7 +771,7 @@ async def _open_verify_stream(
                     f"action requires at least {action.min_candidates} candidates",
                 )
             attach_wikidata_marc_context(items, marc_records)
-            judge_model = tier_model or GEMINI_MODEL
+            judge_model = tier_model or default_tier1_model()
             evaluator_id = action.evaluators[0] if action.evaluators else "wikidata_item"
             from app.pipeline.wikidata_verify_scope import (  # noqa: PLC0415
                 partition_wikidata_verify_cache,
@@ -807,7 +807,7 @@ async def _open_verify_stream(
 
         if kind == JOB_KIND_HMO_ITEM_VERIFY:
             from app.pipeline import hmo_item_actions  # noqa: PLC0415
-            from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+            from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
             from app.pipeline.hmo_item_verdict_cache import (
                 hmo_item_verdict_query_summary,  # noqa: PLC0415
             )
@@ -841,7 +841,7 @@ async def _open_verify_stream(
             items = await _prepare_verify_scope(action, items)
             if not items:
                 return None
-            judge_model = tier_model or GEMINI_MODEL
+            judge_model = tier_model or default_tier1_model()
             evaluator_id = action.evaluators[0] if action.evaluators else "hmo_wikibase_item"
             pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
             uncached: list[dict[str, Any]] = []

@@ -203,9 +203,9 @@ async def _session_event_stream(
     import json as _json  # noqa: PLC0415
 
     from app.db import session_scope  # noqa: PLC0415
-    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+    from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
-    _judge_model = tier_model or GEMINI_MODEL
+    _judge_model = tier_model or default_tier1_model()
 
     # ── Pre-check inference cache ──────────────────────────────────────
     # Done BEFORE locate_eval_agent() so a fully-cached run never

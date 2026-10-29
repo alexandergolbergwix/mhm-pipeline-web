@@ -1125,3 +1125,25 @@ it: "No P31" was false on every sampled item. Tests:
 `backend/tests/unit/test_wikidata_verdict_cache.py`,
 `backend/tests/unit/test_claim_provenance_completeness.py`,
 `eval-agent/tests/test_wikidata_item.py`.
+
+## Rule W-287 — The default tier-1 judge must not depend on a per-user key (added 2026-10-29)
+
+A re-verify job enqueued through the jobs API failed in 60 s with "missing
+Gemini API key": the default judge was `gemini-3.5-flash`, whose key comes
+from the curator's Settings (or server `GEMINI_API_KEY`), and the executor
+had none — while `QUBRID_API_KEY` sat present in both the web dyno and the
+`mhm-jobs2` Modal secret all along. The default tier-1 judge is now
+`moonshotai/Kimi-K2.5` (Qubrid), driven from one place:
+`eval-agent/config/tier1_models.yaml` `default`. `DEFAULT_TIER1_MODEL`,
+every route fallback (`or default_tier1_model()` — no `or GEMINI_MODEL`
+remains outside the Gemini transport), the cache-key helpers'
+`judge_model` defaults, and the judge dropdown (which initializes from
+`GET /api/judge-models` `default`) all follow it. Qubrid and TypeSafe use
+server keys (`QUBRID_API_KEY`, `TYPESAFE_API_KEY`) only; Gemini stays
+available as an explicit choice with the curator's Settings key. Verdict
+cache keys include the judge model — a default switch re-judges and per-
+model verdicts coexist, never bleed. Legacy `judge_id or model or
+"gemini-3.5-flash"` read fallbacks stay literal: they attribute stored
+history, not the current default. Tests:
+`backend/tests/unit/test_wikidata_verdict_cache.py`,
+`backend/tests/test_extraction_verify_router.py`.

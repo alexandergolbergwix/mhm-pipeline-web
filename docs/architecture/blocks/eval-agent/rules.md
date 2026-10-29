@@ -170,3 +170,14 @@
 - **R45 — A verify pre-spawn failure surfaces its real cause (Rule W-258).** The verify stream (`hmo_item_verify.py` and every channel stream) catches exceptions from the spawn phase — missing judge credentials (`Tier1CredentialsError`), unresolvable model, fixture writer failure — and carries the message into `runner_error` / `session.end`; the never-ran outcome may not be masked by the vague "stopped after 0 of N verdicts" synthesis, and the job tray must not read "Verification complete" on a partial outcome. *Why:* run f4e8e4b3 (2026-09-22) picked `typesafe/jev-1.13.0`, the `mhm-jobs2` Modal secret carried no `TYPESAFE_API_KEY`, `ensure_tier1_credentials` raised inside `spawn_eval_agent_run` before any subprocess existed — and both verify jobs still finalized `succeeded` with "Verification complete", 0 of 2705 judged.
 
 - **R46 — Verdict inputs keep structural claims visible (Rule W-286).** `fingerprint_statements` prioritises P31/P629/P279/P361/P527 before the `FINGERPRINT_STATEMENT_LIMIT=40` truncation (under-limit projections keep their order so cache keys stay stable); `build_claim_sources` adds an `hmo_extraction` channel (value heads + `source_uri`) for P1684-family claims no MARC slice quotes (temporary records store classifier stubs only); and the `wikidata_item` prompt renders statements P31-first with values over 400 chars truncated for display. *Why:* run 47e03437 failed 111 items for "no P31" that the 40-cap hid from the judge and flagged every transcription as unsupported against a 62-char placeholder notes slice.
+
+- **R47 — The default tier-1 judge is Qubrid Kimi K2.5 (Rule W-287).** The
+  yaml `default` (`eval-agent/config/tier1_models.yaml`) is the single
+  switch: `DEFAULT_TIER1_MODEL`, the route/model fallbacks, the cache-key
+  helper defaults, and the dropdown (via `GET /api/judge-models` `default`)
+  all resolve `default_tier1_model()`. Qubrid/TypeSafe judges read server
+  keys only (`QUBRID_API_KEY`/`TYPESAFE_API_KEY` — Heroku config and the
+  `mhm-jobs2` Modal secret); Gemini needs the curator's Settings key and is
+  never the implicit default. Verdict keys carry the judge model. *Why:* a
+  default that needs a per-user Settings key failed every unattended verify
+  job with "missing Gemini API key" while the server-key judge sat unused.

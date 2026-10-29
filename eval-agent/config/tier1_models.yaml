@@ -2,7 +2,7 @@
 # Backend reads this file via locate_eval_agent() — keep in sync with
 # eval_agent/judge_models.py loader expectations.
 
-default: gemini-3.5-flash
+default: moonshotai/Kimi-K2.5
 
 models:
   gemini-3.5-flash:

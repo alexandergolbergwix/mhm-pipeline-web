@@ -1329,9 +1329,9 @@ async def get_cached_hmo_item_verdicts(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, dict[str, Any]]:
     await _lookup_run_with_access(db, run_id, auth, write=False)
-    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+    from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
-    judge_model = tier_model or GEMINI_MODEL
+    judge_model = tier_model or default_tier1_model()
     items = await fetch_merged_hmo_items_cached(db, run_id)
     marc_records = await load_run_marc_records(db, run_id)
     attach_marc_context(items, marc_records)
@@ -1393,9 +1393,9 @@ async def start_hmo_item_verify_stream(
                 detail=f"action requires at least {action.min_candidates} candidates",
             )
 
-        from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+        from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
-        judge_model = payload.tier_model or GEMINI_MODEL
+        judge_model = payload.tier_model or default_tier1_model()
         evaluator_id = action.evaluators[0] if action.evaluators else "hmo_wikibase_item"
         marc_records = await _load_marc_records(db, run_id)
         attach_marc_context(items, marc_records)

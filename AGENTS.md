@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** — it indexes every architectural
-rule (Rules W-1…W-286) and points at the topic file under
+rule (Rules W-1…W-287) and points at the topic file under
 [docs/architecture/rules/](docs/architecture/rules/) that holds its full
 text. Read the topic file for the area you are touching; each rule records a
 real production incident plus the invariant that closes it — check it before touching RDF
@@ -60,7 +60,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-286) stay in [docs/architecture/rules/](docs/architecture/rules/), indexed by [CLAUDE.md](CLAUDE.md).
+(W-1…W-287) stay in [docs/architecture/rules/](docs/architecture/rules/), indexed by [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
@@ -112,6 +112,8 @@ Every verify modal (authority, NER, Wikidata Studio, HMO items, HMO schema) and
 the HMO upload pre/post-verify checkboxes expose a **Tier-1 judge** dropdown.
 Models are listed by `GET /api/judge-models` from
 `eval-agent/config/tier1_models.yaml`. Job/SSE params carry `tier_model`.
+The default judge is Qubrid Kimi K2.5 (`moonshotai/Kimi-K2.5`) — server
+`QUBRID_API_KEY` only, never a per-user key (Rule W-287).
 Gemini uses the curator's Settings key (or server `GEMINI_API_KEY`); Qubrid
 models (Kimi K2.5, DeepSeek V4 Flash) use server `QUBRID_API_KEY` only; the
 TypeSafe Jev model (`typesafe/jev-1.13.0`) uses server `TYPESAFE_API_KEY` and

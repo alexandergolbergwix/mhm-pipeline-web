@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
+
 import re
 
 from typing import Any
@@ -416,7 +418,7 @@ def attach_wikidata_marc_context(
 
 def wikidata_verdict_query_summary(
     item: dict[str, Any],
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
     *,
     evaluator: str = "wikidata_item",
     marc_context: dict[str, str] | None = None,
@@ -472,7 +474,7 @@ def wikidata_verdict_query_summary(
 
 def wikidata_verdict_input_fingerprint(
     item: dict[str, Any],
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
     *,
     evaluator: str = "wikidata_item",
     marc_context: dict[str, str] | None = None,
@@ -491,7 +493,7 @@ def wikidata_verdict_input_fingerprint(
 
 def wikidata_verdict_stable_input_fingerprint(
     item: dict[str, Any],
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
     *,
     evaluator: str = "wikidata_item",
 ) -> str:
@@ -766,7 +768,7 @@ def cached_verdict_is_sticky_full(
 
 def wikidata_claims_fingerprint(
     item: dict[str, Any],
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
     *,
     evaluator: str = "wikidata_item",
     marc_context: dict[str, str] | None = None,

@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-286)
+## Architectural rules (W-1…W-287)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -459,4 +459,5 @@ plan doc, block docs (see [AGENTS.md](AGENTS.md)), and this file are updated.
 - **W-284** — An empty value is silence, not an unresolved statement: `_build_claim_spec` returning `None` has two causes and only one is a defect, so `_is_blank_statement_value` drops blank input without recording it while a genuinely unshapeable value still lands in `skipped_statements` (2026-10-22: the W-282 empty-claim fix moved the same 885 shapes from `claims.datatype` to `statements.resolved` — one defect replaced another; check what the caller does with the value an edited branch now returns) — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
 - **W-285** — The connection budget belongs to the deployment, not to every process: `essential-1` caps Postgres at 20 connections and `app/db.py` gave every process 15, so a rule-verify fan-out wanted ~90 and killed a build mid-refresh while progress callbacks died behind `too many connections for role`. Pools are now 1+2 by default (`DB_POOL_SIZE`/`DB_MAX_OVERFLOW`), `pg_bouncer_url` routes the shared engine through PgBouncer when set, `app.realtime`'s LISTEN bridge is pinned to `database_url` because LISTEN is session-level and dies under transaction pooling, and shard sizes were raised to halve concurrent containers (2026-10-22) — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
 - **W-286** — Verdict inputs must keep structural claims visible and quote transcription provenance: 62 per-fragment P1684 claims per manuscript pushed P31 past the judge's 40-statement projection, so 111 of 123 AI-verdict fails on run 47e03437 read "no instance of" that was present — transcription claims now merge to one per property with the NLI reference (salt `hmo-wikidata-v15`), the projection cap prioritises P31/structural PIDs, unquoted transcriptions cite an `hmo_extraction` channel against temporary-record MARC stubs, and the judge display orders P31-first with 400-char value truncation (2026-10-28) — see [ai-verify.md](docs/architecture/rules/ai-verify.md)
+- **W-287** — The default tier-1 judge must not depend on a per-user key: a re-verify job died on "missing Gemini API key" while `QUBRID_API_KEY` sat in both the web dyno and the `mhm-jobs2` secret; the default is now Qubrid Kimi K2.5 from one switch (`tier1_models.yaml` `default` → `default_tier1_model()` — routes, cache-key helpers, dropdown), Qubrid/TypeSafe use server keys only, Gemini stays an explicit choice, and verdict keys carry the judge model so a default switch re-judges (2026-10-29) — see [ai-verify.md](docs/architecture/rules/ai-verify.md)
 

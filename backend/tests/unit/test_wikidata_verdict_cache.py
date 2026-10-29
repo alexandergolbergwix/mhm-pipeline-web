@@ -423,7 +423,7 @@ class TestAdvisoryEvidenceNeverKeysAVerdict:
     def test_a_verdict_keyed_the_old_way_is_recovered_and_rewritten(self) -> None:
         item = self._item({"status": "not_run", "proposals": []})
         legacy_key = wikidata_verdict_input_fingerprint(
-            item, evidence_drop=("marc",),
+            item, judge_model="gemini-3.5-flash", evidence_drop=("marc",),
         )
         stored = {
             "overall": "full",
@@ -438,7 +438,9 @@ class TestAdvisoryEvidenceNeverKeysAVerdict:
 
         assert recovered is not None, "verdict written before the fix was lost"
         assert recovered["overall"] == "full"
-        assert recovered["cache_key"] == wikidata_verdict_input_fingerprint(item)
+        assert recovered["cache_key"] == wikidata_verdict_input_fingerprint(
+            item, judge_model="gemini-3.5-flash",
+        )
 
 
 class TestPathDependentEvidenceNeverKeysAVerdict:

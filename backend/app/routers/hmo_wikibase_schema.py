@@ -165,12 +165,12 @@ async def get_cached_schema_verdicts(
     ever live in the open modal's React state (Rule W-17 style
     persistence, but for the global schema, not per-run entities).
     """
-    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+    from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
     report = await pipeline.load_last_bootstrap_report(db)
     if report is None:
         return {}
-    judge_model = tier_model or GEMINI_MODEL
+    judge_model = tier_model or default_tier1_model()
     evaluator_id = "hmo_wikibase_schema"
     items = filter_schema_entries(report, ontology_uris=None)
     out: dict[str, dict[str, Any]] = {}
@@ -253,9 +253,9 @@ async def start_schema_verify_stream(
                 ),
             )
 
-        from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+        from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
-        judge_model = payload.tier_model or GEMINI_MODEL
+        judge_model = payload.tier_model or default_tier1_model()
         evaluator_id = action.evaluators[0] if action.evaluators else "hmo_wikibase_schema"
         pre_cached: list[tuple[dict[str, Any], dict[str, Any]]] = []
         uncached: list[dict[str, Any]] = []

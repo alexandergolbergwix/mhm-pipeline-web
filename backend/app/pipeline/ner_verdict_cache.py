@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
+
 from typing import Any
 
 from app.models.extraction_approval import ExtractionApproval
@@ -11,7 +13,7 @@ from app.pipeline.inference_cache import canonical_hash
 
 def ner_verdict_query_summary(
     ext: ExtractionApproval,
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
 ) -> dict[str, Any]:
     """Stable content key for caching an NER verdict across users/runs."""
     return {
@@ -47,7 +49,7 @@ def entity_dict_query_summary(ent: dict[str, Any]) -> dict[str, Any]:
 
 def ner_verdict_input_fingerprint(
     ext: ExtractionApproval,
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
 ) -> str:
     return canonical_hash(ner_verdict_query_summary(ext, judge_model))
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
+
 from typing import Any
 
 from app.models.run import AuthorityMatch
@@ -43,7 +45,7 @@ def marc_context_for_authority_match(
 
 def authority_verdict_query_summary(
     match: AuthorityMatch,
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
     *,
     marc_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
@@ -76,7 +78,7 @@ def authority_verdict_query_summary(
 
 def authority_verdict_input_fingerprint(
     match: AuthorityMatch,
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
     *,
     marc_context: dict[str, str] | None = None,
     marc_record: dict[str, Any] | None = None,

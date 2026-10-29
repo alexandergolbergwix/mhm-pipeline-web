@@ -12,7 +12,7 @@ import yaml
 
 from app.pipeline.agent_runner import locate_eval_agent
 
-DEFAULT_TIER1_MODEL = "gemini-3.5-flash"
+DEFAULT_TIER1_MODEL = "moonshotai/Kimi-K2.5"
 
 
 class UnknownTier1ModelError(ValueError):

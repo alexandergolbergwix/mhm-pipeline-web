@@ -16,6 +16,8 @@ registry in ``app.pipeline.agent_actions``.
 
 from __future__ import annotations
 
+from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
+
 import asyncio
 import json
 import logging
@@ -227,9 +229,9 @@ async def _session_event_stream(
     but still writes new verdicts to the cache afterwards.
     """
     from app.db import session_scope  # noqa: PLC0415
-    from app.pipeline.ai_verifier import GEMINI_MODEL  # noqa: PLC0415
+    from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
-    _judge_model = tier_model or GEMINI_MODEL
+    _judge_model = tier_model or default_tier1_model()
     marc_by_cn = {
         str(m.control_number): dict(r.marc or {"_control_number": m.control_number})
         for m, r in matches
@@ -459,7 +461,7 @@ async def _session_event_stream(
 
 def _authority_verdict_query_summary(
     match: AuthorityMatch,
-    judge_model: str = "gemini-3.5-flash",
+    judge_model: str = default_tier1_model(),
 ) -> dict[str, Any]:
     """Backward-compatible wrapper — prefer ``authority_verdict_cache``."""
     return authority_verdict_query_summary(match, judge_model, marc_context={})
