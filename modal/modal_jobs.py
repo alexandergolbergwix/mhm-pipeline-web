@@ -630,7 +630,13 @@ _UPLOAD_SHARD_POOL = modal.Secret.from_dict({
                   modal.Secret.from_name("mhm-jobs2-wikibase"),
                   _UPLOAD_SHARD_POOL],
 )
-def run_wikidata_upload_shard(job_id: str, run_id: str, local_ids: list[str]) -> dict:
+def run_wikidata_upload_shard(
+    job_id: str,
+    run_id: str,
+    local_ids: list[str],
+    progress_dict: Any = None,
+    shard_key: str = "",
+) -> dict:
     import asyncio  # noqa: PLC0415
     import uuid as _uuid
 
@@ -642,7 +648,18 @@ def run_wikidata_upload_shard(job_id: str, run_id: str, local_ids: list[str]) ->
         from app import db as app_db
 
         await app_db.reset_engine()
-        return await run_shard(_uuid.UUID(job_id), _uuid.UUID(run_id), local_ids)
+
+        def _report(done: int) -> None:
+            if progress_dict is not None:
+                try:
+                    progress_dict.put(shard_key, done)
+                except Exception:  # noqa: BLE001 — telemetry only
+                    pass
+
+        return await run_shard(
+            _uuid.UUID(job_id), _uuid.UUID(run_id), local_ids,
+            on_progress=_report,
+        )
 
     return asyncio.run(_run())
 
@@ -713,6 +730,22 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
         ids[i:i + _UPLOAD_SHARD_SIZE]
         for i in range(0, len(ids), _UPLOAD_SHARD_SIZE)
     ]
+    # Shared per-shard item counters: shards report live counts so the tray
+    # moves per item instead of per wave (a wave can run 5–8 min).
+    progress_dict = modal.Dict.from_name(
+        f"mhm-upload-shard-progress-{job_id}", create_if_missing=True,
+    )
+    for i in range(len(shards) + 8):
+        progress_dict.put(f"s{i}", 0)
+
+    def _items_done() -> int:
+        try:
+            return int(sum(
+                progress_dict.get(f"s{i}", 0) or 0
+                for i in range(len(shards))
+            ))
+        except Exception:  # noqa: BLE001 — fall back to wave counts
+            return -1
 
     merged_outcomes: list[dict] = []
     merged_qids: dict[str, str] = {}
@@ -722,10 +755,13 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
         wave = shards[wave_start:wave_start + _UPLOAD_SHARD_WAVES]
         results_q: _queue.Queue = _queue.Queue()
 
-        def _consume(_wave: list[list[str]] = wave) -> None:
+        def _consume(_wave: list[list[str]] = wave, _off: int = wave_start) -> None:
             try:
                 for res in run_wikidata_upload_shard.starmap(
-                    [(job_id, run_id, shard) for shard in _wave],
+                    [
+                        (job_id, run_id, shard, progress_dict, f"s{_off + i}")
+                        for i, shard in enumerate(_wave)
+                    ],
                 ):
                     results_q.put(res)
             except Exception as exc:  # noqa: BLE001 — surfaced below
@@ -740,6 +776,8 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
             except _queue.Empty:
                 tick += 1
                 if tick % 3 == 0:
+                    live = _items_done()
+                    done_items = max(done_items, live if live >= 0 else 0)
                     await update_job_progress(_uuid.UUID(job_id), _shard_progress(
                         "Step 1 of 2: writing items",
                         item_done=done_items,
@@ -755,12 +793,16 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
             merged_outcomes.extend(item.get("outcomes") or [])
             merged_qids.update(item.get("created_qids") or {})
             merged_deferred.update(item.get("deferred") or {})
-            done_items = min(done_items + _UPLOAD_SHARD_SIZE, total)
+            live = _items_done()
+            done_items = max(
+                done_items, live if live >= 0 else 0,
+                min(done_items + _UPLOAD_SHARD_SIZE, total),
+            )
             await update_job_progress(_uuid.UUID(job_id), _shard_progress(
                 "Step 1 of 2: writing items",
-                item_done=done_items,
+                item_done=min(done_items, total),
                 item_total=total,
-                current_label=f"shard done · {done_items}/{total}",
+                current_label=f"shards running · {min(done_items, total)}/{total}",
                 elapsed=_time.monotonic() - started,
             ))
 

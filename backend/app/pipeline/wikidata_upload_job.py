@@ -1179,6 +1179,7 @@ async def run_wikidata_upload_shard(
     job_id: uuid.UUID,
     run_id: uuid.UUID,
     local_ids: list[str],
+    on_progress: Any | None = None,
 ) -> dict[str, Any]:
     """One shard's step-1 writes. Returns serialisable state for the merge.
 
@@ -1305,6 +1306,11 @@ async def run_wikidata_upload_shard(
     for batch in (items[i:i + 3] for i in range(0, len(items), 3)):
         for rows in await asyncio.gather(*(_one(it) for it in batch)):
             outcomes.extend(rows)
+            if on_progress is not None:
+                try:
+                    on_progress(len(outcomes))
+                except Exception:  # noqa: BLE001 — telemetry only
+                    pass
     return {
         "outcomes": outcomes,
         "created_qids": dict(created_qids),
