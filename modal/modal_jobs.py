@@ -611,14 +611,13 @@ async def _finalise_rule_verify(job_id: str, summary: dict, total: int, cancelle
 # Sized so one shard stays well under the container timeout at the observed
 # per-item pace (~30 s incl. fallback lookups): 80 items ≈ 40 min.
 _UPLOAD_SHARD_SIZE = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_SIZE") or 80)
-# Connection budget (Rule W-253/W-285): essential-1 caps Postgres at 20 and
-# every shard engine would take pool 1+2. Shards process items sequentially
-# so they run with a 1-connection engine, and the fan-out runs in waves of 6
-# (6 + orchestrator + web dynos fit the budget).
-_UPLOAD_SHARD_WAVES = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_WAVES") or 6)
+# Connection budget (Rule W-253/W-285): essential-1 caps Postgres at 20.
+# Shards run 3 items concurrently, so each takes a 1+2 engine; the fan-out
+# runs in waves of 5 (5×3 + orchestrator + web dynos fit the budget).
+_UPLOAD_SHARD_WAVES = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_WAVES") or 5)
 _UPLOAD_SHARD_POOL = modal.Secret.from_dict({
     "DB_POOL_SIZE": "1",
-    "DB_MAX_OVERFLOW": "0",
+    "DB_MAX_OVERFLOW": "2",
 })
 
 

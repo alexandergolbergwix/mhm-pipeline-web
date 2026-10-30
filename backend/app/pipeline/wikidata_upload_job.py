@@ -1277,23 +1277,34 @@ async def run_wikidata_upload_shard(
     created_qids: dict[str, str] = {}
     deferred: dict[str, list[Any]] = {}
     outcomes: list[dict[str, Any]] = []
-    for item in items:
-        local_id = wikidata_studio.local_id_for_item(item)
-        write_item, deferred_locals = partition_unresolved_local(item, created_qids)
-        if deferred_locals:
-            deferred[local_id] = deferred_locals
-        async with session_scope() as db:
-            results = await wikidata_upload.upload_items(
-                [write_item], token=token or "", mode=mode,
-                audit_ctx=audit_ctx, db=db, ledger=ledger,
-                run_id=run_id,
-                accept_by_local_id=accept_by_local_id,
-                existence_cache=existence_cache,
-                created_qids=created_qids,
-                quality_preflight=quality_preflight,
+    # Three items overlap per shard: the uncertain-duplicate confirm is a
+    # per-item LLM call (~11 s) and sequential processing made a 80-item
+    # shard take 25+ min. Cross-item local links simply defer to step-2.
+    lanes = asyncio.Semaphore(3)
+
+    async def _one(item: Any) -> list[dict[str, Any]]:
+        async with lanes:
+            local_id = wikidata_studio.local_id_for_item(item)
+            write_item, deferred_locals = partition_unresolved_local(
+                item, created_qids,
             )
-        for row in results:
-            outcomes.append(dict(row.__dict__))
+            if deferred_locals:
+                deferred[local_id] = deferred_locals
+            async with session_scope() as db:
+                results = await wikidata_upload.upload_items(
+                    [write_item], token=token or "", mode=mode,
+                    audit_ctx=audit_ctx, db=db, ledger=ledger,
+                    run_id=run_id,
+                    accept_by_local_id=accept_by_local_id,
+                    existence_cache=existence_cache,
+                    created_qids=created_qids,
+                    quality_preflight=quality_preflight,
+                )
+            return [dict(row.__dict__) for row in results]
+
+    for batch in (items[i:i + 3] for i in range(0, len(items), 3)):
+        for rows in await asyncio.gather(*(_one(it) for it in batch)):
+            outcomes.extend(rows)
     return {
         "outcomes": outcomes,
         "created_qids": dict(created_qids),
