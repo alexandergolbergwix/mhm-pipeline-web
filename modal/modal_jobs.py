@@ -608,14 +608,16 @@ async def _finalise_rule_verify(job_id: str, summary: dict, total: int, cancelle
 # container merges their step-1 state and hands it to the serial finisher
 # for step-2 (links) + terminal state. The serial per-item loop crawled at
 # ~1.3 items/min on per-item WDQS (run 47e03437, Rule W-290).
-_UPLOAD_SHARD_SIZE = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_SIZE") or 250)
+# Sized so one shard stays well under the container timeout at the observed
+# per-item pace (~30 s incl. fallback lookups): 80 items ≈ 40 min.
+_UPLOAD_SHARD_SIZE = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_SIZE") or 80)
 
 
 @app.function(
     image=image,
     cpu=1,
     memory=4096,
-    timeout=7200,
+    timeout=21600,
     secrets=[modal.Secret.from_name("mhm-jobs2"),
                   modal.Secret.from_name("mhm-jobs2-wikibase")],
 )
