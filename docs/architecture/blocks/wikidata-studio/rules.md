@@ -1087,8 +1087,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   duplicate axis as CREATEs after the curator had accepted their QIDs
   (run 47e03437).
 
-- **R146 — Reconciliation is batched and cached (Rule W-290).** The upload
-  job pre-warms the reconciler's per-item cache (one `VALUES` SPARQL per 40
-  identifiers) and shares one reconciler per process; per-item WDQS lookups
-  are a bug, not a pace. *Why:* run 47e03437's dry-run projected 15 h at
-  1.3 items/min on per-item SPARQL.
+- **R146 — Reconciliation is batched and step-1 is sharded (Rule W-290).**
+  The upload pre-warms the reconciler cache (one `VALUES` SPARQL per 40
+  identifiers, works included), shares one reconciler per process, and fans
+  step-1 writes out to parallel Modal shards (default 250 items/shard) whose
+  merged state feeds the serial step-2 + finish; the drawer accept map
+  (`accept_by_local_id`) reaches `upload_items`. *Why:* run 47e03437's
+  dry-run projected 15 h at 1.3 items/min on per-item SPARQL in one process.

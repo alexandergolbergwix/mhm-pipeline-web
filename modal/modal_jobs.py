@@ -119,7 +119,8 @@ else:
 
 app = modal.App(
     "mhm-jobs",
-    secrets=[modal.Secret.from_name("mhm-jobs2")],
+    secrets=[modal.Secret.from_name("mhm-jobs2"),
+                  modal.Secret.from_name("mhm-jobs2-wikibase")],
 )
 
 
@@ -280,12 +281,11 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
             elif kind == "wikidata_upload":
                 # W-249 sibling: the two-pass upload holds the full corpus
                 # + ledger in memory — the 512 MB web dyno OOM'd on this
-                # exact run before isolation.
-                from app.pipeline.wikidata_upload_job import (
-                    run_wikidata_upload_job,
-                )
-
-                await run_wikidata_upload_job(job_id)
+                # exact run before isolation. Sharded fan-out (Rule W-290):
+                # step-1 writes run in parallel shard containers; the
+                # claimed container merges and finishes step-2 + terminal
+                # state.
+                await _run_wikidata_upload_sharded(job_id)
             elif kind == "hmo_rule_verify":
                 # Sharded fan-out: parallel rule-check containers; the
                 # claimed container orchestrates progress + terminal state.
@@ -401,7 +401,8 @@ def _run_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
     cpu=2,
     memory=8192,
     timeout=_TIMEOUT_S,
-    secrets=[modal.Secret.from_name("mhm-jobs2")],
+    secrets=[modal.Secret.from_name("mhm-jobs2"),
+                  modal.Secret.from_name("mhm-jobs2-wikibase")],
 )
 def run_modal_job_detached(job_id: str, kind: str, callback_url: str = "") -> dict:
     return _run_job_detached(job_id, kind, callback_url)
@@ -422,7 +423,11 @@ def run_modal_job_detached(job_id: str, kind: str, callback_url: str = "") -> di
 # sized so peak shard pools + the claimed orchestrator + web dynos fit
 # under the budget; set MHM_RULE_VERIFY_SHARD_SIZE / MHM_RDF_BUILD_SHARD_SIZE
 # on the mhm-jobs2 secret to retune without a code change.
-_RULE_VERIFY_SHARD_SIZE = int(os.environ.get("MHM_RULE_VERIFY_SHARD_SIZE") or 6000)
+# Sized with the small-pool defaults (Rule W-285): one shard = one container
+# = one engine, and the engine now takes at most `DB_POOL_SIZE +
+# DB_MAX_OVERFLOW` (3 by default) instead of 15. At 9500 the 18.7k corpus
+# runs as 2 shards rather than 4, halving simultaneous clients.
+_RULE_VERIFY_SHARD_SIZE = int(os.environ.get("MHM_RULE_VERIFY_SHARD_SIZE") or 9500)
 
 
 @app.function(
@@ -430,7 +435,8 @@ _RULE_VERIFY_SHARD_SIZE = int(os.environ.get("MHM_RULE_VERIFY_SHARD_SIZE") or 60
     cpu=1,
     memory=4096,
     timeout=7200,
-    secrets=[modal.Secret.from_name("mhm-jobs2")],
+    secrets=[modal.Secret.from_name("mhm-jobs2"),
+                  modal.Secret.from_name("mhm-jobs2-wikibase")],
 )
 def run_rule_verify_shard(job_id: str, run_id: str, local_ids: list[str]) -> dict:
     import asyncio  # noqa: PLC0415
@@ -462,7 +468,8 @@ _API_PASS_TIMEOUT_S = 21600  # 6 h
     cpu=1,
     memory=8192,
     timeout=_API_PASS_TIMEOUT_S,
-    secrets=[modal.Secret.from_name("mhm-jobs2")],
+    secrets=[modal.Secret.from_name("mhm-jobs2"),
+                  modal.Secret.from_name("mhm-jobs2-wikibase")],
 )
 def run_rule_verify_api_pass(job_id: str, run_id: str) -> dict:
     import asyncio  # noqa: PLC0415
@@ -594,6 +601,123 @@ async def _finalise_rule_verify(job_id: str, summary: dict, total: int, cancelle
             .execution_options(synchronize_session=False),
         )
         await db.commit()
+
+
+# ── wikidata-upload shard fan-out (rule-verify parity) ──────────────────
+# Step-1 item writes fan out to parallel shard containers; the claimed
+# container merges their step-1 state and hands it to the serial finisher
+# for step-2 (links) + terminal state. The serial per-item loop crawled at
+# ~1.3 items/min on per-item WDQS (run 47e03437, Rule W-290).
+_UPLOAD_SHARD_SIZE = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_SIZE") or 250)
+
+
+@app.function(
+    image=image,
+    cpu=1,
+    memory=4096,
+    timeout=7200,
+    secrets=[modal.Secret.from_name("mhm-jobs2"),
+                  modal.Secret.from_name("mhm-jobs2-wikibase")],
+)
+def run_wikidata_upload_shard(job_id: str, run_id: str, local_ids: list[str]) -> dict:
+    import asyncio  # noqa: PLC0415
+    import uuid as _uuid
+
+    from app.pipeline.wikidata_upload_job import (  # noqa: PLC0415
+        run_wikidata_upload_shard as run_shard,
+    )
+
+    async def _run() -> dict:
+        from app import db as app_db
+
+        await app_db.reset_engine()
+        return await run_shard(_uuid.UUID(job_id), _uuid.UUID(run_id), local_ids)
+
+    return asyncio.run(_run())
+
+
+async def _run_wikidata_upload_sharded(job_id: str) -> None:
+    """Orchestrate the upload step-1 fan-out from the claimed container."""
+    import asyncio as _asyncio
+    import queue as _queue
+    import threading as _threading
+    import uuid as _uuid
+
+    from sqlalchemy import update as _sa_update
+
+    from app.db import session_scope
+    from app.models.run_job import RunJob
+    from app.pipeline.run_job_service import update_job_progress
+    from app.pipeline.wikidata_upload_job import (
+        load_wikidata_upload_item_ids,
+        run_wikidata_upload_job,
+    )
+
+    await update_job_progress(_uuid.UUID(job_id), {
+        "phase": "preparing", "processed": 0, "total": 0,
+        "message": "Loading upload scope…",
+    })
+    run_id, ids, params = await load_wikidata_upload_item_ids(_uuid.UUID(job_id))
+    total = len(ids)
+    if not ids:
+        await run_wikidata_upload_job(_uuid.UUID(job_id))
+        return
+    shards = [
+        ids[i:i + _UPLOAD_SHARD_SIZE]
+        for i in range(0, len(ids), _UPLOAD_SHARD_SIZE)
+    ]
+    results_q: _queue.Queue = _queue.Queue()
+
+    def _consume() -> None:
+        try:
+            for res in run_wikidata_upload_shard.starmap(
+                [(job_id, run_id, shard) for shard in shards],
+            ):
+                results_q.put(res)
+        except Exception as exc:  # noqa: BLE001 — surfaced below
+            results_q.put({"__error__": str(exc)})
+        results_q.put(None)
+
+    _threading.Thread(target=_consume, daemon=True).start()
+
+    merged_outcomes: list[dict] = []
+    merged_qids: dict[str, str] = {}
+    merged_deferred: dict[str, list] = {}
+    done_items = 0
+    while True:
+        try:
+            item = await _asyncio.to_thread(results_q.get, True, 10)
+        except _queue.Empty:
+            continue
+        if item is None:
+            break
+        if isinstance(item, dict) and item.get("__error__"):
+            raise RuntimeError(f"upload shard failed: {item['__error__']}")
+        merged_outcomes.extend(item.get("outcomes") or [])
+        merged_qids.update(item.get("created_qids") or {})
+        merged_deferred.update(item.get("deferred") or {})
+        done_items = min(done_items + _UPLOAD_SHARD_SIZE, total)
+        await update_job_progress(_uuid.UUID(job_id), {
+            "phase": "uploading",
+            "processed": done_items,
+            "total": total,
+            "message": (
+                f"Step 1 of 2: writing items ({done_items}/{total}, sharded)"
+            ),
+        })
+
+    async with session_scope() as db:
+        await db.execute(
+            _sa_update(RunJob)
+            .where(RunJob.id == _uuid.UUID(job_id))
+            .values(params={**params, "_step1_state": {
+                "outcomes": merged_outcomes,
+                "created_qids": merged_qids,
+                "deferred": merged_deferred,
+            }})
+        )
+        await db.commit()
+    await run_wikidata_upload_job(_uuid.UUID(job_id))
 
 
 async def _run_rule_verify_sharded(job_id: str) -> None:
@@ -739,7 +863,9 @@ async def _dispatch_rule_verify_api_pass(job_id: str, run_id: str) -> dict:
 # checkpoints identical to the sequential path (a local fallback resumes
 # at the same record index), and owns progress + terminal state.
 
-_RDF_BUILD_SHARD_SIZE = int(os.environ.get("MHM_RDF_BUILD_SHARD_SIZE") or 4000)
+# Same reasoning as the rule-verify shards (Rule W-285): 9500 turns the
+# 18.7k corpus into 2 shards instead of 5.
+_RDF_BUILD_SHARD_SIZE = int(os.environ.get("MHM_RDF_BUILD_SHARD_SIZE") or 9500)
 
 
 @app.function(
@@ -747,7 +873,8 @@ _RDF_BUILD_SHARD_SIZE = int(os.environ.get("MHM_RDF_BUILD_SHARD_SIZE") or 4000)
     cpu=1,
     memory=4096,
     timeout=7200,
-    secrets=[modal.Secret.from_name("mhm-jobs2")],
+    secrets=[modal.Secret.from_name("mhm-jobs2"),
+                  modal.Secret.from_name("mhm-jobs2-wikibase")],
 )
 def run_rdf_build_shard(job_id: str, run_id: str, control_numbers: list[str]) -> dict:
     import asyncio  # noqa: PLC0415
@@ -836,7 +963,12 @@ async def _run_rdf_build_sharded(job_id: str) -> None:
 # state. Memory profile: no process holds the MARC/authority corpus —
 # shards hold one slice, the orchestrator holds merged native items.
 
-_WIKIDATA_BUILD_SHARD_SIZE = 500
+# Was a fixed 500 — 37 concurrent containers for the 18.7k corpus, the
+# single largest source of simultaneous DB clients. Tunable like the others
+# (Rule W-285).
+_WIKIDATA_BUILD_SHARD_SIZE = int(
+    os.environ.get("MHM_WIKIDATA_BUILD_SHARD_SIZE") or 2000
+)
 
 
 @app.function(
@@ -844,7 +976,8 @@ _WIKIDATA_BUILD_SHARD_SIZE = 500
     cpu=2,
     memory=8192,
     timeout=86400,
-    secrets=[modal.Secret.from_name("mhm-jobs2")],
+    secrets=[modal.Secret.from_name("mhm-jobs2"),
+                  modal.Secret.from_name("mhm-jobs2-wikibase")],
 )
 def run_wikidata_studio_build_shard(
     job_id: str, run_id: str, control_numbers: list[str],
@@ -966,7 +1099,8 @@ def _missing_required_env() -> list[str]:
     cpu=1,
     memory=512,
     scaledown_window=300,
-    secrets=[modal.Secret.from_name("mhm-jobs2")],
+    secrets=[modal.Secret.from_name("mhm-jobs2"),
+                  modal.Secret.from_name("mhm-jobs2-wikibase")],
 )
 @modal.fastapi_endpoint(label="mhm-jobs-healthz", method="GET")
 def healthz() -> dict:
@@ -985,7 +1119,8 @@ def healthz() -> dict:
     cpu=1,
     memory=512,
     scaledown_window=300,
-    secrets=[modal.Secret.from_name("mhm-jobs2")],
+    secrets=[modal.Secret.from_name("mhm-jobs2"),
+                  modal.Secret.from_name("mhm-jobs2-wikibase")],
 )
 @modal.fastapi_endpoint(label="mhm-jobs-run", method="POST")
 def run(request_body: dict) -> dict:

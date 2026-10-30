@@ -276,6 +276,18 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 it for it in native
                 if wikidata_studio.local_id_for_item(it) in approved_ids
             ]
+        accept_by_local_id = {
+            r.local_id: wikidata_upload.ForeignAccept(
+                accept_foreign_modify=bool(r.accept_foreign_modify),
+                accepted_foreign_qid=str(r.accepted_foreign_qid),
+            )
+            for r in (
+                await db.execute(
+                    select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
+                )
+            ).scalars().all()
+            if r.accept_foreign_modify and r.accepted_foreign_qid
+        }
         ledger = await wikidata_upload.load_ledger_for_prepare(
             db, is_test=mode.is_test,
         )
@@ -476,6 +488,28 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
 
     outcomes: list[Any] = []
     link_outcomes: list[wikidata_upload.DeferredLinkOutcome] = []
+    injected_state = params.get("_step1_state") or {}
+    step1_items = pass1_native
+    if injected_state:
+        # Sharded step-1 already ran in parallel Modal containers; rehydrate
+        # its state and skip the serial loop. Step-2 (links) and the terminal
+        # state stay in this function unchanged.
+        from converter.wikidata.item_models import WikidataStatement  # noqa: PLC0415
+
+        outcomes.extend(
+            wikidata_upload.UploadOutcome(**row)
+            for row in injected_state.get("outcomes") or []
+        )
+        created_qids.update({
+            str(k): str(v)
+            for k, v in (injected_state.get("created_qids") or {}).items()
+        })
+        for _lid, _rows in (injected_state.get("deferred") or {}).items():
+            deferred_by_local_id[str(_lid)] = [
+                WikidataStatement(**row) for row in _rows
+            ]
+        link_total = sum(len(v) for v in deferred_by_local_id.values())
+        step1_items = []
     audit_ctx = None if mode.dry_run else WikibaseAuditContext(
         actor_user_id=job.created_by,
         channel=CHANNEL_WIKIDATA_UPLOAD,
@@ -605,7 +639,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
         return False
 
     try:
-        for idx, item in enumerate(pass1_native):
+        for idx, item in enumerate(step1_items):
             if await is_cancel_requested(job_id):
                 await finish_job(
                     job_id,
@@ -689,6 +723,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                             uploader=slot,
                             existence_cache=existence_cache,
                             created_qids=created_qids,
+                            accept_by_local_id=accept_by_local_id,
                             quality_preflight=quality_preflight,
                         )
                 finally:
@@ -1059,6 +1094,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                             uploader=slot,
                             existence_cache=existence_cache,
                             created_qids=created_qids,
+                            accept_by_local_id=accept_by_local_id,
                             quality_preflight=quality_preflight,
                         )
                 finally:
@@ -1082,3 +1118,187 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
     link_inflight.clear()
 
     await _finish_success()
+
+
+async def load_wikidata_upload_item_ids(
+    job_id: uuid.UUID,
+) -> tuple[str, list[str], dict[str, Any]]:
+    """Ordered step-1 item ids for shard planning.
+
+    Returns ``(run_id, ordered local_ids, params)``. The load mirrors the
+    serial job's scope rules (approved_only / item_approved_only / source /
+    local_ids) so the shards cover exactly the serial step-1 scope.
+    """
+    from app.routers.wikidata_studio import _build_native_items  # noqa: PLC0415
+    from converter.wikidata.uploader import sort_items_for_upload  # noqa: PLC0415
+
+    async with session_scope() as db:
+        job = await db.get(RunJob, job_id)
+        if job is None:
+            raise ValueError(f"job {job_id} not found")
+        params = dict(job.params or {})
+        mode = wikidata_upload.resolve_upload_mode(
+            params.get("upload_target"), dry_run=params.get("dry_run"),
+        )
+        approved_only = bool(params.get("approved_only", True))
+        source = str(params.get("source") or "canonical")
+        item_approved_only = bool(params.get("item_approved_only", False))
+        scoped_ids = params.get("local_ids")
+        scope: set[str] | None = None
+        if isinstance(scoped_ids, list) and scoped_ids:
+            scope = {str(x) for x in scoped_ids if str(x).strip()}
+        auth = SimpleNamespace(user=SimpleNamespace(id=job.created_by))
+        native = await _build_native_items(
+            db, job.run_id, auth, approved_only=approved_only, source=source,
+        )
+        if item_approved_only:
+            approved_ids = {
+                r.local_id
+                for r in (
+                    await db.execute(
+                        select(WikidataItemOverride).where(
+                            WikidataItemOverride.run_id == job.run_id,
+                        )
+                    )
+                ).scalars()
+                if r.approved
+            }
+            native = [
+                it for it in native
+                if wikidata_studio.local_id_for_item(it) in approved_ids
+            ]
+    ordered = sort_items_for_upload(list(native))
+    ids = [wikidata_studio.local_id_for_item(it) for it in ordered]
+    if scope is not None:
+        ids = [i for i in ids if i in scope]
+    del mode
+    return str(job.run_id), ids, params
+
+
+async def run_wikidata_upload_shard(
+    job_id: uuid.UUID,
+    run_id: uuid.UUID,
+    local_ids: list[str],
+) -> dict[str, Any]:
+    """One shard's step-1 writes. Returns serialisable state for the merge.
+
+    Each shard rebuilds its slice's items (same pattern as the rule-verify
+    shards), pre-warms the reconciler for the slice, and runs the per-item
+    write path sequentially inside the shard — parallelism comes from the
+    shard fan-out, not from in-shard concurrency.
+    """
+    from app.routers.wikidata_studio import _build_native_items  # noqa: PLC0415
+    from converter.wikidata.reconciler import (  # noqa: PLC0415
+        prewarm_reconciler_for_items,
+    )
+    from converter.wikidata.uploader import (  # noqa: PLC0415
+        partition_unresolved_local,
+        sort_items_for_upload,
+    )
+    from app.pipeline.wikidata_existence import confirm_qids_alive  # noqa: PLC0415
+
+    async with session_scope() as db:
+        job = await db.get(RunJob, job_id)
+        if job is None:
+            raise ValueError(f"job {job_id} not found")
+        params = dict(job.params or {})
+        mode = wikidata_upload.resolve_upload_mode(
+            params.get("upload_target"), dry_run=params.get("dry_run"),
+        )
+        approved_only = bool(params.get("approved_only", True))
+        source = str(params.get("source") or "canonical")
+        item_approved_only = bool(params.get("item_approved_only", False))
+        token = str(params.get("_wikidata_token") or "")
+        auth = SimpleNamespace(user=SimpleNamespace(id=job.created_by))
+        native = await _build_native_items(
+            db, run_id, auth, approved_only=approved_only, source=source,
+        )
+        if item_approved_only:
+            approved_ids = {
+                r.local_id
+                for r in (
+                    await db.execute(
+                        select(WikidataItemOverride).where(
+                            WikidataItemOverride.run_id == run_id,
+                        )
+                    )
+                ).scalars()
+                if r.approved
+            }
+            native = [
+                it for it in native
+                if wikidata_studio.local_id_for_item(it) in approved_ids
+            ]
+        accept_by_local_id = {
+            r.local_id: wikidata_upload.ForeignAccept(
+                accept_foreign_modify=bool(r.accept_foreign_modify),
+                accepted_foreign_qid=str(r.accepted_foreign_qid),
+            )
+            for r in (
+                await db.execute(
+                    select(WikidataItemOverride).where(
+                        WikidataItemOverride.run_id == run_id,
+                    )
+                )
+            ).scalars()
+            if r.accept_foreign_modify and r.accepted_foreign_qid
+        }
+        ledger = await wikidata_upload.load_ledger_for_prepare(
+            db, is_test=mode.is_test,
+        )
+
+    scope = {str(x) for x in local_ids if str(x)}
+    items = [
+        it for it in sort_items_for_upload(list(native))
+        if wikidata_studio.local_id_for_item(it) in scope
+    ]
+    prewarm_reconciler_for_items(_make_reconciler(), items)
+    prefetch_qids = sorted({
+        str(getattr(it, "existing_qid", "") or "").strip()
+        for it in items
+        if str(getattr(it, "existing_qid", "") or "").strip().startswith("Q")
+    })
+    existence_cache: dict[str, bool | None] = {}
+    if prefetch_qids:
+        existence_cache = await run_in_threadpool(
+            confirm_qids_alive, prefetch_qids, is_test=mode.is_test,
+        )
+    quality_preflight = await run_in_threadpool(
+        wikidata_upload.build_upload_corpus_quality_preflight,
+        native,
+    )
+    audit_ctx = None if mode.dry_run else WikibaseAuditContext(
+        actor_user_id=job.created_by,
+        channel=CHANNEL_WIKIDATA_UPLOAD,
+        project_id=job.project_id,
+        run_id=run_id,
+        job_id=job_id,
+    )
+    created_qids: dict[str, str] = {}
+    deferred: dict[str, list[Any]] = {}
+    outcomes: list[dict[str, Any]] = []
+    for item in items:
+        local_id = wikidata_studio.local_id_for_item(item)
+        write_item, deferred_locals = partition_unresolved_local(item, created_qids)
+        if deferred_locals:
+            deferred[local_id] = deferred_locals
+        async with session_scope() as db:
+            results = await wikidata_upload.upload_items(
+                [write_item], token=token or "", mode=mode,
+                audit_ctx=audit_ctx, db=db, ledger=ledger,
+                run_id=run_id,
+                accept_by_local_id=accept_by_local_id,
+                existence_cache=existence_cache,
+                created_qids=created_qids,
+                quality_preflight=quality_preflight,
+            )
+        for row in results:
+            outcomes.append(dict(row.__dict__))
+    return {
+        "outcomes": outcomes,
+        "created_qids": dict(created_qids),
+        "deferred": {
+            lid: [dict(s.__dict__) for s in rows]
+            for lid, rows in deferred.items()
+        },
+    }

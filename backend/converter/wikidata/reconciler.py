@@ -977,6 +977,7 @@ def prewarm_reconciler_for_items(
     """Collect identifier probes from built items and batch-fill the cache."""
     probes: list[tuple[str, str, str]] = []
     shelfmarks: list[str] = []
+    work_specs: list[tuple[str, str, str | None]] = []
     for item in items:
         entity_type = str(getattr(item, "entity_type", "") or "")
         statements = getattr(item, "statements", []) or []
@@ -1001,5 +1002,71 @@ def prewarm_reconciler_for_items(
             shelf = _value("P217")
             if shelf:
                 shelfmarks.append(shelf)
+        elif entity_type == "work":
+            author_qid = _value("P50") or None
+            labels = getattr(item, "labels", {}) or {}
+            for lang in ("he", "en"):
+                title = str(labels.get(lang) or "").strip()
+                if title:
+                    work_specs.append((title, lang, author_qid))
     prewarm_identifier_cache(reconciler, probes)
     prewarm_manuscript_shelfmarks(reconciler, shelfmarks)
+    prewarm_work_titles(reconciler, work_specs)
+
+
+def prewarm_work_titles(
+    reconciler: WikidataReconciler,
+    specs: Iterable[tuple[str, str, str | None]],
+) -> None:
+    """Batch-fill ``work:{lang}:{title}:{author}`` lookups (Rule W-290).
+
+    Each spec is ``(title, lang, author_qid)``; the per-item method's exact
+    label query and its P50 rejection rule are replicated on the batched
+    results so the cache holds exactly what the per-item call would decide.
+    """
+    pending: list[tuple[str, str, str | None]] = []
+    seen: set[str] = set()
+    for title, lang, author_qid in specs:
+        title = str(title or "").strip()
+        key = f"work:{lang}:{title}:{author_qid or ''}"
+        if not title or key in reconciler._cache or key in seen:
+            continue
+        seen.add(key)
+        pending.append((title, lang, author_qid))
+    by_lang: dict[str, list[tuple[str, str, str | None]]] = {}
+    for title, lang, author_qid in pending:
+        by_lang.setdefault(lang, []).append((title, lang, author_qid))
+    for lang, rows in by_lang.items():
+        for start in range(0, len(rows), _PREWARM_BATCH):
+            chunk = rows[start:start + _PREWARM_BATCH]
+            titles = list(dict.fromkeys(t for t, _, _ in chunk))
+            values_expr = " ".join(f'"{_sparql_escape(t)}"@{lang}' for t in titles)
+            sparql = (
+                "SELECT ?title ?item ?author WHERE { "
+                "?item wdt:P31/wdt:P279* wd:Q47461344 . "
+                f"?item rdfs:label ?title . VALUES ?title {{ {values_expr} }} "
+                "OPTIONAL { ?item wdt:P50 ?author . } }"
+            )
+            rows_by_title: dict[str, list[tuple[str | None, str | None]]] = {}
+            try:
+                for row in reconciler._query(sparql):
+                    title_val = str(row.get("title", {}).get("value", ""))
+                    cand_qid = extract_wikidata_qid(
+                        str(row.get("item", {}).get("value", "")),
+                    )
+                    author_uri = str(row.get("author", {}).get("value", ""))
+                    cand_author = extract_wikidata_qid(author_uri) if author_uri else None
+                    if title_val and cand_qid:
+                        rows_by_title.setdefault(title_val, []).append(
+                            (cand_qid, cand_author),
+                        )
+            except ReconciliationUnavailableError:
+                continue
+            for title, lang_key, author_qid in chunk:
+                chosen: str | None = None
+                for cand_qid, cand_author in rows_by_title.get(title, []):
+                    if author_qid and cand_author and cand_author != author_qid:
+                        continue
+                    chosen = cand_qid
+                    break
+                reconciler._cache[f"work:{lang_key}:{title}:{author_qid or ''}"] = chosen

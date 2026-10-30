@@ -3178,8 +3178,17 @@ one query per identifier — and the job called `upload_items` per item with
 a fresh reconciler, so even the instance cache never helped. The dry-run of
 run 47e03437 crawled at **~1.3 items/min (18 of 1831 in 8 min, ETA ~15 h)**.
 `prewarm_reconciler_for_items` now batch-fills the per-item cache keys
-(`ms:nnl:`, `ms:shelf:`, `person:viaf:`, `person:nli:`, `person:P244/P227/P213:`)
-with one `VALUES` SPARQL per 40 identifiers before the loop, and
-`_make_reconciler` is a process singleton so the warm cache survives the
-per-item calls. Per-item lookups become cache hits. Tests:
+(`ms:nnl:`, `ms:shelf:`, `person:viaf:`, `person:nli:`, `person:P244/P227/P213:`,
+and `work:{lang}:{title}:{author}`) with one `VALUES` SPARQL per 40
+identifiers before the loop, and `_make_reconciler` is a process singleton
+so the warm cache survives the per-item calls. Per-item lookups become cache
+hits. **Step-1 also fans out to parallel Modal shards**
+(`MHM_WIKIDATA_UPLOAD_SHARD_SIZE`, default 250 items): each shard rebuilds
+its slice, pre-warms the reconciler, and returns outcomes + created QIDs +
+locals for the merge; the claimed container hands the merged step-1 state to
+the serial finisher (`_step1_state`) for step-2 links and the terminal state.
+The curator's drawer accept reaches the upload too — the job now passes
+`accept_by_local_id` built from `accept_foreign_modify`/`accepted_foreign_qid`
+overrides (it never did before: a foreign UPDATE could not be authorised).
+Tests:
 `backend/tests/unit/test_wikidata_reconciler_prewarm.py`.
