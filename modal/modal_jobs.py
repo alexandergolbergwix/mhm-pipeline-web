@@ -611,6 +611,15 @@ async def _finalise_rule_verify(job_id: str, summary: dict, total: int, cancelle
 # Sized so one shard stays well under the container timeout at the observed
 # per-item pace (~30 s incl. fallback lookups): 80 items ≈ 40 min.
 _UPLOAD_SHARD_SIZE = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_SIZE") or 80)
+# Connection budget (Rule W-253/W-285): essential-1 caps Postgres at 20 and
+# every shard engine would take pool 1+2. Shards process items sequentially
+# so they run with a 1-connection engine, and the fan-out runs in waves of 6
+# (6 + orchestrator + web dynos fit the budget).
+_UPLOAD_SHARD_WAVES = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_WAVES") or 6)
+_UPLOAD_SHARD_POOL = modal.Secret.from_dict({
+    "DB_POOL_SIZE": "1",
+    "DB_MAX_OVERFLOW": "0",
+})
 
 
 @app.function(
@@ -619,7 +628,8 @@ _UPLOAD_SHARD_SIZE = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_SIZE") or 80)
     memory=4096,
     timeout=21600,
     secrets=[modal.Secret.from_name("mhm-jobs2"),
-                  modal.Secret.from_name("mhm-jobs2-wikibase")],
+                  modal.Secret.from_name("mhm-jobs2-wikibase"),
+                  _UPLOAD_SHARD_POOL],
 )
 def run_wikidata_upload_shard(job_id: str, run_id: str, local_ids: list[str]) -> dict:
     import asyncio  # noqa: PLC0415
@@ -668,45 +678,47 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
         ids[i:i + _UPLOAD_SHARD_SIZE]
         for i in range(0, len(ids), _UPLOAD_SHARD_SIZE)
     ]
-    results_q: _queue.Queue = _queue.Queue()
-
-    def _consume() -> None:
-        try:
-            for res in run_wikidata_upload_shard.starmap(
-                [(job_id, run_id, shard) for shard in shards],
-            ):
-                results_q.put(res)
-        except Exception as exc:  # noqa: BLE001 — surfaced below
-            results_q.put({"__error__": str(exc)})
-        results_q.put(None)
-
-    _threading.Thread(target=_consume, daemon=True).start()
 
     merged_outcomes: list[dict] = []
     merged_qids: dict[str, str] = {}
     merged_deferred: dict[str, list] = {}
     done_items = 0
-    while True:
-        try:
-            item = await _asyncio.to_thread(results_q.get, True, 10)
-        except _queue.Empty:
-            continue
-        if item is None:
-            break
-        if isinstance(item, dict) and item.get("__error__"):
-            raise RuntimeError(f"upload shard failed: {item['__error__']}")
-        merged_outcomes.extend(item.get("outcomes") or [])
-        merged_qids.update(item.get("created_qids") or {})
-        merged_deferred.update(item.get("deferred") or {})
-        done_items = min(done_items + _UPLOAD_SHARD_SIZE, total)
-        await update_job_progress(_uuid.UUID(job_id), {
-            "phase": "uploading",
-            "processed": done_items,
-            "total": total,
-            "message": (
-                f"Step 1 of 2: writing items ({done_items}/{total}, sharded)"
-            ),
-        })
+    for wave_start in range(0, len(shards), _UPLOAD_SHARD_WAVES):
+        wave = shards[wave_start:wave_start + _UPLOAD_SHARD_WAVES]
+        results_q: _queue.Queue = _queue.Queue()
+
+        def _consume(_wave: list[list[str]] = wave) -> None:
+            try:
+                for res in run_wikidata_upload_shard.starmap(
+                    [(job_id, run_id, shard) for shard in _wave],
+                ):
+                    results_q.put(res)
+            except Exception as exc:  # noqa: BLE001 — surfaced below
+                results_q.put({"__error__": str(exc)})
+            results_q.put(None)
+
+        _threading.Thread(target=_consume, daemon=True).start()
+        while True:
+            try:
+                item = await _asyncio.to_thread(results_q.get, True, 10)
+            except _queue.Empty:
+                continue
+            if item is None:
+                break
+            if isinstance(item, dict) and item.get("__error__"):
+                raise RuntimeError(f"upload shard failed: {item['__error__']}")
+            merged_outcomes.extend(item.get("outcomes") or [])
+            merged_qids.update(item.get("created_qids") or {})
+            merged_deferred.update(item.get("deferred") or {})
+            done_items = min(done_items + _UPLOAD_SHARD_SIZE, total)
+            await update_job_progress(_uuid.UUID(job_id), {
+                "phase": "uploading",
+                "processed": done_items,
+                "total": total,
+                "message": (
+                    f"Step 1 of 2: writing items ({done_items}/{total}, sharded)"
+                ),
+            })
 
     async with session_scope() as db:
         await db.execute(
