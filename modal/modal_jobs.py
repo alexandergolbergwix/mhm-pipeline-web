@@ -704,6 +704,12 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
     if not ids:
         await run_wikidata_upload_job(_uuid.UUID(job_id))
         return
+    await update_job_progress(_uuid.UUID(job_id), _shard_progress(
+        "Step 1 of 2: writing items",
+        item_done=0, item_total=total,
+        current_label="shards starting…",
+        elapsed=_time.monotonic() - started,
+    ))
     shards = [
         ids[i:i + _UPLOAD_SHARD_SIZE]
         for i in range(0, len(ids), _UPLOAD_SHARD_SIZE)
@@ -728,10 +734,20 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
             results_q.put(None)
 
         _threading.Thread(target=_consume, daemon=True).start()
+        tick = 0
         while True:
             try:
                 item = await _asyncio.to_thread(results_q.get, True, 10)
             except _queue.Empty:
+                tick += 1
+                if tick % 3 == 0:
+                    await update_job_progress(_uuid.UUID(job_id), _shard_progress(
+                        "Step 1 of 2: writing items",
+                        item_done=done_items,
+                        item_total=total,
+                        current_label=f"shards running · {done_items}/{total}",
+                        elapsed=_time.monotonic() - started,
+                    ))
                 continue
             if item is None:
                 break
