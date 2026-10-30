@@ -661,15 +661,45 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
     from app.models.run_job import RunJob
     from app.pipeline.run_job_service import update_job_progress
     from app.pipeline.wikidata_upload_job import (
+        STEP_WRITE_ITEMS,
+        build_upload_progress,
+        estimate_remaining_seconds,
         load_wikidata_upload_item_ids,
         run_wikidata_upload_job,
     )
+    import time as _time
 
-    await update_job_progress(_uuid.UUID(job_id), {
-        "phase": "preparing", "processed": 0, "total": 0,
-        "message": "Loading upload scope…",
-    })
+    upload_target = "dry_run"
+
+    def _shard_progress(
+        message: str, *, item_done: int, item_total: int,
+        current_label: str, elapsed: float,
+    ) -> dict:
+        return build_upload_progress(
+            phase="uploading",
+            message=message,
+            upload_target=upload_target,
+            step=STEP_WRITE_ITEMS,
+            item_done=item_done,
+            item_total=item_total,
+            link_done=0,
+            link_total=0,
+            current_label=current_label,
+            eta_seconds=(
+                estimate_remaining_seconds(item_done, item_total, elapsed)
+                if item_done else None
+            ),
+            elapsed_seconds=elapsed,
+            outcome_counts={"pending": max(item_total - item_done, 0)},
+        )
+
+    started = _time.monotonic()
+    await update_job_progress(_uuid.UUID(job_id), _shard_progress(
+        "Loading upload scope…", item_done=0, item_total=0,
+        current_label="Loading upload scope…", elapsed=0.0,
+    ))
     run_id, ids, params = await load_wikidata_upload_item_ids(_uuid.UUID(job_id))
+    upload_target = str(params.get("upload_target") or "dry_run")
     total = len(ids)
     if not ids:
         await run_wikidata_upload_job(_uuid.UUID(job_id))
@@ -711,14 +741,13 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
             merged_qids.update(item.get("created_qids") or {})
             merged_deferred.update(item.get("deferred") or {})
             done_items = min(done_items + _UPLOAD_SHARD_SIZE, total)
-            await update_job_progress(_uuid.UUID(job_id), {
-                "phase": "uploading",
-                "processed": done_items,
-                "total": total,
-                "message": (
-                    f"Step 1 of 2: writing items ({done_items}/{total}, sharded)"
-                ),
-            })
+            await update_job_progress(_uuid.UUID(job_id), _shard_progress(
+                "Step 1 of 2: writing items",
+                item_done=done_items,
+                item_total=total,
+                current_label=f"shard done · {done_items}/{total}",
+                elapsed=_time.monotonic() - started,
+            ))
 
     async with session_scope() as db:
         await db.execute(
