@@ -1252,7 +1252,7 @@ async def run_wikidata_upload_shard(
         it for it in sort_items_for_upload(list(native))
         if wikidata_studio.local_id_for_item(it) in scope
     ]
-    prewarm_reconciler_for_items(_make_reconciler(), items)
+    prewarm_reconciler_for_items(wikidata_upload._make_reconciler(), items)
     prefetch_qids = sorted({
         str(getattr(it, "existing_qid", "") or "").strip()
         for it in items
