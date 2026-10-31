@@ -618,6 +618,7 @@ _UPLOAD_SHARD_WAVES = int(os.environ.get("MHM_WIKIDATA_UPLOAD_SHARD_WAVES") or 5
 _UPLOAD_SHARD_POOL = modal.Secret.from_dict({
     "DB_POOL_SIZE": "1",
     "DB_MAX_OVERFLOW": "2",
+    "MORATORIUM_LIFTED": "true",
 })
 
 
