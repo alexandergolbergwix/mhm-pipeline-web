@@ -1895,14 +1895,6 @@ async def upload_to_wikidata(
     )
 
     mode = wikidata_upload.resolve_upload_mode(upload_target, dry_run=dry_run)
-    if mode.target == wikidata_upload.UPLOAD_TARGET_LIVE:
-        raise HTTPException(
-            status_code=status.HTTP_410_GONE,
-            detail=(
-                "The legacy live upload route is retired. Use a versioned "
-                "Wikidata Publication Release instead."
-            ),
-        )
     run = await _lookup_run_with_access(db, run_id, auth, write=not mode.dry_run)
     params = await prepare_job_params(
         db, auth, run_id=run_id, kind=JOB_KIND_WIKIDATA_UPLOAD,

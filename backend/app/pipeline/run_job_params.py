@@ -153,14 +153,6 @@ async def prepare_job_params(
             merged.get("upload_target"),
             dry_run=merged.get("dry_run"),
         )
-        if mode.target == "live":
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE,
-                detail=(
-                    "The legacy live upload job is retired. Use a versioned "
-                    "Wikidata Publication Release instead."
-                ),
-            )
         merged["dry_run"] = mode.dry_run
         merged["upload_target"] = mode.target
 

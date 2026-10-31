@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-290)
+## Architectural rules (W-1…W-291)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -463,4 +463,5 @@ plan doc, block docs (see [AGENTS.md](AGENTS.md)), and this file are updated.
 - **W-288** — A curator's drawer accept binds the QID on every judged path: `apply_wikidata_item_override` maps `accepted_foreign_qid` → `existing_qid` when absent, or the verify scope judges the item without the binding and fails it as a live CREATE duplicate after the curator chose (2026-10-29) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 - **W-289** — A batch job may not hold one session for its whole scope: under the 1+2 pool the bulk-approve's single held session starved pollers into `QueuePool limit … connection timed out` and the batch died at 250/881; chunk ~50 items per short-lived session (2026-10-29) — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
 - **W-290** — Reconciliation reads are batched before the per-item loop: per-item WDQS identifier lookups ran at ~1.3 items/min (15 h dry-run ETA on run 47e03437); `prewarm_reconciler_for_items` fills the reconciler cache with one `VALUES` SPARQL per 40 ids and `_make_reconciler` is a process singleton (2026-10-29) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
+- **W-291** — The direct live upload is restored: the Sep-5 retirement left connection-bearing corpora unshippable (the release's own deferred-reference findings block review), so the `live` target returns to the Upload panel and the stored Settings credential releases with the curator's session at job creation — the 2026-10-17 mechanism (2026-10-31) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 

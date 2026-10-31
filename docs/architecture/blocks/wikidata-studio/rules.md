@@ -1094,3 +1094,14 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   merged state feeds the serial step-2 + finish; the drawer accept map
   (`accept_by_local_id`) reaches `upload_items`. *Why:* run 47e03437's
   dry-run projected 15 h at 1.3 items/min on per-item SPARQL in one process.
+
+- **R147 — The direct live upload is restored (session-released Settings
+  credential).** `WikidataUploadPanel` again offers the `live` target and the
+  410 retirement guards are removed (`run_job_params`, the upload route).
+  The stored zero-knowledge credential releases when the curator's session
+  creates the job — the same mechanism as the 2026-10-17 live upload. The
+  versioned Publication Release remains the audited path but cannot yet ship
+  a release whose connections defer (its own `deferred_local_reference…`
+  findings block review), so the two-pass upload job is the working executor
+  for connection-bearing corpora. *Why:* the Sep-5 retirement removed the
+  only path that could write this corpus live (run 47e03437).
