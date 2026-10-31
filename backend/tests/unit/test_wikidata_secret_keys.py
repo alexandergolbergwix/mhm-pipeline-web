@@ -89,7 +89,16 @@ async def test_prepare_job_params_rejects_test_upload_without_test_secret(
 
 
 @pytest.mark.asyncio
-async def test_prepare_job_params_retires_legacy_live_upload() -> None:
+async def test_prepare_job_params_accepts_live_upload(monkeypatch) -> None:
+    """Rule W-291 — the live target is restored; a missing credential is a
+    400, never the retired-route 410."""
+
+    async def _no_secret(_db, _auth, _name):
+        return None
+
+    monkeypatch.setattr(
+        "app.routers.wikidata_studio._unwrap_user_secret", _no_secret,
+    )
     with pytest.raises(HTTPException) as exc:
         await prepare_job_params(
             object(),
@@ -98,8 +107,8 @@ async def test_prepare_job_params_retires_legacy_live_upload() -> None:
             kind=JOB_KIND_WIKIDATA_UPLOAD,
             params={"upload_target": "live"},
         )
-    assert exc.value.status_code == 410
-    assert "versioned" in str(exc.value.detail).lower()
+    assert exc.value.status_code == 400
+    assert "bot password" in str(exc.value.detail).lower()
 
 
 def test_bot_password_space_after_colon_is_stripped() -> None:
