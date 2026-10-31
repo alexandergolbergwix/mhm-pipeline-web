@@ -3,6 +3,21 @@
 from __future__ import annotations
 
 
+def _normalize_bot_password(text: str) -> str:
+    """``User@Bot: password`` → ``User@Bot:password``.
+
+    Special:BotPasswords shows the value with a space after the colon and
+    curators copy it verbatim — MediaWiki rejects the leading space in the
+    password part (run 47e03437: "Incorrect username or password").
+    """
+    if "|" in text or "@" not in text:
+        return text
+    head, sep, password = text.partition(":")
+    if not sep or "@" not in head:
+        return text
+    return f"{head.strip()}:{password.strip()}"
+
+
 def normalize_wikidata_auth_token(raw: str) -> str:
     """Strip noise and join a common two-line BotPasswords paste.
 
@@ -11,7 +26,7 @@ def normalize_wikidata_auth_token(raw: str) -> str:
     """
     text = (raw or "").strip().replace("\r\n", "\n").replace("\r", "\n")
     if "\n" not in text:
-        return text
+        return _normalize_bot_password(text)
     lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
     if (
         len(lines) == 2
@@ -22,7 +37,7 @@ def normalize_wikidata_auth_token(raw: str) -> str:
         and "|" not in lines[1]
     ):
         return f"{lines[0]}:{lines[1]}"
-    return " ".join(lines).strip()
+    return _normalize_bot_password(" ".join(lines).strip())
 
 
 def wikidata_auth_token_format_ok(token: str) -> bool:

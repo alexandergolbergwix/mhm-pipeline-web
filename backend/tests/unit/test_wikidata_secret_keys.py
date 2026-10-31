@@ -100,3 +100,13 @@ async def test_prepare_job_params_retires_legacy_live_upload() -> None:
         )
     assert exc.value.status_code == 410
     assert "versioned" in str(exc.value.detail).lower()
+
+
+def test_bot_password_space_after_colon_is_stripped() -> None:
+    """Special:BotPasswords copies show ': ' — MediaWiki rejects the space."""
+    from converter.wikidata.auth_token import normalize_wikidata_auth_token
+
+    assert (
+        normalize_wikidata_auth_token("Alexander Goldberg IL@mhm-upload: pw123")
+        == "Alexander Goldberg IL@mhm-upload:pw123"
+    )
