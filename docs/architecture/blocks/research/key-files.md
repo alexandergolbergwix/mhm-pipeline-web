@@ -27,10 +27,13 @@
 | `backend/app/migrations/versions/0042_research_agent.py` | Thread / artifact / grant tables |
 | `backend/app/migrations/versions/0043_research_reply_cache.py` | Reply cache table |
 | `modal/modal_research_agent.py` | Pydantic AI + AG-UI deploy target (never imported; Rules W-15 / W-228 / W-231; `retries=3`; reply-cache lookup/store + Qubrid Chat Completions) |
-| `frontend/src/routes/ResearchAssistant.tsx` | Chat + canvas split at `/runs/:runId/linked-data-explorer` |
+| `frontend/src/routes/ResearchAssistant.tsx` | Chat + canvas split at `/runs/:runId/linked-data-explorer` (Split View / Canvas Focus / Chat Focus modes) |
 | `frontend/src/routes/LinkedDataExplorer.tsx` | Compatibility re-export of `ResearchAssistant` |
-| `frontend/src/components/research/ResearchChat.tsx` | Chat log + quick actions; bouncing wait dots while the agent is busy with no stream text (frontend R22) |
-| `frontend/src/components/research/ResearchCanvas.tsx` | Artifact tabs, markdown editor, table + chart views, full-screen expand, map/network/cluster embeds |
+| `frontend/src/components/research/ResearchChat.tsx` | Chat log + quick actions + collapsible step tracker; bouncing wait dots while the agent is busy with no stream text (frontend R22) |
+| `frontend/src/components/research/ResearchCanvas.tsx` | Artifact tab strip, live EDA dashboard default view, markdown editor, table + chart views, full-screen expand, map/network/cluster/geography/ownership embeds |
+| `frontend/src/components/research/EdaDashboardPanel.tsx` | Multi-source corpus EDA dashboard: KPI stat tiles with source breakdowns, chronological distribution (century/25-yr), role donut + top figures, ranked places, co-occurring works, and coverage funnel |
+| `frontend/src/components/research/ResearchCharts.tsx` | Base44-style visual signal primitives: `SignalStatGrid`, `SignalBarList`, `SignalColumnChart`, `SignalAreaChart`, `SignalDonutChart`, `SignalFunnel`, and `SignalDataTable` (sortable, filterable, inline bars, Table/Bars/Columns/Donut toggle, CSV export) |
+| `frontend/src/components/research/ResearchMarkdown.tsx` | Structured markdown + GFM pipe-table parser (auto-normalizes collapsed single-line markdown, extracts KPI/role/place visual signals on canvas, renders `Q...` as Wikidata badge links) |
 | `frontend/src/api/researchAgent.ts` | Session + SSE AG-UI client |
 | `frontend/src/lib/canvasState.ts` | AG-UI event reducer for canvas + messages; `humanizeAgentError` (Rule W-231) |
 | `frontend/src/components/research/ProvenanceMapPanel.tsx` | Leaflet map, `KIND_COLOR`/`KIND_LABEL` per stop kind, animated arcs, single-MS + corpus modes |

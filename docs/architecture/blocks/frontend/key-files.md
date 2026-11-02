@@ -32,7 +32,7 @@
 | `frontend/src/utils/studioUploadProgress.ts` | Patch review-table rows from live upload `item_outcome` / `recent_item_outcomes` (no full-table flicker) |
 | `frontend/src/cache/extractionCache.ts` | User-scoped SWR entity cache + `EXTRACTION_ENTITIES_REFRESH_EVENT = "mhm.entities.refreshed"` |
 | `frontend/src/components/glass/` | Design system: `Glass`, `GlassPill`, `LiquidGlassCanvas`, `LiquidGlassSurface`, `liquidGlassMath`, `glassMapCache` |
-| `frontend/src/components/extraction/`, `authority/`, `wikidata/`, `hmo/` | Feature component families (Rule W-16 / W-31 review surfaces) |
+| `frontend/src/components/extraction/`, `authority/`, `wikidata/`, `hmo/`, `research/` | Feature component families (Rule W-16 / W-31 review surfaces; `research/` holds the Base44-style signal charts, live EDA dashboard, GFM table/markdown parser, maps, and networks) |
 | `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Studio item drawer: labelled multilingual overrides, one-row Hebrew aliases, foreign-modify accept (W-99), push/reconcile, HMO Wikibase Item:Q link (W-122) |
 | `frontend/src/components/wikidata/WikidataItemTable.tsx` | Searchable result list with a labelled record search and direct item editor entry |
 | `frontend/src/components/wikidata/WikidataUploadSteps.tsx` | Two-step Wikidata upload bars (Now + ETA; Rule W-192); per-step counter tooltips explain the step-local scale |

@@ -31,6 +31,8 @@ import {
 const DEFAULT_TITLE = "Research session";
 const threadStorageKey = (runId: string) => `mhm-research-thread:${runId}`;
 
+type LayoutMode = "split" | "canvas" | "chat";
+
 export default function ResearchAssistant() {
   const {runId} = useParams<{runId: string}>();
   const [run, setRun] = useState<RunDetail | null>(null);
@@ -40,6 +42,7 @@ export default function ResearchAssistant() {
   const [agentUrl, setAgentUrl] = useState("/api/research-agent/agui");
   const [agentMode, setAgentMode] = useState("local");
   const [toolGrant, setToolGrant] = useState("");
+  const [layoutMode, setLayoutMode] = useState<LayoutMode>("split");
   const [ui, setUi] = useState<AssistantUiState>({
     messages: [],
     canvas: emptyCanvas,
@@ -71,28 +74,31 @@ export default function ResearchAssistant() {
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
-    Runs.get(runId).then((r) => { if (!cancelled) setRun(r); }).catch(() => {});
-    return () => { cancelled = true; };
+    Runs.get(runId).then((r) => {
+      if (!cancelled) setRun(r);
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [runId]);
 
   useEffect(() => {
     if (!runId) return;
     let cancelled = false;
     const stored = localStorage.getItem(threadStorageKey(runId));
-    const boot = async (threadId?: string, retryOnMissing = false) => {
+    const boot = async (initialThreadId?: string, retryOnMissing = false) => {
       try {
-        const session = await ResearchAgent.startSession(runId, {threadId});
+        const session = await ResearchAgent.startSession(runId, {threadId: initialThreadId});
         if (cancelled) return;
         setThreadId(session.thread_id);
         setAgentUrl(session.agent_url);
-      setAgentMode(session.agent_mode);
+        setAgentMode(session.agent_mode);
         setToolGrant(session.tool_grant);
         localStorage.setItem(threadStorageKey(runId), session.thread_id);
         const detail = await ResearchAgent.getThread(session.thread_id);
         if (cancelled) return;
         applyThreadDetail(detail);
       } catch (err) {
-        // A stored thread may have been deleted — fall back to resume/latest.
         if (retryOnMissing) {
           localStorage.removeItem(threadStorageKey(runId));
           await boot(undefined);
@@ -109,21 +115,23 @@ export default function ResearchAssistant() {
       }
     };
     void boot(stored ?? undefined, Boolean(stored));
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [runId, applyThreadDetail]);
 
   const saveTranscript = useCallback(async (
-    threadId: string,
+    activeThreadId: string,
     messages: AguiMessage[],
   ) => {
     try {
-      await ResearchAgent.patchThread(threadId, {messages});
-      const detail = await ResearchAgent.getThread(threadId);
+      await ResearchAgent.patchThread(activeThreadId, {messages});
+      const detail = await ResearchAgent.getThread(activeThreadId);
       setThreadTitle(detail.title);
       if (!autoTitledRef.current && messages.some((m) => m.role === "user")) {
         autoTitledRef.current = true;
         try {
-          const {title} = await ResearchAgent.autoTitle(threadId);
+          const {title} = await ResearchAgent.autoTitle(activeThreadId);
           setThreadTitle(title);
         } catch {
           /* keep the fallback title */
@@ -146,9 +154,6 @@ export default function ResearchAssistant() {
       error: null,
       streamingText: "",
     }));
-    // Re-mint the grant on every send — grants are short-lived, and a
-    // stale one turns every tool call and webhook post into 401s
-    // (production incident 2026-09-14).
     let freshGrant = toolGrant;
     try {
       const session = await ResearchAgent.startSession(runId!, {threadId});
@@ -206,9 +211,6 @@ export default function ResearchAssistant() {
         ),
       }));
     } finally {
-      // Tool upserts happen server-side and survive stream failures —
-      // refresh the canvas even when the stream errors (production
-      // incident 2026-09-14: an H18 cut hid a freshly placed map).
       try {
         const detail = await ResearchAgent.getThread(threadId);
         const artifacts: Record<string, ResearchArtifact> = {};
@@ -295,21 +297,46 @@ export default function ResearchAssistant() {
 
   return (
     <Layout>
-      <div className="min-h-screen px-4 py-6 max-w-7xl mx-auto space-y-5">
-        <div className="kicker">
-          {run ? (
-            <Link to={`/projects/${run.project_id}`} className="hover:text-ink underline">
-              Project
-            </Link>
-          ) : (
-            <span className="text-muted">Project</span>
-          )}
-          {" · "}
-          <Link to={`/runs/${runId}/overview`} className="hover:text-ink underline">Run</Link>
-          {" · "}
-          <Link to={`/runs/${runId}/wikidata-studio`} className="hover:text-ink underline">Wikidata Studio</Link>
-          {" · "}
-          <span className="text-biu-sky">Research Assistant</span>
+      <div className="min-h-screen px-4 py-4 max-w-[1600px] mx-auto space-y-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="kicker">
+            {run ? (
+              <Link to={`/projects/${run.project_id}`} className="hover:text-ink underline">
+                Project
+              </Link>
+            ) : (
+              <span className="text-muted">Project</span>
+            )}
+            {" · "}
+            <Link to={`/runs/${runId}/overview`} className="hover:text-ink underline">Run</Link>
+            {" · "}
+            <Link to={`/runs/${runId}/wikidata-studio`} className="hover:text-ink underline">Wikidata Studio</Link>
+            {" · "}
+            <span className="text-biu-sky">Research Assistant</span>
+          </div>
+
+          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-0.5 text-xs">
+            {(
+              [
+                {id: "split", label: "Split View"},
+                {id: "canvas", label: "Canvas Focus"},
+                {id: "chat", label: "Chat Focus"},
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setLayoutMode(m.id)}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${
+                  layoutMode === m.id
+                    ? "bg-biu-sky/20 text-biu-sky font-medium"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {projectId ? (
@@ -323,56 +350,77 @@ export default function ResearchAssistant() {
           title={threadTitle}
           busy={ui.busy}
           refreshKey={historyKey}
-          onSelectThread={(id) => { void selectThread(id); }}
-          onNewChat={() => { void newChat(); }}
-          onRename={(title) => { void renameThread(title); }}
+          onSelectThread={(id) => {
+            void selectThread(id);
+          }}
+          onNewChat={() => {
+            void newChat();
+          }}
+          onRename={(title) => {
+            void renameThread(title);
+          }}
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
-          <ResearchChat
-            messages={ui.messages}
-            streamingText={ui.streamingText}
-            busy={ui.busy}
-            error={ui.error}
-            activity={ui.activity}
-            thinking={ui.thinking}
-            onSend={(text) => { void send(text); }}
-          />
-          {threadId && projectId ? (
-            <ResearchCanvas
-              projectId={projectId}
-              threadId={threadId}
-              artifacts={artifactList}
-              activeKey={ui.canvas.active_key}
-              onSelect={(key) => {
-                setUi((prev) => ({
-                  ...prev,
-                  canvas: {...prev.canvas, active_key: key},
-                }));
-              }}
-              onSaved={(art) => {
-                setUi((prev) => ({
-                  ...prev,
-                  artifacts: {...prev.artifacts, [art.artifact_key]: art},
-                  canvas: {
-                    artifacts: [
-                      ...prev.canvas.artifacts.filter((a) => a.key !== art.artifact_key),
-                      {
-                        key: art.artifact_key,
-                        kind: art.kind,
-                        title: art.title,
-                        version: art.version,
-                        updated_by: art.created_by,
+        <div
+          className={`grid grid-cols-1 gap-4 items-stretch min-h-[42rem] lg:h-[calc(100dvh-13.5rem)] ${
+            layoutMode === "split" ? "lg:grid-cols-12" : "lg:grid-cols-1"
+          }`}
+        >
+          {layoutMode !== "canvas" ? (
+            <div className={layoutMode === "split" ? "lg:col-span-5 h-full min-h-0" : "h-full min-h-0 max-w-4xl mx-auto w-full"}>
+              <ResearchChat
+                messages={ui.messages}
+                streamingText={ui.streamingText}
+                busy={ui.busy}
+                error={ui.error}
+                activity={ui.activity}
+                thinking={ui.thinking}
+                onSend={(text) => {
+                  void send(text);
+                }}
+              />
+            </div>
+          ) : null}
+
+          {layoutMode !== "chat" ? (
+            <div className={layoutMode === "split" ? "lg:col-span-7 h-full min-h-0" : "h-full min-h-0"}>
+              {threadId && projectId ? (
+                <ResearchCanvas
+                  projectId={projectId}
+                  threadId={threadId}
+                  artifacts={artifactList}
+                  activeKey={ui.canvas.active_key}
+                  onSelect={(key) => {
+                    setUi((prev) => ({
+                      ...prev,
+                      canvas: {...prev.canvas, active_key: key},
+                    }));
+                  }}
+                  onSaved={(art) => {
+                    setUi((prev) => ({
+                      ...prev,
+                      artifacts: {...prev.artifacts, [art.artifact_key]: art},
+                      canvas: {
+                        artifacts: [
+                          ...prev.canvas.artifacts.filter((a) => a.key !== art.artifact_key),
+                          {
+                            key: art.artifact_key,
+                            kind: art.kind,
+                            title: art.title,
+                            version: art.version,
+                            updated_by: art.created_by,
+                          },
+                        ],
+                        active_key: art.artifact_key,
                       },
-                    ],
-                    active_key: art.artifact_key,
-                  },
-                }));
-              }}
-            />
-          ) : (
-            <p className="muted text-sm">Loading canvas…</p>
-          )}
+                    }));
+                  }}
+                />
+              ) : (
+                <p className="muted text-sm">Loading canvas…</p>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </Layout>

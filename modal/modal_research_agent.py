@@ -436,6 +436,30 @@ def build_agent(grant: str, canvas_digest: str = "", model_config=None):
         return await call("show_wikidata_places", {"artifact_key": artifact_key})
 
     @agent.tool_plain
+    async def show_chart(
+        title: str,
+        kind: str,
+        labels: list[str],
+        series: list[dict[str, Any]],
+        source: str,
+        unit: str | None = None,
+        artifact_key: str | None = None,
+    ) -> dict[str, Any]:
+        """Place a visual chart on the canvas (kind: bar, barlist, line, area, donut, stats, funnel, stacked) from verified numbers."""
+        args: dict[str, Any] = {
+            "title": title,
+            "kind": kind,
+            "labels": labels,
+            "series": series,
+            "source": source,
+        }
+        if unit:
+            args["unit"] = unit
+        if artifact_key:
+            args["artifact_key"] = artifact_key
+        return await call("show_chart", args)
+
+    @agent.tool_plain
     async def wikidata_pack(artifact_key: str = "wikidata-uploads") -> dict[str, Any]:
         """One round-trip: refresh live claims, then place BOTH the link-type chart and the place-mentions map on the canvas."""
         return await call("wikidata_pack", {"artifact_key": artifact_key})

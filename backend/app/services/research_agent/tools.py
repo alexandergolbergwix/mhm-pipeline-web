@@ -54,6 +54,7 @@ TOOL_NAMES = (
     "show_movement_map",
     "show_link_types",
     "show_wikidata_places",
+    "show_chart",
     "wikidata_pack",
     "export_pdf",
     "canvas_upsert_artifact",
@@ -143,7 +144,7 @@ async def dispatch_tool(ctx: ToolContext, name: str, arguments: dict[str, Any] |
     result = await handler(ctx, arguments)
     if name in ("canvas_upsert_artifact", "canvas_list_versions", "create_download_link"):
         return result if isinstance(result, dict) else {"result": result}
-    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg", "wikidata_uploaded_items", "wikidata_fetch_items", "show_movement_map", "show_link_types", "show_wikidata_places", "wikidata_pack", "export_pdf"):
+    if name in ("research_movement_map", "research_sparql", "fetch_rdf_ttl", "data_info", "data_select", "data_distinct", "data_search", "data_agg", "wikidata_uploaded_items", "wikidata_fetch_items", "show_movement_map", "show_link_types", "show_wikidata_places", "show_chart", "wikidata_pack", "export_pdf"):
         return result if isinstance(result, dict) else {"result": result}
     slimmed = slim_result(result)
     return slimmed if isinstance(slimmed, dict) else {"result": slimmed}
@@ -151,28 +152,84 @@ async def dispatch_tool(ctx: ToolContext, name: str, arguments: dict[str, Any] |
 
 async def _tool_summary(ctx: ToolContext, _args: dict[str, Any]) -> Any:
     from app.routers.research import research_summary
-    return await research_summary(ctx.claims.project_id, ctx.auth, ctx.db)
+    res = await research_summary(ctx.claims.project_id, ctx.auth, ctx.db)
+    dumped = res.model_dump() if hasattr(res, "model_dump") else res
+    if isinstance(dumped, dict):
+        await upsert_artifact(
+            ctx.db, ctx.thread,
+            artifact_key="research-summary",
+            kind="json",
+            title="Corpus overview & EDA",
+            content=dumped,
+            created_by="agent",
+        )
+        await ctx.db.commit()
+    return res
 
 
 async def _tool_cooccurrence(ctx: ToolContext, _args: dict[str, Any]) -> Any:
     from app.routers.research import research_co_occurrence
-    return await research_co_occurrence(ctx.claims.project_id, ctx.auth, ctx.db)
+    res = await research_co_occurrence(ctx.claims.project_id, ctx.auth, ctx.db)
+    dumped = res.model_dump() if hasattr(res, "model_dump") else res
+    if isinstance(dumped, dict):
+        await upsert_artifact(
+            ctx.db, ctx.thread,
+            artifact_key="research-cooccurrence",
+            kind="json",
+            title="Work co-occurrence clusters",
+            content={"nodes_count": len(dumped.get("nodes") or []), "edges_count": len(dumped.get("edges") or [])},
+            created_by="agent",
+        )
+        await ctx.db.commit()
+    return res
 
 
 async def _tool_network(ctx: ToolContext, _args: dict[str, Any]) -> Any:
     from app.routers.research import research_people_network
-    return await research_people_network(ctx.claims.project_id, ctx.auth, ctx.db)
+    res = await research_people_network(ctx.claims.project_id, ctx.auth, ctx.db)
+    dumped = res.model_dump() if hasattr(res, "model_dump") else res
+    if isinstance(dumped, dict):
+        await upsert_artifact(
+            ctx.db, ctx.thread,
+            artifact_key="research-network",
+            kind="json",
+            title="People social network",
+            content={"nodes_count": len(dumped.get("nodes") or []), "links_count": len(dumped.get("links") or [])},
+            created_by="agent",
+        )
+        await ctx.db.commit()
+    return res
 
 
 async def _tool_ownership(ctx: ToolContext, _args: dict[str, Any]) -> Any:
     from app.routers.research import research_ownership
-    return await research_ownership(ctx.claims.project_id, ctx.auth, ctx.db)
+    res = await research_ownership(ctx.claims.project_id, ctx.auth, ctx.db)
+    await upsert_artifact(
+        ctx.db, ctx.thread,
+        artifact_key="research-ownership",
+        kind="json",
+        title="Manuscript ownership chains",
+        content={"chain_count": len(res) if isinstance(res, list) else 0},
+        created_by="agent",
+    )
+    await ctx.db.commit()
+    return res
 
 
 async def _tool_geography(ctx: ToolContext, args: dict[str, Any]) -> Any:
     from app.routers.research import research_geography
     mode = args.get("mode")
-    return await research_geography(ctx.claims.project_id, mode, ctx.auth, ctx.db)
+    res = await research_geography(ctx.claims.project_id, mode, ctx.auth, ctx.db)
+    await upsert_artifact(
+        ctx.db, ctx.thread,
+        artifact_key="research-geography",
+        kind="json",
+        title="Geographic distribution",
+        content={"place_count": len(res) if isinstance(res, list) else 0, "mode": mode or "table"},
+        created_by="agent",
+    )
+    await ctx.db.commit()
+    return res
 
 
 async def _tool_provenance(ctx: ToolContext, args: dict[str, Any]) -> Any:
@@ -1090,7 +1147,10 @@ async def _wikidata_sparql_query(query: str) -> dict[str, Any]:
                 params={"query": query, "format": "json"},
                 headers={
                     "Accept": "application/sparql-results+json",
-                    "User-Agent": "MHM-Pipeline-Web/1.0 (research-agent; contact via project admin)",
+                    "User-Agent": (
+                        "MHMPipeline/1.0 (https://github.com/alexgoldberg/mhm-pipeline; "
+                        "alexander.goldberg@biu.ac.il)"
+                    ),
                 },
             )
             if resp.status_code < 500:
@@ -1405,6 +1465,99 @@ def _link_label(prop: str) -> str:
     return p.rsplit("/", 1)[-1] if p.startswith("http") else p
 
 
+async def _tool_show_chart(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+    """Place a visual chart on the canvas from verified corpus numbers.
+
+    Follows Base44's show_chart contract: supports bar, barlist, line, area,
+    donut, stats, funnel, and stacked series with explicit provenance source.
+    """
+    import math
+    import re
+
+    allowed_kinds = ("bar", "barlist", "line", "area", "donut", "stats", "funnel", "stacked")
+    kind = str(args.get("kind") or "barlist").strip().lower()
+    if kind not in allowed_kinds:
+        raise HTTPException(
+            status_code=400,
+            detail=f"kind must be one of {', '.join(allowed_kinds)}.",
+        )
+    title = " ".join(str(args.get("title") or "").split())[:120]
+    source = " ".join(str(args.get("source") or "").split())[:200]
+    if not title or not source:
+        raise HTTPException(
+            status_code=400,
+            detail="title and source (one short line naming where the numbers came from) are required.",
+        )
+    raw_labels = args.get("labels")
+    raw_series = args.get("series")
+    if not isinstance(raw_labels, list) or not (1 <= len(raw_labels) <= 100):
+        raise HTTPException(status_code=400, detail="labels must be a list of 1 to 100 strings.")
+    labels = [" ".join(str(lbl or "").split())[:80] for lbl in raw_labels]
+    if any(not lbl for lbl in labels):
+        raise HTTPException(status_code=400, detail="Every label must be a non-empty string.")
+    if not isinstance(raw_series, list) or not (1 <= len(raw_series) <= 5):
+        raise HTTPException(status_code=400, detail="series must be a list of 1 to 5 series [{name, values}].")
+    series: list[dict[str, Any]] = []
+    for s in raw_series:
+        if not isinstance(s, dict) or not isinstance(s.get("values"), list):
+            raise HTTPException(status_code=400, detail="Each series must be {name, values}.")
+        vals = s["values"]
+        if len(vals) != len(labels):
+            raise HTTPException(
+                status_code=400,
+                detail="Each series must have one value (or null) per label.",
+            )
+        clean_vals: list[float | int | None] = []
+        for v in vals:
+            if v is None:
+                clean_vals.append(None)
+            elif isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v):
+                clean_vals.append(v)
+            else:
+                raise HTTPException(status_code=400, detail="Series values must be finite numbers or null.")
+        series.append({
+            "name": " ".join(str(s.get("name") or title).split())[:60] or title,
+            "values": clean_vals,
+        })
+
+    unit = " ".join(str(args.get("unit") or "").split())[:24] or None
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:32] or "signal-chart"
+    artifact_key = str(args.get("artifact_key") or f"chart-{slug}").strip()[:48]
+    content: dict[str, Any] = {
+        "kind": kind,
+        "chart": kind,
+        "title": title,
+        "labels": labels,
+        "series": series,
+        "source": source,
+    }
+    if unit:
+        content["unit"] = unit
+
+    await upsert_artifact(
+        ctx.db, ctx.thread,
+        artifact_key=artifact_key,
+        kind="chart",
+        title=title,
+        content=content,
+        created_by="agent",
+    )
+    await ctx.db.commit()
+    return {
+        "artifact_key": artifact_key,
+        "kind": "chart",
+        "chart_kind": kind,
+        "title": title,
+        "point_count": len(labels),
+        "series_count": len(series),
+        "source": source,
+        "note": (
+            f"Placed the {kind} chart '{title}' on the canvas as '{artifact_key}'. "
+            "State in one or two sentences what the visual shows; do not repeat every number."
+        ),
+    }
+
+
 TOOL_HANDLERS = {
     "research_summary": _tool_summary,
     "research_cooccurrence": _tool_cooccurrence,
@@ -1430,6 +1583,7 @@ TOOL_HANDLERS = {
     "show_movement_map": _tool_show_movement_map,
     "show_link_types": _tool_show_link_types,
     "show_wikidata_places": _tool_show_wikidata_places,
+    "show_chart": _tool_show_chart,
     "wikidata_pack": _tool_wikidata_pack,
     "export_pdf": _tool_export_pdf,
     "canvas_upsert_artifact": _tool_canvas_upsert,

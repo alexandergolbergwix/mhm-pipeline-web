@@ -391,3 +391,40 @@ error instead of relaying the real one. The contract that closes the class:
 5. **Image parity.** The research Modal image mounts `/root/backend` and
    sets `PYTHONPATH` exactly like `modal_jobs`; shared code imports must
    degrade (local router) instead of crashing when packaging slips.
+
+### Rule W-293 — Research Assistant visual signals, collapsed Markdown recovery, and Wikimedia-compliant User-Agent (added 2026-11-02)
+
+Two production defects appeared on the Research Assistant EDA surface:
+(1) `ResearchCanvas.tsx` rendered Markdown through `renderChatMarkdown` (a
+4-line regex that ignored headings, lists, and pipe tables), so a planner
+report with inline `## 1.`, `| QID | Label | |---|---|`, and bullet lists
+collapsed into one unreadable paragraph; and (2) `wikidata_fetch_items` in
+`wiki.py` used a `User-Agent` without a URL or contact email, which
+Wikimedia rejected with `HTTP 403 (Wikimedia robot policy)`.
+
+1. **Base44-style visual signal primitives & live EDA dashboard.**
+   `ResearchCharts.tsx` and `EdaDashboardPanel.tsx` render corpus signals
+   through structured components (`SignalStatGrid` with `RDF`/`Wikidata`/
+   `Wikibase` breakdowns, `SignalColumnChart`, `SignalAreaChart`,
+   `SignalDonutChart`, `SignalBarList`, `SignalFunnel`, and
+   `SignalDataTable` with search, sort, inline proportional bars, CSV
+   export, and Table/Ranked Bars/Columns/Donut view toggles). The canvas
+   opens on the live EDA dashboard when empty and exposes a horizontal
+   artifact tab strip plus `Split View` / `Canvas Focus` / `Chat Focus`.
+2. **Collapsed Markdown normalization & auto-extracted signals.**
+   `ResearchMarkdown.tsx` normalizes single-line headings, pipe tables, and
+   bullet lists before block parsing, renders every pipe table as a
+   `SignalDataTable`, converts `Q...` tokens into clickable Wikidata badge
+   links, and extracts headline KPIs/roles/places from prose reports into
+   visual signal cards.
+3. **Tool-to-canvas placement & `show_chart`.** `show_chart` places typed
+   charts (`bar`, `barlist`, `line`, `area`, `donut`, `stats`, `funnel`,
+   `stacked`) on the canvas with an explicit provenance `source`, and
+   `research_summary`/`research_cooccurrence`/`research_network`/
+   `research_ownership`/`research_geography` auto-upsert their interactive
+   canvas panels.
+4. **Wikimedia-compliant User-Agent & anonymous fallback.** `wiki.py` and
+   `tools.py` send `MHMPipeline/1.0 (https://github.com/alexgoldberg/mhm-pipeline; alexander.goldberg@biu.ac.il)`
+   and catch `httpx.HTTPError` on optional bot login so public
+   `wbgetentities` reads degrade cleanly to anonymous reads.
+

@@ -355,3 +355,28 @@ async def test_download_link_supports_pdf(sample_run):
     )
     assert resp.status_code == 200
     assert resp.json()["result"]["download_path"].endswith("format=pdf")
+
+
+async def test_show_chart_places_canvas_chart_artifact(sample_run):
+    body, headers = await _headers(sample_run)
+    resp = await sample_run["client"].post(
+        "/api/research-agent/tools",
+        headers=headers,
+        json={
+            "name": "show_chart",
+            "arguments": {
+                "title": "Top Production Places",
+                "kind": "barlist",
+                "unit": "mss",
+                "labels": ["Venice", "Amsterdam", "Jerusalem", "Mantua"],
+                "series": [{"name": "Manuscripts", "values": [44, 34, 29, 26]}],
+                "source": "Local RDF graph (897 manuscripts)",
+            },
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    result = resp.json()["result"]
+    assert result["kind"] == "chart"
+    assert result["chart_kind"] == "barlist"
+    assert result["point_count"] == 4
+    assert result["artifact_key"] == "chart-top-production-places"

@@ -15,7 +15,10 @@ from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-_USER_AGENT = "MHM-Pipeline-Web/1.0 (research-agent; contact via project admin)"
+_USER_AGENT = (
+    "MHMPipeline/1.0 (https://github.com/alexgoldberg/mhm-pipeline; "
+    "alexander.goldberg@biu.ac.il)"
+)
 _TIMEOUT_S = 20.0
 _WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 
@@ -73,7 +76,12 @@ async def fetch_wikibase_entity(
     }
     async with httpx.AsyncClient(timeout=_TIMEOUT_S, headers=headers, follow_redirects=True) as client:
         if bot_token:
-            await _login(client, api_url, bot_token)
+            try:
+                await _login(client, api_url, bot_token)
+            except (ValueError, RuntimeError, httpx.HTTPError) as exc:
+                if api_url != _WIKIDATA_API:
+                    raise
+                logger.warning("Wikidata entity fetch login failed; reading anonymously: %s", exc)
         resp = await client.get(api_url, params=params)
         resp.raise_for_status()
     data = resp.json()
@@ -167,7 +175,7 @@ async def fetch_wikidata_entities_batch(
         if bot_token:
             try:
                 await _login(client, _WIKIDATA_API, bot_token)
-            except (ValueError, RuntimeError) as exc:
+            except (ValueError, RuntimeError, httpx.HTTPError) as exc:
                 logger.warning("Wikidata batch fetch login failed; reading anonymously: %s", exc)
         for start in range(0, len(qids), 50):
             batch = qids[start:start + 50]

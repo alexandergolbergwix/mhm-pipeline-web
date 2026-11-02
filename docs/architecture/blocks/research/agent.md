@@ -110,8 +110,8 @@ artifact (kind `map`, `map: "points"`, rendered by `WikidataPlacesPanel`):
 every place-valued claim with P625 coordinates, each popup linking to the
 item and the place on Wikidata. `show_link_types` aggregates the `wikidata-items`
 claim dataset into the `link-types` canvas artifact (kind `chart`, rendered
-by the canvas `ChartView`: grouped bars per property family) and returns a
-top-links digest. `export_pdf` renders any saved artifact as a
+by the canvas `ChartView`: KPI stat tiles, family share donut, and ranked bars per property family) and returns a
+top-links digest. `show_chart` places a general visual signal chart (`bar`, `barlist`, `line`, `area`, `donut`, `stats`, `funnel`, `stacked`) on the canvas from verified corpus numbers with a required provenance `source` line. Analytics tools (`research_summary`, `research_cooccurrence`, `research_network`, `research_ownership`, `research_geography`) also auto-place their interactive canvas panels (`EdaDashboardPanel`, `CoOccurrencePanel`, `PeopleNetworkPanel`, `OwnershipChainsPanel`, `GeographyPanel`). `export_pdf` renders any saved artifact as a
 PDF server-side (`research_agent/pdf.py`, fpdf2 + DejaVu Sans with Hebrew
 coverage; core-font fallback replaces non-Latin-1 chars) and returns a
 `download_path` — the planner never touches PDF bytes. `create_download_link`
