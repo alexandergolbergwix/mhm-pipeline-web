@@ -438,6 +438,7 @@ async def upsert_artifact(
         created_by=created_by,
     )
     db.add(row)
+    db.add(thread)
     canvas = dict(thread.canvas_state or {})
     artifacts = list(canvas.get("artifacts") or [])
     entry = {

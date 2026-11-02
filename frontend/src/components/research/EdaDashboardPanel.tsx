@@ -55,50 +55,49 @@ export default function EdaDashboardPanel({
     let cancelled = false;
     setLoading(true);
 
-    researchApi
-      .summary(projectId)
-      .then((res) => {
-        if (!cancelled) {
-          setSummary(res);
-          setLoading(false);
-        }
-      })
-      .catch(() => {
+    const loadSequential = async () => {
+      try {
+        const [sumRes, geoRes] = await Promise.all([
+          researchApi.summary(projectId).catch(() => null),
+          researchApi.geography(projectId).catch(() => [] as PlaceRow[]),
+        ]);
+        if (cancelled) return;
+        if (sumRes) setSummary(sumRes);
+        if (Array.isArray(geoRes)) setPlaces(geoRes);
+        setLoading(false);
+
+        const [movRes, coRes] = await Promise.all([
+          researchApi.movement(projectId).catch(() => null),
+          researchApi.coOccurrence(projectId).catch(() => null),
+        ]);
+        if (cancelled) return;
+        if (movRes) setMovement(movRes);
+        if (coRes) setCoOccurrence(coRes);
+      } catch {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
 
-    researchApi
-      .geography(projectId)
-      .then((res) => {
-        if (!cancelled && Array.isArray(res)) setPlaces(res);
-      })
-      .catch(() => {});
+    void loadSequential();
 
-    researchApi
-      .movement(projectId)
-      .then((res) => {
-        if (!cancelled && res) setMovement(res);
-      })
-      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
-    researchApi
-      .coOccurrence(projectId)
-      .then((res) => {
-        if (!cancelled && res) setCoOccurrence(res);
-      })
-      .catch(() => {});
-
+  useEffect(() => {
+    if (!projectId || peopleTab !== "top" || network) return;
+    let cancelled = false;
     researchApi
       .peopleNetwork(projectId)
       .then((res) => {
         if (!cancelled && res) setNetwork(res);
       })
       .catch(() => {});
-
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, peopleTab, network]);
 
   const statItems = useMemo<SignalStatItem[]>(() => {
     if (!summary) return [];
@@ -381,7 +380,7 @@ export default function EdaDashboardPanel({
                 Scribes, authors, and owners attested across the corpus
               </p>
             </div>
-            {topPeopleItems.length > 0 ? (
+            {roleItems.length > 0 ? (
               <div className="flex rounded-lg border border-white/10 bg-white/[0.03] p-0.5 text-[11px]">
                 <button
                   type="button"
@@ -405,8 +404,12 @@ export default function EdaDashboardPanel({
             ) : null}
           </div>
 
-          {peopleTab === "top" && topPeopleItems.length > 0 ? (
-            <SignalBarList items={topPeopleItems} unit="mss" maxItems={6} showShare={false} />
+          {peopleTab === "top" ? (
+            topPeopleItems.length > 0 ? (
+              <SignalBarList items={topPeopleItems} unit="mss" maxItems={6} showShare={false} />
+            ) : (
+              <div className="py-10 text-center text-xs text-muted">Loading top figures…</div>
+            )
           ) : roleItems.length > 0 ? (
             <div className="space-y-3 pt-1">
               <SignalDonutChart items={roleItems} unit="people" centerLabel="role links" />

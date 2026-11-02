@@ -6,9 +6,10 @@ requests to the Research Explorer don't reload TTL files from disk.
 from __future__ import annotations
 
 import asyncio
+import gc
 import hashlib
 import logging
-from functools import lru_cache
+import threading
 from pathlib import Path
 
 import rdflib
@@ -39,9 +40,12 @@ def _file_fingerprint(paths: list[Path]) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
 
-# In-process cache keyed by (sorted_run_ids_tuple, fingerprint)
+# In-process cache keyed by (sorted_run_ids_tuple, fingerprint).
+# Keep at most 1 merged graph in memory so a 512 MB Basic dyno never holds
+# multiple 160k-triple rdflib graphs simultaneously (Error R14).
 _CACHE: dict[tuple[tuple[str, ...], str], rdflib.Graph] = {}
-_MAX_CACHE_ENTRIES = 4
+_MAX_CACHE_ENTRIES = 1
+_LOAD_LOCK = threading.Lock()
 
 
 def _load_graph_sync(run_ids: list[str]) -> rdflib.Graph:
@@ -55,23 +59,27 @@ def _load_graph_sync(run_ids: list[str]) -> rdflib.Graph:
     if cache_key in _CACHE:
         return _CACHE[cache_key]
 
-    merged = rdflib.Graph()
-    for p in paths:
-        try:
-            g = rdflib.Graph()
-            g.parse(str(p), format="turtle")
-            for triple in g:
-                merged.add(triple)
-            logger.debug("merged %s triples from %s", len(g), p)
-        except Exception as exc:
-            logger.warning("Failed to parse %s: %s", p, exc)
+    with _LOAD_LOCK:
+        if cache_key in _CACHE:
+            return _CACHE[cache_key]
 
-    # Evict old entries when cache is full
-    if len(_CACHE) >= _MAX_CACHE_ENTRIES:
-        oldest = next(iter(_CACHE))
-        del _CACHE[oldest]
-    _CACHE[cache_key] = merged
-    return merged
+        # Evict old entries BEFORE parsing the new graph so peak RSS stays flat.
+        if len(_CACHE) >= _MAX_CACHE_ENTRIES:
+            _CACHE.clear()
+            gc.collect()
+
+        merged = rdflib.Graph()
+        for p in paths:
+            try:
+                # Parse directly into `merged` instead of allocating a second
+                # temporary Graph and copying triples in a Python loop.
+                merged.parse(str(p), format="turtle")
+                logger.debug("parsed %s into merged graph (total=%s)", p, len(merged))
+            except Exception as exc:
+                logger.warning("Failed to parse %s: %s", p, exc)
+
+        _CACHE[cache_key] = merged
+        return merged
 
 
 async def load_merged_graph(run_ids: list[str]) -> rdflib.Graph:
@@ -81,6 +89,7 @@ async def load_merged_graph(run_ids: list[str]) -> rdflib.Graph:
 
 def invalidate_cache(run_id: str) -> None:
     """Drop all cached graphs that include run_id (called after RDF rebuild)."""
-    to_delete = [k for k in _CACHE if run_id in k[0]]
-    for k in to_delete:
-        del _CACHE[k]
+    with _LOAD_LOCK:
+        to_delete = [k for k in _CACHE if run_id in k[0]]
+        for k in to_delete:
+            del _CACHE[k]

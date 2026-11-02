@@ -102,11 +102,15 @@ async def _restore_missing_ttls(run_ids: list[str], db: AsyncSession) -> None:
         ttl_path = rdf_output_path_for_run(run_id)
         if ttl_path.exists():
             continue
-        row = await db.get(RdfArtifact, uuid.UUID(run_id))
-        if row is None:
+        ttl_content = (
+            await db.execute(
+                select(RdfArtifact.ttl_content).where(RdfArtifact.run_id == uuid.UUID(run_id))
+            )
+        ).scalar_one_or_none()
+        if ttl_content is None:
             continue
         ttl_path.parent.mkdir(parents=True, exist_ok=True)
-        ttl_path.write_text(row.ttl_content, encoding="utf-8")
+        ttl_path.write_text(ttl_content, encoding="utf-8")
 
 
 async def _load_graph_or_404(project_id: uuid.UUID, auth: AuthContext, db: AsyncSession):
@@ -118,6 +122,7 @@ async def _load_graph_or_404(project_id: uuid.UUID, auth: AuthContext, db: Async
             detail="No runs found for this project — build the RDF first.",
         )
     await _restore_missing_ttls(run_ids, db)
+    await db.close()
     graph = await load_merged_graph(run_ids)
     if len(graph) == 0:
         raise HTTPException(

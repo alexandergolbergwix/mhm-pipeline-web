@@ -268,6 +268,12 @@ async def get_thread(
         prev = latest.get(row.artifact_key)
         if prev is None or row.version > prev.version:
             latest[row.artifact_key] = row
+    canvas_order = [
+        str(a.get("key") or "")
+        for a in ((thread.canvas_state or {}).get("artifacts") or [])
+        if isinstance(a, dict)
+    ]
+    order_index = {key: idx for idx, key in enumerate(canvas_order)}
     return {
         "id": str(thread.id),
         "project_id": str(thread.project_id),
@@ -285,7 +291,10 @@ async def get_thread(
                 "content": row.content,
                 "created_by": row.created_by,
             }
-            for row in sorted(latest.values(), key=lambda r: r.artifact_key)
+            for row in sorted(
+                latest.values(),
+                key=lambda r: (order_index.get(r.artifact_key, 9999), r.artifact_key),
+            )
         ],
     }
 

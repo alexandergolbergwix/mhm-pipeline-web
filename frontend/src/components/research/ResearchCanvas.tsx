@@ -324,10 +324,21 @@ function ArtifactBody({
     );
   }
   if (artifact.kind === "map") {
-    const cn = typeof artifact.content?.cn === "string" ? artifact.content.cn : undefined;
+    const cn = typeof artifact.content?.cn === "string" && artifact.content.cn.trim()
+      ? artifact.content.cn.trim()
+      : undefined;
+    const isCorpusArtifact =
+      !cn &&
+      (artifact.content?.cn === null ||
+        typeof artifact.content?.manuscript_count === "number" ||
+        artifact.title.toLowerCase().includes("corpus"));
     return (
       <Suspense fallback={<p className="muted text-sm">Loading map…</p>}>
-        <ProvenanceMapPanel projectId={projectId} initialCn={cn} />
+        <ProvenanceMapPanel
+          projectId={projectId}
+          initialCn={cn}
+          initialMode={isCorpusArtifact ? "corpus" : "single"}
+        />
       </Suspense>
     );
   }

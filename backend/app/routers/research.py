@@ -48,6 +48,7 @@ router = APIRouter(tags=["research"])
 logger = logging.getLogger(__name__)
 
 _SUMMARY_ALGORITHM_VERSION = "linked-data-overview-v3"
+_TTL_RESTORE_LOCK = asyncio.Lock()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -83,22 +84,31 @@ async def _summary_fingerprint(
 ) -> str:
     """Cache key that changes whenever any source's CONTENT changes.
 
-    Keying on the run-id set alone (the old behaviour) meant an RDF
-    *rebuild* — which changes content but not the run-id set — never
-    invalidated the cached summary, so a zero computed in a bad window
-    stayed pinned. The key now folds in, per run, the RDF artifact's
-    ``built_at`` + triple count AND the Wikidata Studio cache fingerprint
-    (so approving a match invalidates), plus a Wikibase-endpoint marker (so
-    configuring Wikibase invalidates).
+    Rule W-246: select only (run_id, built_at, triples_count) — never call
+    ``db.get(RdfArtifact, ...)``, which loads the multi-MB ``ttl_content``
+    column on every cache check.
     """
+    run_uuids = [uuid.UUID(r) for r in run_ids]
+    meta_rows = (
+        await db.execute(
+            select(
+                RdfArtifact.run_id,
+                RdfArtifact.built_at,
+                RdfArtifact.triples_count,
+            ).where(RdfArtifact.run_id.in_(run_uuids))
+        )
+    ).all() if run_uuids else []
+    meta_by_run = {str(r_id): (built_at, triples_count) for r_id, built_at, triples_count in meta_rows}
+
     parts: list[str] = []
     for run_id in sorted(run_ids):
-        row = await db.get(RdfArtifact, uuid.UUID(run_id))
-        if row is None:
+        meta = meta_by_run.get(run_id)
+        if meta is None:
             parts.append(f"{run_id}:none")
         else:
-            built = row.built_at.isoformat() if row.built_at else "?"
-            parts.append(f"{run_id}:{built}:{row.triples_count or 0}")
+            built_at, triples_count = meta
+            built = built_at.isoformat() if built_at else "?"
+            parts.append(f"{run_id}:{built}:{triples_count or 0}")
         parts.append(f"studio:{run_id}:{studio_fps.get(run_id, 'none')}")
     parts.append(f"wb:{hashlib.sha256(wikibase_url.encode()).hexdigest()[:12]}")
     parts.append(f"summary:{_SUMMARY_ALGORITHM_VERSION}")
@@ -148,21 +158,27 @@ async def _restore_missing_ttls(
 ) -> None:
     """Restore any TTL files missing from the local cache by reading rdf_artifacts.
 
-    Heroku dynos have an ephemeral filesystem — after a deploy or restart the
-    per-run manuscripts.ttl files are gone. This seeds them back from Postgres
-    so research queries see the same data without requiring a full rebuild.
+    Uses a scalar query so SQLAlchemy does not retain the multi-MB
+    ``RdfArtifact`` ORM instance in the session identity map, and a lock so
+    concurrent requests on a cold dyno do not fetch and write the same file
+    simultaneously.
     """
-    for run_id in run_ids:
-        ttl_path = rdf_output_path_for_run(run_id)
-        if ttl_path.exists() and not force:
-            continue
-        row = await db.get(RdfArtifact, uuid.UUID(run_id))
-        if row is None:
-            continue
-        ttl_path.parent.mkdir(parents=True, exist_ok=True)
-        # rdf_artifacts (Postgres) is authoritative; on force we overwrite a
-        # possibly-truncated local file seeded during an earlier bad window.
-        ttl_path.write_text(row.ttl_content, encoding="utf-8")
+    if not force and all(rdf_output_path_for_run(r).exists() for r in run_ids):
+        return
+    async with _TTL_RESTORE_LOCK:
+        for run_id in run_ids:
+            ttl_path = rdf_output_path_for_run(run_id)
+            if ttl_path.exists() and not force:
+                continue
+            ttl_content = (
+                await db.execute(
+                    select(RdfArtifact.ttl_content).where(RdfArtifact.run_id == uuid.UUID(run_id))
+                )
+            ).scalar_one_or_none()
+            if ttl_content is None:
+                continue
+            ttl_path.parent.mkdir(parents=True, exist_ok=True)
+            ttl_path.write_text(ttl_content, encoding="utf-8")
 
 
 async def _load_or_404(
@@ -178,6 +194,10 @@ async def _load_or_404(
             detail="No runs found for this project — build the RDF first.",
         )
     await _restore_missing_ttls(run_ids, db)
+    # Rule W-40 / Rule W-285: release the pooled DB connection before
+    # CPU-heavy rdflib parsing and SPARQL queries so concurrent requests
+    # never starve the 1+2 QueuePool.
+    await db.close()
     graph = await load_merged_graph(run_ids)
     if len(graph) == 0:
         raise HTTPException(
@@ -195,20 +215,7 @@ async def research_summary(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Aggregate statistics: total manuscripts, works, persons, places.
-
-    Cached in Redis/Postgres (kind=research.summary) so a good result
-    survives dyno restarts. Safeguards stop both the 0/0/0/0-with-N-triples
-    bug and the 68/0/2/0 vocab-miss (Rule W-230):
-
-    * the cache key folds in each run's ``RdfArtifact.built_at`` + triple
-      count and ``_SUMMARY_ALGORITHM_VERSION``, so an RDF rebuild or a
-      count-query change invalidates it;
-    * an incoherent summary (triples > 0 but no manuscripts, or a large
-      graph with manuscripts but zero works) is never served from cache
-      nor written to it. On a stale-incoherent hit we recompute from the
-      live graph and overwrite the cache with the good value.
-    """
+    """Aggregate statistics: total manuscripts, works, persons, places."""
     await _require_viewer(project_id, auth, db)
     run_ids = await _run_ids_for_project(project_id, db)
     if not run_ids:
@@ -228,19 +235,54 @@ async def research_summary(
         db, kind="research.summary", query_summary=cache_key,
     )
     if cached is not None and _is_coherent_summary(cached):
+        await db.close()
         return cached
 
-    # Miss, or a stale incoherent cached zero → recompute from all sources.
-    graph = await _load_or_404(project_id, auth, db)
-
-    # Wikidata source: the run's already-built Studio items (no rebuild).
-    # Wikibase source: live SPARQL, only when configured. Either failing
-    # never aborts the request — that source just contributes nothing.
+    # Fetch DB inputs BEFORE releasing the DB connection for rdflib/network work.
     try:
         studio_items = await studio_items_for_project(run_ids, db)
     except Exception as exc:
         logger.warning("studio items unavailable for project %s: %s", project_id, exc)
         studio_items = []
+
+    authority_match_rows = await db.execute(
+        select(
+            AuthorityMatch.entity_kind,
+            AuthorityMatch.entity_text,
+            AuthorityMatch.matched_name,
+            AuthorityMatch.role,
+            AuthorityMatch.wikidata_qid,
+            AuthorityMatch.viaf_id,
+            AuthorityMatch.mazal_id,
+        ).where(
+            AuthorityMatch.run_id.in_([uuid.UUID(run_id) for run_id in run_ids]),
+            AuthorityMatch.approved.is_(True),
+        )
+    )
+    authority_matches = [
+        {
+            "entity_kind": r[0],
+            "entity_text": r[1],
+            "matched_name": r[2],
+            "role": r[3],
+            "wikidata_qid": r[4],
+            "viaf_id": r[5],
+            "mazal_id": r[6],
+        }
+        for r in authority_match_rows.all()
+    ]
+
+    await _restore_missing_ttls(run_ids, db)
+    # Release the DB connection while loading the RDF graph, querying
+    # Wikibase over HTTP, and running union-find aggregation in a thread.
+    await db.close()
+
+    graph = await load_merged_graph(run_ids)
+    if len(graph) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No RDF data found — build the graph for each run first.",
+        )
 
     wikibase_entities = []
     if wikibase_url:
@@ -249,35 +291,14 @@ async def research_summary(
         except Exception as exc:
             logger.warning("wikibase source unavailable for project %s: %s", project_id, exc)
 
-    authority_match_rows = await db.execute(
-        select(AuthorityMatch).where(
-            AuthorityMatch.run_id.in_([uuid.UUID(run_id) for run_id in run_ids]),
-            AuthorityMatch.approved.is_(True),
-        )
-    )
-    authority_matches = [
-        {
-            "entity_kind": row.entity_kind,
-            "entity_text": row.entity_text,
-            "matched_name": row.matched_name,
-            "role": row.role,
-            "wikidata_qid": row.wikidata_qid,
-            "viaf_id": row.viaf_id,
-            "mazal_id": row.mazal_id,
-        }
-        for row in authority_match_rows.scalars().all()
-    ]
-
     fresh = await asyncio.to_thread(
         compute_aggregated_summary, graph, studio_items, wikibase_entities, authority_matches,
         wikibase_configured=bool(wikibase_url),
     )
 
-    # If the live graph itself is incoherent (triples but no entities), the
-    # local TTL was likely seeded truncated during a bad window — re-seed it
-    # from the authoritative rdf_artifacts copy and recompute once.
     if not _is_coherent_summary(fresh):
         await _restore_missing_ttls(run_ids, db, force=True)
+        await db.close()
         graph = await load_merged_graph(run_ids)
         fresh = await asyncio.to_thread(
             compute_aggregated_summary, graph, studio_items, wikibase_entities, authority_matches,
@@ -303,12 +324,7 @@ async def research_co_occurrence(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Pre-aggregated work co-occurrence graph.
-
-    Returns {nodes: [{id, label, degree}], edges: [{work1, work2,
-    shared_ms_count, ms_list}]}.  The frontend renders this directly
-    without any further adjacency-building work.
-    """
+    """Pre-aggregated work co-occurrence graph."""
     graph = await _load_or_404(project_id, auth, db)
     return await asyncio.to_thread(query_co_occurrence, graph)
 
@@ -342,11 +358,7 @@ async def research_geography(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    """Place associations with lat/lon for map rendering.
-
-    ?mode=heatmap  → weighted points [{lat,lon,weight,type,place,place_label}]
-    (default)      → per-place aggregated [{place,place_label,lat,lon,type,ms_count,ms_labels}]
-    """
+    """Place associations with lat/lon for map rendering."""
     graph = await _load_or_404(project_id, auth, db)
     if mode == "heatmap":
         return await asyncio.to_thread(query_geography_heatmap, graph)

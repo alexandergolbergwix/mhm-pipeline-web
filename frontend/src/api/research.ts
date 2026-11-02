@@ -263,8 +263,18 @@ export interface PathResult {
 
 const base = (projectId: string) => `/projects/${projectId}/research`;
 
+const summaryInflight = new Map<string, Promise<ResearchSummary>>();
+
 export const researchApi = {
-  summary:        (projectId: string) => api.get<ResearchSummary>(`${base(projectId)}/summary`),
+  summary: (projectId: string) => {
+    const existing = summaryInflight.get(projectId);
+    if (existing) return existing;
+    const req = api.get<ResearchSummary>(`${base(projectId)}/summary`).finally(() => {
+      summaryInflight.delete(projectId);
+    });
+    summaryInflight.set(projectId, req);
+    return req;
+  },
   coOccurrence:   (projectId: string) => api.get<CoOccurrenceGraph>(`${base(projectId)}/co-occurrence`),
   peopleNetwork:  (projectId: string) => api.get<PeopleNetwork>(`${base(projectId)}/people-network`),
   ownership:      (projectId: string) => api.get<OwnerChain[]>(`${base(projectId)}/ownership`),

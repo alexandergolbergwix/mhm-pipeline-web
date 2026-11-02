@@ -427,4 +427,19 @@ Wikimedia rejected with `HTTP 403 (Wikimedia robot policy)`.
    `tools.py` send `MHMPipeline/1.0 (https://github.com/alexgoldberg/mhm-pipeline; alexander.goldberg@biu.ac.il)`
    and catch `httpx.HTTPError` on optional bot login so public
    `wbgetentities` reads degrade cleanly to anonymous reads.
+5. **Basic-dyno memory & 1+2 QueuePool protection on research endpoints.**
+   When the canvas mounts on a cold dyno, concurrent requests used to load
+   multiple `rdflib.Graph` instances in parallel (spiking RSS to 803 MB /
+   R14) while holding their pooled DB connections across `asyncio.to_thread`
+   (exhausting the 1+2 QueuePool into 30 s `TimeoutError`s and stalling
+   `ProvenanceMapPanel` chunks on "Loading map…"). `research_graph.py` now
+   serializes graph loads under `_LOAD_LOCK` with `_MAX_CACHE_ENTRIES = 1`
+   and parses directly into `merged`; `research.py` and
+   `linked_data_explorer.py` select scalar metadata (`built_at`,
+   `triples_count`) instead of `db.get(RdfArtifact)` and call
+   `await db.close()` before `load_merged_graph`; `research_provenance.py`
+   computes cache fingerprints in SQL (`_project_fingerprint_sql`) without
+   loading `RunRecord.marc` blobs on cache hits; `get_thread` preserves
+   `canvas_state.artifacts` order; and `ProvenanceMapPanel` opens corpus
+   map artifacts directly in `corpus` mode.
 

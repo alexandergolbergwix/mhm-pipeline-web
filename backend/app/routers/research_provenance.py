@@ -17,7 +17,7 @@ from typing import Any
 import rdflib
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
@@ -259,6 +259,41 @@ def _project_fingerprint(records: list[RunRecord], by_cn: dict[str, list[Authori
     return data_fingerprint(parts)
 
 
+async def _project_fingerprint_sql(project_id: uuid.UUID, db: AsyncSession) -> str:
+    """Compute the exact same fingerprint as ``_project_fingerprint`` without
+    transferring ``RunRecord.marc`` or ``AuthorityMatch.payload`` JSON blobs
+    on cache hits (Rule W-246).
+    """
+    run_ids = await _run_ids_for_project(project_id, db)
+    if not run_ids:
+        return data_fingerprint(["records:0"])
+    run_uuids = [uuid.UUID(r) for r in run_ids]
+    rec_count = (
+        await db.execute(
+            select(func.count()).select_from(RunRecord).where(RunRecord.run_id.in_(run_uuids))
+        )
+    ).scalar_one()
+    rows = (
+        await db.execute(
+            select(
+                AuthorityMatch.control_number,
+                AuthorityMatch.id,
+                AuthorityMatch.wikidata_qid,
+                AuthorityMatch.confidence,
+                AuthorityMatch.approved,
+            ).where(AuthorityMatch.run_id.in_(run_uuids))
+        )
+    ).all()
+    by_cn: dict[str, list[tuple[str, Any, Any, int]]] = {}
+    for cn, mid, qid, conf, approved in rows:
+        by_cn.setdefault(cn, []).append((str(mid), qid, conf, int(bool(approved))))
+    parts: list[str] = [f"records:{rec_count}"]
+    for cn in sorted(by_cn):
+        for mid, qid, conf, approved_int in sorted(by_cn[cn], key=lambda x: x[0]):
+            parts.append(f"{cn}:{mid}:{qid}:{conf}:{approved_int}")
+    return data_fingerprint(parts)
+
+
 @router.get(
     "/projects/{project_id}/research/manuscripts",
     response_model=list[ManuscriptPick],
@@ -270,13 +305,21 @@ async def list_manuscripts(
 ) -> list[ManuscriptPick]:
     """Manuscripts in the project for the movement-map picker (Redis-cached)."""
     await _require_viewer(project_id, auth, db)
-    records, by_cn = await _project_records_and_matches(project_id, db)
-    fp = _project_fingerprint(records, by_cn)
+    fp = await _project_fingerprint_sql(project_id, db)
 
     async def _fetch() -> list[dict[str, Any]]:
+        run_ids = await _run_ids_for_project(project_id, db)
+        if not run_ids:
+            return []
+        run_uuids = [uuid.UUID(r) for r in run_ids]
+        rec_rows = (
+            await db.execute(
+                select(RunRecord.control_number, RunRecord.marc).where(RunRecord.run_id.in_(run_uuids))
+            )
+        ).all()
         out: list[dict[str, Any]] = []
-        for rec in records:
-            prepared = prepare_record_for_pipeline(dict(rec.marc or {}))
+        for cn, marc in rec_rows:
+            prepared = prepare_record_for_pipeline(dict(marc or {}))
             dates = prepared.get("dates") or {}
             year = dates.get("year") if isinstance(dates, dict) else None
             try:
@@ -284,8 +327,8 @@ async def list_manuscripts(
             except (TypeError, ValueError):
                 year = None
             out.append({
-                "control_number": rec.control_number,
-                "label": str(prepared.get("title") or "").strip() or rec.control_number,
+                "control_number": cn,
+                "label": str(prepared.get("title") or "").strip() or cn,
                 "production_year": year,
             })
         out.sort(
@@ -433,8 +476,7 @@ async def get_corpus_movement_facets(
         items, _ = await _build_corpus_items(project_id, db)
         return build_corpus_facets(items)
 
-    records, by_cn = await _project_records_and_matches(project_id, db)
-    fp = _project_fingerprint(records, by_cn)
+    fp = await _project_fingerprint_sql(project_id, db)
     result = await cache_lookup_or_call(
         db,
         kind="research.movement_facets",
@@ -464,8 +506,7 @@ async def get_corpus_movement(
     """
     await _require_viewer(project_id, auth, db)
 
-    records, by_cn = await _project_records_and_matches(project_id, db)
-    fp = _project_fingerprint(records, by_cn)
+    fp = await _project_fingerprint_sql(project_id, db)
 
     async def _fetch_all() -> list[dict[str, Any]]:
         items, _ = await _build_corpus_items(project_id, db)

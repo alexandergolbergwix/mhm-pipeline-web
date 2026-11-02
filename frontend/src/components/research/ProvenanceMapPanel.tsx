@@ -424,16 +424,42 @@ type CorpusMovementData = {
 function useCorpusData(projectId: string, filters: CorpusMovementFilters) {
   const [data, setData] = useState<CorpusMovementData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    let timer: number | null = null;
     setLoading(true);
-    researchApi
-      .movement(projectId, filters)
-      .then((d) => { if (!cancelled) setData(d); })
-      .catch(() => { if (!cancelled) setData(null); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    setError(null);
+
+    const load = (attempt: number) => {
+      researchApi
+        .movement(projectId, filters)
+        .then((d) => {
+          if (!cancelled) {
+            setData(d);
+            setError(null);
+            setLoading(false);
+          }
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          if (attempt < 1) {
+            timer = window.setTimeout(() => load(attempt + 1), 1500);
+            return;
+          }
+          setData(null);
+          setError(err instanceof Error ? err.message : "Could not load the corpus movement map.");
+          setLoading(false);
+        });
+    };
+
+    load(0);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     projectId,
@@ -442,9 +468,11 @@ function useCorpusData(projectId: string, filters: CorpusMovementFilters) {
     filters.place,
     filters.genre,
     filters.owner,
+    retryTick,
   ]);
 
-  return {data, loading};
+  const reload = useCallback(() => setRetryTick((t) => t + 1), []);
+  return {data, loading, error, reload};
 }
 
 function CorpusFilterBar({
@@ -641,7 +669,7 @@ function CorpusYearSlider({
 function CorpusView({projectId}: {projectId: string}) {
   const [facets, setFacets] = useState<CorpusMovementFacets | null>(null);
   const [filters, setFilters] = useState<CorpusMovementFilters>({});
-  const {data, loading} = useCorpusData(projectId, filters);
+  const {data, loading, error, reload} = useCorpusData(projectId, filters);
 
   const [year, setYear] = useState<number>(0);
   const [playing, setPlaying] = useState(false);
@@ -857,8 +885,17 @@ function CorpusView({projectId}: {projectId: string}) {
       )}
 
       {!loading && !data && (
-        <div className="muted text-sm py-10 text-center">
-          No data yet — build the RDF for at least one run first.
+        <div className="muted text-sm py-10 text-center space-y-2">
+          <p>{error ?? "No data yet — build the RDF for at least one run first."}</p>
+          {error ? (
+            <button
+              type="button"
+              onClick={reload}
+              className="rounded-lg border border-biu-sky/40 bg-biu-sky/15 px-3 py-1 text-xs font-medium text-biu-sky hover:bg-biu-sky/25"
+            >
+              Retry loading map
+            </button>
+          ) : null}
         </div>
       )}
     </div>
@@ -872,20 +909,31 @@ function CorpusView({projectId}: {projectId: string}) {
 export default function ProvenanceMapPanel({
   projectId,
   initialCn,
+  initialMode,
 }: {
   projectId: string;
   initialCn?: string;
+  initialMode?: Mode;
 }) {
-  const [mode, setMode] = useState<Mode>("single");
+  const [mode, setMode] = useState<Mode>(initialMode ?? "single");
   const [list, setList] = useState<ManuscriptPick[]>([]);
 
   useEffect(() => {
+    if (initialCn) {
+      setMode("single");
+    } else if (initialMode) {
+      setMode(initialMode);
+    }
+  }, [initialCn, initialMode]);
+
+  useEffect(() => {
+    if (mode !== "single") return;
     let cancelled = false;
     researchApi.manuscripts(projectId).then((rows) => {
       if (!cancelled) setList(rows);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [projectId]);
+  }, [projectId, mode]);
 
   return (
     <div className="space-y-4">
