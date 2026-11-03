@@ -184,15 +184,40 @@ async def add_member(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid role",
         )
+    email_norm = payload.email.lower()
+    email_idx = idx.blind_index(email_norm)
     user = (
         await db.execute(
-            select(User).where(User.email_index == idx.blind_index(payload.email))
+            select(User).where(User.email_index == email_idx)
         )
     ).scalar_one_or_none()
+    accept_url: str | None = None
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No user with that email — invite them to the org first",
+        import secrets  # noqa: PLC0415
+        from app.auth import password as pw  # noqa: PLC0415
+        from app.models.user import ROLE_EDITOR  # noqa: PLC0415
+        from app.routers.invites import (  # noqa: PLC0415
+            INVITE_TTL_HOURS,
+            create_invitation_for_email,
+        )
+
+        local_name = email_norm.split("@", 1)[0].replace(".", " ").title()
+        user = User(
+            email_index=email_idx,
+            email_encrypted=pii.encrypt_pii(email_norm),
+            name_encrypted=pii.encrypt_pii(local_name),
+            password_hash=pw.hash_password(secrets.token_urlsafe(32)),
+            kek_salt=pii.random_bytes(16),
+            role=ROLE_EDITOR,
+        )
+        db.add(user)
+        await db.flush()
+        _inv, accept_url = await create_invitation_for_email(
+            db,
+            email=email_norm,
+            role=ROLE_EDITOR,
+            invited_by=ctx.user_id,
+            bypass_duplicate_checks=True,
         )
     if user.id == ctx.project.owner_id:
         raise HTTPException(
@@ -216,11 +241,23 @@ async def add_member(
         payload={"user_id": str(user.id), "role": payload.role},
     )
     await db.commit()
+    if accept_url:
+        from app.routers.invites import INVITE_TTL_HOURS  # noqa: PLC0415
+        from app.services.email import get_email_sender  # noqa: PLC0415
+
+        await get_email_sender().send_set_password(
+            db,
+            to=email_norm,
+            set_password_url=accept_url,
+            expires_hours=INVITE_TTL_HOURS,
+        )
     return MemberItem(
         user_id=user.id,
         email=pii.decrypt_pii(user.email_encrypted),
         name=pii.decrypt_pii(user.name_encrypted),
-        role=payload.role, is_owner=False,
+        role=payload.role,
+        is_owner=False,
+        accept_url=accept_url,
     )
 
 

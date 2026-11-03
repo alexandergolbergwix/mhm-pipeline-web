@@ -214,3 +214,151 @@ def test_rewrite_p50_local_to_p2093() -> None:
     assert rewritten.value == "דוד סולל"
     assert rewritten.value_type == "string"
     assert stmt.property_id == "P50"
+
+
+def test_p2888_exact_match_bypasses_llm_confirm(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.fetch_entity_labels",
+        lambda qids, *, is_test=False: {"Q141755060": {"he": "כנף רננים"}},
+    )
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.fetch_entity_p31",
+        lambda qids, *, is_test=False: {"Q141755060": ["Q47461344"]},
+    )
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.fetch_entity_duplicate_metadata",
+        lambda qids, *, is_test=False: {
+            "Q141755060": {
+                "descriptions": {"en": "Literary work in manuscript 990001326670205171"},
+                "p2888": ["https://mhm-hmo.wikibase.cloud/wiki/Item:Q22084"],
+                "authors": ["אלטרינו, יצחק בן אברהם בן מתתיה"],
+            },
+        },
+    )
+
+    def _no_llm(**kwargs):
+        raise AssertionError("LLM confirm must not run when P2888 matches exactly")
+
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_duplicate_confirm.confirm_uncertain_duplicate",
+        _no_llm,
+    )
+
+    class _OwnUploader:
+        def _is_our_item(self, qid: str, **kwargs: object) -> bool:
+            return qid == "Q141755060"
+
+    item = type("W", (), {
+        "entity_type": "work",
+        "existing_qid": "Q141755060",
+        "labels": {"he": "כנף רננים"},
+        "descriptions": {"en": "Literary work in manuscript 990001326670205171"},
+        "statements": [
+            WikidataStatement(
+                property_id="P2888",
+                value="https://mhm-hmo.wikibase.cloud/wiki/Item:Q22084",
+                value_type="url",
+            ),
+        ],
+    })()
+    prepared = PreparedItem(
+        item=item,
+        local_id="QDraft_Work_____by_52",
+        label="כנף רננים",
+        entity_type="work",
+        existing_qid="Q141755060",
+        method="label+author",
+        blocked=False,
+        block_status="",
+        block_message="",
+    )
+    out = _apply_existence_and_ownership(
+        prepared,
+        accept=ForeignAccept(),
+        ownership_checker=_OwnUploader(),
+        is_test=False,
+    )
+    assert out.blocked is False
+    assert out.existing_qid == "Q141755060"
+    assert out.ownership == "own"
+    assert "p2888_identifier" in out.method
+
+
+def test_confirm_prompt_includes_author_and_description_context() -> None:
+    captured: list[str] = []
+
+    def _capture(prompt: str) -> str:
+        captured.append(prompt)
+        return '{"verdict": "different_item"}'
+
+    verdict = confirm_uncertain_duplicate(
+        local_id="QDraft_Work_1",
+        entity_type="work",
+        heading="עץ חיים",
+        candidate_qid="Q999",
+        method="label+author",
+        has_trusted_identifier=False,
+        live_he="עץ חיים",
+        live_p31=["Q47461344"],
+        catalog_author="ויטל, חיים בן יוסף",
+        catalog_description="Work in manuscript 990000654100205171",
+        live_description_en="Poem by Ibn Ezra",
+        live_authors=["Q12345"],
+        complete=_capture,
+    )
+    assert verdict == DIFFERENT_ITEM
+    assert len(captured) == 1
+    assert "catalog_author: ויטל, חיים בן יוסף" in captured[0]
+    assert "live_description_en: Poem by Ibn Ezra" in captured[0]
+    assert "live_authors: Q12345" in captured[0]
+
+
+def test_manuscript_p3959_passed_to_ownership_classifier(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False, **kwargs: True,
+    )
+    seen_p3959: list[str | None] = []
+
+    class _P3959Uploader:
+        def _is_our_item(self, qid: str, *, our_p3959: str | None = None) -> bool:
+            seen_p3959.append(our_p3959)
+            return our_p3959 == "990001497790205171"
+
+    item = type("M", (), {
+        "entity_type": "manuscript",
+        "existing_qid": "Q133214943",
+        "labels": {"en": "Alliance Israélite Universelle, F 3200"},
+        "statements": [
+            WikidataStatement(
+                property_id="P3959",
+                value="990001497790205171",
+                value_type="string",
+            ),
+        ],
+    })()
+    prepared = PreparedItem(
+        item=item,
+        local_id="QDraft_MS_990001497790205171",
+        label="Alliance Israélite Universelle, F 3200",
+        entity_type="manuscript",
+        existing_qid="Q133214943",
+        method="p3959/shelfmark",
+        blocked=False,
+        block_status="",
+        block_message="",
+    )
+    out = _apply_existence_and_ownership(
+        prepared,
+        accept=ForeignAccept(),
+        ownership_checker=_P3959Uploader(),
+        is_test=False,
+    )
+    assert seen_p3959 == ["990001497790205171"]
+    assert out.blocked is False
+    assert out.ownership == "own"
+

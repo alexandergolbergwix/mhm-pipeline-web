@@ -258,6 +258,54 @@ def fetch_entity_p31(
     return out
 
 
+def fetch_entity_duplicate_metadata(
+    qids: Iterable[str],
+    *,
+    is_test: bool = False,
+) -> dict[str, dict[str, Any]]:
+    """Return descriptions, P2888 URIs, and P50/P2093 authors for *qids*."""
+    api = _api_base(is_test=is_test)
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in qids:
+        norm = _normalize_qid(raw)
+        if norm and norm not in seen:
+            seen.add(norm)
+            cleaned.append(norm)
+    out: dict[str, dict[str, Any]] = {}
+    for start in range(0, len(cleaned), _WBGETENTITIES_BATCH):
+        chunk = cleaned[start:start + _WBGETENTITIES_BATCH]
+        params = urllib.parse.urlencode({
+            "action": "wbgetentities",
+            "ids": "|".join(chunk),
+            "props": "descriptions|claims",
+            "languages": "en|he",
+            "format": "json",
+        })
+        try:
+            payload = _fetch_json_throttled(f"{api}?{params}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("wbgetentities metadata failed (%d ids): %s", len(chunk), exc)
+            continue
+        entities = payload.get("entities") or {}
+        if not isinstance(entities, dict):
+            continue
+        from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+            live_authors_from_entity,
+            live_descriptions_from_entity,
+            live_p2888_from_entity,
+        )
+        for qid, ent in entities.items():
+            if not isinstance(ent, dict) or ent.get("missing") is not None:
+                continue
+            out[str(qid)] = {
+                "descriptions": live_descriptions_from_entity(ent),
+                "p2888": live_p2888_from_entity(ent),
+                "authors": live_authors_from_entity(ent),
+            }
+    return out
+
+
 def confirm_qid_alive(
     qid: str,
     *,
@@ -279,11 +327,17 @@ def confirm_qid_alive(
     return None
 
 
-def classify_ownership_with_uploader(uploader: object, qid: str) -> Ownership:
+def classify_ownership_with_uploader(
+    uploader: object,
+    qid: str,
+    *,
+    our_p3959: str | None = None,
+) -> Ownership:
     """Classify QID ownership using an authenticated ``WikidataUploader``.
 
     Prefer this path when a curator token is available — it reuses Rule-38's
-    triple-verification channels.
+    triple-verification channels (plus the Rule W-270 P3959 override on live
+    manuscripts when *our_p3959* is provided).
     """
     clean = str(qid or "").strip()
     if not clean:
@@ -292,7 +346,14 @@ def classify_ownership_with_uploader(uploader: object, qid: str) -> Ownership:
     if not callable(is_our):
         return "unknown"
     try:
-        return "own" if bool(is_our(clean)) else "foreign"
+        if our_p3959:
+            try:
+                ok = bool(is_our(clean, our_p3959=our_p3959))
+            except TypeError:
+                ok = bool(is_our(clean))
+        else:
+            ok = bool(is_our(clean))
+        return "own" if ok else "foreign"
     except Exception as exc:  # noqa: BLE001
         logger.warning("ownership classify failed for %s: %s", clean, exc)
         return "unknown"

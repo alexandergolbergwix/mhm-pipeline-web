@@ -131,12 +131,17 @@ function MembersPanel({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<ProjectRole>("editor");
   const [error, setError] = useState<string | null>(null);
+  const [inviteBanner, setInviteBanner] = useState<{email: string; url: string} | null>(null);
 
   async function add(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setInviteBanner(null);
     try {
-      await Projects.members.add(proj.id, { email, role });
+      const added = await Projects.members.add(proj.id, {email, role});
+      if (added.accept_url) {
+        setInviteBanner({email: added.email, url: added.accept_url});
+      }
       setEmail("");
       await onChanged();
     } catch (err) {
@@ -179,6 +184,25 @@ function MembersPanel({
         </form>
       )}
       {error && <p className="text-danger text-sm">{error}</p>}
+      {inviteBanner && (
+        <div className="p-3 rounded-lg bg-white/5 border border-white/10 space-y-2 text-xs">
+          <p className="text-sm">
+            Added <b>{inviteBanner.email}</b> and generated an invitation link:
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 p-2 rounded bg-black/40 font-mono break-all">
+              {inviteBanner.url}
+            </code>
+            <button
+              type="button"
+              className="button-ghost text-xs"
+              onClick={() => void navigator.clipboard.writeText(inviteBanner.url)}
+            >
+              Copy link
+            </button>
+          </div>
+        </div>
+      )}
 
       <ul className="divide-y divide-white/5">
         {proj.members.map((m) => (

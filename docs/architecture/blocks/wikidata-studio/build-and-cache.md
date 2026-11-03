@@ -25,8 +25,8 @@ item instead of the static slug), then computes
   the 409 detail is never shown as an error while the build runs (HMO-parity,
   frontend R15/W-106).
 
-The build schema is part of the fingerprint. Schema `source-aware-works-v11`
-(Rule W-264's folio-range and person-genealogy guards) also treats a cached
+The build schema is part of the fingerprint. Schema `source-aware-works-v12`
+(Rule W-294's MARC 942 shelfmark labels, manuscript codex P31, homonymous work separation, Ktiv P361, and 500/740/581/957/title-page projection) also treats a cached
 person carrying an ERROR-level `NO_IDENTIFIER` issue as
 stale (`wikidata_studio.py:50`). The current builder either emits an external
 identifier or omits the person, so this shape can only come from an older

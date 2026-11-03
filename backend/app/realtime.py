@@ -103,7 +103,15 @@ broker = Broker()
 
 
 async def _asyncpg_dsn() -> str:
-    """Convert the SQLAlchemy URL to a raw asyncpg DSN."""
+    """Convert the SQLAlchemy URL to a raw asyncpg DSN.
+
+    Binds to `database_url`, **never** to `pg_bouncer_url` (Rule W-285).
+    `LISTEN` is session-level state and dies under PgBouncer's transaction
+    pooling — the listener would connect, subscribe, and be handed a
+    different server backend on the next statement, silently losing every
+    NOTIFY. This is the one place in the app that must hold a direct session,
+    which is exactly why the rest of the app may use the pooler.
+    """
     url = make_url(get_settings().database_url)
     return (
         f"postgresql://{url.username or ''}:{url.password or ''}"

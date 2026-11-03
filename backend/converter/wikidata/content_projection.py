@@ -529,39 +529,43 @@ class ContentProjectionMixin:
             )
 
         # A MARC 100 author plus a real 245 title is sufficient evidence for
-        # a work candidate when the catalogue has no 505 contents list. Keep
-        # the author on the work (P50/P2093), and connect the manuscript via
-        # P1574 instead of placing P50 directly on the manuscript.
-        if not seen_works and not list(record.get("contents") or []):
-            title = _clean_work_title(str(record.get("title") or ""))
-            author_name = _record_author(record) or ""
-            if title and author_name and not _is_noise_work_title(title):
-                decision = assess_work_candidate(
-                    title,
-                    source_field="100/245",
-                    approved=True,
-                    candidate_kind="marc_title_author",
-                    source_text=f"{title} — {author_name}",
+        # a work candidate even when the catalogue also extracted secondary
+        # 500 work mentions (e.g. a treatise followed by supplementary notes).
+        title = _clean_work_title(str(record.get("title") or ""))
+        author_name = _record_author(record) or ""
+        if (
+            title
+            and author_name
+            and not _is_noise_work_title(title)
+            and title.casefold() not in seen_works
+        ):
+            decision = assess_work_candidate(
+                title,
+                source_field="100/245",
+                approved=True,
+                candidate_kind="marc_title_author",
+                source_text=f"{title} — {author_name}",
+            )
+            evidence = decision.evidence()
+            remember_evidence(item, evidence)
+            if decision.accepted and decision.title and decision.title.casefold() not in seen_works:
+                seen_works.add(decision.title.casefold())
+                work_item = self._get_or_create_work(
+                    decision.title, author_name, record
                 )
-                evidence = decision.evidence()
-                remember_evidence(item, evidence)
-                if decision.accepted and decision.title:
-                    work_item = self._get_or_create_work(
-                        decision.title, author_name, record
+                remember_evidence(work_item, evidence)
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_EXEMPLAR_OF,
+                        value=f"__LOCAL:{work_item.local_id}",
+                        value_type="item",
+                        qualifiers=_exemplar_qualifiers(
+                            catalog_title=decision.title,
+                            presumably=True,
+                        ),
+                        references=ref,
                     )
-                    remember_evidence(work_item, evidence)
-                    item.statements.append(
-                        WikidataStatement(
-                            property_id=P_EXEMPLAR_OF,
-                            value=f"__LOCAL:{work_item.local_id}",
-                            value_type="item",
-                            qualifiers=_exemplar_qualifiers(
-                                catalog_title=decision.title,
-                                presumably=True,
-                            ),
-                            references=ref,
-                        )
-                    )
+                )
 
     def _add_marc_genres(
         self,

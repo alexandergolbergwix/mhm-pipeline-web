@@ -51,6 +51,7 @@ export interface StudioItem {
   hmo_wikibase_id?: string | null;
   projection_source?: "hmo_wikibase" | "legacy" | string | null;
   source_fingerprint?: string | null;
+  publishable?: boolean;
 }
 
 export interface PropertyInfo {

@@ -17,6 +17,7 @@ export interface Member {
   name: string;
   role: ProjectRole;
   is_owner: boolean;
+  accept_url?: string | null;
 }
 
 export interface ProjectDetail {

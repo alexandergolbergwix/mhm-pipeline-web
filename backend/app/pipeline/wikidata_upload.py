@@ -463,6 +463,35 @@ def _apply_uncertain_duplicate_confirm(
     labels = fetch_entity_labels([qid], is_test=is_test).get(qid) or {}
     p31 = fetch_entity_p31([qid], is_test=is_test).get(qid) or []
     has_id = _item_has_identity_pid(prepared.item)
+    item_p2888 = str(_find_statement_value(prepared.item, "P2888") or "").strip()
+    catalog_author = str(
+        _find_statement_value(prepared.item, "P2093")
+        or _find_statement_value(prepared.item, "P50")
+        or ""
+    ).strip()
+    raw_descs = getattr(prepared.item, "descriptions", None) or {}
+    catalog_desc = (
+        str(raw_descs.get("en") or raw_descs.get("he") or "").strip()
+        if isinstance(raw_descs, dict) else ""
+    )
+    live_desc_en = ""
+    live_desc_he = ""
+    live_authors: list[str] = []
+    if item_p2888 or catalog_author or catalog_desc:
+        from app.pipeline.wikidata_existence import (  # noqa: PLC0415
+            fetch_entity_duplicate_metadata,
+        )
+
+        meta = fetch_entity_duplicate_metadata([qid], is_test=is_test).get(qid) or {}
+        live_p2888 = set(meta.get("p2888") or [])
+        if item_p2888 and item_p2888 in live_p2888:
+            prepared.method = f"{prepared.method}+p2888_identifier"
+            return prepared
+        live_descs = meta.get("descriptions") or {}
+        if isinstance(live_descs, dict):
+            live_desc_en = str(live_descs.get("en") or "")
+            live_desc_he = str(live_descs.get("he") or "")
+        live_authors = list(meta.get("authors") or [])
     verdict = confirm_uncertain_duplicate(
         local_id=prepared.local_id,
         entity_type=prepared.entity_type,
@@ -473,6 +502,11 @@ def _apply_uncertain_duplicate_confirm(
         live_en=str(labels.get("en") or ""),
         live_he=str(labels.get("he") or ""),
         live_p31=p31,
+        catalog_description=catalog_desc,
+        catalog_author=catalog_author,
+        live_description_en=live_desc_en,
+        live_description_he=live_desc_he,
+        live_authors=live_authors,
     )
     if verdict == SAME_ITEM:
         if not has_id and "identifier" not in str(prepared.method or "").lower():
@@ -710,7 +744,14 @@ def _apply_existence_and_ownership(
         )
         return prepared
 
-    ownership = classify_ownership_with_uploader(ownership_checker, qid)
+    our_p3959 = (
+        str(_find_statement_value(prepared.item, "P3959") or "").strip() or None
+        if str(prepared.entity_type or "").lower() == "manuscript"
+        else None
+    )
+    ownership = classify_ownership_with_uploader(
+        ownership_checker, qid, our_p3959=our_p3959,
+    )
     prepared.ownership = ownership
     if ownership == "own":
         return prepared
@@ -795,16 +836,31 @@ def _reconcile_for_upload(
         return (qid, "p3959/shelfmark" if qid else "none")
 
     if entity_type == "work":
+        p2888 = _find_statement_value(item, "P2888")
+        reconcile_p2888 = getattr(reconciler, "reconcile_by_exact_match_uri", None)
+        if p2888 and callable(reconcile_p2888):
+            qid_p2888 = reconcile_p2888(str(p2888))
+            if qid_p2888:
+                return (qid_p2888, "p2888_identifier")
         labels = getattr(item, "labels", {}) or {}
         title = labels.get("he") or labels.get("en") or ""
         p50 = _find_statement_value(item, "P50")
+        p2093 = _find_statement_value(item, "P2093")
         if title:
             has_hebrew = any("\u0590" <= c <= "\u05ff" for c in str(title))
-            qid = reconciler.reconcile_work_by_label_and_author(
-                str(title),
-                lang="he" if has_hebrew else "en",
-                author_qid=str(p50) if p50 else None,
-            )
+            try:
+                qid = reconciler.reconcile_work_by_label_and_author(
+                    str(title),
+                    lang="he" if has_hebrew else "en",
+                    author_qid=str(p50) if p50 else None,
+                    author_name=str(p2093) if p2093 else None,
+                )
+            except TypeError:
+                qid = reconciler.reconcile_work_by_label_and_author(
+                    str(title),
+                    lang="he" if has_hebrew else "en",
+                    author_qid=str(p50) if p50 else None,
+                )
             if qid:
                 return (qid, "label+author")
             from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
@@ -1287,7 +1343,11 @@ async def upload_items(
     if db is not None and audit_ctx is not None and not resolved.dry_run:
         for outcome in outcomes:
             await _record_outcome_audit(db, audit_ctx, outcome)
-            if outcome.qid and outcome.status in ("created", "adopted"):
+            if (
+                outcome.qid
+                and str(outcome.qid).strip().startswith("Q")
+                and outcome.status in ("created", "adopted", "updated", "exists", "skipped")
+            ):
                 item = next(
                     (it for it in items if _local_id(it, 0) == outcome.local_id),
                     None,

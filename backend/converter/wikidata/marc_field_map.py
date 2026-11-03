@@ -560,6 +560,39 @@ MARC_FIELD_TARGETS: tuple[MarcFieldTarget, ...] = (
         layer="note",
         note="Writing style (מרובעת/רהוטה) → script or style.",
     ),
+    MarcFieldTarget(
+        tag="942$a",
+        pids=("P195",),
+        kind=CLAIM,
+        fate=MAP,
+        layer="place",
+        note="Current holding library in MARC 942 → collection + English label.",
+    ),
+    MarcFieldTarget(
+        tag="942$z",
+        pids=("P217",),
+        kind=CLAIM,
+        fate=MAP,
+        layer="identity",
+        note="Current shelfmark in MARC 942 → inventory number + English label.",
+        target_coverage=0.95,
+    ),
+    MarcFieldTarget(
+        tag="581$a",
+        pids=("P528",),
+        kind=CLAIM,
+        fate=MAP,
+        layer="note",
+        note="Publications about described materials → catalog code / bibliography.",
+    ),
+    MarcFieldTarget(
+        tag="590$a",
+        pids=(),
+        kind=NONE,
+        fate=EVIDENCE,
+        layer="note",
+        note="Local record-status note (e.g. רשומה זמנית) preserved as evidence.",
+    ),
 )
 
 

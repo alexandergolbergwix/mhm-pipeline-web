@@ -50,6 +50,17 @@ def ledger_key_for_item(
     if etype == "person":
         return f"{namespace}:person:{local_id or 'unknown'}"
     if etype == "work":
+        p2888 = _first_statement_value(item, "P2888")
+        if p2888:
+            return f"{namespace}:work:p2888:{p2888}"
+        author = (
+            _first_statement_value(item, "P50")
+            or _first_statement_value(item, "P2093")
+            or ""
+        )
+        if author and local_id and ":author:" not in local_id and "_by_" not in local_id:
+            norm_auth = " ".join(str(author).strip().rstrip(" ,.;:/-").split())
+            return f"{namespace}:work:{local_id}:author:{norm_auth}"
         return f"{namespace}:work:{local_id or 'unknown'}"
     return f"{namespace}:other:{local_id or 'unknown'}"
 

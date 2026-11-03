@@ -22,13 +22,19 @@ WRITTEN_WORK_P31 = frozenset({
     "Q5185279",   # poem
     "Q571",       # book
     "Q8261",      # novel
+    "Q7831615",   # Talmudic tractate
+    "Q106960366", # Order of the Mishnah
+    "Q17537576",  # creative work
+    "Q12409117",  # Hebrew dictionary
 })
 RITUAL_OR_CONCEPT_P31 = frozenset({
     "Q4502142",  # religious rite
     "Q1344",     # prayer
     "Q2916094",  # liturgy
     "Q500647",   # ritual
-    "Q3077454",  # Jewish prayer
+    "Q3077454",  # Jewish prayer (alt)
+    "Q1777205",  # Jewish prayer
+    "Q2445643",  # prayer for the dead
     "Q16502",    # religious practice
 })
 WORK_LINK_P31 = WRITTEN_WORK_P31 | RITUAL_OR_CONCEPT_P31
@@ -186,6 +192,54 @@ def live_p31_from_entity(entity: dict[str, Any] | None) -> list[str]:
         if qid.startswith("Q"):
             qids.append(qid)
     return qids
+
+
+def live_descriptions_from_entity(entity: dict[str, Any] | None) -> dict[str, str]:
+    out: dict[str, str] = {}
+    descs = (entity or {}).get("descriptions") or {}
+    if not isinstance(descs, dict):
+        return out
+    for lang, row in descs.items():
+        if isinstance(row, dict):
+            text = str(row.get("value") or "").strip()
+        else:
+            text = str(row or "").strip()
+        if text:
+            out[str(lang)] = text
+    return out
+
+
+def live_p2888_from_entity(entity: dict[str, Any] | None) -> list[str]:
+    claims = (entity or {}).get("claims") or {}
+    rows = claims.get("P2888") or []
+    uris: list[str] = []
+    if not isinstance(rows, list):
+        return uris
+    for claim in rows:
+        snak = (claim or {}).get("mainsnak") or {}
+        val = (snak.get("datavalue") or {}).get("value")
+        text = str(val or "").strip() if isinstance(val, str) else ""
+        if text:
+            uris.append(text)
+    return uris
+
+
+def live_authors_from_entity(entity: dict[str, Any] | None) -> list[str]:
+    claims = (entity or {}).get("claims") or {}
+    authors: list[str] = []
+    for claim in claims.get("P50") or []:
+        snak = (claim or {}).get("mainsnak") or {}
+        dv = (snak.get("datavalue") or {}).get("value") or {}
+        qid = str(dv.get("id") or "").strip() if isinstance(dv, dict) else ""
+        if qid.startswith("Q"):
+            authors.append(qid)
+    for claim in claims.get("P2093") or []:
+        snak = (claim or {}).get("mainsnak") or {}
+        val = (snak.get("datavalue") or {}).get("value")
+        text = str(val or "").strip() if isinstance(val, str) else ""
+        if text:
+            authors.append(text)
+    return authors
 
 
 def _person_qid_conflicts(item: Any, live: dict[str, Any]) -> bool:

@@ -42,6 +42,12 @@ def _find_work_author_match(
     target = _match_text(author_name)
     if not target:
         return None
+    target_variants = {target}
+    for author in source_record.get("authors") or []:
+        if not isinstance(author, dict):
+            continue
+        if _match_text(author.get("name")) == target and author.get("raw_name_a"):
+            target_variants.add(_match_text(author.get("raw_name_a")))
     for raw_match in source_record.get("marc_authority_matches") or []:
         if not isinstance(raw_match, dict):
             continue
@@ -56,7 +62,7 @@ def _find_work_author_match(
             raw_match.get("matched_name"),
             raw_match.get("preferred_name_heb"),
         )
-        if any(_match_text(candidate) == target for candidate in names):
+        if any(_match_text(candidate) in target_variants for candidate in names):
             return raw_match
     return None
 

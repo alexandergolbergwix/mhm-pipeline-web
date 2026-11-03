@@ -355,6 +355,7 @@ class WikidataReconciler:
         title: str,
         lang: str = "he",
         author_qid: str | None = None,
+        author_name: str | None = None,
     ) -> str | None:
         """Find an existing Wikidata work item matching the given label.
 
@@ -370,6 +371,10 @@ class WikidataReconciler:
                 must either match this QID or be absent. If the candidate
                 has a DIFFERENT P50 author, REJECT the match — the same
                 title by a different author is a different work.
+            author_name: Optional P2093 author name string. If provided, a
+                candidate with a conflicting P2093 author name string is
+                rejected so generic titles (e.g. "דרושים") from different
+                authors do not collapse onto one item.
 
         Returns:
             QID of the matching Wikidata work, or None if no safe match.
@@ -377,7 +382,14 @@ class WikidataReconciler:
         clean_title = (title or "").strip()
         if not clean_title:
             return None
-        cache_key = f"work:{lang}:{clean_title}:{author_qid or ''}"
+        norm_author_name = (
+            " ".join(str(author_name or "").strip().rstrip(" ,.;:/-").split()).casefold()
+        )
+        cache_key = (
+            f"work:{lang}:{clean_title}:{author_qid or ''}:{norm_author_name}"
+            if norm_author_name
+            else f"work:{lang}:{clean_title}:{author_qid or ''}"
+        )
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -385,34 +397,85 @@ class WikidataReconciler:
         safe_title = clean_title.replace("\\", "\\\\").replace('"', '\\"')
         # Q47461344 = written work; cover subclasses via wdt:P31/wdt:P279*.
         sparql = f"""
-        SELECT ?item ?author WHERE {{
+        SELECT ?item ?author ?authorStr WHERE {{
           ?item wdt:P31/wdt:P279* wd:Q47461344 .
           ?item rdfs:label "{safe_title}"@{lang} .
           OPTIONAL {{ ?item wdt:P50 ?author . }}
-        }} LIMIT 5
+          OPTIONAL {{ ?item wdt:P2093 ?authorStr . }}
+        }} LIMIT 10
         """
         results = self._query(sparql)
-        qid: str | None = None
+        by_cand: dict[str, tuple[set[str], set[str]]] = {}
+        order: list[str] = []
         for binding in results:
             cand_uri = binding.get("item", {}).get("value", "")
             cand_qid = extract_wikidata_qid(cand_uri)
             if not cand_qid:
                 continue
+            if cand_qid not in by_cand:
+                by_cand[cand_qid] = (set(), set())
+                order.append(cand_qid)
             cand_author = binding.get("author", {}).get("value", "")
             cand_author_qid = extract_wikidata_qid(cand_author) if cand_author else None
-            if author_qid and cand_author_qid and cand_author_qid != author_qid:
+            if cand_author_qid:
+                by_cand[cand_qid][0].add(cand_author_qid)
+            cand_str = str(binding.get("authorStr", {}).get("value", "") or "").strip()
+            if cand_str:
+                by_cand[cand_qid][1].add(
+                    " ".join(cand_str.rstrip(" ,.;:/-").split()).casefold()
+                )
+
+        qid: str | None = None
+        for cand_qid in order:
+            cand_qids, cand_strs = by_cand[cand_qid]
+            if author_qid and cand_qids and author_qid not in cand_qids:
                 logger.warning(
                     "RECONCILE WORK REJECT: %s matches title %r but its P50=%s "
                     "differs from proposed author %s — treating as different work",
                     cand_qid,
                     clean_title,
-                    cand_author_qid,
+                    sorted(cand_qids),
                     author_qid,
+                )
+                continue
+            if norm_author_name and cand_strs and norm_author_name not in cand_strs:
+                logger.warning(
+                    "RECONCILE WORK REJECT: %s matches title %r but its P2093=%s "
+                    "differs from proposed author %r — treating as different work",
+                    cand_qid,
+                    clean_title,
+                    sorted(cand_strs),
+                    author_name,
                 )
                 continue
             qid = cand_qid
             break
 
+        self._cache[cache_key] = qid
+        return qid
+
+    def reconcile_by_exact_match_uri(self, uri: str) -> str | None:
+        """Find an existing Wikidata item carrying ``wdt:P2888 <uri>``."""
+        clean = (uri or "").strip()
+        if (
+            not clean.startswith(("http://", "https://"))
+            or any(ch in clean for ch in ("<", ">", '"', " ", "\t", "\n"))
+        ):
+            return None
+        cache_key = f"p2888:{clean}"
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        sparql = f"""
+        SELECT ?item WHERE {{
+          ?item wdt:P2888 <{clean}> .
+        }} LIMIT 2
+        """
+        results = self._query(sparql)
+        qid: str | None = None
+        if len(results) == 1:
+            cand_uri = str(results[0].get("item", {}).get("value", ""))
+            qid = extract_wikidata_qid(cand_uri) or None
         self._cache[cache_key] = qid
         return qid
 
@@ -975,8 +1038,11 @@ def prewarm_reconciler_for_items(
     items: Iterable[Any],
 ) -> None:
     """Collect identifier probes from built items and batch-fill the cache."""
+    if not hasattr(reconciler, "_cache") or not hasattr(reconciler, "_query"):
+        return
     probes: list[tuple[str, str, str]] = []
     shelfmarks: list[str] = []
+    p2888_uris: list[str] = []
     work_specs: list[tuple[str, str, str | None]] = []
     for item in items:
         entity_type = str(getattr(item, "entity_type", "") or "")
@@ -1003,6 +1069,9 @@ def prewarm_reconciler_for_items(
             if shelf:
                 shelfmarks.append(shelf)
         elif entity_type == "work":
+            p2888 = _value("P2888")
+            if p2888:
+                p2888_uris.append(p2888)
             author_qid = _value("P50") or None
             labels = getattr(item, "labels", {}) or {}
             for lang in ("he", "en"):
@@ -1011,7 +1080,48 @@ def prewarm_reconciler_for_items(
                     work_specs.append((title, lang, author_qid))
     prewarm_identifier_cache(reconciler, probes)
     prewarm_manuscript_shelfmarks(reconciler, shelfmarks)
+    prewarm_exact_match_uris(reconciler, p2888_uris)
     prewarm_work_titles(reconciler, work_specs)
+
+
+def prewarm_exact_match_uris(
+    reconciler: WikidataReconciler,
+    uris: Iterable[str],
+) -> None:
+    """Batch-fill ``p2888:{uri}`` lookups for HMO Wikibase exact-match bridges."""
+    pending: list[str] = []
+    seen: set[str] = set()
+    for raw in uris:
+        clean = str(raw or "").strip()
+        key = f"p2888:{clean}"
+        if (
+            not clean.startswith(("http://", "https://"))
+            or any(ch in clean for ch in ("<", ">", '"', " ", "\t", "\n"))
+            or key in reconciler._cache
+            or key in seen
+        ):
+            continue
+        seen.add(key)
+        pending.append(clean)
+    for start in range(0, len(pending), _PREWARM_BATCH):
+        chunk = pending[start:start + _PREWARM_BATCH]
+        values_expr = " ".join(f"<{u}>" for u in chunk)
+        sparql = (
+            "SELECT ?uri ?item WHERE { "
+            f"?item wdt:P2888 ?uri . VALUES ?uri {{ {values_expr} }} }}"
+        )
+        found: dict[str, list[str]] = {}
+        try:
+            for row in reconciler._query(sparql):
+                uval = str(row.get("uri", {}).get("value", ""))
+                qid = extract_wikidata_qid(str(row.get("item", {}).get("value", "")))
+                if uval and qid:
+                    found.setdefault(uval, []).append(qid)
+        except ReconciliationUnavailableError:
+            continue
+        for u in chunk:
+            hits = list(dict.fromkeys(found.get(u, [])))
+            reconciler._cache[f"p2888:{u}"] = hits[0] if len(hits) == 1 else None
 
 
 def prewarm_work_titles(

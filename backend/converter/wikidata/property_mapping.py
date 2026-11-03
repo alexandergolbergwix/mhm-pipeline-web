@@ -283,8 +283,10 @@ def resolve_hmo_bridge_url(
 
 # Type classifications
 Q_MANUSCRIPT = "Q87167"
+Q_MANUSCRIPT_CODEX = "Q123172729"  # manuscript codex (bound manuscript book)
+Q_SCROLL = "Q720106"  # scroll (roll of parchment/paper)
 Q_PRINTED_BOOK = "Q571"  # book; used for explicit printed facsimile editions
-Q_CODEX = "Q213924"  # WPM-discouraged as primary P31 — prefer Q87167 / Q_COMPOSITE_MANUSCRIPT
+Q_CODEX = "Q213924"  # WPM-discouraged as primary P31 — prefer Q87167 / Q_MANUSCRIPT_CODEX
 Q_ILLUMINATED_MANUSCRIPT = "Q48498"
 Q_MANUSCRIPT_FRAGMENT = "Q30103158"
 Q_COMPOSITE_MANUSCRIPT = "Q33308141"  # multi-text / multi-volume / anthology strata
@@ -298,6 +300,17 @@ Q_HUMAN = "Q5"
 Q_WRITTEN_WORK = "Q47461344"
 Q_ORGANIZATION = "Q43229"
 Q_ISRAEL_MUSEUM = "Q46815"  # verified Israel Museum, Jerusalem
+Q_DIGITAL_COLLECTION = "Q60474998"  # digitized collection (P3831 role on P361 -> Ktiv)
+
+# Writing systems
+Q_LATIN_SCRIPT = "Q8229"
+
+# Inscription / role qualifiers
+Q_TITLE_PAGE = "Q1339862"  # title page (P3831 role on P1684)
+Q_FORMER_OWNER_ROLE = "Q136357543"  # former owner (P3831 role on P3342)
+Q_SENDER_ROLE = "Q10359183"  # sender (P3831 role on P3342)
+Q_ADDRESSEE_ROLE = "Q28008314"  # addressee (P3831 role on P3342)
+Q_PLACE_OF_ATTESTATION = "Q127695525"  # place of attestation (P3831 role on P7153)
 
 # WPM discourages these as primary manuscript P31 values (prefer Q87167 + genre).
 DISCOURAGED_MANUSCRIPT_P31: frozenset[str] = frozenset({
@@ -365,6 +378,14 @@ SCRIPT_TYPE_TO_QID: dict[str, str] = {
     "ByzantineScript": "Q133370466",
     "YemeniteScript": "Q121094936",
     "OrientalScript": "Q133327488",
+    "PersianScript": "Q133327166",
+    "MaghrebiScript": "Q1519562",
+}
+
+SCRIPT_MODE_TO_QID: dict[str, str] = {
+    "SquareScript": "Q364727",
+    "SemicursiveScript": "Q133328829",
+    "CursiveScript": "Q382865",
 }
 
 # Genre mappings — from HMO genre → Wikidata QID
@@ -612,6 +633,14 @@ SUBJECT_TO_QID: dict[str, str] = {
     "Tombs": "Q381885",  # tomb
     "Abbreviations, Hebrew": "Q102786",  # abbreviation
     "Sheluhe de-rabanan": "Q7487201",  # Shaliah (Jewish legal emissary)
+    "Midrash": "Q202344",  # Midrash
+    "Jewish ethics": "Q174370",  # Jewish ethics
+    "Religious disputations": "Q1123131",  # disputation
+    "Messiah": "Q5421977",  # Messiah in Judaism
+    "Karaite law": "Q208398",  # Karaite Judaism
+    "Sabbathaians": "Q269348",  # Sabbateans
+    "Samaritans": "Q182651",  # Samaritan
+    "Mathematics": "Q395",  # mathematics
     # Hebrew topical headings (MARC 650)
     "מקרא": "Q1845",  # Bible
     "תורה": "Q34990",  # Torah
@@ -623,6 +652,10 @@ SUBJECT_TO_QID: dict[str, str] = {
     "שירה": "Q482",  # poetry
     "ליטורגיה": "Q172331",  # liturgy
     "תפילה": "Q40953",  # prayer
+    "מדרש": "Q202344",  # Midrash
+    "מוסר": "Q174370",  # Jewish ethics
+    "פולמוס": "Q27406",  # polemic
+    "משיחיות": "Q5421977",  # Messiah in Judaism
 }
 
 # ── Language code → QID mapping ──────────────────────────────────────
@@ -762,9 +795,15 @@ ROLE_TO_PID: dict[str, str] = {
     "מעתיק": P_TRANSCRIBED_BY,
     "בעלים": P_OWNED_BY,
     "בעל": P_OWNED_BY,
-    "(ממנו)": P_OWNED_BY,
+    "(ממנו)": P_SIGNIFICANT_PERSON,
+    "ממנו": P_SIGNIFICANT_PERSON,
+    "copied from": P_SIGNIFICANT_PERSON,
+    "(אליו)": P_SIGNIFICANT_PERSON,
+    "אליו": P_SIGNIFICANT_PERSON,
+    "addressee": P_SIGNIFICANT_PERSON,
     "owner": P_OWNED_BY,
     "transcriber": P_TRANSCRIBED_BY,
+    "מעיר": P_ANNOTATOR,
     # Rule W-146. These roles were absent from this map, so every approved match
     # carrying one was silently dropped: on the reference run, 49 former-owner,
     # 27 mentioned and 13 signatory rows produced no statement at all, which is

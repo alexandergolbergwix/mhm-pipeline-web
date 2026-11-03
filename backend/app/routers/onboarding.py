@@ -62,29 +62,38 @@ async def accept_invite(
     inv = await _lookup_invite(db, payload.token)
     email = pii.decrypt_pii(inv.email_encrypted)
 
-    # Defend against a race: someone else may have signed up with this email.
     existing = (
         await db.execute(select(User).where(User.email_index == inv.email_index))
     ).scalar_one_or_none()
     if existing is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
+        # User may have been pre-provisioned when added to a project before
+        # accepting their invitation. If they have no active sessions or API
+        # keys yet, bind the chosen password to the pre-provisioned account.
+        has_keys = (
+            await db.execute(select(ApiKey).where(ApiKey.user_id == existing.id).limit(1))
+        ).scalar_one_or_none()
+        if has_keys is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this email already exists",
+            )
+        existing.password_hash = pw.hash_password(payload.password)
+        existing.kek_salt = pii.random_bytes(16)
+        user = existing
+    else:
+        user = User(
+            email_index=inv.email_index,
+            email_encrypted=inv.email_encrypted,
+            # The invitee supplies their display name at accept time via the
+            # frontend's accept form, which echoes it back into ``payload``
+            # only if you extend AcceptInviteRequest. For now we seed name
+            # to the local-part of the email; users can rename in Settings.
+            name_encrypted=pii.encrypt_pii(email.split("@", 1)[0]),
+            password_hash=pw.hash_password(payload.password),
+            kek_salt=pii.random_bytes(16),
+            role=inv.role,
         )
-
-    user = User(
-        email_index=inv.email_index,
-        email_encrypted=inv.email_encrypted,
-        # The invitee supplies their display name at accept time via the
-        # frontend's accept form, which echoes it back into ``payload``
-        # only if you extend AcceptInviteRequest. For now we seed name
-        # to the local-part of the email; users can rename in Settings.
-        name_encrypted=pii.encrypt_pii(email.split("@", 1)[0]),
-        password_hash=pw.hash_password(payload.password),
-        kek_salt=pii.random_bytes(16),
-        role=inv.role,
-    )
-    db.add(user)
+        db.add(user)
     await db.flush()
     inv.accepted_at = datetime.now(timezone.utc)
 

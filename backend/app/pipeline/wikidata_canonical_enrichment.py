@@ -38,6 +38,17 @@ _CANONICAL_PREFERRED_PIDS = frozenset({
 # only an identical VALUE is a duplicate.
 _MULTI_VALUE_CANONICAL_PIDS = frozenset({"P973"})
 
+# Safe manuscript P31 subclasses emitted by the legacy MARC projection that may
+# supplement the canonical base Q87167 without reintroducing discouraged types.
+_SAFE_LEGACY_MANUSCRIPT_P31_QIDS = frozenset({
+    "Q123172729",  # manuscript codex
+    "Q720106",     # scroll
+    "Q30103158",   # manuscript fragment
+    "Q33308141",   # composite manuscript
+    "Q48498",      # illuminated manuscript
+    "Q274076",     # palimpsest
+})
+
 _QID_RE = re.compile(r"^Q\d+$", re.IGNORECASE)
 _LOCAL_REFERENCE_PREFIX = "__LOCAL:"
 
@@ -588,6 +599,11 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
             pid in _CANONICAL_PREFERRED_PIDS
             and pid not in _MULTI_VALUE_CANONICAL_PIDS
             and _has_pid(out.statements, pid)
+            and not (
+                pid == "P31"
+                and (out.entity_type or "").lower() == "manuscript"
+                and str(stmt.value or "") in _SAFE_LEGACY_MANUSCRIPT_P31_QIDS
+            )
         ):
             continue
         if pid == "P973" and not _legacy_catalogue_p973_ok(out, stmt):

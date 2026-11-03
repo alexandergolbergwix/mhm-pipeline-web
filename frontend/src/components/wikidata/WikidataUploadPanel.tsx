@@ -100,6 +100,7 @@ export function WikidataUploadPanel({
   };
   const dryRun = uploadTarget === "dry_run";
   const [updateExisting, setUpdateExisting] = useState(false);
+  const [aiVerifiedOnly, setAiVerifiedOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<UploadResponse | null>(null);
@@ -229,6 +230,7 @@ export function WikidataUploadPanel({
         source,
         item_approved_only: uploadApprovedOnly,
         update_existing: updateExisting,
+        ai_verified_only: aiVerifiedOnly,
       }).catch(async (e) => {
         if (e instanceof ApiError && e.status === 409) {
           const {jobs} = await RunJobs.listForRun(runId, true);
@@ -247,7 +249,7 @@ export function WikidataUploadPanel({
       setBusy(false);
     }
   }, [
-    runId, uploadTarget, approvedOnly, uploadApprovedOnly, updateExisting, source,
+    runId, uploadTarget, approvedOnly, uploadApprovedOnly, updateExisting, aiVerifiedOnly, source,
     ensureJobPolling, setTrackedJobId, upsertJob, onUploadJobActive,
   ]);
 
@@ -373,6 +375,16 @@ export function WikidataUploadPanel({
             data-testid="wikidata-upload-update-existing"
           />
           Update records already on Wikidata
+        </label>
+        <label className="flex items-center gap-1 text-sm muted" title="Only upload items whose AI verdict is full/pass">
+          <input
+            type="checkbox"
+            checked={aiVerifiedOnly}
+            onChange={(e) => setAiVerifiedOnly(e.target.checked)}
+            disabled={busy || jobRunning || preVerifyRunning}
+            data-testid="wikidata-upload-ai-verified-only"
+          />
+          Only full AI-verified items
         </label>
         <button
           onClick={handleUploadClick}

@@ -39,8 +39,12 @@ comparable, not reversible.
 short-circuits to full access (`project_perms.py:49`); otherwise a `Membership`
 row (owner/editor/viewer) must exist and match the route's
 `require_viewer`/`require_editor`/`require_owner` dependency. Non-members get
-403; missing project 404. Admin router protects against demoting/deleting the
-last admin and self-role-change (`routers/admin.py:129-203`).
+403; missing project 404. Adding a project member (`POST /projects/{id}/members`)
+whose email is not yet in `users` auto-provisions their `editor` account +
+72 h `Invitation`, returns `accept_url` inline, and `/onboarding/accept-invite`
+binds the chosen password to the pre-provisioned account. Admin router protects
+against demoting/deleting the last admin and self-role-change
+(`routers/admin.py:129-203`).
 
 **Public-endpoint defense stack (Rule W-20, verified in code).**
 `POST /access-request` (`3/hour`) runs, in order: honeypot `website` field →

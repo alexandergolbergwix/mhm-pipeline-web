@@ -110,8 +110,8 @@ async def fetch_merged_wikidata_items(
     # (Rule W-169).
     # Ledger QIDs are presentation data. Only probe adoptions belong in the
     # stable projection used to validate a stored verdict (Rule W-205).
-    adopted_local_ids = await _adopt_cached_duplicate_qids(items) or set()
-    _mirror_adopted_qids(items, stable_rows, adopted_local_ids)
+    adopted_local_ids = await _adopt_cached_duplicate_qids(stable_rows) or set()
+    _mirror_adopted_qids(stable_rows, items, adopted_local_ids)
     if verdict_rows:
         await _attach_live_labels_for_verdict_keys(items, stable_rows)
     stable_items = {
@@ -171,6 +171,8 @@ def _mirror_adopted_qids(
         qid = str(src.get("existing_qid") or "").strip()
         if qid and not str(row.get("existing_qid") or "").strip():
             row["existing_qid"] = qid
+            if "on_wikidata" in row:
+                row["on_wikidata"] = True
 
 
 async def _attach_live_labels_for_verdict_keys(
@@ -277,7 +279,16 @@ def slim_ai_verdict_for_list(
 
 def trim_studio_list_item(item: dict[str, Any]) -> dict[str, Any]:
     """Drop bulky Studio fields for paginated list GETs (Rule W-131)."""
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        person_has_publishable_identity,
+    )
+
     row = {k: v for k, v in item.items() if k not in _LIST_VIEW_DROP_KEYS}
+    if (
+        str(item.get("entity_type") or "").strip().lower() == "person"
+        and not person_has_publishable_identity(item)
+    ):
+        row["publishable"] = False
     statements = item.get("statements")
     if isinstance(statements, list):
         row["statement_count"] = len(statements)

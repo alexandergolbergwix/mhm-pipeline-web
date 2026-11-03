@@ -758,3 +758,36 @@ class TestAdminAuth:
             await db_session.execute(select(Invitation))
         ).scalars().all()
         assert invites == []
+
+
+@pytest.mark.asyncio
+async def test_add_member_auto_provisions_and_accept_invite_binds_password(
+    auth_user, db_session, fake_email,
+) -> None:
+    _user, client = auth_user
+
+    proj_resp = await client.post(
+        "/api/projects",
+        json={"name": "Collaboration Test", "description": ""},
+    )
+    assert proj_resp.status_code == 201
+    project_id = proj_resp.json()["id"]
+
+    add_resp = await client.post(
+        f"/api/projects/{project_id}/members",
+        json={"email": "new.collaborator@example.com", "role": "editor"},
+    )
+    assert add_resp.status_code == 201
+    added = add_resp.json()
+    assert added["email"] == "new.collaborator@example.com"
+    assert added["role"] == "editor"
+    assert added["accept_url"] and "/accept-invite?token=" in added["accept_url"]
+
+    token = added["accept_url"].split("token=", 1)[1]
+    accept_resp = await client.post(
+        "/api/onboarding/accept-invite",
+        json={"token": token, "password": "StrongPassword123!"},
+    )
+    assert accept_resp.status_code == 200
+    assert accept_resp.json()["email"] == "new.collaborator@example.com"
+

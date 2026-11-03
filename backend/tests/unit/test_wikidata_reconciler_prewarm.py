@@ -59,3 +59,41 @@ def test_prewarm_for_items_collects_probes_by_type() -> None:
     assert "P217" in joined
     assert "P214" in joined
     assert r._cache["person:viaf:123"] is None
+
+
+def test_prewarm_exact_match_uris_batches_p2888_for_works() -> None:
+    class P2888Reconciler(WikidataReconciler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.queries: list[str] = []
+
+        def _query(self, sparql: str):  # noqa: ANN201
+            self.queries.append(sparql)
+            if "P2888" in sparql:
+                return [
+                    {
+                        "uri": {"value": "https://mhm-hmo.wikibase.cloud/wiki/Item:Q22084"},
+                        "item": {"value": "http://www.wikidata.org/entity/Q141755060"},
+                    },
+                ]
+            return []
+
+    r = P2888Reconciler()
+    items = [
+        SimpleNamespace(
+            entity_type="work",
+            labels={"he": "כנף רננים"},
+            statements=[
+                SimpleNamespace(
+                    property_id="P2888",
+                    value="https://mhm-hmo.wikibase.cloud/wiki/Item:Q22084",
+                ),
+            ],
+        ),
+    ]
+    prewarm_reconciler_for_items(r, items)
+    assert r.reconcile_by_exact_match_uri(
+        "https://mhm-hmo.wikibase.cloud/wiki/Item:Q22084"
+    ) == "Q141755060"
+    assert sum(1 for q in r.queries if "P2888" in q) == 1
+

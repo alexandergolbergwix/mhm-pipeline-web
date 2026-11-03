@@ -2318,7 +2318,10 @@ def _manuscript_labels_and_aliases(
 
     shelfmark = ""
     if record:
-        shelfmark = normalise(str(record.get("shelfmark") or ""))
+        shelfmark = (
+            str(record.get("holding_942_shelfmark") or "").strip()
+            or normalise(str(record.get("shelfmark") or ""))
+        )
     if not shelfmark:
         shelfmark = _shelfmark_from_claims(entity)
     cn = ""
@@ -2341,7 +2344,7 @@ def _manuscript_labels_and_aliases(
 
         holding = holding_name(record) if record else ""
         labels["en"] = (
-            manuscript_en_label(shelfmark, holding) if shelfmark
+            manuscript_en_label(shelfmark, holding, record) if shelfmark
             else manuscript_record_label(cn, record)
         )
         labels["he"] = _hebrew_manuscript_label(record, designation_suffix)

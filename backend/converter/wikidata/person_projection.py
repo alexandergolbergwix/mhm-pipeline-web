@@ -120,7 +120,12 @@ class PersonProjectionMixin:
         for m in source_record.get("marc_authority_matches") or []:
             mid = str(m.get("mazal_id", ""))
             vid = str(m.get("viaf_uri", ""))
-            if (mazal_id and mid == mazal_id) or (viaf_uri and vid == viaf_uri):
+            m_name = _strip_name_quotes(str(m.get("name") or m.get("entity_text") or ""))
+            if (
+                (mazal_id and mid == mazal_id)
+                or (viaf_uri and vid == viaf_uri)
+                or (not mazal_id and not viaf_uri and m_name == clean_name)
+            ):
                 match_info = m  # type: ignore[assignment]
                 break
         name_type = (
@@ -135,7 +140,11 @@ class PersonProjectionMixin:
         is_corporate = (
             entity_kind in {"organization", "corporate", "institution", "group"}
             or name_type in {"corporate", "organization", "institution", "company"}
-            or marc_field.startswith(("110", "111", "610", "611", "710", "711"))
+            or (
+                marc_field.startswith(("110", "111", "610", "611", "710", "711"))
+                and entity_kind not in {"person", "personal", "individual"}
+                and name_type not in {"personal", "person", "individual"}
+            )
             or _is_institutional_name(clean_name)
         )
         if is_corporate:

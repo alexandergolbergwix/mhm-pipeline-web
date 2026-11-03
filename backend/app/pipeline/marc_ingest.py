@@ -39,7 +39,10 @@ _MULTI_DELIMS = ("|", ";", "<--SEP-->")
 # the folio in a parenthetical before the separator
 # (``קולופון (דף קצה ע"א): …``). The prefix is catalog apparatus, not text
 # written on the object, so ingest strips it (Rule W-281).
-_COLOPHON_LABEL_RE = re.compile(r"^\s*קולופון(?:\s*\([^)]*\))?\s*[:：—–\-]\s*")
+_COLOPHON_LABEL_RE = re.compile(
+    r"^\s*קולופון(?:\s*\((?P<folio>[^)]*)\))?\s*[:：—–\-]\s*",
+)
+_COLOPHON_FOLIO_PREFIX_RE = re.compile(r"^\s*(?:ב?דפים?|ב?דף|עמ['׳]?|עמוד)\s*")
 
 # 035$a system control number, e.g. ``(IsJJNL)000118870NNL01-Aleph``.
 # The parenthesised prefix is the OCLC/MARC agency symbol; the digits that
@@ -576,19 +579,35 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     authors = list(record.get("authors") or [])
     for tag in ("100", "110", "111"):
         a = _split_multi(_str(record.get(f"{tag}$a")))
+        c = _split_multi(_str(record.get(f"{tag}$c")))
         e = _split_multi(_str(record.get(f"{tag}$e")))
         # MARC $d carries birth/death dates — used by Mazal homonym resolution.
         d = _split_multi(_str(record.get(f"{tag}$d")))
+        comma_indices = [idx for idx, val in enumerate(a) if val.strip().endswith(",")]
+        c_by_idx: dict[int, str] = {}
+        if len(c) == len(a):
+            c_by_idx = {idx: val.strip() for idx, val in enumerate(c) if val.strip()}
+        elif len(c) == len(comma_indices):
+            c_by_idx = {
+                comma_indices[idx]: val.strip()
+                for idx, val in enumerate(c)
+                if val.strip()
+            }
         for i, name in enumerate(a):
             name = name.strip()
             if not name:
                 continue
+            c_val = c_by_idx.get(i, "")
+            full_name = f"{name.rstrip(' ,')} {c_val.rstrip(' ,.')}".strip() if c_val else name
             role = e[i] if i < len(e) else "author"
             entry: dict[str, Any] = {
-                "name": normalize_entity_text(name),
+                "name": normalize_entity_text(full_name),
                 "role": normalize_role(role),
                 "field": tag,
             }
+            if c_val:
+                entry["raw_name_a"] = normalize_entity_text(name)
+                entry["title_associated"] = normalize_entity_text(c_val)
             if i < len(d) and d[i].strip():
                 entry["dates"] = d[i].strip()
             authors.append(entry)
@@ -599,18 +618,35 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     contributors = list(record.get("contributors") or [])
     for tag in ("700", "710", "711", "800", "810", "811"):
         a = _split_multi(_str(record.get(f"{tag}$a")))
+        c = _split_multi(_str(record.get(f"{tag}$c")))
         e = _split_multi(_str(record.get(f"{tag}$e")))
         d = _split_multi(_str(record.get(f"{tag}$d")))
+        comma_indices = [idx for idx, val in enumerate(a) if val.strip().endswith(",")]
+        c_by_idx = {}
+        if tag in ("700", "800"):
+            if len(c) == len(a):
+                c_by_idx = {idx: val.strip() for idx, val in enumerate(c) if val.strip()}
+            elif len(c) <= len(comma_indices):
+                c_by_idx = {
+                    comma_indices[idx]: val.strip()
+                    for idx, val in enumerate(c)
+                    if val.strip()
+                }
         for i, name in enumerate(a):
             name = name.strip()
             if not name:
                 continue
+            c_val = c_by_idx.get(i, "")
+            full_name = f"{name.rstrip(' ,')} {c_val.rstrip(' ,.')}".strip() if c_val else name
             role = e[i] if i < len(e) else "contributor"
             entry = {
-                "name": normalize_entity_text(name),
+                "name": normalize_entity_text(full_name),
                 "role": normalize_role(role),
                 "field": tag,
             }
+            if c_val:
+                entry["raw_name_a"] = normalize_entity_text(name)
+                entry["title_associated"] = normalize_entity_text(c_val)
             if i < len(d) and d[i].strip():
                 entry["dates"] = d[i].strip()
             contributors.append(entry)
@@ -804,7 +840,18 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     # prose form (``קולופון המחבר בדף …``) has no separator and is left
     # alone to be rejected as apparatus.
     def _strip_colophon_label(raw: str) -> str:
-        return _COLOPHON_LABEL_RE.sub("", raw, count=1).strip()
+        match = _COLOPHON_LABEL_RE.match(raw)
+        if match:
+            folio = _COLOPHON_FOLIO_PREFIX_RE.sub("", str(match.group("folio") or "")).strip()
+            if folio and not record.get("colophon_folio"):
+                record["colophon_folio"] = folio
+        cleaned = _COLOPHON_LABEL_RE.sub("", raw, count=1).strip()
+        cleaned = cleaned.replace('""', '"')
+        if cleaned.startswith('"') and cleaned.endswith('".'):
+            cleaned = cleaned[1:-2].strip()
+        elif cleaned.startswith('"') and cleaned.endswith('"'):
+            cleaned = cleaned[1:-1].strip()
+        return cleaned
 
     colophon_pieces: list[str] = []
     for piece in _split_multi(_str(record.get("957$a"))):
@@ -894,6 +941,13 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
 
     # ── Provenance events (movement map) — 541 $b acquisition, 583 $j action ─
     _extract_provenance_events(record)
+
+    # ── MARC 942 / 740 / 581 / 590 / title-page extraction ─────────
+    _extract_942_holdings(record)
+    _extract_740_related_works(record)
+    _extract_581_catalog_references(record)
+    _extract_590_record_notes(record)
+    _extract_title_page_inscriptions(record)
 
     # Final parity pass: fill any remaining structured gaps from the canonical
     # desktop handlers without overwriting web-specific derivations above.
@@ -1026,6 +1080,14 @@ def _unquoted_work_titles(text: str) -> list[str]:
     return [part.strip() for part in _WORK_NAMED_SEP_RE.split(candidate) if part.strip()]
 
 
+_FOLIO_PREFIXED_500_RE = _re.compile(
+    r"^(?:ב?דפים?|דף)\s+"
+    r"(?P<folio>[0-9א-ת]+[אבrv]?(?:\s*[-–]\s*[0-9א-ת]+[אבrv]?)?)"
+    r"(?:\s*\([^)]*\))?\s*:\s*(?P<body>.+)$",
+    _re.UNICODE,
+)
+
+
 def _extract_work_mentions(record: dict[str, Any]) -> None:
     """Extract named works from semantically anchored MARC 500 notes."""
     record.pop("work_mentions", None)
@@ -1040,6 +1102,30 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
     work_mentions: list[dict[str, str]] = []
     seen_titles: set[str] = set()
     for note in candidates:
+        folio_match = _FOLIO_PREFIXED_500_RE.match(note.strip())
+        if folio_match:
+            folio_range = folio_match.group("folio").strip()
+            body = folio_match.group("body").strip()
+            quoted = [
+                q for q in _quoted_work_titles(body)
+                if not q.startswith("בשנת ") and len(q.split()) >= 2
+            ]
+            raw_folio_titles = quoted[:1] if quoted else [body.split(".", 1)[0].strip()]
+            for raw in raw_folio_titles:
+                title = clean_marc_label(raw.strip().strip(".,;:"))
+                if len(title) < 3 or is_descriptive_content_title(title):
+                    continue
+                key = title.casefold()
+                if key in seen_titles:
+                    continue
+                seen_titles.add(key)
+                work_mentions.append({
+                    "title": title,
+                    "source_field": "500",
+                    "candidate_kind": "named_work",
+                    "folio_range": folio_range,
+                    "source_text": note.strip(),
+                })
         for match in _WORK_MENTION_TRIGGERS.finditer(note):
             raw_titles = match.group("titles").strip()
             quoted = _quoted_work_titles(raw_titles)
@@ -1172,6 +1258,210 @@ def _extract_provenance_events(record: dict[str, Any]) -> None:
 
     if events:
         record["provenance_events"] = events
+
+
+_US_STATE_SUFFIX_RE = _re.compile(r",\s*[A-Z]{2}$")
+_TITLE_PAGE_PREFIX_RE = _re.compile(
+    r"^\s*(?:בשער(?:\s+שבראשו)?|בדף\s+השער)\s*:\s*",
+    _re.UNICODE,
+)
+
+
+def _extract_942_holdings(record: dict[str, Any]) -> None:
+    """Extract current holding library, city, country, and shelfmarks from MARC 942."""
+    a942 = _split_multi(_str(record.get("942$a")))
+    x942 = _split_multi(_str(record.get("942$x")))
+    c942 = _split_multi(_str(record.get("942$c")))
+    z942 = _split_multi(_str(record.get("942$z")))
+    s090 = _split_multi(_str(record.get("090$a")))
+
+    if not a942 and not z942:
+        return
+
+    a710 = _split_multi(_str(record.get("710$a")))
+    e710 = _split_multi(_str(record.get("710$e")))
+    current_owners = {
+        a.strip().casefold()
+        for a, e in zip(a710, e710 + [""] * 99)
+        if "current owner" in e.lower() and "unknown library" not in a.lower()
+    }
+    former_owners = {
+        a.strip().casefold()
+        for a, e in zip(a710, e710 + [""] * 99)
+        if ("former owner" in e.lower() or "בעלים קודמים" in e.lower())
+        and a.strip().casefold() not in current_owners
+    }
+
+    chosen_idx: int | None = None
+    for idx, inst in enumerate(a942):
+        low = inst.strip().casefold()
+        if "unknown library" in low or low.startswith(("catalogue ", "catalog ")) or low in former_owners:
+            continue
+        if current_owners and low in current_owners:
+            chosen_idx = idx
+            break
+    if chosen_idx is None:
+        for idx, inst in enumerate(a942):
+            low = inst.strip().casefold()
+            if "unknown library" in low or low.startswith(("catalogue ", "catalog ")) or low in former_owners:
+                continue
+            chosen_idx = idx
+            break
+
+    inst_name = (
+        a942[chosen_idx].strip()
+        if chosen_idx is not None and chosen_idx < len(a942)
+        else ""
+    )
+    if "unknown library" in inst_name.casefold() or inst_name.strip().casefold() in former_owners:
+        inst_name = ""
+    city = (
+        x942[chosen_idx].strip()
+        if chosen_idx is not None and chosen_idx < len(x942)
+        else (x942[0].strip() if x942 else "")
+    )
+    country = (
+        c942[chosen_idx].strip()
+        if chosen_idx is not None and chosen_idx < len(c942)
+        else (c942[0].strip() if c942 else "")
+    )
+    shelf = (
+        z942[chosen_idx].strip()
+        if chosen_idx is not None and chosen_idx < len(z942)
+        else (z942[0].strip() if z942 and not former_owners else "")
+    )
+
+    if country and city:
+        city = _US_STATE_SUFFIX_RE.sub("", city).strip()
+
+    if inst_name:
+        record["holding_942_name"] = inst_name
+        if not record.get("holding_institution"):
+            record["holding_institution"] = inst_name
+    if city:
+        record["holding_942_city"] = city
+    if country:
+        record["holding_942_country"] = country
+    if shelf:
+        record["holding_942_shelfmark"] = shelf
+        record["shelfmark"] = shelf
+
+    former_shelfmarks: list[dict[str, str]] = []
+    catalog_refs_942: list[dict[str, str]] = []
+    for idx, z_val in enumerate(z942):
+        if idx == chosen_idx:
+            continue
+        z_clean = z_val.strip()
+        if not z_clean:
+            continue
+        owner_i = a942[idx].strip() if idx < len(a942) else ""
+        if owner_i.casefold().startswith(("catalogue ", "catalog ")):
+            catalog_refs_942.append({"catalog": owner_i, "number": z_clean})
+        else:
+            former_shelfmarks.append({"holder": owner_i, "shelfmark": z_clean})
+
+    if former_shelfmarks:
+        record["former_shelfmarks"] = former_shelfmarks
+    if catalog_refs_942:
+        existing_refs = list(record.get("catalog_references") or [])
+        for ref_row in catalog_refs_942:
+            cat_str = f"{ref_row['catalog']}: {ref_row['number']}"
+            if not any(
+                (r.get("catalog") if isinstance(r, dict) else str(r)) == cat_str
+                for r in existing_refs
+            ):
+                existing_refs.append({"catalog": cat_str})
+        record["catalog_references"] = existing_refs
+
+    microfilm_numbers = [
+        s.strip() for s in s090
+        if s.strip() and s.strip() != shelf
+    ]
+    if microfilm_numbers:
+        record["microfilm_numbers"] = microfilm_numbers
+
+
+def _extract_740_related_works(record: dict[str, Any]) -> None:
+    """Promote MARC 740$a analytical/related titles into ``related_works``."""
+    vals = _split_multi(_str(record.get("740$a")))
+    if not vals:
+        return
+    related: list[dict[str, Any]] = list(record.get("related_works") or [])
+    existing_titles = {
+        str(r.get("title") if isinstance(r, dict) else r).strip().casefold()
+        for r in related
+    }
+    variants: list[str] = list(record.get("variant_titles") or [])
+    for val in vals:
+        clean = val.strip().rstrip(" .,;:/-")
+        if not clean:
+            continue
+        if clean not in variants:
+            variants.append(clean)
+        if clean.casefold() not in existing_titles:
+            related.append({
+                "title": clean,
+                "source_field": "740",
+                "candidate_kind": "related_work",
+                "approved": True,
+                "source_text": val.strip(),
+            })
+            existing_titles.add(clean.casefold())
+    if variants:
+        record["variant_titles"] = variants
+    if related:
+        record["related_works"] = related
+
+
+def _extract_581_catalog_references(record: dict[str, Any]) -> None:
+    """Extract bibliographic/catalog citations from MARC 581$a."""
+    vals = _split_multi(_str(record.get("581$a")))
+    if not vals:
+        return
+    refs: list[Any] = list(record.get("catalog_references") or [])
+    existing = {
+        str(r.get("catalog") or r.get("name") if isinstance(r, dict) else r).strip()
+        for r in refs
+    }
+    for val in vals:
+        clean = val.strip().replace('""', '"')
+        if clean and clean not in existing:
+            refs.append({"catalog": clean, "source_field": "581"})
+            existing.add(clean)
+    if refs:
+        record["catalog_references"] = refs
+
+
+def _extract_590_record_notes(record: dict[str, Any]) -> None:
+    """Preserve MARC 590$a record-status notes (e.g. 'רשומה זמנית') as structured metadata."""
+    vals = _split_multi(_str(record.get("590$a")))
+    if not vals:
+        return
+    status_notes: list[str] = list(record.get("record_status_notes") or [])
+    for val in vals:
+        clean = val.strip()
+        if clean and clean not in status_notes:
+            status_notes.append(clean)
+    if status_notes:
+        record["record_status_notes"] = status_notes
+
+
+def _extract_title_page_inscriptions(record: dict[str, Any]) -> None:
+    """Extract explicit title-page transcriptions ('בשער שבראשו: ...') from 500$a."""
+    inscriptions: list[str] = list(record.get("title_page_texts") or [])
+    for note in _split_multi(_str(record.get("500$a"))):
+        match = _TITLE_PAGE_PREFIX_RE.match(note)
+        if not match:
+            continue
+        body = note[match.end():].strip().replace('""', '"')
+        if body.startswith('"') and body.endswith('".'):
+            body = body[1:-2].strip()
+        elif body.startswith('"') and body.endswith('"'):
+            body = body[1:-1].strip()
+        if body and body not in inscriptions:
+            inscriptions.append(body)
+    if inscriptions:
+        record["title_page_texts"] = inscriptions
 
 
 def _str(v: Any) -> str:
@@ -1388,12 +1678,15 @@ def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
         key = title.casefold()
         if key in existing:
             continue
-        contents.append({
+        row_out = {
             "title": title,
             "source_field": str(wm.get("source_field") or "500"),
             "candidate_kind": str(wm.get("candidate_kind") or "named_work"),
             "source_text": str(wm.get("source_text") or ""),
-        })
+        }
+        if wm.get("folio_range"):
+            row_out["folio_range"] = str(wm.get("folio_range")).strip()
+        contents.append(row_out)
         existing.add(key)
     if contents:
         record["contents"] = contents

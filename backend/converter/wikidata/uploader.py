@@ -476,8 +476,8 @@ class WikidataUploader:
             # Bot password: "Username@BotName:password"
             parts = self._token.split(":", 1)
             login = wbi_login.Login(
-                user=parts[0],
-                password=parts[1],
+                user=parts[0].strip(),
+                password=parts[1].strip(),
                 mediawiki_api_url=api_url,
                 user_agent=user_agent,
             )
@@ -602,10 +602,14 @@ class WikidataUploader:
     _MANUSCRIPT_P31_VALUES = frozenset(
         {
             "Q87167",      # manuscript
+            "Q123172729",  # manuscript codex
+            "Q720106",     # scroll
+            "Q30103158",   # manuscript fragment
             "Q213924",     # codex
             "Q48498",      # illuminated manuscript
             "Q33308141",   # composite manuscript
-            "Q179808",     # palimpsest
+            "Q274076",     # palimpsest
+            "Q179808",     # palimpsest (legacy)
             "Q3884",       # codex (alternate)
             "Q571",        # book (only when manuscript is also being typed as a book)
         }
@@ -700,21 +704,30 @@ class WikidataUploader:
             wbi_item = wbi.item.new()
 
         # Labels — never overwrite an existing label on an item we did not create.
-        # The creator-author check upstream already guarantees we only modify our
-        # own items here, but be defensive: only set a label if the language slot
-        # is empty.
+        # On items we created/own (or project-owned manuscripts matched via P3959),
+        # allow updating labels and descriptions when our projection improves them
+        # (e.g. replacing a microfilm-based F-number label with the MARC 942
+        # shelfmark designation).
+        is_owned_by_us = bool(
+            item.existing_qid
+            and self._is_our_item_cache.get(str(item.existing_qid)) is True
+            and str(item.existing_qid) not in self._foreign_accept_qids
+        )
+        metadata_updated = False
         for lang, label in item.labels.items():
-            if item.existing_qid:
-                try:
-                    current = wbi_item.labels.get(lang)
-                    current_val = (
-                        current.value if current and getattr(current, "value", None) else ""
-                    )
-                except Exception:
-                    current_val = ""
-                if current_val:
-                    continue
-            wbi_item.labels.set(lang, label)
+            try:
+                current = wbi_item.labels.get(lang)
+                current_val = (
+                    current.value if current and getattr(current, "value", None) else ""
+                )
+            except Exception:
+                current_val = ""
+            if item.existing_qid and not is_owned_by_us and current_val:
+                continue
+            if current_val != label:
+                wbi_item.labels.set(lang, label)
+                if item.existing_qid:
+                    metadata_updated = True
 
         # Descriptions — same protection as labels above. Bug fix
         # 2026-04-16 (deeper audit Fix #17): previously overwrote
@@ -727,17 +740,19 @@ class WikidataUploader:
                 # it instead of refusing the item (2026-10-14: 234 release
                 # items failed with 'Label and description ... same value').
                 continue
-            if item.existing_qid:
-                try:
-                    current = wbi_item.descriptions.get(lang)
-                    current_val = (
-                        current.value if current and getattr(current, "value", None) else ""
-                    )
-                except Exception:
-                    current_val = ""
-                if current_val:
-                    continue
-            wbi_item.descriptions.set(lang, desc)
+            try:
+                current = wbi_item.descriptions.get(lang)
+                current_val = (
+                    current.value if current and getattr(current, "value", None) else ""
+                )
+            except Exception:
+                current_val = ""
+            if item.existing_qid and not is_owned_by_us and current_val:
+                continue
+            if current_val != desc:
+                wbi_item.descriptions.set(lang, desc)
+                if item.existing_qid:
+                    metadata_updated = True
 
         # Aliases
         for lang, alias_list in item.aliases.items():
@@ -747,21 +762,17 @@ class WikidataUploader:
         # Statements — use WBI's built-in dedup for existing items
         from wikibaseintegrator.wbi_enums import ActionIfExists  # noqa: PLC0415
 
-        action = (
-            ActionIfExists.MERGE_REFS_OR_APPEND
-            if item.existing_qid
-            else ActionIfExists.FORCE_APPEND
-        )
-
         added_properties: list[str] = []
         built = 0
         failures: list[str] = []
+        built_by_pid: dict[str, list[object]] = {}
         for stmt in item.statements:
             # SAFETY: never add an identity-property value that conflicts with
             # an existing one on a pre-existing item.
             if (
                 item.existing_qid
                 and not read_only
+                and (not is_owned_by_us or stmt.property_id == "P31")
                 and self._would_create_identity_conflict(wbi_item, stmt)
             ):
                 failures.append(
@@ -777,13 +788,99 @@ class WikidataUploader:
                 )
                 continue
             built += 1
-            count_before = len(wbi_item.claims)
-            wbi_item.claims.add(claim, action_if_exists=action)
-            if len(wbi_item.claims) > count_before:
-                added_properties.append(stmt.property_id)
+            built_by_pid.setdefault(stmt.property_id, []).append(claim)
 
         if failures:
             raise ClaimBuildError(failures)
+
+        deferred_pids = set()
+        if item.existing_qid and is_owned_by_us and "P31" in built_by_pid:
+            for dpid in ("P1574", "P3342", "P11603", "P1891", "P11105", "P88", "P110", "P655"):
+                if dpid in built_by_pid:
+                    continue
+                try:
+                    old_links = [
+                        c for c in (wbi_item.claims.get(dpid) or [])
+                        if not getattr(c, "removed", False)
+                    ]
+                except Exception:
+                    old_links = []
+                if old_links:
+                    for ol in old_links:
+                        ol.remove()
+                    added_properties.append(dpid)
+                    deferred_pids.add(dpid)
+
+        if not item.existing_qid:
+            for pid, claims_list in built_by_pid.items():
+                wbi_item.claims.add(claims_list, action_if_exists=ActionIfExists.FORCE_APPEND)
+                added_properties.extend([pid] * len(claims_list))
+        elif is_owned_by_us and "P31" in built_by_pid:
+            for pid, claims_list in built_by_pid.items():
+                try:
+                    existing_list = [
+                        c for c in (wbi_item.claims.get(pid) or [])
+                        if not getattr(c, "removed", False)
+                    ]
+                except Exception:
+                    existing_list = []
+                same_claims = (
+                    len(existing_list) == len(claims_list)
+                    and all(nc in existing_list for nc in claims_list)
+                )
+                needs_ref_fix = False
+                if same_claims:
+                    for nc in claims_list:
+                        for ec in existing_list:
+                            if nc == ec:
+                                ec_refs = getattr(ec, "references", None)
+                                nc_refs = getattr(nc, "references", None)
+                                ec_ref_len = len(ec_refs) if ec_refs is not None else 0
+                                nc_ref_len = len(nc_refs) if nc_refs is not None else 0
+                                if ec_ref_len > 1 or (ec_ref_len == 0 and nc_ref_len > 0):
+                                    ec.references = nc.references
+                                    needs_ref_fix = True
+                                break
+                if not same_claims:
+                    wbi_item.claims.add(claims_list, action_if_exists=ActionIfExists.REPLACE_ALL)
+                    added_properties.append(pid)
+                elif needs_ref_fix:
+                    added_properties.append(pid)
+
+            for stale_pid in (
+                "P9302", "P282", "P7153", "P1071", "P136", "P921",
+                "P1680", "P1684", "P528", "P5816",
+            ):
+                if stale_pid in built_by_pid or stale_pid in deferred_pids:
+                    continue
+                try:
+                    stale_claims = [
+                        c for c in (wbi_item.claims.get(stale_pid) or [])
+                        if not getattr(c, "removed", False)
+                    ]
+                except Exception:
+                    stale_claims = []
+                if stale_claims:
+                    for sc in stale_claims:
+                        sc.remove()
+                    added_properties.append(stale_pid)
+        else:
+            for pid, claims_list in built_by_pid.items():
+                if is_owned_by_us and pid in {"P1574", "P3342", "P11603", "P1891", "P11105", "P88", "P110", "P655", "P50", "P2093"}:
+                    for claim in claims_list:
+                        wbi_item.claims.add(claim, action_if_exists=ActionIfExists.APPEND_OR_REPLACE)
+                        added_properties.append(pid)
+                    continue
+                for claim in claims_list:
+                    count_before = len(wbi_item.claims)
+                    wbi_item.claims.add(
+                        claim, action_if_exists=ActionIfExists.MERGE_REFS_OR_APPEND,
+                    )
+                    if len(wbi_item.claims) > count_before:
+                        added_properties.append(pid)
+
+        if metadata_updated and "labels" not in added_properties:
+            added_properties.append("labels")
 
         new_claims = len(added_properties) if item.existing_qid else built
         return wbi_item, new_claims, added_properties
@@ -1023,6 +1120,20 @@ class WikidataUploader:
         if self._authenticated_user is not None:
             return self._authenticated_user
         try:
+            if self._login is None and ":" in self._token and "@" in self._token.split(":", 1)[0]:
+                try:
+                    self._init_wbi()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Could not init WBI for userinfo: %s", exc)
+            if self._login is not None:
+                info = self._query_userinfo_rights()
+                if info:
+                    name = str(info.get("name") or "")
+                    if not info.get("anon") and name and name != "127.0.0.1":
+                        self._authenticated_user = name
+                        logger.info("Authenticated as Wikidata user: %s", name)
+                        return name
+
             import requests  # noqa: PLC0415
 
             api_url = _TEST_API if self._is_test else _WIKIDATA_API
@@ -2413,8 +2524,7 @@ class WikidataUploader:
                         ),
                     )
                 if (
-                    self._is_test
-                    and not item.existing_qid
+                    not item.existing_qid
                     and attempt < _MAX_RETRIES
                 ):
                     from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
@@ -2432,21 +2542,38 @@ class WikidataUploader:
                         if (
                             conflict_id
                             and conflict_id.startswith("Q")
-                            and self._is_our_item(conflict_id)
+                            and self._is_our_item(
+                                conflict_id, our_p3959=self._our_p3959(item),
+                            )
                         ):
                             logger.info(
-                                "test CREATE adopted existing %s for %s",
+                                "CREATE adopted existing %s for %s",
                                 conflict_id,
                                 item.local_id,
                             )
                             item = replace(item, existing_qid=conflict_id)
                             continue
-                        item = uniquify_test_item_en_description(item)
-                        logger.info(
-                            "test CREATE uniquified EN description for %s",
-                            item.local_id,
+                        if self._is_test:
+                            item = uniquify_test_item_en_description(item)
+                            logger.info(
+                                "test CREATE uniquified EN description for %s",
+                                item.local_id,
+                            )
+                            continue
+                        return UploadResult(
+                            local_id=item.local_id,
+                            qid=(
+                                conflict_id
+                                if conflict_id and conflict_id.startswith("Q")
+                                else None
+                            ),
+                            status="skipped",
+                            message=(
+                                "Skipped duplicate CREATE: "
+                                f"{conflict_id or 'an existing item'} already "
+                                "carries the same label and description on Wikidata."
+                            ),
                         )
-                        continue
                 if attempt < _MAX_RETRIES:
                     # Shorter backoff for conflicts (someone is actively
                     # editing this item, so a quick retry is more likely

@@ -29,4 +29,38 @@ describe("wikidataUploadOutcomes", () => {
     expect(rows[0]?.local_id).toBe("b");
     expect(rows[0]?.label).toBe("B");
   });
+
+  it("classifies StudioItem data_status including local_only and newly created items", async () => {
+    const {resolveWikidataItemDataStatus} = await import("@/utils/wikidataItemDataStatus");
+    expect(resolveWikidataItemDataStatus({entity_type: "work", existing_qid: null})).toBe("new");
+    expect(
+      resolveWikidataItemDataStatus({
+        entity_type: "person",
+        existing_qid: null,
+        publishable: false,
+      }),
+    ).toBe("local_only");
+    expect(
+      resolveWikidataItemDataStatus({
+        entity_type: "person",
+        existing_qid: null,
+        upload_outcome: "skip",
+        upload_message: "Not publishable — no VIAF/NLI/QID (Rule W-154/W-185).",
+      }),
+    ).toBe("local_only");
+    expect(
+      resolveWikidataItemDataStatus({
+        entity_type: "work",
+        existing_qid: "Q141950143",
+        upload_outcome: "create",
+      }),
+    ).toBe("updated");
+    expect(
+      resolveWikidataItemDataStatus({
+        entity_type: "manuscript",
+        existing_qid: "Q141175735",
+        upload_outcome: "skip",
+      }),
+    ).toBe("will_update");
+  });
 });

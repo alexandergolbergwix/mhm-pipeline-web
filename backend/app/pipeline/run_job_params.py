@@ -185,6 +185,10 @@ async def prepare_job_params(
             )
         if token:
             merged["_wikidata_token"] = token
+        if "update_existing" in merged:
+            merged["update_existing"] = bool(merged["update_existing"])
+        if "ai_verified_only" in merged:
+            merged["ai_verified_only"] = bool(merged["ai_verified_only"])
 
     if kind == JOB_KIND_HMO_ITEM_UPLOAD:
         merged.setdefault("dry_run", True)

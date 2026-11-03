@@ -249,4 +249,15 @@ Any new external-write path or reconcile change MUST extend
   and `test_unresolvable_subject_is_not_promoted_to_p921` keeps the fail-closed
   side. The old `test_secondary_marc_subject_is_not_promoted_to_p921` encoded
   the pre-W-281 policy and was replaced by the first of these.
+- `backend/tests/unit/test_gila_prebor_9_points_audit.py` — Rule W-294 / R149:
+  MARC 942 shelfmarks and structured English labels (`<942$a>. <city>, <country>. <942$z>`),
+  `Q123172729` (`manuscript codex`) and `Q720106` (`scroll`) `P31` classifications,
+  homonymous work separation across ledger keys and reconciler (`דרושים` by
+  Cantarini vs. Abraham ha-Levi), `P361 = Q118384267` (`Ktiv`) with `P3831 = Q60474998`,
+  `100$c`/`700$c` name joins and `P3342` role qualifiers (`former owner` + `P217`,
+  `sender`, `addressee`), folio-prefixed `500$a` works and `740$a` analytical titles,
+  exact-year `P571` without `circa` plus `P1932` Hebrew dates, `751` creation vs.
+  attestation places, `P282 = Q8229` (`Latin script`) without false `ItalianScript`,
+  and `581$a` bibliography (`P528`), `957$a` colophon folios (`P7416`), and `500$a`
+  title-page inscriptions (`P1684` + `P3831 = Q1339862`).
 

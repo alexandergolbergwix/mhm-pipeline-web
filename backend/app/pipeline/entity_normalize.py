@@ -93,7 +93,9 @@ def normalize_entity_text(text: str) -> str:
     t = (text or "").strip()
     while t and t[0] in "\"'":
         t = t[1:].strip()
-    while t and t[-1] in "\"'":
+    while t and t[-1] == '"':
+        t = t[:-1].strip()
+    while t and t[-1] == "'" and not (len(t) >= 2 and "\u0590" <= t[-2] <= "\u05ff"):
         t = t[:-1].strip()
     return re.sub(r"\s+", " ", t)
 

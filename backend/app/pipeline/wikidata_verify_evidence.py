@@ -243,9 +243,9 @@ _PERSON_LINK_CLAIM_PIDS: dict[str, tuple[str, ...]] = {
 
 # Claims that follow from the entity's own type rather than from a source
 # field. They are true by construction, so "no MARC row" is not a defect.
-# P5008 is our own WikiProject Manuscripts membership, not a claim about the
-# manuscript, so it has no MARC evidence to cite either.
-_STRUCTURAL_CLAIM_PIDS = frozenset({"P31", "P3959", "P5008"})
+# P5008 is our own WikiProject Manuscripts membership, and P361=Q118384267 is
+# our Ktiv digital-collection membership.
+_STRUCTURAL_CLAIM_PIDS = frozenset({"P31", "P3959", "P361", "P5008"})
 
 # Verbatim transcriptions (inscription / first line / last line). Their text
 # is approved at the HMO stage, but a temporary catalogue record ("רשומה

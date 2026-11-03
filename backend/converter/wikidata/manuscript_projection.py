@@ -31,7 +31,9 @@ from converter.wikidata.item_builder import (
     P_NUMBER_OF_FOLIOS,
     P_NUMBER_OF_PARTS,
     P_OBJECT_HAS_ROLE,
+    P_OBJECT_NAMED_AS,
     P_ON_FOCUS_LIST,
+    P_PART_OF,
     P_SCRIPT_STYLE,
     P_SIGNIFICANT_PLACE,
     P_SOURCING_CIRCUMSTANCES,
@@ -41,10 +43,15 @@ from converter.wikidata.item_builder import (
     Q_CIRCA,
     Q_COLOPHON,
     Q_CORRECTION,
+    Q_DIGITAL_COLLECTION,
     Q_GLOSS,
+    Q_KTIV,
     Q_MANUSCRIPT,
     Q_MARGINALIA,
+    Q_PLACE_OF_ATTESTATION,
+    Q_TITLE_PAGE,
     Q_WIKIPROJECT_MANUSCRIPTS,
+    SCRIPT_MODE_TO_QID,
     SCRIPT_TYPE_TO_QID,
     WikidataItem,
     WikidataStatement,
@@ -78,6 +85,84 @@ _PLACE_LABEL_QID_OVERRIDES: dict[str, str] = {
     "amran (yemen)": "Q172597",
     "amrān (yemen)": "Q172597",
     "ʿamrān (yemen)": "Q172597",
+    "panevezys (lithuania)": "Q1719466",
+    "panevėžys (lithuania)": "Q1719466",
+    "panevezys": "Q1719466",
+    "panevėžys": "Q1719466",
+    "פוניבז'": "Q1719466",
+    "פוניוויש": "Q1719466",
+    "metz (france)": "Q22690",
+    "metz": "Q22690",
+    "hamburg (germany)": "Q1055",
+    "hamburg": "Q1055",
+    "buchach (ukraine)": "Q849109",
+    "buchach": "Q849109",
+    "venice (italy)": "Q641",
+    "venice": "Q641",
+    "jerusalem (israel)": "Q1218",
+    "jerusalem": "Q1218",
+    "amsterdam (netherlands)": "Q727",
+    "amsterdam": "Q727",
+    "mantua (italy)": "Q6247",
+    "mantua": "Q6247",
+    "istanbul (turkey)": "Q406",
+    "istanbul": "Q406",
+    "yemen (republic)": "Q805",
+    "yemen": "Q805",
+    "ridāʻ (yemen)": "Q2125362",
+    "rida (yemen)": "Q2125362",
+    "carpentras (france)": "Q202560",
+    "carpentras": "Q202560",
+    "modena (italy)": "Q279",
+    "modena": "Q279",
+    "safed (israel)": "Q188336",
+    "safed": "Q188336",
+    "verona (italy)": "Q2028",
+    "verona": "Q2028",
+    "ferrara (italy)": "Q13362",
+    "ferrara": "Q13362",
+    "italy": "Q38",
+    "damascus (syria)": "Q3766",
+    "damascus": "Q3766",
+    "dhamār (yemen)": "Q955523",
+    "dhamar (yemen)": "Q955523",
+    "venasque (france)": "Q475991",
+    "venasque": "Q475991",
+    "ancona (italy)": "Q3415",
+    "ancona": "Q3415",
+    "prague (czech republic)": "Q1085",
+    "prague": "Q1085",
+    "reggio emilia (italy)": "Q13360",
+    "reggio emilia": "Q13360",
+    "egypt": "Q79",
+    "pesaro (italy)": "Q13134",
+    "pesaro": "Q13134",
+    "oxford (england)": "Q34217",
+    "oxford": "Q34217",
+    "cairo (egypt)": "Q85",
+    "cairo": "Q85",
+    "nablus (west bank)": "Q214178",
+    "nablus": "Q214178",
+    "worms (germany)": "Q3852",
+    "worms": "Q3852",
+    "rome (italy)": "Q220",
+    "rome": "Q220",
+    "asti (italy)": "Q6122",
+    "asti": "Q6122",
+    "frankfurt am main (germany)": "Q1794",
+    "frankfurt am main": "Q1794",
+    "san'a (yemen)": "Q2471",
+    "sanaa (yemen)": "Q2471",
+    "hebron (west bank)": "Q168225",
+    "hebron": "Q168225",
+    "parma (italy)": "Q2683",
+    "parma": "Q2683",
+    "turin (italy)": "Q495",
+    "turin": "Q495",
+    "avignon (france)": "Q6397",
+    "avignon": "Q6397",
+    "krakow (poland)": "Q31487",
+    "kraków (poland)": "Q31487",
 }
 
 
@@ -293,7 +378,10 @@ class ManuscriptProjectionMixin:
         # alone (Rules W-82 / W-75). Holder evidence stays on P195; location
         # claims require explicit geographic evidence, not NLI-catalog default.
 
-        shelfmark = _normalise_label(str(record.get("shelfmark") or ""))
+        shelfmark = (
+            str(record.get("holding_942_shelfmark") or "").strip()
+            or _normalise_label(str(record.get("shelfmark") or ""))
+        )
         if shelfmark:
             item.statements.append(
                 WikidataStatement(
@@ -324,6 +412,21 @@ class ManuscriptProjectionMixin:
                     property_id=P_NLI_CATALOG_ID,
                     value=control_number,
                     value_type="external-id",
+                    references=ref,
+                )
+            )
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_PART_OF,
+                    value=Q_KTIV,
+                    value_type="item",
+                    qualifiers=[
+                        {
+                            "property": P_OBJECT_HAS_ROLE,
+                            "value": Q_DIGITAL_COLLECTION,
+                            "type": "item",
+                        }
+                    ],
                     references=ref,
                 )
             )
@@ -400,6 +503,16 @@ class ManuscriptProjectionMixin:
                     references=ref,
                 )
             )
+        script_mode = record.get("script_mode")
+        if script_mode and str(script_mode) in SCRIPT_MODE_TO_QID:
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_SCRIPT_STYLE,
+                    value=SCRIPT_MODE_TO_QID[str(script_mode)],
+                    value_type="item",
+                    references=ref,
+                )
+            )
 
         # ── Dates ────────────────────────────────────────────────
         colophon_fields = set(record.get("data_from_colophon") or [])
@@ -407,16 +520,36 @@ class ManuscriptProjectionMixin:
         date_result = date_to_wikidata(dates)
         if date_result:
             time_value, precision, calendarmodel, earliest_year, latest_year = date_result
-            # Add P1480 (circa) qualifier when date certainty is not exact
+            # Add P1480 (circa) qualifier ONLY when the source date explicitly
+            # carries an approximate/questionable marker (never on an exact year).
             qualifiers: list[dict[str, object]] = []
             cert_levels = record.get("certainty_levels") or {}
             date_cert = cert_levels.get("date", "")
-            if date_cert and date_cert != "Certain":
+            orig_date_str = str(dates.get("original_string") or "")
+            has_approx_marker = bool(
+                dates.get("approximate")
+                or any(k in orig_date_str.lower() for k in ("ca.", "circa", "בערך", "לערך", "בקירוב", "?"))
+                or "[" in orig_date_str
+            )
+            if has_approx_marker or (
+                precision == PRECISION_CENTURY and date_cert and date_cert != "Certain"
+            ):
                 qualifiers.append(
                     {
                         "property": P_SOURCING_CIRCUMSTANCES,
                         "value": Q_CIRCA,
                         "type": "item",
+                    }
+                )
+            heb_full = str(dates.get("hebrew_full_date") or "").strip()
+            heb_year = str(dates.get("hebrew_date") or "").strip()
+            stated_date_str = heb_full or heb_year or orig_date_str.strip().rstrip(".")
+            if stated_date_str and any("\u0590" <= ch <= "\u05ff" for ch in stated_date_str):
+                qualifiers.append(
+                    {
+                        "property": P_OBJECT_NAMED_AS,
+                        "value": stated_date_str,
+                        "type": "string",
                     }
                 )
             # Fix 2026-04-15 third audit Fix #12: century-precision dates lack
@@ -516,25 +649,37 @@ class ManuscriptProjectionMixin:
         # look like creation sites (Rule W-170 / export-29).
         production_place = str(record.get("place") or "").strip()
         kima_places = record.get("kima_places") or {}
-        if production_place and isinstance(kima_places, dict):
-            emitted_creation: set[str] = set()
-            for place_name, wikidata_uri in kima_places.items():
-                name = str(place_name or "").strip()
-                if not name:
-                    continue
-                if production_place not in name and name not in production_place:
-                    continue
-                qid = _place_qid_for_label(name, str(wikidata_uri or ""))
-                if qid and qid not in emitted_creation:
-                    item.statements.append(
-                        WikidataStatement(
-                            property_id=P_LOCATION_OF_CREATION,
-                            value=qid,
-                            value_type="item",
-                            references=ref,
-                        )
+        emitted_creation: set[str] = set()
+        if production_place:
+            direct_qid = _place_qid_for_label(production_place)
+            if direct_qid:
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_LOCATION_OF_CREATION,
+                        value=direct_qid,
+                        value_type="item",
+                        references=ref,
                     )
-                    emitted_creation.add(qid)
+                )
+                emitted_creation.add(direct_qid)
+            if isinstance(kima_places, dict):
+                for place_name, wikidata_uri in kima_places.items():
+                    name = str(place_name or "").strip()
+                    if not name:
+                        continue
+                    if production_place not in name and name not in production_place:
+                        continue
+                    qid = _place_qid_for_label(name, str(wikidata_uri or ""))
+                    if qid and qid not in emitted_creation:
+                        item.statements.append(
+                            WikidataStatement(
+                                property_id=P_LOCATION_OF_CREATION,
+                                value=qid,
+                                value_type="item",
+                                references=ref,
+                            )
+                        )
+                        emitted_creation.add(qid)
 
         # ── Physical description ─────────────────────────────────
         self._add_physical_description(item, record, ref)
@@ -792,6 +937,28 @@ class ManuscriptProjectionMixin:
                 )
             )
 
+        # ── Title-page inscriptions → P1684 (inscription + Q1339862) ──
+        for tp_text in record.get("title_page_texts") or []:
+            tp_clean = str(tp_text or "").strip()
+            if not tp_clean or tp_clean == "None" or _is_catalog_note_placeholder(tp_clean):
+                continue
+            item.statements.append(
+                WikidataStatement(
+                    property_id=P_INSCRIPTION,
+                    value=tp_clean[:1500],
+                    value_type="monolingualtext",
+                    language="he" if _has_hebrew_script(tp_clean) else "en",
+                    references=ref,
+                    qualifiers=[
+                        {
+                            "property": P_OBJECT_HAS_ROLE,
+                            "value": Q_TITLE_PAGE,
+                            "type": "item",
+                        }
+                    ],
+                )
+            )
+
         # ── Scribal interventions → P1684 (inscription) ─────────
         for intervention in record.get("scribal_interventions") or []:
             text = (
@@ -877,22 +1044,20 @@ class ManuscriptProjectionMixin:
                         qid = _place_qid_for_label(str(_name), str(uri or ""))
                         if qid:
                             break
-            if qid:
+            if qid and qid not in emitted_creation:
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_SIGNIFICANT_PLACE,
                         value=qid,
                         value_type="item",
                         # P7153 constraint requires P3831 (object of statement
-                        # has role) qualifier. Use Q1773840 (provenance) as the
-                        # role — the closest concept for "place associated with
-                        # the manuscript's custody history". Bug fix 2026-04-16:
-                        # Q1616923 was previously used but is a disambiguation
-                        # page (Heydeck), not a role concept.
+                        # has role) qualifier. MARC 751 "related place" is a
+                        # place of attestation (Q127695525), not provenance
+                        # custody history (Q1773840).
                         qualifiers=[
                             {
                                 "property": P_OBJECT_HAS_ROLE,
-                                "value": "Q1773840",
+                                "value": Q_PLACE_OF_ATTESTATION,
                                 "type": "item",
                             }
                         ],
@@ -994,12 +1159,19 @@ class ManuscriptProjectionMixin:
                 item.work_candidate_evidence.append(evidence)
             if not decision.accepted or not decision.title:
                 continue
+            from converter.wikidata.content_projection import _exemplar_qualifiers  # noqa: PLC0415
+
+            rw_folio = str(rw_dict.get("folio_range") or "").strip()
             if rw_qid:
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_EXEMPLAR_OF,
                         value=rw_qid,
                         value_type="item",
+                        qualifiers=_exemplar_qualifiers(
+                            catalog_title=decision.title,
+                            folio_range=rw_folio,
+                        ),
                         references=ref,
                     )
                 )
@@ -1022,6 +1194,11 @@ class ManuscriptProjectionMixin:
                     property_id=P_EXEMPLAR_OF,
                     value=f"__LOCAL:{rw_item.local_id}",
                     value_type="item",
+                    qualifiers=_exemplar_qualifiers(
+                        catalog_title=decision.title,
+                        folio_range=rw_folio,
+                        presumably=True,
+                    ),
                     references=ref,
                 )
             )

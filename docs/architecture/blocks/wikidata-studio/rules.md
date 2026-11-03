@@ -1105,3 +1105,50 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   findings block review), so the two-pass upload job is the working executor
   for connection-bearing corpora. *Why:* the Sep-5 retirement removed the
   only path that could write this corpus live (run 47e03437).
+
+- **R148 — Sharded upload ownership, P2888 work identity, ledger persistence
+  on reconciled skips, and new/verified scope filters (Rule W-292).**
+  `run_wikidata_upload_shard` authenticates per-slot `WikidataUploader`
+  instances once per shard and `_get_authenticated_user()` reads the logged-in
+  WBI session (plus `classify_ownership_with_uploader` forwards `our_p3959` on
+  manuscripts); `prewarm_reconciler_for_items` and `_reconcile_for_upload`
+  reconcile works by exact `P2888` HMO Wikibase URI first and
+  `_apply_uncertain_duplicate_confirm` treats a shared live `P2888` as an
+  exact identifier match while passing author + description context (with
+  2-attempt retry and prompt memo) to the LLM confirm; live label+description
+  collisions adopt owned QIDs or skip cleanly; `upload_items` records
+  reconciled `updated`/`exists`/`skipped` QIDs into `wikidata_qid_ledger`;
+  `update_existing=False` and `ai_verified_only=True` scope step-1 while
+  pre-seeding `created_qids` for `__LOCAL:` resolution; and
+  `trim_studio_list_item` + `resolveWikidataItemDataStatus` mark
+  identifierless persons `local_only` and newly created items `updated`.
+  *Why:* job `b4905cb6` (239 items) skipped 50 own persons as foreign, 72
+  `P2888`-matched works as unverified, 66 works as contextless LLM `unsure`,
+  32 identifierless persons in the `new` filter, and failed 1 owned work on a
+  label+description collision.
+
+- **R149 — MARC 942 shelfmark labels, manuscript codex P31, homonymous work
+  separation, Ktiv P361, 100$c/700$c & role qualifiers, 500/740 folio works,
+  exact-year dates without circa, place/script roles, and 581/title-page/colophon
+  fidelity (Rule W-294).**
+  `_extract_942_holdings` pairs `942$a/$x/$c/$z` with `710$a/$e` (`current owner`),
+  setting `P217` to the current shelfmark (`Ms. 2473`, `Ms. EVR I 726`,
+  `Ms. Kaufmann A 315`) rather than the `090$a` microfilm number (`F 28726`,
+  `F 51052`, `F 12658`) and formatting `labels.en` as `<942$a>. <city>, <country>. <942$z>`;
+  `_determine_instance_type` emits `P31 = Q123172729` (`manuscript codex`) for
+  multi-leaf codices and `Q720106` (`scroll`) for scrolls; `ledger_key_for_item`
+  and `reconcile_work_by_label_and_author` separate homonymous work titles by
+  `P2888` and `P2093`/`P50` author while `_add_contents` retains `100/245` works
+  alongside `500` works; manuscripts emit `P361 = Q118384267` (`Ktiv`) with
+  `P3831 = Q60474998` (`digitized collection`); `100$c`/`700$c` join onto `$a`,
+  `(ממנו)`/`(אליו)`/`former owner` map to `P3342` with `P3831` role qualifiers
+  (`Q10359183`/`Q28008314`/`Q136357543`) + former `P217` shelfmark, and `?` adds
+  `P1480 = Q30230067` (`possibly`); folio-prefixed `500$a` works and `740$a`
+  analytical titles project to `P1574` with `P958`; `P571` omits `P1480 = Q5727902`
+  (`circa`) on exact years and attaches Hebrew dates via `P1932`; `751$e = related place`
+  uses `P3831 = Q127695525` (`place of attestation`); `"באיטלקית באותיות לטיניות"`
+  emits `P282 = Q8229` (`Latin script`) without false `ItalianScript` `P9302`; and
+  `581$a` bibliography (`P528`), `957$a` colophon folios (`P7416`), and `500$a`
+  title-page inscriptions (`P1684` + `P3831 = Q1339862`) are preserved.
+  *Why:* Prof. Gila Prebor's audit of `Q141747170`, `Q141747098`, and `Q141175895`
+  against Ktiv MARC records identified these 9 systematic conversion gaps.

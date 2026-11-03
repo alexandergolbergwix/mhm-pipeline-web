@@ -31,10 +31,18 @@ the rest of the pipeline reads:
   the label tier already probes; the vernacular is never overwritten. An
   unparseable `880$6` is left in raw columns.
 
-- `title` (245$a+$b), `authors` (100/110/111 with $e roles + $d dates),
-  `contributors` (700/710/711/800/810/811), `subjects` (600/610/611/650/651
+- `title` (245$a+$b), `authors` (100/110/111 with $c title/epithet joined onto $a, $e roles + $d dates),
+  `contributors` (700/710/711/800/810/811 with $c joined onto $a), `subjects` (600/610/611/650/651
   with $0 authority ids), `genres` (655), `place` (260/264$a, 751 fallback),
   `dates` (260/264$c only — **never 008**; contract in `marc_date_sources.py`).
+- **Holdings & shelfmarks (W-294)**: `_extract_942_holdings` pairs `942$a/$x/$c/$z`
+  with `710$a/$e` (`current owner`), populating `holding_942_name`,
+  `holding_942_city`, `holding_942_country`, `holding_942_shelfmark` (setting
+  `shelfmark`), `former_shelfmarks`, `catalog_references` (`Catalogue …` rows
+  plus `581$a` citations via `_extract_581_catalog_references`), and
+  `microfilm_numbers` (`090$a`). `_extract_740_related_works` promotes `740$a`
+  analytical titles into `related_works`, and `_extract_title_page_inscriptions`
+  extracts `בשער שבראשו:` inscriptions from `500$a`.
 - **NER inputs**: `notes` (500/590/541$a), `provenance` (561$a),
   `contents` (505$a split on `--`), `colophon_text` (**957$a** plus 590$a plus
   keyword-detected 500$a: קולופון / colophon / כתב יד סופר).

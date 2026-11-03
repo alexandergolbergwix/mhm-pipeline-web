@@ -292,10 +292,20 @@ class FieldHandlers:
         Returns:
             Dictionary with author data
         """
+        raw_a = field.get_subfield("a") or ""
+        raw_c = field.get_subfield("c") or ""
+        if raw_a and raw_c and raw_a.strip().endswith(","):
+            full_name = f"{raw_a.rstrip(' ,')} {raw_c.rstrip(' ,.')}".strip()
+        else:
+            full_name = raw_a
+
         result = {
-            "name": field.get_subfield("a"),
+            "name": full_name,
             "role": "author",
         }
+        if raw_c:
+            result["raw_name_a"] = raw_a
+            result["title_associated"] = raw_c
 
         dates = field.get_subfield("d")
         if dates:
@@ -509,16 +519,25 @@ class FieldHandlers:
             return {}
 
         result = {"text": note}
+        note_lower = note.lower()
+        has_script_context = any(
+            kw in note_lower
+            for kw in ("כתב", "כתיבה", "אותיות", "script", "hand")
+        ) and not any(
+            kw in note_lower
+            for kw in ("אותיות לטיניות", "כתב לטיני", "latin script", "latin characters")
+        )
 
-        for script_key, script_value in SCRIPT_TYPES.items():
-            if script_key.lower() in note.lower():
-                result["script_type"] = script_value
-                break
+        if has_script_context:
+            for script_key, script_value in SCRIPT_TYPES.items():
+                if script_key.lower() in note_lower:
+                    result["script_type"] = script_value
+                    break
 
-        for mode_key, mode_value in SCRIPT_MODES.items():
-            if mode_key.lower() in note.lower():
-                result["script_mode"] = mode_value
-                break
+            for mode_key, mode_value in SCRIPT_MODES.items():
+                if mode_key.lower() in note_lower:
+                    result["script_mode"] = mode_value
+                    break
 
         colophon_keywords = ["קולופון", "colophon", "כתב הסופר", "כתב המעתיק"]
         for keyword in colophon_keywords:
@@ -1433,9 +1452,11 @@ class FieldHandlers:
         if "[" in date_str or "?" in date_str or "ca." in date_str.lower():
             result["approximate"] = True
             result["certainty"] = "Possible"  # Approximate dates are uncertain
-        elif "בערך" in date_str or "לערך" in date_str:  # Hebrew approximate markers
+        elif "בערך" in date_str or "לערך" in date_str or "בקירוב" in date_str:  # Hebrew approximate markers
             result["approximate"] = True
             result["certainty"] = "Possible"
+        elif result.get("year") and not re.search(r"centur|מאה", date_str, re.IGNORECASE):
+            result["certainty"] = "Certain"  # Explicit year without approximate markers
         else:
             result["certainty"] = "Probable"  # Most catalog dates are interpretations
 

@@ -106,6 +106,14 @@ async def create_invite(
         role=payload.role,
         invited_by=admin.user.id,
     )
+    from app.services.email import get_email_sender  # noqa: PLC0415
+
+    await get_email_sender().send_set_password(
+        db,
+        to=payload.email.lower(),
+        set_password_url=accept_url,
+        expires_hours=INVITE_TTL_HOURS,
+    )
     return InviteResponse(
         id=inv.id,
         email=payload.email,

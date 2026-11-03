@@ -18,8 +18,9 @@ live upload, so the dry-run preview is truthful. Per entity type
   cross-identifier conflict verification: a candidate holding a *different*
   value on any other identifier we propose is rejected (`reconciler.py:565`).
 - **Work** → `reconcile_work_by_label_and_author`: SPARQL label match against
-  `Q47461344` subclasses; a candidate whose P50 author differs is rejected as
-  a different work (`reconciler.py:339`).
+  `Q47461344` subclasses (after `P2888` exact-match lookup, Rule W-292); a
+  candidate whose P50 author or P2093 author name string differs is rejected
+  as a different work (`reconciler.py`, Rule W-294).
 
 `reconciler._query` raises `ReconciliationUnavailableError` on any
 network/429/5xx (`reconciler.py:147`) — never returns `[]` for an outage. The

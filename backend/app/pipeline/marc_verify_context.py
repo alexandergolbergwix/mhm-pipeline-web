@@ -65,32 +65,33 @@ RAW_TAG_FALLBACK: dict[str, tuple[str, ...]] = {
     # citing only the main title made every real subtitle read as unsupported
     # (2026-10-04: P1680 on 47% of partial manuscripts vs 7% of fulls).
     "subtitle": ("245$b",),
-    "variant_titles": ("246$a", "246$b"),
-    "place": ("260$a", "264$a", "751$a"),
+    "variant_titles": ("246$a", "246$b", "740$a"),
+    "place": ("260$a", "264$a", "751$a", "751$e"),
     "extent": ("300$a", "300$b", "300$c"),
     "extent_text": ("300$a",),
-    "material": ("340$a", "340$e"),
+    "material": ("340$a", "340$e", "958$a", "958$b"),
     "carrier": ("336$a", "337$a", "338$a"),
-    "notes": ("500$a", "590$a", "597$a"),
-    "contents": ("505$a", "505$t"),
+    "notes": ("500$a", "581$a", "590$a", "597$a", "957$a"),
+    "contents": ("505$a", "505$t", "740$a"),
     "summary": ("520$a",),
-    "languages": ("041$a", "546$a"),
+    "languages": ("041$a", "546$a", "958$a", "958$b"),
     "rights": ("540$a", "540$u", "939$a", "939$u", "952$a", "952$b"),
     "provenance": ("541$a", "541$b", "561$a", "563$a", "583$a"),
     "subjects": ("650$a", "651$a", "600$a", "610$a"),
     "canonical_references": ("630$a", "730$a", "830$a"),
     "genres": ("655$a",),
-    "authors": ("100$a", "100$d", "110$a", "111$a"),
-    "contributors": ("700$a", "700$d", "710$a", "711$a"),
-    # 090/099 carry the NLI shelfmark ("F 3238"); 852 is the standard holdings
-    # field. 952$a–d are NOT shelfmark data in this corpus — they hold rights,
+    "authors": ("100$a", "100$c", "100$d", "110$a", "111$a"),
+    "contributors": ("700$a", "700$c", "700$d", "700$e", "710$a", "710$e", "711$a"),
+    # 942$a/$x/$c/$z carry the current holding institution and shelfmark;
+    # 090/099 carry the NLI/microfilm call number; 852 is standard holdings.
+    # 952$a–d are NOT shelfmark data in this corpus — they hold rights,
     # audit and export notes ("Public domain; Contract", a cataloguer name),
     # and mapping them here made the judge see rights text where it expected a
     # shelfmark, so every work's cited attestation looked unverifiable
     # (Rule W-138 follow-up).
-    "shelfmark": ("090$a", "099$a", "852$j", "852$h", "852$c"),
+    "shelfmark": ("942$a", "942$x", "942$c", "942$z", "090$a", "099$a", "852$j", "852$h", "852$c"),
     "digital_access": ("856$u", "966$a", "966$9"),
-    "related_records": ("773$a", "774$a", "787$a"),
+    "related_records": ("773$a", "774$a", "787$a", "581$a"),
 }
 
 

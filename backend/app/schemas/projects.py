@@ -36,6 +36,7 @@ class MemberItem(BaseModel):
     name: str
     role: ProjectRole
     is_owner: bool
+    accept_url: str | None = None
 
 
 class ProjectDetail(BaseModel):

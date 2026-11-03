@@ -4,10 +4,17 @@ from __future__ import annotations
 
 from converter.wikidata.item_builder import (
     P_AUTHOR,
+    P_INVENTORY_NUMBER,
+    P_OBJECT_HAS_ROLE,
     P_OBJECT_NAMED_AS,
+    P_SIGNIFICANT_PERSON,
     P_SOURCING_CIRCUMSTANCES,
+    Q_ADDRESSEE_ROLE,
+    Q_FORMER_OWNER_ROLE,
     Q_NLI,
+    Q_POSSIBLY,
     Q_PRESUMABLY,
+    Q_SENDER_ROLE,
     ROLE_TO_PID,
     WikidataItem,
     WikidataStatement,
@@ -18,6 +25,18 @@ from converter.wikidata.item_builder import (
     logger,
 )
 from converter.wikidata.role_normalize import normalize_marc_role
+
+_SIGNIFICANT_PERSON_ROLE_QIDS: dict[str, str] = {
+    "former owner": Q_FORMER_OWNER_ROLE,
+    "בעלים קודמים": Q_FORMER_OWNER_ROLE,
+    "בעלים קודם": Q_FORMER_OWNER_ROLE,
+    "(ממנו)": Q_SENDER_ROLE,
+    "ממנו": Q_SENDER_ROLE,
+    "copied from": Q_SENDER_ROLE,
+    "(אליו)": Q_ADDRESSEE_ROLE,
+    "אליו": Q_ADDRESSEE_ROLE,
+    "addressee": Q_ADDRESSEE_ROLE,
+}
 
 
 def _public_person_qid_ok(marc_name: str, person_item: WikidataItem) -> bool:
@@ -138,12 +157,56 @@ class PersonLinkingMixin:
                 )
                 resolved_qid = None
 
+            role_qualifiers: list[dict[str, str]] = []
+            if pid == P_SIGNIFICANT_PERSON:
+                role_qid = _SIGNIFICANT_PERSON_ROLE_QIDS.get(role_norm)
+                if role_qid:
+                    role_qualifiers.append(
+                        {
+                            "property": P_OBJECT_HAS_ROLE,
+                            "value": role_qid,
+                            "type": "item",
+                        }
+                    )
+                if role_qid == Q_FORMER_OWNER_ROLE:
+                    for fs in record.get("former_shelfmarks") or []:
+                        if not isinstance(fs, dict):
+                            continue
+                        holder = str(fs.get("holder") or "").strip().casefold()
+                        sm = str(fs.get("shelfmark") or "").strip()
+                        if sm and holder and (
+                            holder in clean_name.casefold()
+                            or clean_name.casefold() in holder
+                            or any(
+                                str(lbl).strip().casefold() in holder
+                                for lbl in (person_item.labels or {}).values()
+                                if str(lbl).strip()
+                            )
+                        ):
+                            role_qualifiers.append(
+                                {
+                                    "property": P_INVENTORY_NUMBER,
+                                    "value": sm,
+                                    "type": "string",
+                                }
+                            )
+                            break
+            if "?" in str(name):
+                role_qualifiers.append(
+                    {
+                        "property": P_SOURCING_CIRCUMSTANCES,
+                        "value": Q_POSSIBLY,
+                        "type": "item",
+                    }
+                )
+
             if resolved_qid:
                 item.statements.append(
                     WikidataStatement(
                         property_id=pid,
                         value=resolved_qid,
                         value_type="item",
+                        qualifiers=role_qualifiers,
                         references=ref,
                     )
                 )
@@ -151,24 +214,28 @@ class PersonLinkingMixin:
                 logger.info("Skipping unresolved %s claim for %r", role, name)
                 return
             else:
+                local_quals = list(role_qualifiers) + [
+                    {
+                        "property": P_OBJECT_NAMED_AS,
+                        "value": name.strip().rstrip(",;:"),
+                        "type": "string",
+                    },
+                ]
+                if not any(q.get("property") == P_SOURCING_CIRCUMSTANCES for q in local_quals):
+                    local_quals.append(
+                        {
+                            "property": P_SOURCING_CIRCUMSTANCES,
+                            "value": Q_PRESUMABLY,
+                            "type": "item",
+                        }
+                    )
                 item.statements.append(
                     WikidataStatement(
                         property_id=pid,
                         value=f"__LOCAL:{person_item.local_id}",
                         value_type="item",
                         references=ref,
-                        qualifiers=[
-                            {
-                                "property": P_OBJECT_NAMED_AS,
-                                "value": name.strip().rstrip(",;:"),
-                                "type": "string",
-                            },
-                            {
-                                "property": P_SOURCING_CIRCUMSTANCES,
-                                "value": Q_PRESUMABLY,
-                                "type": "item",
-                            },
-                        ],
+                        qualifiers=local_quals,
                     )
                 )
 

@@ -20,9 +20,12 @@ from converter.wikidata.item_builder import (
     Q_HEBREW_ALPHABET,
     Q_ILLUMINATED_MANUSCRIPT,
     Q_LEAF_UNIT,
+    Q_LATIN_SCRIPT,
     Q_MANUSCRIPT,
+    Q_MANUSCRIPT_CODEX,
     Q_PRINTED_BOOK,
     Q_PALIMPSEST,
+    Q_SCROLL,
     WikidataItem,
     WikidataStatement,
     _QUOTE_CHARS,
@@ -227,7 +230,10 @@ class ManuscriptMetadataMixin:
         an alias slot, falling back to a shelfmark-based label.
         """
         is_placeholder = _is_placeholder_title(title)
-        shelfmark = _normalise_label(str(record.get("shelfmark") or ""))
+        shelfmark = (
+            str(record.get("holding_942_shelfmark") or "").strip()
+            or _normalise_label(str(record.get("shelfmark") or ""))
+        )
         from converter.wikidata.item_builder import _holding_institution_name
         holding = _holding_institution_name(record)
         title_clean = _normalise_label(title) if title else ""
@@ -265,7 +271,7 @@ class ManuscriptMetadataMixin:
                 manuscript_he_designation,
             )
 
-            item.labels["en"] = manuscript_en_label(shelfmark, holding)
+            item.labels["en"] = manuscript_en_label(shelfmark, holding, record)
             if title_clean and not is_placeholder and title_has_hebrew:
                 item.aliases.setdefault("he", []).append(title_clean)
             # When the title was a placeholder OR Latin-only AND we have a
@@ -371,8 +377,40 @@ class ManuscriptMetadataMixin:
         if record.get("is_palimpsest"):
             qids.append(Q_PALIMPSEST)
         cond_blob = " ".join(str(c) for c in (record.get("condition_notes") or [])).casefold()
-        if any(kw in cond_blob for kw in FRAGMENT_CONDITION_KEYWORDS):
+        title_blob = str(record.get("title") or "").casefold()
+        extent_blob = " ".join(
+            str(record.get(k) or "") for k in ("extent_text", "300$a", "extent")
+        ).casefold()
+        is_fragment = any(kw in cond_blob for kw in FRAGMENT_CONDITION_KEYWORDS) or (
+            "(קטע" in title_blob or "קטע)" in title_blob
+        )
+        if is_fragment:
             qids.append(Q_MANUSCRIPT_FRAGMENT)
+        is_scroll = (
+            any(kw in extent_blob for kw in ("עמודות", "מגילה", "גליל", "יריע", "scroll"))
+            or title_blob.startswith(("מגלת אסתר", "מגילת אסתר"))
+        )
+        if is_scroll and Q_SCROLL not in qids:
+            qids.append(Q_SCROLL)
+        is_single_sheet = (
+            re.search(r"(?:^|\b)(?:1\s+דף|דף\s+1|דף\s+בודד|single\s+(?:leaf|sheet))\b", extent_blob)
+            or any(title_blob.startswith(p) for p in ("אילן ", "כתובה"))
+        )
+        has_multi_leaf_extent = False
+        if not is_fragment and not is_scroll and not is_single_sheet:
+            from converter.transformer.extent import parse_extent  # noqa: PLC0415
+
+            parsed_ext = parse_extent(extent_blob) if extent_blob.strip() else None
+            if parsed_ext and parsed_ext.count and parsed_ext.count >= 2:
+                has_multi_leaf_extent = True
+            else:
+                try:
+                    if int(record.get("extent") or 0) >= 2:
+                        has_multi_leaf_extent = True
+                except (TypeError, ValueError):
+                    pass
+        if has_multi_leaf_extent and Q_MANUSCRIPT_CODEX not in qids:
+            qids.append(Q_MANUSCRIPT_CODEX)
         from converter.wikidata.marc_subject_resolve import instance_qids_from_genre_labels  # noqa: PLC0415
 
         supported_genres = [
@@ -420,15 +458,41 @@ class ManuscriptMetadataMixin:
                         references=ref,
                     )
                 )
-        if any(str(c) in ("heb", "arc", "yid", "lad", "jrb", "jpr") for c in langs):
+        notes_blob = " ".join(
+            str(n) for n in (list(record.get("notes") or []) + [record.get("500$a") or ""])
+        )
+        has_latin_script_note = (
+            "אותיות לטיניות" in notes_blob
+            or "כתב לטיני" in notes_blob
+            or "latin script" in notes_blob.lower()
+            or "latin characters" in notes_blob.lower()
+        )
+        has_explicit_hebrew_script = bool(record.get("script_type") or record.get("script_mode")) or any(
+            str(record.get(k) or "").strip() for k in ("958$a", "958$b")
+        )
+        primary_is_hebrew = bool(langs) and str(langs[0]) in ("heb", "arc", "yid", "lad", "jrb", "jpr")
+        if has_latin_script_note or any(
+            str(c) in ("lat", "ita", "spa", "por", "fre", "ger", "eng", "dut")
+            for c in langs
+        ) and not primary_is_hebrew and not has_explicit_hebrew_script:
             item.statements.append(
                 WikidataStatement(
                     property_id=P_WRITING_SYSTEM,
-                    value=Q_HEBREW_ALPHABET,
+                    value=Q_LATIN_SCRIPT,
                     value_type="item",
                     references=ref,
                 )
             )
+        if any(str(c) in ("heb", "arc", "yid", "lad", "jrb", "jpr") for c in langs):
+            if not (has_latin_script_note and not primary_is_hebrew and not has_explicit_hebrew_script):
+                item.statements.append(
+                    WikidataStatement(
+                        property_id=P_WRITING_SYSTEM,
+                        value=Q_HEBREW_ALPHABET,
+                        value_type="item",
+                        references=ref,
+                    )
+                )
 
     def _add_physical_description(
         self,

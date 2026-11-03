@@ -69,9 +69,11 @@ from converter.wikidata.property_mapping import (
     P_OWNED_BY,
     P_REASON_DEPRECATED_RANK,
     P_SCRIPT_STYLE,
+    P_SIGNIFICANT_PERSON,
     P_SIGNIFICANT_PLACE,
     P_SOURCING_CIRCUMSTANCES,
     P_START_TIME,
+    P_PART_OF,
     P_STATEMENT_SUPPORTED_BY,
     P_TITLE,
     P_VIAF_ID,
@@ -80,6 +82,7 @@ from converter.wikidata.property_mapping import (
     P_WRITING_SYSTEM,
     PRECISION_CENTURY,
     PRECISION_YEAR,
+    Q_ADDRESSEE_ROLE,
     Q_AUTHOR_OCCUPATION,
     Q_CIRCA,
     Q_CODEX,
@@ -87,7 +90,9 @@ from converter.wikidata.property_mapping import (
     Q_COMMENTATOR_OCCUPATION,
     Q_COMPOSITE_MANUSCRIPT,
     Q_CORRECTION,
+    Q_DIGITAL_COLLECTION,
     Q_DUBIOUS,
+    Q_FORMER_OWNER_ROLE,
     Q_GLOSS,
     Q_HEBREW_ALPHABET,
     Q_HUMAN,
@@ -97,21 +102,28 @@ from converter.wikidata.property_mapping import (
     Q_ISRAEL_MUSEUM,
     Q_ILLUMINATED_MANUSCRIPT,
     Q_KTIV,
+    Q_LATIN_SCRIPT,
     Q_LEAF_UNIT,
     Q_MANUSCRIPT,
+    Q_MANUSCRIPT_CODEX,
     Q_MARGINALIA,
     Q_NLI,
     Q_ORGANIZATION,
     Q_PALIMPSEST,
+    Q_PLACE_OF_ATTESTATION,
     Q_PRINTED_BOOK,
     Q_POSSIBLY,
     Q_PRESUMABLY,
     Q_SCRIBE,
+    Q_SCROLL,
+    Q_SENDER_ROLE,
+    Q_TITLE_PAGE,
     Q_TRANSLATOR_OCCUPATION,
     Q_UNKNOWN_TEXT,
     Q_WIKIPROJECT_MANUSCRIPTS,
     Q_WRITTEN_WORK,
     ROLE_TO_PID,
+    SCRIPT_MODE_TO_QID,
     SCRIPT_TYPE_TO_QID,
     date_to_wikidata,
     format_wikidata_time,
@@ -651,7 +663,12 @@ _ROLE_TO_LABEL: dict[str, str] = {
     "סופר": "scribe",
     "בעלים": "owner",
     "בעל": "owner",
-    "(ממנו)": "owner",
+    "(ממנו)": "sender",
+    "ממנו": "sender",
+    "copied from": "sender",
+    "(אליו)": "addressee",
+    "אליו": "addressee",
+    "addressee": "addressee",
     "former owner": "former owner",
     "בעלים קודמים": "former owner",
     "signatory": "signatory",
@@ -665,6 +682,7 @@ _ROLE_TO_LABEL: dict[str, str] = {
     "censor": "censor",
     "illuminator": "illuminator",
     "annotator": "annotator",
+    "מעיר": "annotator",
 }
 
 
@@ -755,20 +773,34 @@ def _holding_institution_name(record: dict[str, object]) -> str:
     return resolution.display_name if resolution else ""
 
 
-def manuscript_en_label(shelfmark: str, holder_name: str) -> str:
+def manuscript_en_label(
+    shelfmark: str,
+    holder_name: str,
+    record: dict[str, object] | None = None,
+) -> str:
     """The English shelfmark label. NEVER defaults to a holder (Rule W-161).
 
-    Three cases, and the third is the one that was broken:
+    When MARC 942 supplies the current holding library, city, country, and
+    current shelfmark ($a, $x, $c, $z), build the structured designation:
+    ``"<942$a>. <city>, <country>. <shelfmark>"``
+    (e.g. ``"The Jewish Theological Seminary of America. New York, USA. Ms. 2473"``).
 
+    Otherwise fall back to:
     1. holder resolved   → the verified table label + shelfmark.
     2. holder attested but unlinkable → the record's own 710 string + shelfmark.
-       Attestation, not fabrication — this is what fixes the 11 items that read
-       "Jerusalem, NLI, F 39766" while MARC named Braginsky or Beit Ariela.
-    3. no holder attested → the shelfmark alone. An unowned shelfmark is honest;
-       an invented owner is not.
+    3. no holder attested → the shelfmark alone.
     """
     shelfmark = str(shelfmark or "").strip()
     holder_name = str(holder_name or "").strip()
+    if record and isinstance(record, dict):
+        inst_942 = str(record.get("holding_942_name") or "").strip()
+        city_942 = str(record.get("holding_942_city") or "").strip()
+        country_942 = str(record.get("holding_942_country") or "").strip()
+        shelf_942 = str(record.get("holding_942_shelfmark") or "").strip() or shelfmark
+        if inst_942 and shelf_942 and (city_942 or country_942):
+            loc = ", ".join(p for p in (city_942, country_942) if p)
+            parts = [p.rstrip(".") for p in (inst_942, loc, shelf_942) if p]
+            return ". ".join(parts)
     if not shelfmark:
         return ""
     return f"{holder_name}, {shelfmark}" if holder_name else shelfmark
@@ -1155,8 +1187,17 @@ def _build_manuscript_description(record: dict[str, object]) -> str:
             record if isinstance(record, dict) else None,
             allow_algorithmic=False,
         ) or ""
+    holding_942 = str(record.get("holding_942_name") or "").strip()
+    if holding_942 and not re.search(r"[\u0590-\u05ff]", holding_942):
+        holding_name = holding_942
     if holding_name:
         parts.append(holding_name)
+        city_942 = str(record.get("holding_942_city") or "").strip()
+        if city_942 and not re.search(r"[\u0590-\u05ff]", city_942) and city_942 not in holding_name:
+            parts.append(city_942)
+        shelf_942 = str(record.get("holding_942_shelfmark") or "").strip()
+        if shelf_942 and not re.search(r"[\u0590-\u05ff]", shelf_942):
+            parts.append(shelf_942)
     # A Wikidata description disambiguates; it is not a subject summary. The
     # appended "Subjects include …" clause read as catalog spill — every one of
     # the 26 manuscripts carrying it was judged partial or fail, while the

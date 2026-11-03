@@ -322,8 +322,8 @@ async def page_wikidata_items(
         ]
         attach_local_reference_targets(items)
         attach_local_reference_targets(stable_rows)
-        adopted = await _adopt_cached_duplicate_qids(items) or set()
-        _mirror_adopted_qids(items, stable_rows, adopted)
+        adopted = await _adopt_cached_duplicate_qids(stable_rows) or set()
+        _mirror_adopted_qids(stable_rows, items, adopted)
         await _attach_live_labels_for_verdict_keys(items, stable_rows)
         stable_items = {
             str(row.get("local_id") or ""): slim_item_for_verdict_persist(row)

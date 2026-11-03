@@ -3192,3 +3192,56 @@ The curator's drawer accept reaches the upload too — the job now passes
 overrides (it never did before: a foreign UPDATE could not be authorised).
 Tests:
 `backend/tests/unit/test_wikidata_reconciler_prewarm.py`.
+
+## Rule W-292 — Sharded upload ownership, P2888 work identity, ledger persistence, and new/verified scope gates (added 2026-10-31)
+
+On run 47e03437 job `b4905cb6` (239 items: 7 created, 231 skipped, 1 failed),
+six upload-path gaps surfaced:
+1. **Shard ownership auth:** `run_wikidata_upload_shard` did not call
+   `ensure_authenticated()`, and `_get_authenticated_user()` made an
+   unauthenticated `userinfo` call for bot passwords, marking 50 of our own
+   `Q141...` person items as `foreign` (and `classify_ownership_with_uploader`
+   did not forward `our_p3959` on manuscripts). Shards now authenticate slot
+   uploaders once, `_get_authenticated_user()` reads the logged-in WBI
+   session, and `classify_ownership_with_uploader` passes `our_p3959`.
+2. **P2888 work identity:** 72 works skipped with `same_item without shared
+   identifier` even though 101 of the 133 skipped QIDs were our own `Q141...`
+   items carrying the exact same `P2888` HMO Wikibase Item URI. Works now
+   pre-warm and reconcile by `wdt:P2888 <uri>` first, and
+   `_apply_uncertain_duplicate_confirm` treats a matching live `P2888` as a
+   verified identifier match without calling the LLM.
+3. **LLM confirm context + retry:** 66 works skipped with `verdict=unsure`
+   because `_build_prompt` sent only the title and omitted author and
+   description. `_build_prompt` now includes catalog/live authors and
+   descriptions, retries once on `httpx.HTTPError`, and memoizes by prompt
+   hash.
+4. **Live label+description collision:** `QDraft_Work_____by_52` (`כנף רננים`)
+   failed after 3 retries on a collision with our own `Q141755060` because
+   conflict adoption was gated on `self._is_test`. Live `CREATE` now adopts an
+   owned conflicting QID or skips a foreign collision cleanly.
+5. **Ledger persistence on reconciled skips:** `upload_items` now records
+   `updated`, `exists`, and non-clashing `skipped` QIDs in
+   `wikidata_qid_ledger` so reconciled items leave the `new` bucket.
+6. **Scope & UI status:** `wikidata_upload_job` honors `update_existing=False`
+   and `ai_verified_only=True` (while pre-seeding `created_qids` from known
+   QIDs so `__LOCAL:` links resolve), and `resolveWikidataItemDataStatus`
+   classifies identifierless persons as `local_only` and `upload_outcome=create`
+   as `updated`.
+Tests: `backend/tests/unit/test_wikidata_duplicate_confirm.py`,
+`backend/tests/unit/test_wikidata_reconciler_prewarm.py`,
+`frontend/tests/unit/wikidataUploadOutcomes.spec.ts`.
+
+## Rule W-294 — Prof. Prebor's 9-point MARC-to-Wikidata conversion audit: MARC 942 shelfmark labels, manuscript codex P31, homonymous work separation, Ktiv P361, 100$c/700$c & role qualifiers, 500/740 folio works, exact-year dates without circa, place/script roles, and 581/title-page/colophon fidelity (added 2026-11-02)
+
+Following Prof. Gila Prebor's audit of `Q141747170` (*Hizzuk Emunah*, `990000885680205171`), `Q141747098` (*Iggeret Sukkah*, `990000802880205171`), and `Q141175895` (*Derushim*, `990001915930205171`) across the 897-record 17th-century corpus:
+
+1. **MARC 942 current shelfmark & structured English label:** `_extract_942_holdings` pairs `942$a/$x/$c/$z` with `710$a/$e` (`current owner`), ignoring `Unknown Library`, `Catalogue …` entries, and `former owner` entries, so `P217` uses the current library shelfmark (`Ms. 2473`, `Ms. EVR I 726`, `Ms. Kaufmann A 315`) rather than the `090$a` microfilm number (`F 28726`, `F 51052`, `F 12658`), and `manuscript_en_label` formats `<942$a>. <city>, <country>. <942$z>` (894/897 records). Former-owner shelfmarks (`Ms. 4088` for Adler) are preserved on `former_shelfmarks`, and owned-item updates in `uploader.py` update labels, descriptions, and qualifier changes (`APPEND_OR_REPLACE`).
+2. **Manuscript codex (`Q123172729`) & scroll (`Q720106`) `P31`:** `_determine_instance_type` emits `P31 = Q123172729` (`manuscript codex`) alongside `Q87167` (`manuscript`) for multi-leaf codices (762/897 records), `Q720106` (`scroll`) for scrolls (`עמודות` / `מגלת אסתר`, 13 records), and `Q30103158` (`manuscript fragment`) for fragments, while `merge_legacy_into_canonical` retains safe legacy `P31` subclasses alongside canonical `Q87167`.
+3. **Homonymous work separation & `100/245` coexistence:** `ledger_key_for_item` keys works by `P2888` HMO URI (or author-scoped key) instead of bare `local_id`, and `reconcile_work_by_label_and_author` rejects candidates whose `P2093` conflicts with the proposed author so generic titles (`דרושים`) by different authors (`קנטריני` vs. `אברהם`) never merge. `_add_contents` always checks `100/245` even when secondary `500` works exist.
+4. **Ktiv digital collection (`P361 → Q118384267`):** Every manuscript with an NLI/Ktiv control number emits `P361 = Q118384267` (`Ktiv`) qualified with `P3831 = Q60474998` (`digitized collection`).
+5. **Person names (`100$c`/`700$c`), roles, and uncertainty:** Ingest joins `100$c`/`700$c` (`מטרוקי`, `הלוי, אשכנזי`, `מבוצ'ץ'`) onto `$a` via trailing-comma alignment (preserving Hebrew trailing geresh `'`), maps `(ממנו)` to `P3342` + `P3831 = Q10359183` (`sender`), `(אליו)` to `P3342` + `P3831 = Q28008314` (`addressee`), and `former owner` (`700`/`710` personal names) to `P3342` + `P3831 = Q136357543` (`former owner`) + `P217` former shelfmark, and adds `P1480 = Q30230067` (`possibly`) when a name carries `?`.
+6. **Folio-prefixed `500$a` works & `740$a` analytical titles:** `_extract_work_mentions` parses `דף X: ...` / `בדפים X: ...` with `folio_range` → `P1574` + `P958`, and `_extract_740_related_works` promotes `740$a` into `related_works` (`source_field="740"`).
+7. **Exact-year dates, Hebrew dates, places, and scripts:** `P571` emits `P1480 = Q5727902` (`circa`) only when the source string has an explicit approximate marker (27/897 records, never on exact years `1681`/`1650`/`1675`) and records the Hebrew date string in `P1932` (779/897 records). `751$e = place of writing` resolves through `_PLACE_LABEL_QID_OVERRIDES` + KIMA into `P1071` (`Panevėžys` `Q1719466`, `Metz` `Q22690`), `related place` uses `P7153` + `P3831 = Q127695525` (`place of attestation`, never `provenance`), `500$a` `"באיטלקית באותיות לטיניות"` emits `P282 = Q8229` (`Latin script`) without false `ItalianScript` `P9302`, and `958$a = "קראית-אשכנזית"` maps to `AshkenaziScript` (`Q121094898`).
+8. **Subjects, `581$a` bibliography, colophon folios, and title-page inscriptions:** `SUBJECT_TO_QID` covers `Midrash`, `Messiah`, `Religious disputations`, `Karaite law`, and `Jewish ethics`; `581$a` + `942` catalog entries feed `P528` (532/897 records); `957$a` parenthetical folios (`קולופון (בדף 21א):`) populate `P7416 = "21א"` on `P1684` (`Q372474`); and `500$a` `"בשער שבראשו: ..."` emits `P1684` with `P3831 = Q1339862` (`title page`).
+Tests: `backend/tests/unit/test_gila_prebor_9_points_audit.py`.
+
