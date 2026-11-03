@@ -19,7 +19,9 @@ def pick_kima_place_row(
     *,
     normalize_primary: Callable[[str], str],
     primary_heb_key: str = "primary_heb",
+    primary_rom_key: str = "primary_rom",
     wikidata_key: str = "wikidata_id",
+    raw_query: str | None = None,
 ) -> T | None:
     """Return one unambiguous KIMA place row, or ``None`` to abstain."""
     if not rows:
@@ -30,10 +32,30 @@ def pick_kima_place_row(
     qids = {str(row.get(wikidata_key) or "").strip() for row in rows}
     qids.discard("")
     if len(qids) > 1:
+        if raw_query and "(" in raw_query:
+            import unicodedata
+
+            raw_cf = " ".join(unicodedata.normalize("NFC", raw_query).split()).casefold()
+            qual_exact = [
+                row
+                for row in rows
+                if " ".join(unicodedata.normalize("NFC", str(row.get(primary_rom_key) or "")).split()).casefold() == raw_cf
+                or " ".join(unicodedata.normalize("NFC", str(row.get(primary_heb_key) or "")).split()).casefold() == raw_cf
+            ]
+            qual_qids = {str(row.get(wikidata_key) or "").strip() for row in qual_exact}
+            qual_qids.discard("")
+            if len(qual_qids) == 1:
+                chosen_qid = next(iter(qual_qids))
+                for row in qual_exact:
+                    if str(row.get(wikidata_key) or "").strip() == chosen_qid:
+                        return row
+                return qual_exact[0]
+
         exact = [
             row
             for row in rows
             if normalize_primary(str(row.get(primary_heb_key) or "")) == normalized_query
+            or normalize_primary(str(row.get(primary_rom_key) or "")) == normalized_query
         ]
         exact_qids = {str(row.get(wikidata_key) or "").strip() for row in exact}
         exact_qids.discard("")

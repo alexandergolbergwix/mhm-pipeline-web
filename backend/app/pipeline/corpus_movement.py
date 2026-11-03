@@ -1,26 +1,30 @@
 """Pure functions for the Corpus Movement view (Phase 2).
 
-Builds a per-manuscript production-arc summary over all manuscripts in a
-project:  production place (KIMA coords) → current holder (NLI, Jerusalem).
-
-Only production stops are included (no owner biographical proxies) because
-the corpus view needs one well-defined anchor per manuscript, not a chain.
-Owners and significant places appear as filter/facet dimensions only.
+Builds a per-manuscript provenance-path summary over all manuscripts in a
+project:
+  production place → intermediate waypoints (751 related places, 541/583
+  provenance events, 942/710 former holders) → attested current physical
+  holding institution (MARC 942 / 710 / holding_institutions).
 
 Integrity rules (same spirit as Phase-1 guard layer):
-- Never fabricate coordinates: production point only when KIMA coords present.
+- Never fabricate coordinates: points are plotted only when KIMA, the
+  Ashkenazi gazetteer, or the audited holding-institution table resolves them.
 - Never fabricate dates: production year only when MARC dates dict has one.
-- current_holder is always NLI Jerusalem (hard constant, same as Phase 1).
+- Current holder uses the manuscript's actual attested holder (`holder_label`,
+  `holder_lat`, `holder_lon`), falling back to NLI Jerusalem only when no
+  specific holder is attested.
 """
 from __future__ import annotations
 
 from typing import Any
 
 from app.pipeline.research_provenance_map import (
-    NLI_HOLDER,
     _coords_from_payload,
     _year_band,
     is_owner_role,
+    resolve_former_holder_coords,
+    resolve_place_coords_from_matches_or_gazetteer,
+    resolve_record_holder_stop,
 )
 
 
@@ -36,23 +40,15 @@ def _extract_corpus_item(
     """
     prod_year, prod_early, prod_late = _year_band(prepared.get("dates"))
     prod_place_text = str(prepared.get("place") or "").strip()
-    prod_lat: float | None = None
-    prod_lon: float | None = None
-
-    for m in matches:
-        if m.get("entity_kind") != "place":
-            continue
-        role = (m.get("role") or "").lower()
-        text = str(m.get("entity_text") or "").strip()
-        if role.startswith("production") or (prod_place_text and (
-            text == prod_place_text or
-            text in prod_place_text or
-            prod_place_text in text
-        )):
-            c = _coords_from_payload(m.get("payload") or {})
-            if c is not None:
-                prod_lat, prod_lon = c
-                break
+    prod_coords = (
+        resolve_place_coords_from_matches_or_gazetteer(
+            prod_place_text, matches, production_only=True,
+        )
+        if prod_place_text
+        else None
+    )
+    prod_lat: float | None = prod_coords[0] if prod_coords else None
+    prod_lon: float | None = prod_coords[1] if prod_coords else None
 
     # Genres from MARC record.
     genres: list[str] = []
@@ -60,10 +56,10 @@ def _extract_corpus_item(
         if isinstance(g, str) and g.strip():
             genres.append(g.strip())
     for g in prepared.get("genres") or []:
-        if isinstance(g, str) and g.strip():
+        if isinstance(g, str) and g.strip() and g.strip() not in genres:
             genres.append(g.strip())
 
-    # Owners: entity_text of approved+medium/high-confidence owner matches.
+    # Owners: entity_text of approved+medium/high-confidence owner matches + MARC 942/710 former holders.
     owners: list[str] = []
     for m in matches:
         if m.get("entity_kind") not in ("person", "organization") or not is_owner_role(
@@ -75,29 +71,28 @@ def _extract_corpus_item(
         name = str(m.get("entity_text") or m.get("matched_name") or "").strip()
         if name and name not in owners:
             owners.append(name)
+    for fh_row in prepared.get("former_holders") or []:
+        if isinstance(fh_row, dict):
+            fh_name = str(fh_row.get("holder") or "").strip()
+            if fh_name and fh_name not in owners:
+                owners.append(fh_name)
 
-    # Provenance-event places (acquisition / conservation / exhibition) —
-    # typed + dated waypoints with coords from the matching authority place
-    # (Rule 60). Powers the place filter and optional extra arcs.
+    # Provenance-event places + intermediate waypoints (751 related places & 942 former holders).
     event_places: list[dict[str, Any]] = []
+    seen_waypoint_labels: set[str] = (
+        {prod_place_text.casefold()} if prod_place_text else set()
+    )
+
     for ev in prepared.get("provenance_events") or []:
         if not isinstance(ev, dict):
             continue
         ev_place = str(ev.get("place_text") or "").strip()
         if not ev_place:
             continue
-        ev_lc = ev_place.lower()
-        ev_lat: float | None = None
-        ev_lon: float | None = None
-        for m in matches:
-            if m.get("entity_kind") != "place":
-                continue
-            mtext = str(m.get("entity_text") or "").strip().lower()
-            if mtext and (mtext == ev_lc or mtext in ev_lc or ev_lc in mtext):
-                c = _coords_from_payload(m.get("payload") or {})
-                if c is not None:
-                    ev_lat, ev_lon = c
-                    break
+        ev_coords = resolve_place_coords_from_matches_or_gazetteer(ev_place, matches)
+        ev_lat = ev_coords[0] if ev_coords else None
+        ev_lon = ev_coords[1] if ev_coords else None
+        seen_waypoint_labels.add(ev_place.casefold())
         event_places.append({
             "type": str(ev.get("type") or "provenance"),
             "place": ev_place,
@@ -106,7 +101,46 @@ def _extract_corpus_item(
             "year": ev.get("year"),
         })
 
-    # All production + related + event place names for the place filter.
+    # MARC 751$a related / intermediate places (places the manuscript was in after production).
+    for rp in prepared.get("related_places") or []:
+        rp_text = str(rp or "").strip()
+        if not rp_text or rp_text.casefold() in seen_waypoint_labels:
+            continue
+        rp_coords = resolve_place_coords_from_matches_or_gazetteer(rp_text, matches)
+        if rp_coords is not None:
+            seen_waypoint_labels.add(rp_text.casefold())
+            event_places.append({
+                "type": "significant_place",
+                "place": rp_text,
+                "lat": rp_coords[0],
+                "lon": rp_coords[1],
+                "year": None,
+            })
+
+    # MARC 942 / 710 former holding institutions & collections (e.g. Mossad ha-Rav Kook, Gaster, Adler).
+    for fh_row in prepared.get("former_holders") or []:
+        if not isinstance(fh_row, dict):
+            continue
+        fh_name = str(fh_row.get("holder") or "").strip()
+        if not fh_name or fh_name.casefold() in seen_waypoint_labels:
+            continue
+        resolved_fh = resolve_former_holder_coords(fh_name, fh_row.get("city"))
+        if resolved_fh is not None:
+            seen_waypoint_labels.add(fh_name.casefold())
+            sm = str(fh_row.get("shelfmark") or "").strip()
+            wp_label = f"{fh_name} ({ resolved_fh[2] })" + (f" · {sm}" if sm else "")
+            event_places.append({
+                "type": "former_holder",
+                "place": wp_label,
+                "lat": resolved_fh[0],
+                "lon": resolved_fh[1],
+                "year": None,
+            })
+
+    # Attested current physical holder (MARC 942 / 710 / holding_institutions).
+    holder = resolve_record_holder_stop(prepared)
+
+    # All production + related + event + holder place names for the place filter.
     places: list[str] = []
     if prod_place_text:
         places.append(prod_place_text)
@@ -116,6 +150,9 @@ def _extract_corpus_item(
     for ep in event_places:
         if ep["place"] not in places:
             places.append(ep["place"])
+    holder_place = str(holder.get("place") or "").strip()
+    if holder_place and holder_place not in places:
+        places.append(holder_place)
 
     return {
         "control_number": control_number,
@@ -127,9 +164,10 @@ def _extract_corpus_item(
         "production_year_latest": prod_late,
         "production_place": prod_place_text or None,
         "has_production_point": prod_lat is not None and prod_lon is not None,
-        "holder_lat": NLI_HOLDER["lat"],
-        "holder_lon": NLI_HOLDER["lon"],
-        "holder_label": NLI_HOLDER["label"],
+        "holder_lat": holder["lat"],
+        "holder_lon": holder["lon"],
+        "holder_label": holder["label"],
+        "holder_place": holder_place or None,
         "genres": genres,
         "owners": owners,
         "places": places,
@@ -145,6 +183,7 @@ def build_corpus_movement(
     place: str | None = None,
     genre: str | None = None,
     owner: str | None = None,
+    holder: str | None = None,
 ) -> dict[str, Any]:
     """Apply filters and build the corpus-movement response payload.
 
@@ -154,15 +193,14 @@ def build_corpus_movement(
     place_lc = place.strip().lower() if place else None
     genre_lc = genre.strip().lower() if genre else None
     owner_lc = owner.strip().lower() if owner else None
+    holder_lc = holder.strip().lower() if holder else None
 
     filtered: list[dict[str, Any]] = []
     for item in items:
-        # Year-range filter on the production year band.
         year = item["production_year"]
         year_e = item["production_year_earliest"]
         year_l = item["production_year_latest"]
-        # Use the broadest available year for the range check.
-        low  = year_e if year_e is not None else year
+        low = year_e if year_e is not None else year
         high = year_l if year_l is not None else year
         if from_year is not None and high is not None and high < from_year:
             continue
@@ -178,10 +216,12 @@ def build_corpus_movement(
         if owner_lc:
             if not any(owner_lc in o.lower() for o in item["owners"]):
                 continue
+        if holder_lc:
+            if holder_lc not in str(item.get("holder_label") or "").lower():
+                continue
 
         filtered.append(item)
 
-    # Year-bucket aggregation (for the animated histogram).
     bucket: dict[int, int] = {}
     for item in filtered:
         y = item["production_year"]
@@ -201,6 +241,7 @@ def build_corpus_facets(items: list[dict[str, Any]]) -> dict[str, Any]:
     all_places: set[str] = set()
     all_genres: set[str] = set()
     all_owners: set[str] = set()
+    all_holders: set[str] = set()
     years: list[int] = []
 
     for item in items:
@@ -210,6 +251,9 @@ def build_corpus_facets(items: list[dict[str, Any]]) -> dict[str, Any]:
             all_genres.add(g)
         for o in item["owners"]:
             all_owners.add(o)
+        h = str(item.get("holder_label") or "").strip()
+        if h:
+            all_holders.add(h)
         y = item["production_year"]
         if y is not None:
             years.append(y)
@@ -220,4 +264,5 @@ def build_corpus_facets(items: list[dict[str, Any]]) -> dict[str, Any]:
         "places": sorted(all_places),
         "genres": sorted(all_genres),
         "owners": sorted(all_owners),
+        "holders": sorted(all_holders),
     }

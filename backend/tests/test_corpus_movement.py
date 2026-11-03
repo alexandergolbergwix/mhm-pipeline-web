@@ -139,6 +139,34 @@ class TestExtractCorpusItem:
                    for ep in item["event_places"])
         assert "Zurich" in item["places"]  # filterable on the corpus place facet
 
+    def test_resolves_non_nli_holder_and_intermediate_waypoints(self) -> None:
+        from app.pipeline.marc_ingest import prepare_record_for_pipeline
+
+        raw = {
+            "001": '"990000885680205171"',
+            "245$a": '"חזוק אמונה"',
+            "260$c": '"1681"',
+            "710$a": '"The Jewish Theological Seminary of America|Adler, Elkan Nathan"',
+            "710$e": '"current owner|former owner"',
+            "751$a": '"Metz (France)|Hamburg (Germany)|Buchach (Ukraine)"',
+            "751$e": '"place of writing|related place|related place"',
+            "942$a": '"The Jewish Theological Seminary of America|Adler, Elkan Nathan"',
+            "942$x": '"New York, NY"',
+            "942$c": '"USA"',
+            "942$z": '"Ms. 2473|Ms. 4088"',
+        }
+        prepared = prepare_record_for_pipeline(raw)
+        item = _extract_corpus_item(prepared, [], "990000885680205171")
+        assert "Jewish Theological Seminary Library" in item["holder_label"]
+        assert "New York" in item["holder_label"]
+        assert item["holder_lat"] is not None and abs(item["holder_lat"] - 40.8122) < 0.2
+        assert item["holder_lon"] is not None and abs(item["holder_lon"] - (-73.9605)) < 0.2
+        assert item["has_production_point"] is True
+        waypoint_labels = [ep["place"] for ep in item["event_places"] if ep.get("lat") is not None]
+        assert any("Hamburg" in lbl for lbl in waypoint_labels)
+        assert any("Buchach" in lbl for lbl in waypoint_labels)
+        assert any("Adler, Elkan Nathan" in lbl for lbl in waypoint_labels)
+
 
 # ── build_corpus_movement filters ─────────────────────────────────────────
 

@@ -8,9 +8,9 @@
 | `backend/app/pipeline/research_queries.py` | Pre-defined SELECT-only SPARQL analytics: co-occurrence, people network, ownership chains, geography, provenance events, summary counts. `ENTITY_WHERE` is the shared work/person/place UNION (Rule W-230) |
 | `backend/app/pipeline/research_aggregate.py` | Cross-source Overview: union-find entity dedup across rdf / wikidata / wikibase, keyed QID > control-number > VIAF > NLI > label |
 | `backend/app/pipeline/research_graph_ops.py` | rdflib → undirected networkx graph over 8 HMO predicates; `get_neighbors`, `find_shortest_path` (max_depth 6) |
-| `backend/app/pipeline/research_provenance_map.py` | Pure builder for the single-MS movement map: stops, edges, dropped list, integrity guards A1–A7/D2 |
+| `backend/app/pipeline/research_provenance_map.py` | Pure builder for the single-MS movement map: stops, edges, dropped list, integrity guards A1–A7/D2, attested holder resolution (`resolve_record_holder_stop`), and KIMA/gazetteer fallback |
 | `backend/app/pipeline/research_geo_enrich.py` | Owner→place via Wikidata biography (P551→P937→P20→P19→P625) and institution→seat (P159→P276→P131→P625); guards A3/A6/A7/A8 |
-| `backend/app/pipeline/corpus_movement.py` | Pure corpus-movement item extraction + filter/facet builders (production arc → NLI only) |
+| `backend/app/pipeline/corpus_movement.py` | Pure corpus-movement item extraction + filter/facet builders (production → intermediate 751/541/583/942 waypoints → attested physical holding institution) |
 | `backend/app/pipeline/graph_index.py` | Per-run graph catalog JSON + SQLite node/edge index + viewport budgeting for the RDF canvas (built at `POST /rdf/build`, read by `/rdf/catalog` and `/rdf/viewport`) |
 | `backend/app/routers/research.py` | `/projects/{id}/research/{summary,co-occurrence,people-network,ownership,geography}`; TTL restore from `rdf_artifacts`; coherence-gated summary cache |
 | `backend/app/routers/research_provenance.py` | `/research/provenance` (timeline), `/research/manuscripts` (picker), `/research/provenance-map`, `/research/movement{,/facets}` |

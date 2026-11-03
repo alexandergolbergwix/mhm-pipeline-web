@@ -244,13 +244,16 @@ async def _project_records_and_matches(
     return list(rec_rows), by_cn
 
 
+_MOVEMENT_SCHEMA_VERSION = "v2-holders-waypoints"
+
+
 def _project_fingerprint(records: list[RunRecord], by_cn: dict[str, list[AuthorityMatch]]) -> str:
     """Stable hash over the record set + each match's mutable state (approval / qid).
 
     Changes whenever a record is added, a match re-runs, or a curator approves —
     so the Redis-cached map can never serve stale data after an upstream fix.
     """
-    parts: list[str] = [f"records:{len(records)}"]
+    parts: list[str] = [f"schema:{_MOVEMENT_SCHEMA_VERSION}", f"records:{len(records)}"]
     for cn in sorted(by_cn):
         for m in sorted(by_cn[cn], key=lambda x: str(x.id)):
             parts.append(
@@ -266,7 +269,7 @@ async def _project_fingerprint_sql(project_id: uuid.UUID, db: AsyncSession) -> s
     """
     run_ids = await _run_ids_for_project(project_id, db)
     if not run_ids:
-        return data_fingerprint(["records:0"])
+        return data_fingerprint([f"schema:{_MOVEMENT_SCHEMA_VERSION}", "records:0"])
     run_uuids = [uuid.UUID(r) for r in run_ids]
     rec_count = (
         await db.execute(
@@ -287,7 +290,7 @@ async def _project_fingerprint_sql(project_id: uuid.UUID, db: AsyncSession) -> s
     by_cn: dict[str, list[tuple[str, Any, Any, int]]] = {}
     for cn, mid, qid, conf, approved in rows:
         by_cn.setdefault(cn, []).append((str(mid), qid, conf, int(bool(approved))))
-    parts: list[str] = [f"records:{rec_count}"]
+    parts: list[str] = [f"schema:{_MOVEMENT_SCHEMA_VERSION}", f"records:{rec_count}"]
     for cn in sorted(by_cn):
         for mid, qid, conf, approved_int in sorted(by_cn[cn], key=lambda x: x[0]):
             parts.append(f"{cn}:{mid}:{qid}:{conf}:{approved_int}")
@@ -495,6 +498,7 @@ async def get_corpus_movement(
     place: str | None = None,
     genre: str | None = None,
     owner: str | None = None,
+    holder: str | None = None,
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
@@ -527,4 +531,5 @@ async def get_corpus_movement(
         place=place,
         genre=genre,
         owner=owner,
+        holder=holder,
     )

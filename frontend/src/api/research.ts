@@ -194,9 +194,10 @@ export interface CorpusManuscript {
   production_year_latest: number | null;
   production_place: string | null;
   has_production_point: boolean;
-  holder_lat: number;
-  holder_lon: number;
+  holder_lat: number | null;
+  holder_lon: number | null;
   holder_label: string;
+  holder_place?: string | null;
   genres: string[];
   owners: string[];
   places: string[];
@@ -227,6 +228,7 @@ export interface CorpusMovementFacets {
   places: string[];
   genres: string[];
   owners: string[];
+  holders?: string[];
 }
 
 export interface CorpusMovementFilters {
@@ -235,6 +237,7 @@ export interface CorpusMovementFilters {
   place?: string;
   genre?: string;
   owner?: string;
+  holder?: string;
 }
 
 export interface NeighborNode {
@@ -301,6 +304,7 @@ export const researchApi = {
     if (filters.place)             params.set("place",     filters.place);
     if (filters.genre)             params.set("genre",     filters.genre);
     if (filters.owner)             params.set("owner",     filters.owner);
+    if (filters.holder)            params.set("holder",    filters.holder);
     const qs = params.toString();
     return api.get<CorpusMovement>(`${base(projectId)}/movement${qs ? `?${qs}` : ""}`);
   },

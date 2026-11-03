@@ -468,6 +468,7 @@ function useCorpusData(projectId: string, filters: CorpusMovementFilters) {
     filters.place,
     filters.genre,
     filters.owner,
+    filters.holder,
     retryTick,
   ]);
 
@@ -566,9 +567,20 @@ function CorpusFilterBar({
         placeholder="All owners"
       />
 
+      {/* Current Holder */}
+      {facets?.holders && facets.holders.length > 0 ? (
+        <FilterSelect
+          label="Current holder"
+          options={facets.holders}
+          value={filters.holder ?? ""}
+          onChange={(v) => onChange({...filters, holder: v || undefined})}
+          placeholder="All holders"
+        />
+      ) : null}
+
       {/* Clear */}
       {(filters.from_year != null || filters.to_year != null ||
-        filters.place || filters.genre || filters.owner) && (
+        filters.place || filters.genre || filters.owner || filters.holder) && (
         <button
           onClick={() => {
             setLocalFrom("");
@@ -708,32 +720,95 @@ function CorpusView({projectId}: {projectId: string}) {
     });
   }, [data, year]);
 
-  // Production arcs for visible manuscripts that have coords.
-  const arcs = useMemo(() => {
-    return visible
-      .filter((m) => m.has_production_point)
-      .map((m) => ({
-        cn: m.control_number,
-        label: m.label,
-        points: quadraticArcPoints(
-          [m.production_lat as number, m.production_lon as number],
-          [NLI_LAT, NLI_LON],
-        ),
-        year: m.production_year,
-        place: m.production_place,
-      }));
+  // Provenance path arcs + intermediate waypoints + current holder clusters.
+  const {arcs, waypointClusters, holderClusters} = useMemo(() => {
+    const arcList: Array<{key: string; points: [number, number][]; color: string}> = [];
+    const wpMap = new Map<string, {lat: number; lon: number; label: string; kind: string; count: number; sampleMs: string[]}>();
+    const hMap = new Map<string, {lat: number; lon: number; label: string; count: number; sampleMs: string[]}>();
+
+    for (const m of visible) {
+      const hLat = typeof m.holder_lat === "number" ? m.holder_lat : null;
+      const hLon = typeof m.holder_lon === "number" ? m.holder_lon : null;
+      const hLabel = m.holder_label || "National Library of Israel";
+      if (hLat !== null && hLon !== null) {
+        const hKey = `${hLat.toFixed(3)},${hLon.toFixed(3)}:${hLabel}`;
+        const existingH = hMap.get(hKey) ?? {lat: hLat, lon: hLon, label: hLabel, count: 0, sampleMs: []};
+        existingH.count += 1;
+        if (existingH.sampleMs.length < 6) existingH.sampleMs.push(m.label);
+        hMap.set(hKey, existingH);
+      }
+
+      const chain: Array<{lat: number; lon: number; kind: "production" | "waypoint" | "holder"}> = [];
+      if (m.has_production_point && m.production_lat != null && m.production_lon != null) {
+        chain.push({lat: m.production_lat, lon: m.production_lon, kind: "production"});
+      }
+      for (const ep of m.event_places ?? []) {
+        if (typeof ep.lat === "number" && typeof ep.lon === "number") {
+          const prev = chain[chain.length - 1];
+          if (!prev || Math.abs(prev.lat - ep.lat) > 0.01 || Math.abs(prev.lon - ep.lon) > 0.01) {
+            chain.push({lat: ep.lat, lon: ep.lon, kind: "waypoint"});
+          }
+          const wpKey = `${ep.lat.toFixed(3)},${ep.lon.toFixed(3)}:${ep.place}`;
+          const existingWp = wpMap.get(wpKey) ?? {
+            lat: ep.lat,
+            lon: ep.lon,
+            label: ep.place,
+            kind: ep.type || "waypoint",
+            count: 0,
+            sampleMs: [],
+          };
+          existingWp.count += 1;
+          if (existingWp.sampleMs.length < 6) existingWp.sampleMs.push(m.label);
+          wpMap.set(wpKey, existingWp);
+        }
+      }
+      if (hLat !== null && hLon !== null) {
+        const prev = chain[chain.length - 1];
+        if (!prev || Math.abs(prev.lat - hLat) > 0.01 || Math.abs(prev.lon - hLon) > 0.01) {
+          chain.push({lat: hLat, lon: hLon, kind: "holder"});
+        }
+      }
+
+      for (let i = 0; i < chain.length - 1; i += 1) {
+        const a = chain[i];
+        const b = chain[i + 1];
+        const isWaypointStep = a.kind === "waypoint" || b.kind === "waypoint";
+        arcList.push({
+          key: `${m.control_number}-${i}`,
+          points: quadraticArcPoints([a.lat, a.lon], [b.lat, b.lon]),
+          color: isWaypointStep ? "#f59e0b" : "#8b5cf6",
+        });
+      }
+    }
+
+    return {
+      arcs: arcList,
+      waypointClusters: [...wpMap.values()].sort((a, b) => b.count - a.count),
+      holderClusters: [...hMap.values()].sort((a, b) => b.count - a.count),
+    };
   }, [visible]);
 
   const allPoints = useMemo<[number, number][]>(() => {
-    const pts: [number, number][] = [[NLI_LAT, NLI_LON]];
+    const pts: [number, number][] = [];
     for (const m of visible) {
-      if (m.has_production_point)
-        pts.push([m.production_lat as number, m.production_lon as number]);
+      if (m.has_production_point && m.production_lat != null && m.production_lon != null) {
+        pts.push([m.production_lat, m.production_lon]);
+      }
     }
+    for (const wp of waypointClusters) {
+      pts.push([wp.lat, wp.lon]);
+    }
+    for (const h of holderClusters) {
+      pts.push([h.lat, h.lon]);
+    }
+    if (pts.length === 0) pts.push([NLI_LAT, NLI_LON]);
     return pts;
-  }, [visible]);
+  }, [visible, waypointClusters, holderClusters]);
 
   const withPoint = visible.filter((m) => m.has_production_point);
+  const withAnyTrajectory = visible.filter(
+    (m) => m.has_production_point || (m.event_places ?? []).some((ep) => ep.lat != null),
+  );
   const noPoint = visible.filter((m) => !m.has_production_point);
 
   return (
@@ -765,15 +840,15 @@ function CorpusView({projectId}: {projectId: string}) {
                 />
                 <FitBoundsLatLon points={allPoints} />
 
-                {/* Production → NLI arcs */}
+                {/* Provenance movement arcs (production → waypoints → current holder) */}
                 {arcs.map((arc) => (
                   <Polyline
-                    key={arc.cn}
+                    key={arc.key}
                     positions={arc.points}
                     pathOptions={{
-                      color: "#8b5cf6",
+                      color: arc.color,
                       weight: 1.5,
-                      opacity: 0.55,
+                      opacity: 0.5,
                       dashArray: "5 4",
                     }}
                   />
@@ -782,7 +857,7 @@ function CorpusView({projectId}: {projectId: string}) {
                 {/* Production place markers */}
                 {withPoint.map((m) => (
                   <CircleMarker
-                    key={m.control_number}
+                    key={`prod-${m.control_number}`}
                     center={[m.production_lat as number, m.production_lon as number]}
                     radius={6}
                     pathOptions={{
@@ -795,31 +870,84 @@ function CorpusView({projectId}: {projectId: string}) {
                     <Popup>
                       <div className="text-xs space-y-0.5">
                         <div className="font-semibold">{m.label}</div>
-                        <div>{m.production_place}</div>
+                        <div>Production: {m.production_place}</div>
                         {m.production_year != null && (
-                          <div className="text-muted">{m.production_year}</div>
+                          <div className="text-muted">Year: {m.production_year}</div>
+                        )}
+                        {(m.event_places ?? []).length > 0 && (
+                          <div className="text-amber-600">
+                            Via: {(m.event_places ?? []).map((ep) => ep.place).join(" → ")}
+                          </div>
+                        )}
+                        <div className="text-emerald-700 font-medium">
+                          Holder: {m.holder_label}
+                        </div>
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                ))}
+
+                {/* Intermediate waypoint markers (751 related places, 541/583 events, 942 former holders) */}
+                {waypointClusters.map((wp, idx) => (
+                  <CircleMarker
+                    key={`wp-${idx}-${wp.label}`}
+                    center={[wp.lat, wp.lon]}
+                    radius={Math.min(10, 5 + Math.round(Math.sqrt(wp.count)))}
+                    pathOptions={{
+                      color: "#f59e0b",
+                      fillColor: "#f59e0b",
+                      fillOpacity: 0.8,
+                      weight: 1.5,
+                    }}
+                  >
+                    <Popup>
+                      <div className="text-xs space-y-1">
+                        <div className="font-semibold">{wp.label}</div>
+                        <div className="text-muted">
+                          Intermediate place / former holder ({wp.count} manuscript{wp.count === 1 ? "" : "s"})
+                        </div>
+                        {wp.sampleMs.length > 0 && (
+                          <ul className="list-disc list-inside text-[11px] text-muted">
+                            {wp.sampleMs.map((title, i) => (
+                              <li key={i} className="truncate max-w-[14rem]">{title}</li>
+                            ))}
+                          </ul>
                         )}
                       </div>
                     </Popup>
                   </CircleMarker>
                 ))}
 
-                {/* NLI anchor */}
-                <CircleMarker
-                  center={[NLI_LAT, NLI_LON]}
-                  radius={10}
-                  pathOptions={{
-                    color: "#22c55e",
-                    fillColor: "#22c55e",
-                    fillOpacity: 0.85,
-                    weight: 2,
-                  }}
-                >
-                  <Popup>
-                    <div className="text-xs font-semibold">National Library of Israel</div>
-                    <div className="text-xs text-muted">Current holder of all {visible.length} manuscripts</div>
-                  </Popup>
-                </CircleMarker>
+                {/* Attested current holding institutions */}
+                {holderClusters.map((h, idx) => (
+                  <CircleMarker
+                    key={`holder-${idx}-${h.label}`}
+                    center={[h.lat, h.lon]}
+                    radius={Math.min(13, 6 + Math.round(Math.sqrt(h.count)))}
+                    pathOptions={{
+                      color: "#22c55e",
+                      fillColor: "#22c55e",
+                      fillOpacity: 0.85,
+                      weight: 2,
+                    }}
+                  >
+                    <Popup>
+                      <div className="text-xs space-y-1">
+                        <div className="font-semibold">{h.label}</div>
+                        <div className="text-muted">
+                          Current holder of {h.count} manuscript{h.count === 1 ? "" : "s"}
+                        </div>
+                        {h.sampleMs.length > 0 && (
+                          <ul className="list-disc list-inside text-[11px] text-muted">
+                            {h.sampleMs.map((title, i) => (
+                              <li key={i} className="truncate max-w-[14rem]">{title}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                ))}
               </MapContainer>
             </div>
 
@@ -830,36 +958,49 @@ function CorpusView({projectId}: {projectId: string}) {
                 <div className="text-2xl font-bold text-ink">{visible.length}</div>
                 <div className="text-xs text-muted">manuscripts by {year}</div>
               </div>
-              <div className="rounded-xl border border-white/10 p-3">
-                <div className="kicker mb-2">On map</div>
-                <div className="text-lg font-semibold text-ink">
-                  {withPoint.length} <span className="text-xs text-muted">with coords</span>
+              <div className="rounded-xl border border-white/10 p-3 space-y-1">
+                <div className="kicker mb-1">On map</div>
+                <div className="text-sm font-semibold text-ink">
+                  {withPoint.length} <span className="text-xs text-muted font-normal">production coords</span>
+                </div>
+                <div className="text-sm font-semibold text-amber-400">
+                  {waypointClusters.length} <span className="text-xs text-muted font-normal">intermediate places</span>
+                </div>
+                <div className="text-sm font-semibold text-emerald-400">
+                  {holderClusters.length} <span className="text-xs text-muted font-normal">holding institutions</span>
                 </div>
                 {noPoint.length > 0 && (
-                  <div className="text-xs text-muted mt-1">
-                    {noPoint.length} without production coords
+                  <div className="text-[11px] text-muted pt-1 border-t border-white/5">
+                    {withAnyTrajectory.length} with trajectory · {noPoint.length} without production place
                   </div>
                 )}
               </div>
-              <div className="rounded-xl border border-white/10 p-3">
-                <div className="kicker mb-2">Legend</div>
-                <div className="flex items-center gap-2 text-xs mb-1">
-                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{background: "#8b5cf6"}} />
+              <div className="rounded-xl border border-white/10 p-3 space-y-1.5">
+                <div className="kicker mb-1">Legend</div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{background: "#8b5cf6"}} />
                   <span>Production place</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="inline-block w-2.5 h-2.5 rounded-full" style={{background: "#22c55e"}} />
-                  <span>NLI (current holder)</span>
+                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{background: "#f59e0b"}} />
+                  <span>Intermediate / former place</span>
                 </div>
-                <div className="text-muted text-[10px] mt-2">– – dashed arc: production → NLI</div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0" style={{background: "#22c55e"}} />
+                  <span>Current holding institution</span>
+                </div>
+                <div className="text-muted text-[10px] pt-1 border-t border-white/5">
+                  – – dashed arcs: production → intermediate places → current holder
+                </div>
               </div>
-              {noPoint.length > 0 && noPoint.length <= 8 && (
+              {holderClusters.length > 0 && (
                 <div className="rounded-xl border border-white/10 p-3">
-                  <div className="kicker mb-2">No coords ({noPoint.length})</div>
-                  <ul className="space-y-1 text-xs">
-                    {noPoint.slice(0, 8).map((m) => (
-                      <li key={m.control_number} className="truncate text-muted">
-                        {m.label}
+                  <div className="kicker mb-2">Top current holders</div>
+                  <ul className="space-y-1 text-xs max-h-36 overflow-y-auto">
+                    {holderClusters.slice(0, 6).map((h, i) => (
+                      <li key={i} className="flex items-center justify-between gap-2">
+                        <span className="truncate text-ink" title={h.label}>{h.label}</span>
+                        <span className="text-emerald-400 tabular-nums shrink-0 font-medium">{h.count}</span>
                       </li>
                     ))}
                   </ul>

@@ -181,6 +181,7 @@ class KimaIndex:
             rows,
             normalized,
             normalize_primary=self.normalize_name,
+            raw_query=name,
         )
 
     def stats(self) -> dict:

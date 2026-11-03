@@ -1326,9 +1326,9 @@ def _extract_942_holdings(record: dict[str, Any]) -> None:
         else (c942[0].strip() if c942 else "")
     )
     shelf = (
-        z942[chosen_idx].strip()
+        z942[chosen_idx].strip().rstrip(" .,;:/-")
         if chosen_idx is not None and chosen_idx < len(z942)
-        else (z942[0].strip() if z942 and not former_owners else "")
+        else (z942[0].strip().rstrip(" .,;:/-") if z942 and not former_owners else "")
     )
 
     if country and city:
@@ -1338,16 +1338,17 @@ def _extract_942_holdings(record: dict[str, Any]) -> None:
         record["holding_942_name"] = inst_name
         if not record.get("holding_institution"):
             record["holding_institution"] = inst_name
-    if city:
-        record["holding_942_city"] = city
-    if country:
-        record["holding_942_country"] = country
+        if city:
+            record["holding_942_city"] = city
+        if country:
+            record["holding_942_country"] = country
     if shelf:
         record["holding_942_shelfmark"] = shelf
         record["shelfmark"] = shelf
 
     former_shelfmarks: list[dict[str, str]] = []
     catalog_refs_942: list[dict[str, str]] = []
+    inst_cf = inst_name.casefold()
     for idx, z_val in enumerate(z942):
         if idx == chosen_idx:
             continue
@@ -1355,10 +1356,52 @@ def _extract_942_holdings(record: dict[str, Any]) -> None:
         if not z_clean:
             continue
         owner_i = a942[idx].strip() if idx < len(a942) else ""
-        if owner_i.casefold().startswith(("catalogue ", "catalog ")):
+        owner_cf = owner_i.casefold()
+        if owner_cf.startswith(("catalogue ", "catalog ")):
             catalog_refs_942.append({"catalog": owner_i, "number": z_clean})
-        else:
+        elif owner_i and "unknown library" not in owner_cf and owner_cf != inst_cf:
             former_shelfmarks.append({"holder": owner_i, "shelfmark": z_clean})
+
+    former_holders: list[dict[str, str]] = []
+    seen_former_cf: set[str] = set()
+    for idx, raw_owner in enumerate(a942):
+        if idx == chosen_idx:
+            continue
+        owner_i = raw_owner.strip()
+        owner_cf = owner_i.casefold()
+        if (
+            not owner_i
+            or "unknown library" in owner_cf
+            or owner_cf.startswith(("catalogue ", "catalog "))
+            or owner_cf == inst_cf
+            or owner_cf in seen_former_cf
+        ):
+            continue
+        seen_former_cf.add(owner_cf)
+        entry: dict[str, str] = {"holder": owner_i}
+        if idx < len(z942) and z942[idx].strip():
+            entry["shelfmark"] = z942[idx].strip().rstrip(" .,;:/-")
+        if chosen_idx is None and x942:
+            entry["city"] = _US_STATE_SUFFIX_RE.sub("", x942[0].strip()).strip()
+        elif len(x942) == len(a942) and x942[idx].strip():
+            entry["city"] = _US_STATE_SUFFIX_RE.sub("", x942[idx].strip()).strip()
+        former_holders.append(entry)
+    for a, e in zip(a710, e710 + [""] * 99):
+        owner_i = a.strip()
+        owner_cf = owner_i.casefold()
+        role_cf = e.strip().casefold()
+        if (
+            not owner_i
+            or "unknown library" in owner_cf
+            or owner_cf == inst_cf
+            or owner_cf in seen_former_cf
+        ):
+            continue
+        if "former owner" in role_cf or "בעלים קודמים" in role_cf:
+            seen_former_cf.add(owner_cf)
+            former_holders.append({"holder": owner_i})
+    if former_holders:
+        record["former_holders"] = former_holders
 
     if former_shelfmarks:
         record["former_shelfmarks"] = former_shelfmarks

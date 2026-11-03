@@ -442,4 +442,22 @@ Wikimedia rejected with `HTTP 403 (Wikimedia robot policy)`.
    loading `RunRecord.marc` blobs on cache hits; `get_thread` preserves
    `canvas_state.artifacts` order; and `ProvenanceMapPanel` opens corpus
    map artifacts directly in `corpus` mode.
+6. **Attested current holders & multi-step provenance trajectories on maps.**
+   Both `research_provenance_map.py` and `corpus_movement.py` previously
+   hardcoded `NLI_HOLDER` ("National Library of Israel", Jerusalem) for
+   every manuscript, and `CorpusView` in `ProvenanceMapPanel.tsx` drew
+   every arc to `[31.7942, 35.2007]` with a single NLI popup ("Current
+   holder of all 897 manuscripts"), ignoring intermediate waypoints.
+   `resolve_record_holder_stop` now resolves each manuscript's actual
+   holding institution and city from MARC `942$a`/`942$x`/`942$c`,
+   `710$a[current owner]`, and `holding_institutions.py` (JTS New York,
+   Bodleian Oxford, British Library London, Russian State Library Moscow,
+   NLI Jerusalem, etc., while `Unknown Library` leaves `lat=None` instead
+   of fabricating NLI). `kima_disambiguate.py` disambiguates Romanized
+   `primary_rom` queries (`Jerusalem (Israel)`, `Modena (Italy)`, `Verona
+   (Italy)`), `_extract_942_holdings` preserves `former_holders` even when
+   `942$z` is absent, and `CorpusView` renders multi-step arcs
+   (`production` → `intermediate 751/541/583/942 waypoints` → `current
+   holding institution`) with a `Current holder` filter and top-holders
+   breakdown (`_MOVEMENT_SCHEMA_VERSION = "v2-holders-waypoints"`).
 
