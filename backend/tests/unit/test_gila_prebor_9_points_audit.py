@@ -95,6 +95,20 @@ def test_point1_942_labels_for_iggeret_sukkah_and_derushim() -> None:
     )
     assert [s.value for s in _statements(ms_derushim, "P217")] == ["Ms. Kaufmann A 315"]
 
+    rec_ambrosiana = prepare_record_for_pipeline({
+        "001": '"990000987120205171"',
+        "245$a": '"קובץ."',
+        "710$a": '"Ambrosian Library"',
+        "710$e": '"current owner"',
+        "942$a": '"Ambrosian Library|Catalogue Bernheimer"',
+        "942$x": '"Milan|Milan"',
+        "942$c": '"Italy|Italy"',
+        "942$z": '"Ms. O 97 Sup.|107"',
+    })
+    ms_ambrosiana = WikidataItemBuilder().build_manuscript_item(rec_ambrosiana)
+    assert not ms_ambrosiana.labels["he"].endswith(".")
+    assert not ms_ambrosiana.labels["en"].endswith(".")
+
 
 def test_point2_manuscript_codex_scroll_and_fragment_classifications() -> None:
     builder = WikidataItemBuilder()

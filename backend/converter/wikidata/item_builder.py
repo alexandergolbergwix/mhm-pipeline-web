@@ -867,7 +867,7 @@ def manuscript_he_designation(
     if holder:
         parts.append(HEBREW_INSTITUTION_NAMES.get(holder, holder))
     if suffix:
-        parts.append(str(suffix))
+        parts.append(str(suffix).rstrip(" .,;:/-"))
     return ", ".join(parts)
 
 
