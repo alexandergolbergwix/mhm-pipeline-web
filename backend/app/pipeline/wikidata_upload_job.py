@@ -1392,7 +1392,7 @@ async def run_wikidata_upload_shard(
         )
     quality_preflight = await run_in_threadpool(
         wikidata_upload.build_upload_corpus_quality_preflight,
-        items,
+        native,
     )
     audit_ctx = None if mode.dry_run else WikibaseAuditContext(
         actor_user_id=job.created_by,

@@ -775,6 +775,14 @@ class WikidataUploader:
                 # that only repeats the label carries no information; drop
                 # it instead of refusing the item (2026-10-14: 234 release
                 # items failed with 'Label and description ... same value').
+                if item.existing_qid and is_owned_by_us:
+                    try:
+                        current = wbi_item.descriptions.get(lang)
+                        if current and getattr(current, "value", None):
+                            wbi_item.descriptions.set(lang, "")
+                            metadata_updated = True
+                    except Exception:
+                        pass
                 continue
             try:
                 current = wbi_item.descriptions.get(lang)
@@ -789,6 +797,18 @@ class WikidataUploader:
                 wbi_item.descriptions.set(lang, desc)
                 if item.existing_qid:
                     metadata_updated = True
+
+        if item.existing_qid and is_owned_by_us:
+            for lang, label in item.labels.items():
+                if not label:
+                    continue
+                try:
+                    current_desc = wbi_item.descriptions.get(lang)
+                    if current_desc and getattr(current_desc, "value", None) == label:
+                        wbi_item.descriptions.set(lang, "")
+                        metadata_updated = True
+                except Exception:
+                    pass
 
         # Aliases
         for lang, alias_list in item.aliases.items():
@@ -2688,10 +2708,7 @@ class WikidataUploader:
                             f"Detail: {last_error[:160]}"
                         ),
                     )
-                if (
-                    not item.existing_qid
-                    and attempt < _MAX_RETRIES
-                ):
+                if attempt < _MAX_RETRIES:
                     from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
                         parse_label_conflict_id,
                         uniquify_test_item_en_description,
@@ -2704,41 +2721,48 @@ class WikidataUploader:
                         or bool(conflict_id)
                     )
                     if is_label_conflict:
-                        if (
-                            conflict_id
-                            and conflict_id.startswith("Q")
-                            and self._is_our_item(
-                                conflict_id, our_p3959=self._our_p3959(item),
-                            )
-                        ):
-                            logger.info(
-                                "CREATE adopted existing %s for %s",
-                                conflict_id,
-                                item.local_id,
-                            )
-                            item = replace(item, existing_qid=conflict_id)
-                            continue
-                        if self._is_test:
-                            item = uniquify_test_item_en_description(item)
-                            logger.info(
-                                "test CREATE uniquified EN description for %s",
-                                item.local_id,
-                            )
-                            continue
-                        return UploadResult(
-                            local_id=item.local_id,
-                            qid=(
+                        if not item.existing_qid:
+                            if (
                                 conflict_id
-                                if conflict_id and conflict_id.startswith("Q")
-                                else None
-                            ),
-                            status="skipped",
-                            message=(
-                                "Skipped duplicate CREATE: "
-                                f"{conflict_id or 'an existing item'} already "
-                                "carries the same label and description on Wikidata."
-                            ),
+                                and conflict_id.startswith("Q")
+                                and self._is_our_item(
+                                    conflict_id, our_p3959=self._our_p3959(item),
+                                )
+                            ):
+                                logger.info(
+                                    "CREATE adopted existing %s for %s",
+                                    conflict_id,
+                                    item.local_id,
+                                )
+                                item = replace(item, existing_qid=conflict_id)
+                                continue
+                            if self._is_test:
+                                item = uniquify_test_item_en_description(item)
+                                logger.info(
+                                    "test CREATE uniquified EN description for %s",
+                                    item.local_id,
+                                )
+                                continue
+                            return UploadResult(
+                                local_id=item.local_id,
+                                qid=(
+                                    conflict_id
+                                    if conflict_id and conflict_id.startswith("Q")
+                                    else None
+                                ),
+                                status="skipped",
+                                message=(
+                                    "Skipped duplicate CREATE: "
+                                    f"{conflict_id or 'an existing item'} already "
+                                    "carries the same label and description on Wikidata."
+                                ),
+                            )
+                        item = uniquify_test_item_en_description(item)
+                        logger.info(
+                            "UPDATE uniquified EN description after label conflict for %s",
+                            item.local_id,
                         )
+                        continue
                 if attempt < _MAX_RETRIES:
                     # Shorter backoff for conflicts (someone is actively
                     # editing this item, so a quick retry is more likely
