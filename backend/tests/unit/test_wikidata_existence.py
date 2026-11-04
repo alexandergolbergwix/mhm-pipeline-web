@@ -289,3 +289,63 @@ def test_apply_existence_test_missing_qid_clears_for_create(monkeypatch):
     )
     assert out.blocked is False
     assert out.existing_qid is None
+
+
+def test_prefetch_entities_for_upload_populates_labels_p31_and_metadata(monkeypatch):
+    from app.pipeline.wikidata_existence import (
+        fetch_entity_duplicate_metadata,
+        fetch_entity_labels,
+        fetch_entity_p31,
+        prefetch_entities_for_upload,
+    )
+
+    calls: list[str] = []
+
+    def _fake_get(url: str, *, timeout: float = 45.0) -> dict:
+        calls.append(url)
+        return {
+            "entities": {
+                "Q777777": {
+                    "id": "Q777777",
+                    "title": "Q777777",
+                    "labels": {"he": {"value": "דרושים"}, "en": {"value": "Derushim"}},
+                    "descriptions": {"en": {"value": "Work by Cantarini"}},
+                    "claims": {
+                        "P31": [
+                            {
+                                "mainsnak": {
+                                    "snaktype": "value",
+                                    "datavalue": {"value": {"id": "Q47461344"}},
+                                }
+                            }
+                        ],
+                        "P2888": [
+                            {
+                                "mainsnak": {
+                                    "snaktype": "value",
+                                    "datavalue": {"value": "https://mhm.example/Item:Q1"},
+                                }
+                            }
+                        ],
+                    },
+                }
+            }
+        }
+
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence._fetch_json_throttled", _fake_get,
+    )
+    alive, entities = prefetch_entities_for_upload(["Q777777"], is_test=False)
+    assert alive["Q777777"] is True
+    assert "Q777777" in entities
+    assert len(calls) == 1
+
+    # Subsequent calls hit _PREFETCHED_ENTITIES with zero additional HTTP calls.
+    assert fetch_entity_labels(["Q777777"], is_test=False) == {
+        "Q777777": {"he": "דרושים", "en": "Derushim"}
+    }
+    assert fetch_entity_p31(["Q777777"], is_test=False) == {"Q777777": ["Q47461344"]}
+    meta = fetch_entity_duplicate_metadata(["Q777777"], is_test=False)
+    assert meta["Q777777"]["p2888"] == ["https://mhm.example/Item:Q1"]
+    assert len(calls) == 1
+

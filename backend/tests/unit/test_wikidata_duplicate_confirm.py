@@ -362,3 +362,57 @@ def test_manuscript_p3959_passed_to_ownership_classifier(monkeypatch) -> None:
     assert out.blocked is False
     assert out.ownership == "own"
 
+
+def test_ledger_owned_work_bypasses_llm_confirm(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.confirm_qid_alive",
+        lambda qid, *, is_test=False, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_existence.fetch_entity_p31",
+        lambda qids, *, is_test=False: {"Q141755239": ["Q47461344"]},
+    )
+
+    def _no_llm(**kwargs):
+        raise AssertionError("LLM confirm must not run on an owned ledger work")
+
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_duplicate_confirm.confirm_uncertain_duplicate",
+        _no_llm,
+    )
+
+    class _OwnUploader:
+        def _is_our_item(self, qid: str, **kwargs: object) -> bool:
+            return qid == "Q141755239"
+
+    item = type("W", (), {
+        "entity_type": "work",
+        "existing_qid": "Q141755239",
+        "labels": {"he": "דרושים"},
+        "descriptions": {"en": "Work in manuscript 990001915930205171"},
+        "statements": [],
+    })()
+    prepared = PreparedItem(
+        item=item,
+        local_id="QDraft_Work_Derushim",
+        label="דרושים",
+        entity_type="work",
+        existing_qid="Q141755239",
+        method="ledger",
+        adopt_candidate=True,
+        blocked=False,
+        block_status="",
+        block_message="",
+    )
+    out = _apply_existence_and_ownership(
+        prepared,
+        accept=ForeignAccept(),
+        ownership_checker=_OwnUploader(),
+        is_test=False,
+    )
+    assert out.blocked is False
+    assert out.existing_qid == "Q141755239"
+    assert out.ownership == "own"
+    assert out.method == "ledger+owned_identifier"
+
+

@@ -311,6 +311,11 @@ def wikidata_candidates_from_hmo(
     materialized = uploadable_entities_from_hmo(all_entities)
     assert_canonical_entities(materialized)
     entities_by_cn = _index_entities_by_control_number(all_entities)
+    uploadable_ids = {
+        entity.local_id
+        for entity in all_entities
+        if _wikidata_entity_type(entity)
+    }
     candidates: list[dict[str, Any]] = []
     total = len(materialized)
     for index, entity in enumerate(materialized, start=1):
@@ -328,6 +333,7 @@ def wikidata_candidates_from_hmo(
                     _wikidata_entity_type(entity) or "",
                     all_entities,
                     entities_by_cn,
+                    uploadable_ids=uploadable_ids,
                 ),
             ),
             "authority_evidence": [
@@ -663,6 +669,11 @@ def native_items_from_hmo(
     materialized = uploadable_entities_from_hmo(all_entities, on_progress=on_progress)
     assert_canonical_entities(materialized)
     entities_by_cn = _index_entities_by_control_number(all_entities)
+    uploadable_ids = {
+        entity.local_id
+        for entity in all_entities
+        if _wikidata_entity_type(entity)
+    }
     items: list[WikidataItem] = []
     entity_total = len(materialized)
 
@@ -685,7 +696,9 @@ def native_items_from_hmo(
                 existing_qid = known_work_qid_for_title(title)
                 if existing_qid:
                     break
-        rollup_sources = _rollup_sources_for(entity, wd_type, all_entities, entities_by_cn)
+        rollup_sources = _rollup_sources_for(
+            entity, wd_type, all_entities, entities_by_cn, uploadable_ids=uploadable_ids,
+        )
         statements = [
             WikidataStatement(
                 property_id=claim["property"],
@@ -1296,6 +1309,12 @@ def build_canonical_studio_result(
                 wikidata_studio._apply_override(item, ov)
 
     if reconcile and native_items:
+        from app.pipeline.wikidata_upload import _make_reconciler  # noqa: PLC0415
+        from converter.wikidata.reconciler import (  # noqa: PLC0415
+            prewarm_reconciler_for_items,
+        )
+
+        prewarm_reconciler_for_items(_make_reconciler(), native_items)
         for item, outcome in zip(native_items, _reconcile_sync(native_items), strict=True):
             if outcome.existing_qid and not item.existing_qid:
                 item.existing_qid = outcome.existing_qid
@@ -2007,14 +2026,21 @@ def _index_entities_by_control_number(
     entities: Iterable[CanonicalHmoEntity],
 ) -> dict[str, list[CanonicalHmoEntity]]:
     by_cn: dict[str, list[CanonicalHmoEntity]] = {}
+    seen_by_cn: dict[str, set[str]] = {}
     for entity in entities:
+        strategy = _projection_strategy(entity)
+        if strategy is None or strategy.projection_status != "summarized_in_wikidata":
+            continue
+        if _wikidata_entity_type(entity):
+            continue
         for raw_cn in entity.control_numbers:
             cn = canonical_control_number(str(raw_cn))
             if not cn:
                 continue
-            bucket = by_cn.setdefault(cn, [])
-            if entity not in bucket:
-                bucket.append(entity)
+            seen = seen_by_cn.setdefault(cn, set())
+            if entity.local_id not in seen:
+                seen.add(entity.local_id)
+                by_cn.setdefault(cn, []).append(entity)
     return by_cn
 
 
@@ -2030,6 +2056,8 @@ def _rollup_sources_for(
     target_wd_type: str,
     all_entities: list[CanonicalHmoEntity],
     entities_by_cn: dict[str, list[CanonicalHmoEntity]],
+    *,
+    uploadable_ids: set[str] | None = None,
 ) -> list[CanonicalHmoEntity]:
     """Collect summarized HMO nodes whose claims fold onto a public Wikidata item."""
     if target_wd_type not in PUBLIC_WIKIDATA_ENTITY_TYPES:
@@ -2046,11 +2074,12 @@ def _rollup_sources_for(
     if not target_cns:
         return []
 
-    uploadable_ids = {
-        entity.local_id
-        for entity in all_entities
-        if _wikidata_entity_type(entity)
-    }
+    if uploadable_ids is None:
+        uploadable_ids = {
+            entity.local_id
+            for entity in all_entities
+            if _wikidata_entity_type(entity)
+        }
     related: list[CanonicalHmoEntity] = []
     seen_local_ids: set[str] = set()
 
@@ -2084,6 +2113,11 @@ def _rollup_summary_stats(
     on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, int]:
     entities_by_cn = _index_entities_by_control_number(materialized)
+    uploadable_ids = {
+        entity.local_id
+        for entity in materialized
+        if _wikidata_entity_type(entity)
+    }
     rolled_up_ids: set[str] = set()
     summarized_nodes = 0
     scan_total = len(materialized) + len(uploadable)
@@ -2102,7 +2136,9 @@ def _rollup_summary_stats(
         _tick()
     for entity in uploadable:
         wd_type = _wikidata_entity_type(entity) or ""
-        for source in _rollup_sources_for(entity, wd_type, materialized, entities_by_cn):
+        for source in _rollup_sources_for(
+            entity, wd_type, materialized, entities_by_cn, uploadable_ids=uploadable_ids,
+        ):
             rolled_up_ids.add(source.local_id)
         _tick()
     return {

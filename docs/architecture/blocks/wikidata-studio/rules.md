@@ -1149,6 +1149,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   uses `P3831 = Q127695525` (`place of attestation`); `"באיטלקית באותיות לטיניות"`
   emits `P282 = Q8229` (`Latin script`) without false `ItalianScript` `P9302`; and
   `581$a` bibliography (`P528`), `957$a` colophon folios (`P7416`), and `500$a`
-  title-page inscriptions (`P1684` + `P3831 = Q1339862`) are preserved.
+  title-page inscriptions (`P1684` + `P3831 = Q1339862`) are preserved. Build
+  rollups pre-index summarized nodes once per pass, and sharded uploads
+  batch-prefetch full `wbgetentities` payloads (`prefetch_entities_for_upload`),
+  warm creator ownership via `list=usercontribs` (`warm_ownership_cache`),
+  share caches across slot uploaders (`share_caches_from`), skip `_rate_limit()`
+  on unchanged `exists` items, and bypass LLM confirm on owned ledger works.
   *Why:* Prof. Gila Prebor's audit of `Q141747170`, `Q141747098`, and `Q141175895`
-  against Ktiv MARC records identified these 9 systematic conversion gaps.
+  against Ktiv MARC records identified these 9 systematic conversion gaps, and
+  per-item unbatched API/LLM calls caused 2,423-item uploads to take 7+ hours.

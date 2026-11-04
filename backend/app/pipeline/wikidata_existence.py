@@ -19,7 +19,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Literal
+from collections.abc import Iterable
+from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ _TEST_API = "https://test.wikidata.org/w/api.php"
 _WBGETENTITIES_BATCH = 50
 _MIN_INTERVAL_SEC = 0.35
 _last_api_call_at = 0.0
+_PREFETCHED_ENTITIES: dict[tuple[bool, str], dict[str, Any]] = {}
 
 
 def _api_base(*, is_test: bool = False) -> str:
@@ -164,6 +166,82 @@ def confirm_qids_alive(
     return out
 
 
+def prefetch_entities_for_upload(
+    qids: Iterable[str],
+    *,
+    is_test: bool = False,
+) -> tuple[dict[str, bool | None], dict[str, dict[str, Any]]]:
+    """Batch-fetch full entity payloads (50/request) and populate upload caches.
+
+    Returns ``(existence_cache, entities_by_qid)``. Subsequent calls to
+    ``fetch_entity_labels``, ``fetch_entity_p31``, and
+    ``fetch_entity_duplicate_metadata`` read directly from ``_PREFETCHED_ENTITIES``
+    without extra per-item Action API round-trips.
+    """
+    alive_out: dict[str, bool | None] = {}
+    entity_out: dict[str, dict[str, Any]] = {}
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in qids:
+        qid = _normalize_qid(raw)
+        if not qid or qid in seen:
+            continue
+        seen.add(qid)
+        normalized.append(qid)
+    for raw in qids:
+        qid = str(raw or "").strip()
+        if qid and _normalize_qid(qid) is None:
+            alive_out[qid] = False
+
+    base = _api_base(is_test=is_test)
+    for start in range(0, len(normalized), _WBGETENTITIES_BATCH):
+        chunk = normalized[start:start + _WBGETENTITIES_BATCH]
+        params = urllib.parse.urlencode({
+            "action": "wbgetentities",
+            "ids": "|".join(chunk),
+            "props": "info|labels|descriptions|aliases|claims",
+            "format": "json",
+        })
+        try:
+            data = _fetch_json_throttled(f"{base}?{params}")
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            TimeoutError,
+            json.JSONDecodeError,
+            OSError,
+        ) as exc:
+            logger.warning("wbgetentities prefetch failed (%d ids): %s", len(chunk), exc)
+            for qid in chunk:
+                alive_out[qid] = None
+            continue
+        entities = data.get("entities") or {}
+        for qid in chunk:
+            ent = entities.get(qid) or {}
+            if not ent or not isinstance(ent, dict):
+                alive_out[qid] = None
+                continue
+            is_alive = _parse_entity_alive(ent)
+            alive_out[qid] = is_alive
+            if is_alive:
+                _PREFETCHED_ENTITIES[(is_test, qid)] = ent
+                entity_out[qid] = ent
+    return alive_out, entity_out
+
+
+def _extract_labels_from_entity(ent: dict[str, Any]) -> dict[str, str]:
+    labels = ent.get("labels") or {}
+    row: dict[str, str] = {}
+    if isinstance(labels, dict):
+        for lang in ("en", "he"):
+            cell = labels.get(lang) or {}
+            val = cell.get("value") if isinstance(cell, dict) else cell
+            text = str(val or "").strip()
+            if text:
+                row[lang] = text
+    return row
+
+
 def fetch_entity_labels(
     qids: list[str],
     *,
@@ -178,7 +256,15 @@ def fetch_entity_labels(
         if not qid or qid in seen:
             continue
         seen.add(qid)
+        cached = _PREFETCHED_ENTITIES.get((is_test, qid))
+        if isinstance(cached, dict) and "labels" in cached:
+            row = _extract_labels_from_entity(cached)
+            if row:
+                out[qid] = row
+            continue
         normalized.append(qid)
+    if not normalized:
+        return out
     api = _api_base(is_test=is_test)
     for i in range(0, len(normalized), _WBGETENTITIES_BATCH):
         chunk = normalized[i:i + _WBGETENTITIES_BATCH]
@@ -200,15 +286,7 @@ def fetch_entity_labels(
         for qid, ent in entities.items():
             if not isinstance(ent, dict) or ent.get("missing") is not None:
                 continue
-            labels = ent.get("labels") or {}
-            row: dict[str, str] = {}
-            if isinstance(labels, dict):
-                for lang in ("en", "he"):
-                    cell = labels.get(lang) or {}
-                    val = cell.get("value") if isinstance(cell, dict) else cell
-                    text = str(val or "").strip()
-                    if text:
-                        row[lang] = text
+            row = _extract_labels_from_entity(ent)
             if row:
                 out[str(qid)] = row
     return out
@@ -220,6 +298,10 @@ def fetch_entity_p31(
     is_test: bool = False,
 ) -> dict[str, list[str]]:
     """Batch ``wbgetentities`` P31 values. Missing QIDs are omitted."""
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        live_p31_from_entity,
+    )
+
     out: dict[str, list[str]] = {}
     normalized: list[str] = []
     seen: set[str] = set()
@@ -228,7 +310,15 @@ def fetch_entity_p31(
         if not qid or qid in seen:
             continue
         seen.add(qid)
+        cached = _PREFETCHED_ENTITIES.get((is_test, qid))
+        if isinstance(cached, dict) and "claims" in cached:
+            p31 = live_p31_from_entity(cached)
+            if p31:
+                out[qid] = p31
+            continue
         normalized.append(qid)
+    if not normalized:
+        return out
     api = _api_base(is_test=is_test)
     for i in range(0, len(normalized), _WBGETENTITIES_BATCH):
         chunk = normalized[i:i + _WBGETENTITIES_BATCH]
@@ -246,9 +336,6 @@ def fetch_entity_p31(
         entities = payload.get("entities") or {}
         if not isinstance(entities, dict):
             continue
-        from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
-            live_p31_from_entity,
-        )
         for qid, ent in entities.items():
             if not isinstance(ent, dict) or ent.get("missing") is not None:
                 continue
@@ -264,15 +351,31 @@ def fetch_entity_duplicate_metadata(
     is_test: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Return descriptions, P2888 URIs, and P50/P2093 authors for *qids*."""
+    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
+        live_authors_from_entity,
+        live_descriptions_from_entity,
+        live_p2888_from_entity,
+    )
+
     api = _api_base(is_test=is_test)
     cleaned: list[str] = []
     seen: set[str] = set()
+    out: dict[str, dict[str, Any]] = {}
     for raw in qids:
         norm = _normalize_qid(raw)
         if norm and norm not in seen:
             seen.add(norm)
+            cached = _PREFETCHED_ENTITIES.get((is_test, norm))
+            if isinstance(cached, dict) and "claims" in cached and "descriptions" in cached:
+                out[norm] = {
+                    "descriptions": live_descriptions_from_entity(cached),
+                    "p2888": live_p2888_from_entity(cached),
+                    "authors": live_authors_from_entity(cached),
+                }
+                continue
             cleaned.append(norm)
-    out: dict[str, dict[str, Any]] = {}
+    if not cleaned:
+        return out
     for start in range(0, len(cleaned), _WBGETENTITIES_BATCH):
         chunk = cleaned[start:start + _WBGETENTITIES_BATCH]
         params = urllib.parse.urlencode({
@@ -290,11 +393,6 @@ def fetch_entity_duplicate_metadata(
         entities = payload.get("entities") or {}
         if not isinstance(entities, dict):
             continue
-        from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
-            live_authors_from_entity,
-            live_descriptions_from_entity,
-            live_p2888_from_entity,
-        )
         for qid, ent in entities.items():
             if not isinstance(ent, dict) or ent.get("missing") is not None:
                 continue

@@ -675,8 +675,13 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
     from sqlalchemy import update as _sa_update
 
     from app.db import session_scope
-    from app.models.run_job import RunJob
-    from app.pipeline.run_job_service import update_job_progress
+    from app.models.run_job import JOB_STATUS_CANCELLED, RunJob
+    from app.pipeline.run_job_service import (
+        JobCancelledError,
+        cancel_watcher,
+        finish_job,
+        update_job_progress,
+    )
     from app.pipeline.wikidata_upload_job import (
         STEP_WRITE_ITEMS,
         build_upload_progress,
@@ -748,64 +753,75 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
         except Exception:  # noqa: BLE001 — fall back to wave counts
             return -1
 
+    should_cancel = cancel_watcher(_uuid.UUID(job_id))
     merged_outcomes: list[dict] = []
     merged_qids: dict[str, str] = {}
     merged_deferred: dict[str, list] = {}
     done_items = 0
-    for wave_start in range(0, len(shards), _UPLOAD_SHARD_WAVES):
-        wave = shards[wave_start:wave_start + _UPLOAD_SHARD_WAVES]
-        results_q: _queue.Queue = _queue.Queue()
+    try:
+        for wave_start in range(0, len(shards), _UPLOAD_SHARD_WAVES):
+            await should_cancel()
+            wave = shards[wave_start:wave_start + _UPLOAD_SHARD_WAVES]
+            results_q: _queue.Queue = _queue.Queue()
 
-        def _consume(_wave: list[list[str]] = wave, _off: int = wave_start) -> None:
-            try:
-                for res in run_wikidata_upload_shard.starmap(
-                    [
-                        (job_id, run_id, shard, progress_dict, f"s{_off + i}")
-                        for i, shard in enumerate(_wave)
-                    ],
-                ):
-                    results_q.put(res)
-            except Exception as exc:  # noqa: BLE001 — surfaced below
-                results_q.put({"__error__": str(exc)})
-            results_q.put(None)
+            def _consume(_wave: list[list[str]] = wave, _off: int = wave_start) -> None:
+                try:
+                    for res in run_wikidata_upload_shard.starmap(
+                        [
+                            (job_id, run_id, shard, progress_dict, f"s{_off + i}")
+                            for i, shard in enumerate(_wave)
+                        ],
+                    ):
+                        results_q.put(res)
+                except Exception as exc:  # noqa: BLE001 — surfaced below
+                    results_q.put({"__error__": str(exc)})
+                results_q.put(None)
 
-        _threading.Thread(target=_consume, daemon=True).start()
-        tick = 0
-        while True:
-            try:
-                item = await _asyncio.to_thread(results_q.get, True, 10)
-            except _queue.Empty:
-                tick += 1
-                if tick % 3 == 0:
-                    live = _items_done()
-                    done_items = max(done_items, live if live >= 0 else 0)
-                    await update_job_progress(_uuid.UUID(job_id), _shard_progress(
-                        "Step 1 of 2: writing items",
-                        item_done=done_items,
-                        item_total=total,
-                        current_label=f"shards running · {done_items}/{total}",
-                        elapsed=_time.monotonic() - started,
-                    ))
-                continue
-            if item is None:
-                break
-            if isinstance(item, dict) and item.get("__error__"):
-                raise RuntimeError(f"upload shard failed: {item['__error__']}")
-            merged_outcomes.extend(item.get("outcomes") or [])
-            merged_qids.update(item.get("created_qids") or {})
-            merged_deferred.update(item.get("deferred") or {})
-            live = _items_done()
-            done_items = max(
-                done_items, live if live >= 0 else 0,
-                min(done_items + _UPLOAD_SHARD_SIZE, total),
-            )
-            await update_job_progress(_uuid.UUID(job_id), _shard_progress(
-                "Step 1 of 2: writing items",
-                item_done=min(done_items, total),
-                item_total=total,
-                current_label=f"shards running · {min(done_items, total)}/{total}",
-                elapsed=_time.monotonic() - started,
-            ))
+            _threading.Thread(target=_consume, daemon=True).start()
+            tick = 0
+            while True:
+                await should_cancel()
+                try:
+                    item = await _asyncio.to_thread(results_q.get, True, 10)
+                except _queue.Empty:
+                    tick += 1
+                    if tick % 3 == 0:
+                        live = _items_done()
+                        done_items = max(done_items, live if live >= 0 else 0)
+                        await update_job_progress(_uuid.UUID(job_id), _shard_progress(
+                            "Step 1 of 2: writing items",
+                            item_done=done_items,
+                            item_total=total,
+                            current_label=f"shards running · {done_items}/{total}",
+                            elapsed=_time.monotonic() - started,
+                        ))
+                    continue
+                if item is None:
+                    break
+                if isinstance(item, dict) and item.get("__error__"):
+                    raise RuntimeError(f"upload shard failed: {item['__error__']}")
+                merged_outcomes.extend(item.get("outcomes") or [])
+                merged_qids.update(item.get("created_qids") or {})
+                merged_deferred.update(item.get("deferred") or {})
+                live = _items_done()
+                done_items = max(
+                    done_items, live if live >= 0 else 0,
+                    min(done_items + _UPLOAD_SHARD_SIZE, total),
+                )
+                await update_job_progress(_uuid.UUID(job_id), _shard_progress(
+                    "Step 1 of 2: writing items",
+                    item_done=min(done_items, total),
+                    item_total=total,
+                    current_label=f"shards running · {min(done_items, total)}/{total}",
+                    elapsed=_time.monotonic() - started,
+                ))
+    except JobCancelledError:
+        await finish_job(
+            _uuid.UUID(job_id),
+            status=JOB_STATUS_CANCELLED,
+            error="Cancelled by user",
+        )
+        return
 
     async with session_scope() as db:
         await db.execute(

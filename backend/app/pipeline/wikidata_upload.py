@@ -708,6 +708,14 @@ def _apply_existence_and_ownership(
             return prepared
 
     if _match_needs_duplicate_confirm(prepared):
+        if (
+            str(prepared.method or "").lower() == "ledger"
+            and ownership_checker is not None
+            and classify_ownership_with_uploader(ownership_checker, clean_qid) == "own"
+        ):
+            prepared.ownership = "own"
+            prepared.method = "ledger+owned_identifier"
+            return prepared
         prepared = _apply_uncertain_duplicate_confirm(prepared, is_test=is_test)
         if (
             prepared.blocked

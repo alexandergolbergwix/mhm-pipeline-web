@@ -492,6 +492,8 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     allow_live=mode.allow_live,
                 )
                 await run_in_threadpool(extra.ensure_authenticated)
+                if shared_uploader is not None and hasattr(extra, "share_caches_from"):
+                    extra.share_caches_from(shared_uploader)
                 slot_uploaders.append(extra)
             except Exception:  # noqa: BLE001 — degrade to fewer slots
                 break
@@ -499,43 +501,19 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
     for _up in slot_uploaders:
         uploader_slots.put_nowait(_up)
 
-    from app.pipeline.wikidata_existence import confirm_qids_alive  # noqa: PLC0415
-
-    prefetch_qids = sorted({
-        str(getattr(it, "existing_qid", "") or "").strip()
-        for it in pass1_native
-        if str(getattr(it, "existing_qid", "") or "").strip().startswith("Q")
-    })
-    existence_cache: dict[str, bool | None] = {}
-    if prefetch_qids:
-        existence_cache = await run_in_threadpool(
-            confirm_qids_alive, prefetch_qids, is_test=mode.is_test,
-        )
-        logger.info(
-            "Prefetched existence for %d QIDs (test=%s): %d alive, %d missing, %d unknown",
-            len(prefetch_qids),
-            mode.is_test,
-            sum(1 for v in existence_cache.values() if v is True),
-            sum(1 for v in existence_cache.values() if v is False),
-            sum(1 for v in existence_cache.values() if v is None),
-        )
-
-    # Batch-fill the reconciliation cache before the per-item loop: the
-    # uploader calls one item at a time and a per-item WDQS lookup costs
-    # seconds (run 47e03437 dry-run: ~1.3 items/min). One pre-warm of ~40
-    # identifiers per query turns the per-item lookups into cache hits.
+    from app.pipeline.wikidata_existence import (  # noqa: PLC0415
+        prefetch_entities_for_upload,
+    )
+    from app.pipeline.wikidata_upload import _make_reconciler  # noqa: PLC0415
     from converter.wikidata.reconciler import (  # noqa: PLC0415
         prewarm_reconciler_for_items,
     )
-    from app.pipeline.wikidata_upload import _make_reconciler  # noqa: PLC0415
-
-    reconciler = _make_reconciler()
-    await run_in_threadpool(prewarm_reconciler_for_items, reconciler, pass1_native)
 
     outcomes: list[Any] = []
     link_outcomes: list[wikidata_upload.DeferredLinkOutcome] = []
     injected_state = params.get("_step1_state") or {}
     step1_items = pass1_native
+    reconciler = _make_reconciler()
     if injected_state:
         # Sharded step-1 already ran in parallel Modal containers; rehydrate
         # its state and skip the serial loop. Step-2 (links) and the terminal
@@ -556,6 +534,58 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             ]
         link_total = sum(len(v) for v in deferred_by_local_id.values())
         step1_items = []
+        prefetch_qids = sorted({
+            str(created_qids.get(src_id) or "").strip()
+            for src_id in deferred_by_local_id
+            if str(created_qids.get(src_id) or "").strip().startswith("Q")
+        })
+    else:
+        await run_in_threadpool(prewarm_reconciler_for_items, reconciler, pass1_native)
+        reconciler_qids = {
+            str(v).strip()
+            for v in (getattr(reconciler, "_cache", {}) or {}).values()
+            if isinstance(v, str) and str(v).strip().startswith("Q")
+        }
+        prefetch_qids = sorted(
+            {
+                str(getattr(it, "existing_qid", "") or "").strip()
+                for it in pass1_native
+                if str(getattr(it, "existing_qid", "") or "").strip().startswith("Q")
+            }
+            | {
+                str(created_qids.get(wikidata_studio.local_id_for_item(it)) or "").strip()
+                for it in pass1_native
+                if str(created_qids.get(wikidata_studio.local_id_for_item(it)) or "").strip().startswith("Q")
+            }
+            | reconciler_qids
+        )
+
+    existence_cache: dict[str, bool | None] = {}
+    prefetched_entities: dict[str, dict[str, Any]] = {}
+    if prefetch_qids:
+        existence_cache, prefetched_entities = await run_in_threadpool(
+            prefetch_entities_for_upload, prefetch_qids, is_test=mode.is_test,
+        )
+        logger.info(
+            "Prefetched %d QIDs (test=%s): %d alive, %d missing, %d unknown",
+            len(prefetch_qids),
+            mode.is_test,
+            sum(1 for v in existence_cache.values() if v is True),
+            sum(1 for v in existence_cache.values() if v is False),
+            sum(1 for v in existence_cache.values() if v is None),
+        )
+    if shared_uploader is not None:
+        if prefetched_entities and hasattr(shared_uploader, "prime_entity_caches"):
+            shared_uploader.prime_entity_caches(prefetched_entities)
+        if not mode.dry_run and prefetch_qids and hasattr(shared_uploader, "warm_ownership_cache"):
+            await run_in_threadpool(
+                shared_uploader.warm_ownership_cache,
+                prefetch_qids,
+                prefetched_entities,
+            )
+        for _up in slot_uploaders[1:]:
+            if _up is not None and hasattr(_up, "share_caches_from"):
+                _up.share_caches_from(shared_uploader)
     audit_ctx = None if mode.dry_run else WikibaseAuditContext(
         actor_user_id=job.created_by,
         channel=CHANNEL_WIKIDATA_UPLOAD,
@@ -1257,7 +1287,9 @@ async def run_wikidata_upload_shard(
         partition_unresolved_local,
         sort_items_for_upload,
     )
-    from app.pipeline.wikidata_existence import confirm_qids_alive  # noqa: PLC0415
+    from app.pipeline.wikidata_existence import (  # noqa: PLC0415
+        prefetch_entities_for_upload,
+    )
 
     async with session_scope() as db:
         job = await db.get(RunJob, job_id)
@@ -1275,18 +1307,15 @@ async def run_wikidata_upload_shard(
         native = await _build_native_items(
             db, run_id, auth, approved_only=approved_only, source=source,
         )
+        override_rows = (
+            await db.execute(
+                select(WikidataItemOverride).where(
+                    WikidataItemOverride.run_id == run_id,
+                )
+            )
+        ).scalars().all()
         if item_approved_only:
-            approved_ids = {
-                r.local_id
-                for r in (
-                    await db.execute(
-                        select(WikidataItemOverride).where(
-                            WikidataItemOverride.run_id == run_id,
-                        )
-                    )
-                ).scalars()
-                if r.approved
-            }
+            approved_ids = {r.local_id for r in override_rows if r.approved}
             native = [
                 it for it in native
                 if wikidata_studio.local_id_for_item(it) in approved_ids
@@ -1296,13 +1325,7 @@ async def run_wikidata_upload_shard(
                 accept_foreign_modify=bool(r.accept_foreign_modify),
                 accepted_foreign_qid=str(r.accepted_foreign_qid),
             )
-            for r in (
-                await db.execute(
-                    select(WikidataItemOverride).where(
-                        WikidataItemOverride.run_id == run_id,
-                    )
-                )
-            ).scalars()
+            for r in override_rows
             if r.accept_foreign_modify and r.accepted_foreign_qid
         }
         ledger = await wikidata_upload.load_ledger_for_prepare(
@@ -1314,20 +1337,38 @@ async def run_wikidata_upload_shard(
         it for it in sort_items_for_upload(list(native))
         if wikidata_studio.local_id_for_item(it) in scope
     ]
-    prewarm_reconciler_for_items(wikidata_upload._make_reconciler(), items)
-    prefetch_qids = sorted({
-        str(getattr(it, "existing_qid", "") or "").strip()
-        for it in items
-        if str(getattr(it, "existing_qid", "") or "").strip().startswith("Q")
-    })
+    created_qids: dict[str, str] = _resolve_existing_qid_map(
+        native, ledger, is_test=mode.is_test,
+    )
+    reconciler = wikidata_upload._make_reconciler()
+    await run_in_threadpool(prewarm_reconciler_for_items, reconciler, items)
+    reconciler_qids = {
+        str(v).strip()
+        for v in (getattr(reconciler, "_cache", {}) or {}).values()
+        if isinstance(v, str) and str(v).strip().startswith("Q")
+    }
+    prefetch_qids = sorted(
+        {
+            str(getattr(it, "existing_qid", "") or "").strip()
+            for it in items
+            if str(getattr(it, "existing_qid", "") or "").strip().startswith("Q")
+        }
+        | {
+            str(created_qids.get(wikidata_studio.local_id_for_item(it)) or "").strip()
+            for it in items
+            if str(created_qids.get(wikidata_studio.local_id_for_item(it)) or "").strip().startswith("Q")
+        }
+        | reconciler_qids
+    )
     existence_cache: dict[str, bool | None] = {}
+    prefetched_entities: dict[str, dict[str, Any]] = {}
     if prefetch_qids:
-        existence_cache = await run_in_threadpool(
-            confirm_qids_alive, prefetch_qids, is_test=mode.is_test,
+        existence_cache, prefetched_entities = await run_in_threadpool(
+            prefetch_entities_for_upload, prefetch_qids, is_test=mode.is_test,
         )
     quality_preflight = await run_in_threadpool(
         wikidata_upload.build_upload_corpus_quality_preflight,
-        native,
+        items,
     )
     audit_ctx = None if mode.dry_run else WikibaseAuditContext(
         actor_user_id=job.created_by,
@@ -1335,9 +1376,6 @@ async def run_wikidata_upload_shard(
         project_id=job.project_id,
         run_id=run_id,
         job_id=job_id,
-    )
-    created_qids: dict[str, str] = _resolve_existing_qid_map(
-        native, ledger, is_test=mode.is_test,
     )
     deferred: dict[str, list[Any]] = {}
     outcomes: list[dict[str, Any]] = []
@@ -1355,6 +1393,14 @@ async def run_wikidata_upload_shard(
         )
         if not mode.dry_run:
             await run_in_threadpool(shared_uploader.ensure_authenticated)
+        if prefetched_entities and hasattr(shared_uploader, "prime_entity_caches"):
+            shared_uploader.prime_entity_caches(prefetched_entities)
+        if not mode.dry_run and prefetch_qids and hasattr(shared_uploader, "warm_ownership_cache"):
+            await run_in_threadpool(
+                shared_uploader.warm_ownership_cache,
+                prefetch_qids,
+                prefetched_entities,
+            )
         slot_uploaders.append(shared_uploader)
         if not mode.dry_run:
             for _ in range(2):
@@ -1366,6 +1412,8 @@ async def run_wikidata_upload_shard(
                         allow_live=mode.allow_live,
                     )
                     await run_in_threadpool(extra.ensure_authenticated)
+                    if hasattr(extra, "share_caches_from"):
+                        extra.share_caches_from(shared_uploader)
                     slot_uploaders.append(extra)
                 except Exception:  # noqa: BLE001 — degrade to fewer slots
                     break
@@ -1414,7 +1462,9 @@ async def run_wikidata_upload_shard(
             finally:
                 uploader_slots.put_nowait(slot)
 
-    for batch in (items[i:i + 3] for i in range(0, len(items), 3)):
+    for batch_idx, batch in enumerate(items[i:i + 3] for i in range(0, len(items), 3)):
+        if batch_idx % 4 == 0 and await is_cancel_requested(job_id):
+            break
         for rows in await asyncio.gather(*(_one(it) for it in batch)):
             outcomes.extend(rows)
             if on_progress is not None:

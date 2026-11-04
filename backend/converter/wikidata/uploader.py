@@ -14,7 +14,7 @@ import copy
 import json
 import logging
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -315,6 +315,8 @@ class WikidataUploader:
         self._creator_cache: dict[str, str] = {}  # qid → first revision author
         self._is_our_item_cache: dict[str, bool] = {}  # qid → creator-check result
         self._q3959_cache: dict[str, frozenset[str]] = {}  # qid → remote P3959 values
+        self._bot_exclusion_cache: dict[str, bool] = {}
+        self._prefetched_entities: dict[str, dict[str, object]] = {}
         self._test_property_datatypes: dict[str, str | None] = {}
         self._test_entity_exists: dict[str, bool] = {}
         self._test_pid_map: dict[str, str] = {}
@@ -699,7 +701,15 @@ class WikidataUploader:
             )
 
         if item.existing_qid:
-            wbi_item = wbi.item.get(item.existing_qid)
+            prefetched = self._prefetched_entities.pop(str(item.existing_qid), None)
+            if (
+                isinstance(prefetched, dict)
+                and "missing" not in prefetched
+                and "claims" in prefetched
+            ):
+                wbi_item = wbi.item.new().from_json(prefetched)
+            else:
+                wbi_item = wbi.item.get(item.existing_qid)
         else:
             wbi_item = wbi.item.new()
 
@@ -1345,6 +1355,112 @@ class WikidataUploader:
             return
         logger.warning("FOREIGN_MODIFY_ACCEPTED qid=%s (live upload only)", clean)
         self._foreign_accept_qids.add(clean)
+        self._is_our_item_cache[clean] = True
+
+    def prime_entity_caches(
+        self,
+        entities: Mapping[str, Mapping[str, object]],
+    ) -> None:
+        """Seed P3959 and full-entity caches from a batched ``wbgetentities`` map."""
+        for raw_qid, entity in (entities or {}).items():
+            qid = str(raw_qid or "").strip()
+            if not qid or not isinstance(entity, dict) or "missing" in entity:
+                continue
+            self._prefetched_entities[qid] = dict(entity)
+            claims = entity.get("claims") or {}
+            statements = claims.get("P3959") or [] if isinstance(claims, dict) else []
+            values: set[str] = set()
+            for statement in statements:
+                if not isinstance(statement, dict):
+                    continue
+                mainsnak = statement.get("mainsnak") or {}
+                datavalue = mainsnak.get("datavalue") or {}
+                value = datavalue.get("value") if isinstance(datavalue, dict) else None
+                if isinstance(value, str) and value.strip():
+                    values.add(value.strip())
+            self._q3959_cache[qid] = frozenset(values)
+
+    def warm_ownership_cache(
+        self,
+        qids: Iterable[str],
+        prefetched_entities: Mapping[str, Mapping[str, object]] | None = None,
+    ) -> None:
+        """Batch-resolve creator ownership via ``list=usercontribs`` (500/page)."""
+        target_qids = [str(q or "").strip() for q in qids if str(q or "").strip().startswith("Q")]
+        if not target_qids:
+            return
+        auth_user = self._get_authenticated_user()
+        if not auth_user:
+            return
+        api_url = _TEST_API if self._is_test else _WIKIDATA_API
+        created_by_me: set[str] = set()
+        complete = False
+        try:
+            import requests  # noqa: PLC0415
+
+            session = (
+                self._login.get_session()
+                if self._login is not None and hasattr(self._login, "get_session")
+                else requests.Session()
+            )
+            params: dict[str, str] = {
+                "action": "query",
+                "list": "usercontribs",
+                "ucuser": auth_user,
+                "uctype": "new",
+                "ucnamespace": "0",
+                "uclimit": "500",
+                "format": "json",
+            }
+            for _ in range(25):
+                resp = session.get(
+                    api_url,
+                    params=params,
+                    headers={"User-Agent": "MHMPipeline/1.0 (shvedbook@gmail.com)"},
+                    timeout=20,
+                )
+                resp.raise_for_status()
+                body = resp.json()
+                contribs = body.get("query", {}).get("usercontribs") or []
+                for row in contribs:
+                    if isinstance(row, dict):
+                        title = str(row.get("title") or "").strip()
+                        if title.startswith("Q"):
+                            created_by_me.add(title)
+                cont = body.get("continue")
+                if not isinstance(cont, dict) or not cont.get("uccontinue"):
+                    complete = True
+                    break
+                params["uccontinue"] = str(cont["uccontinue"])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("warm_ownership_cache failed: %s", exc)
+            return
+
+        entity_map = prefetched_entities if prefetched_entities is not None else self._prefetched_entities
+        for qid in target_qids:
+            ent = entity_map.get(qid) if isinstance(entity_map, Mapping) else None
+            has_triples = bool(
+                isinstance(ent, Mapping)
+                and "missing" not in ent
+                and (ent.get("claims") or ent.get("labels"))
+            )
+            if qid in created_by_me and has_triples:
+                self._creator_cache[qid] = auth_user
+                self._is_our_item_cache[qid] = True
+                self._bot_exclusion_cache[qid] = False
+            elif complete and qid not in created_by_me:
+                self._is_our_item_cache[qid] = False
+
+    def share_caches_from(self, other: WikidataUploader) -> None:
+        """Share ownership and prefetched-entity caches across shard slot uploaders."""
+        self._creator_cache = other._creator_cache
+        self._is_our_item_cache = other._is_our_item_cache
+        self._q3959_cache = other._q3959_cache
+        self._bot_exclusion_cache = other._bot_exclusion_cache
+        self._prefetched_entities = other._prefetched_entities
+        self._foreign_accept_qids = other._foreign_accept_qids
+        if other._authenticated_user:
+            self._authenticated_user = other._authenticated_user
 
     def _item_usable_as_test_reference(
         self, qid: str, *, live_qid: str | None = None,
@@ -1491,10 +1607,6 @@ class WikidataUploader:
             self._is_our_item_cache[qid] = True
             return True
 
-        cached = self._is_our_item_cache.get(qid)
-        if cached is not None:
-            return cached
-
         if qid in self._foreign_accept_qids:
             if self._is_test:
                 logger.error(
@@ -1509,6 +1621,10 @@ class WikidataUploader:
             )
             self._is_our_item_cache[qid] = True
             return True
+
+        cached = self._is_our_item_cache.get(qid)
+        if cached is not None:
+            return cached
 
         # ── Channel #1: who is the authenticated user? ─────────────────
         auth_user = self._get_authenticated_user()
@@ -2308,7 +2424,8 @@ class WikidataUploader:
 
         last_error = ""
         for attempt in range(1, _MAX_RETRIES + 1):
-            self._rate_limit()
+            if attempt > 1:
+                self._rate_limit()
             try:
                 wbi_item, new_claims, added_props = self._build_wbi_item(item)
 
@@ -2340,6 +2457,8 @@ class WikidataUploader:
                         status="exists",
                         message=f"No changes needed for {item.existing_qid}",
                     )
+
+                self._rate_limit()
 
                 # Bot policy compliance (Wikidata:Bots): every write needs
                 # a descriptive edit summary so reviewers can understand
