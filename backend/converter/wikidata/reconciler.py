@@ -9,6 +9,7 @@ Rate-limited to 1 query/second per Wikidata API policy.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -105,6 +106,7 @@ class WikidataReconciler:
         self._endpoint = sparql_endpoint
         self._cache: dict[str, str | None] = {}
         self._last_request_time: float = 0.0
+        self._query_lock = threading.Lock()
         self._session = requests.Session()
         self._session.headers.update(
             {
@@ -138,13 +140,14 @@ class WikidataReconciler:
         for attempt in range(_QUERY_ATTEMPTS):
             if attempt:
                 time.sleep(_QUERY_BACKOFF_SECONDS * attempt)
-            self._rate_limit()
             try:
-                resp = self._session.get(
-                    self._endpoint,
-                    params={"query": sparql, "format": "json"},
-                    timeout=_TIMEOUT_SECONDS,
-                )
+                with self._query_lock:
+                    self._rate_limit()
+                    resp = self._session.get(
+                        self._endpoint,
+                        params={"query": sparql, "format": "json"},
+                        timeout=_TIMEOUT_SECONDS,
+                    )
                 resp.raise_for_status()
                 data = resp.json()
                 return data.get("results", {}).get("bindings", [])

@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -311,6 +312,10 @@ class WikidataUploader:
         self._wbi = None
         self._login = None
         self._last_edit_time: float = 0.0
+        self._rate_limit_state: dict[str, Any] = {
+            "last": 0.0,
+            "lock": threading.Lock(),
+        }
         self._authenticated_user: str | None = None  # Set after first auth
         self._creator_cache: dict[str, str] = {}  # qid → first revision author
         self._is_our_item_cache: dict[str, bool] = {}  # qid → creator-check result
@@ -573,7 +578,19 @@ class WikidataUploader:
             return None
 
     def _rate_limit(self) -> None:
-        """Enforce edit rate limiting."""
+        """Enforce edit rate limiting across shared shard uploaders."""
+        lock = self._rate_limit_state.get("lock")
+        if lock is not None:
+            with lock:
+                now = time.time()
+                last = max(self._last_edit_time, float(self._rate_limit_state.get("last") or 0.0))
+                elapsed = now - last
+                if elapsed < _EDIT_DELAY_SECONDS:
+                    time.sleep(_EDIT_DELAY_SECONDS - elapsed)
+                updated = time.time()
+                self._last_edit_time = updated
+                self._rate_limit_state["last"] = updated
+            return
         elapsed = time.time() - self._last_edit_time
         if elapsed < _EDIT_DELAY_SECONDS:
             time.sleep(_EDIT_DELAY_SECONDS - elapsed)
@@ -709,7 +726,16 @@ class WikidataUploader:
             ):
                 wbi_item = wbi.item.new().from_json(prefetched)
             else:
-                wbi_item = wbi.item.get(item.existing_qid)
+                try:
+                    wbi_item = wbi.item.get(
+                        item.existing_qid,
+                        maxlag=20,
+                        retry_after=5,
+                        max_retries=4,
+                        timeout=30,
+                    )
+                except TypeError:
+                    wbi_item = wbi.item.get(item.existing_qid)
         else:
             wbi_item = wbi.item.new()
 
@@ -1459,6 +1485,7 @@ class WikidataUploader:
         self._bot_exclusion_cache = other._bot_exclusion_cache
         self._prefetched_entities = other._prefetched_entities
         self._foreign_accept_qids = other._foreign_accept_qids
+        self._rate_limit_state = other._rate_limit_state
         if other._authenticated_user:
             self._authenticated_user = other._authenticated_user
 
@@ -2487,10 +2514,23 @@ class WikidataUploader:
                 # WikibaseIntegrator ≥0.12 takes ``is_bot`` (never bare ``bot=``;
                 # Rule W-180). Default is_bot=False — accounts without the
                 # MediaWiki bot right hard-fail (Rule W-181 / export-40).
-                result = wbi_item.write(
-                    summary=edit_summary,
-                    is_bot=self._mark_as_bot,
-                )
+                # Pass explicit maxlag=20 / retry_after=5 / max_retries=4 / timeout=30
+                # because mediawiki_api_call_helper ignores wbi_config["MAXLAG"] and
+                # otherwise defaults to maxlag=5, retry_after=60s, max_retries=1000.
+                try:
+                    result = wbi_item.write(
+                        summary=edit_summary,
+                        is_bot=self._mark_as_bot,
+                        maxlag=20,
+                        retry_after=5,
+                        max_retries=4,
+                        timeout=30,
+                    )
+                except TypeError:
+                    result = wbi_item.write(
+                        summary=edit_summary,
+                        is_bot=self._mark_as_bot,
+                    )
                 qid = result.id if result else None
 
                 from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415

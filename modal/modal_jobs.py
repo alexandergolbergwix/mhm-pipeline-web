@@ -786,7 +786,7 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
                 except _queue.Empty:
                     tick += 1
                     if tick % 3 == 0:
-                        live = _items_done()
+                        live = await _asyncio.to_thread(_items_done)
                         done_items = max(done_items, live if live >= 0 else 0)
                         await update_job_progress(_uuid.UUID(job_id), _shard_progress(
                             "Step 1 of 2: writing items",
@@ -803,7 +803,7 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
                 merged_outcomes.extend(item.get("outcomes") or [])
                 merged_qids.update(item.get("created_qids") or {})
                 merged_deferred.update(item.get("deferred") or {})
-                live = _items_done()
+                live = await _asyncio.to_thread(_items_done)
                 done_items = max(
                     done_items, live if live >= 0 else 0,
                     min(done_items + _UPLOAD_SHARD_SIZE, total),
