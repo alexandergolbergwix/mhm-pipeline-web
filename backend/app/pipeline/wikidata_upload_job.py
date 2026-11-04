@@ -1265,9 +1265,9 @@ async def load_wikidata_upload_item_ids(
         ledger = await wikidata_upload.load_ledger_for_prepare(
             db, is_test=mode.is_test,
         )
-    from app.db import get_engine  # noqa: PLC0415
+    from app.db import reset_engine  # noqa: PLC0415
 
-    await get_engine().dispose()
+    await reset_engine()
     ordered = sort_items_for_upload(list(native))
     known_qids = _resolve_existing_qid_map(ordered, ledger, is_test=mode.is_test)
     ids = [wikidata_studio.local_id_for_item(it) for it in ordered]
@@ -1302,7 +1302,7 @@ async def run_wikidata_upload_shard(
         partition_unresolved_local,
         sort_items_for_upload,
     )
-    from app.db import get_engine  # noqa: PLC0415
+    from app.db import reset_engine  # noqa: PLC0415
     from app.pipeline.wikidata_existence import (  # noqa: PLC0415
         prefetch_entities_for_upload,
     )
@@ -1354,8 +1354,7 @@ async def run_wikidata_upload_shard(
             if _db_attempt >= 4 or "too many connections" not in str(exc).lower():
                 raise
             await asyncio.sleep(2.0 * (_db_attempt + 1))
-    finally_dispose = get_engine()
-    await finally_dispose.dispose()
+    await reset_engine()
 
     scope = {str(x) for x in local_ids if str(x)}
     items = [
@@ -1510,7 +1509,7 @@ async def run_wikidata_upload_shard(
                 if _db_attempt >= 4 or "too many connections" not in str(exc).lower():
                     raise
                 await asyncio.sleep(2.0 * (_db_attempt + 1))
-        await get_engine().dispose()
+        await reset_engine()
     return {
         "outcomes": outcomes,
         "created_qids": dict(created_qids),
