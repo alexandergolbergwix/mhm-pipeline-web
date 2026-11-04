@@ -516,12 +516,14 @@ def _merge_transcription_statements(
     )
 
     for statement in statements:
-        if (
-            statement.property_id in _TRANSCRIPTION_PIDS
-            and not statement.references
-            and control_number
-        ):
-            statement.references = nli_reference(control_number)
+        if statement.property_id in _TRANSCRIPTION_PIDS:
+            if not statement.references and control_number:
+                statement.references = nli_reference(control_number)
+            raw_val = str(statement.value or "")
+            if "\n" in raw_val or "\r" in raw_val:
+                statement.value = " | ".join(
+                    p.strip() for p in re.split(r"[\r\n]+", raw_val) if p.strip()
+                )
 
     grouped: dict[str, list[WikidataStatement]] = {}
     for statement in statements:
@@ -539,7 +541,7 @@ def _merge_transcription_statements(
         texts = list(dict.fromkeys(texts))
         if not texts:
             continue
-        merged = "\n\n".join(texts)
+        merged = " | ".join(texts)
         if len(merged) > _MERGED_TRANSCRIPTION_CHARS:
             merged = merged[:_MERGED_TRANSCRIPTION_CHARS].rstrip() + "…"
         first = rows[0]
@@ -1946,6 +1948,8 @@ def _sanitize_canonical_claims(
                 continue
             if pid == "P1684" and is_catalog_note_placeholder(value):
                 continue
+            if pid in {"P1104", "P2048", "P2049", "P2635"} and str(statement.value_type or "").lower() != "quantity":
+                continue
             if pid == "P2093" and value:
                 # WikidataStatement has no value_label field — the label the
                 # judge sees is stamped later from value. Normalize value in
@@ -2030,11 +2034,15 @@ def _rollup_sources_for(
     """Collect summarized HMO nodes whose claims fold onto a public Wikidata item."""
     if target_wd_type not in PUBLIC_WIKIDATA_ENTITY_TYPES:
         return []
-    target_cns = {
-        canonical_control_number(str(cn))
-        for cn in target.control_numbers
-        if canonical_control_number(str(cn))
-    }
+    if target_wd_type == "manuscript":
+        own_cn = canonical_control_number(identity_control_number(target))
+        target_cns = {own_cn} if own_cn else set()
+    else:
+        target_cns = {
+            canonical_control_number(str(cn))
+            for cn in target.control_numbers
+            if canonical_control_number(str(cn))
+        }
     if not target_cns:
         return []
 
@@ -2059,8 +2067,12 @@ def _rollup_sources_for(
                 continue
             if target_wd_type == "work" and entity.entity_type not in _WORK_ROLLUP_ENTITY_TYPES:
                 continue
-            if target_wd_type == "manuscript" and entity.entity_type in _WORK_ROLLUP_ENTITY_TYPES:
-                continue
+            if target_wd_type == "manuscript":
+                if entity.entity_type in _WORK_ROLLUP_ENTITY_TYPES:
+                    continue
+                ent_own_cn = canonical_control_number(identity_control_number(entity))
+                if ent_own_cn and ent_own_cn not in target_cns:
+                    continue
             seen_local_ids.add(entity.local_id)
             related.append(entity)
     return related

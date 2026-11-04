@@ -1020,9 +1020,12 @@ class WikidataUploader:
                     rank=rank_enum,
                 )
             if vtype == "string":
+                clean_str = " | ".join(
+                    p.strip() for p in str(value).splitlines() if p.strip()
+                )
                 return datatypes.String(
                     prop_nr=stmt.property_id,
-                    value=str(value),
+                    value=clean_str,
                     references=refs,
                     qualifiers=qualifiers,
                     rank=rank_enum,
@@ -1063,9 +1066,12 @@ class WikidataUploader:
                     rank=rank_enum,
                 )
             if vtype == "monolingualtext":
+                clean_text = " | ".join(
+                    p.strip() for p in str(value).splitlines() if p.strip()
+                )
                 return datatypes.MonolingualText(
                     prop_nr=stmt.property_id,
-                    text=str(value),
+                    text=clean_text,
                     language=stmt.language,
                     references=refs,
                     qualifiers=qualifiers,
