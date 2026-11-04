@@ -256,3 +256,16 @@ class PersonLinkingMixin:
                 entity.get("viaf_uri"),
                 entity.get("mazal_id"),
             )
+
+        # From MARC 700/710 contributors (ensures audited roles such as
+        # (ממנו)/(אליו)/former owner link even when AuthorityMatch rows
+        # were not manually ticked).
+        for contrib in record.get("contributors") or []:
+            if not isinstance(contrib, dict):
+                continue
+            _add_person_statement(
+                str(contrib.get("name", "")),
+                str(contrib.get("role", "")),
+                contrib.get("viaf_uri"),
+                contrib.get("mazal_id"),
+            )

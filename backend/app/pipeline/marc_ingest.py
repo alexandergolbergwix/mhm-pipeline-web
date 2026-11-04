@@ -380,6 +380,8 @@ def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
         if not _has_value(incoming):
             continue
         current = record.get(field_name)
+        if field_name in ("authors", "contributors") and current:
+            continue
         if isinstance(current, list) and isinstance(incoming, list):
             for value in incoming:
                 if value not in current:
@@ -576,7 +578,8 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             record["subtitle"] = sub
 
     # ── Authors (MARC 100, 110, 111) ────────────────────────────────
-    authors = list(record.get("authors") or [])
+    has_raw_authors = any(_str(record.get(f"{tag}$a")) for tag in ("100", "110", "111"))
+    authors = [] if has_raw_authors else list(record.get("authors") or [])
     for tag in ("100", "110", "111"):
         a = _split_multi(_str(record.get(f"{tag}$a")))
         c = _split_multi(_str(record.get(f"{tag}$c")))
@@ -615,7 +618,11 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
         record["authors"] = authors
 
     # ── Contributors (700, 710, 711, 800, 810, 811) ─────────────────
-    contributors = list(record.get("contributors") or [])
+    has_raw_contribs = any(
+        _str(record.get(f"{tag}$a"))
+        for tag in ("700", "710", "711", "800", "810", "811")
+    )
+    contributors = [] if has_raw_contribs else list(record.get("contributors") or [])
     for tag in ("700", "710", "711", "800", "810", "811"):
         a = _split_multi(_str(record.get(f"{tag}$a")))
         c = _split_multi(_str(record.get(f"{tag}$c")))
@@ -815,6 +822,8 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
                     return value
         return None
 
+    record.pop("script_type", None)
+    record.pop("script_mode", None)
     for piece in _split_multi(_str(record.get("958$a"))):
         mapped = _script_token(piece, SCRIPT_TYPES)
         if mapped and not record.get("script_type"):
@@ -880,7 +889,9 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     colophon_pieces = [
         p for p in colophon_pieces if not is_catalog_note_placeholder(p)
     ]
-    if colophon_pieces and not record.get("colophon_text"):
+    if record.get("colophon_text") and is_catalog_note_placeholder(str(record.get("colophon_text") or "")):
+        record.pop("colophon_text", None)
+    if colophon_pieces:
         record["colophon_text"] = " | ".join(colophon_pieces)
 
     # ── Structured colophon extraction ───────────────────────────────

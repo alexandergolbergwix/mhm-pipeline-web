@@ -590,9 +590,36 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
                 bucket.append(text)
 
     seen = {_statement_key(stmt) for stmt in out.statements}
+
+    def _norm_p1684(val: object) -> str:
+        s = str(val or "").strip().replace('""', '"')
+        while len(s) >= 2 and s.startswith('"') and (
+            s.endswith('"') or s.endswith('".')
+        ):
+            s = s[1:-2].strip() if s.endswith('".') else s[1:-1].strip()
+        return s.rstrip(" .")
+
     for stmt in legacy.statements or []:
         pid = str(stmt.property_id or "")
         key = _statement_key(stmt)
+        if (
+            pid == "P1684"
+            and getattr(stmt, "qualifiers", None)
+        ):
+            norm_leg = _norm_p1684(stmt.value)
+            replaced_unqualified = False
+            for idx, existing_stmt in enumerate(out.statements):
+                if (
+                    str(existing_stmt.property_id or "") == "P1684"
+                    and not getattr(existing_stmt, "qualifiers", None)
+                    and _norm_p1684(existing_stmt.value) == norm_leg
+                ):
+                    out.statements[idx] = stmt
+                    seen.add(key)
+                    replaced_unqualified = True
+                    break
+            if replaced_unqualified:
+                continue
         if key in seen:
             continue
         if (
@@ -1144,13 +1171,15 @@ def canonical_work_titles(item: WikidataItem) -> list[WikidataStatement]:
     return list(best.values())
 
 
-def _index_works(items: list[WikidataItem]) -> dict[str, WikidataItem]:
-    index: dict[str, WikidataItem] = {}
+def _index_works(items: list[WikidataItem]) -> dict[str, list[WikidataItem]]:
+    index: dict[str, list[WikidataItem]] = {}
     for item in items:
         if (item.entity_type or "").lower() != "work":
             continue
         for key in _work_keys(item):
-            index.setdefault(key, item)
+            bucket = index.setdefault(key, [])
+            if item not in bucket:
+                bucket.append(item)
     return index
 
 
@@ -1192,13 +1221,11 @@ def _work_match_is_compatible(canonical: WikidataItem, legacy: WikidataItem) -> 
 
 def _match_work(
     item: WikidataItem,
-    index: dict[str, WikidataItem],
+    index: dict[str, list[WikidataItem]],
 ) -> WikidataItem | None:
     for key in _work_keys(item):
-        hit = index.get(key)
-        if hit is None:
-            continue
-        if key.startswith("label:") and not _work_match_is_compatible(item, hit):
-            continue
-        return hit
+        for hit in index.get(key, ()):
+            if key.startswith("label:") and not _work_match_is_compatible(item, hit):
+                continue
+            return hit
     return None

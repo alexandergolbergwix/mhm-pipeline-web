@@ -64,14 +64,16 @@ def _degrade(statement: WikidataStatement, target_id: str) -> WikidataStatement:
     return statement
 
 
-def _work_title_index(items: list[WikidataItem]) -> dict[str, str]:
-    """Emitted work items keyed by every title they answer to.
+def _work_title_index(items: list[WikidataItem]) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
+    """Emitted work items keyed by title and by (record_cn, title).
 
     A dropped-and-rebuilt work keeps its title but not its original local id, so
     32 of 42 degraded `P1574` claims named a work that was sitting in the same
-    build under a different id (Rule W-142).
+    build under a different id (Rule W-142). Record-scoped keys prevent a
+    manuscript from relinking to a homonymous work on another manuscript.
     """
     index: dict[str, str] = {}
+    by_cn: dict[tuple[str, str], str] = {}
     for item in items:
         if (item.entity_type or "").strip().lower() != "work":
             continue
@@ -85,9 +87,14 @@ def _work_title_index(items: list[WikidataItem]) -> dict[str, str]:
             if str(stmt.property_id) == P_WORK_TITLE
         ]
         for title in titles:
-            if title:
-                index.setdefault(title, local_id)
-    return index
+            if not title:
+                continue
+            index.setdefault(title, local_id)
+            for cn in (item.records or []):
+                cn_str = str(cn or "").strip()
+                if cn_str:
+                    by_cn.setdefault((cn_str, title), local_id)
+    return index, by_cn
 
 
 def _intended_title(statement: WikidataStatement, target_id: str) -> str:
@@ -110,7 +117,7 @@ def resolve_local_references(
     hide a projection bug (Rule W-110's "no silent caps" reasoning).
     """
     known = {str(item.local_id or "") for item in items if item.local_id}
-    work_titles = _work_title_index(items)
+    work_titles, work_titles_by_cn = _work_title_index(items)
     degraded = 0
     dropped = 0
     relinked = 0
@@ -118,6 +125,7 @@ def resolve_local_references(
 
     for index, item in enumerate(items, start=1):
         kept: list[WikidataStatement] = []
+        item_cns = [str(cn or "").strip() for cn in (item.records or []) if str(cn or "").strip()]
         for statement in item.statements or []:
             target = _local_target(statement.value)
             if not target or target in known:
@@ -129,7 +137,14 @@ def resolve_local_references(
             # different id (Rule W-142).
             if pid in _DEGRADABLE_PIDS:
                 title = _intended_title(statement, target)
-                relinked_id = work_titles.get(title) if title else None
+                relinked_id = None
+                if title:
+                    for cn in item_cns:
+                        relinked_id = work_titles_by_cn.get((cn, title))
+                        if relinked_id:
+                            break
+                    if not relinked_id and not item_cns:
+                        relinked_id = work_titles.get(title)
                 if relinked_id and relinked_id != str(item.local_id or ""):
                     statement.value = f"__LOCAL:{relinked_id}"
                     statement.value_type = "item"

@@ -109,6 +109,61 @@ async def replace_wikidata_item_rows(
         return 0
 
 
+async def patch_wikidata_item_rows(
+    db: AsyncSession,
+    run_id: uuid.UUID,
+    *,
+    approved_only: bool,
+    source: str,
+    replaced_local_ids: set[str],
+    new_items: list[dict[str, Any]],
+) -> int:
+    """Replace only the selected/rebuilt item rows in place (Rule W-267)."""
+    from app.pipeline.hmo_canonical_wikidata import filter_public_wikidata_items  # noqa: PLC0415
+
+    try:
+        new_items = filter_public_wikidata_items(new_items or [], source=source)
+    except Exception:
+        logger.exception("public-item filter failed; patching rows unfiltered")
+    target_ids = sorted(
+        {str(x) for x in replaced_local_ids if str(x)}
+        | {str(it.get("local_id") or "") for it in new_items if it.get("local_id")}
+    )
+    try:
+        if target_ids:
+            await db.execute(delete(WikidataStudioItemRow).where(
+                WikidataStudioItemRow.run_id == run_id,
+                WikidataStudioItemRow.approved_only.is_(approved_only),
+                WikidataStudioItemRow.source == source,
+                WikidataStudioItemRow.local_id.in_(target_ids),
+            ))
+        max_ord = (
+            await db.execute(
+                select(func.coalesce(func.max(WikidataStudioItemRow.ord), 0)).where(
+                    WikidataStudioItemRow.run_id == run_id,
+                    WikidataStudioItemRow.approved_only.is_(approved_only),
+                    WikidataStudioItemRow.source == source,
+                )
+            )
+        ).scalar_one()
+        for idx, item in enumerate(new_items or [], start=int(max_ord) + 1):
+            db.add(WikidataStudioItemRow(
+                run_id=run_id,
+                approved_only=approved_only,
+                source=source,
+                **_row_values(idx, item),
+            ))
+        await db.commit()
+        return len(new_items or [])
+    except Exception:
+        logger.exception(
+            "wikidata-studio item rows patch failed for run %s (%s/%s)",
+            run_id, approved_only, source,
+        )
+        await db.rollback()
+        return 0
+
+
 async def ensure_rows_backfilled(
     db: AsyncSession,
     run_id: uuid.UUID,

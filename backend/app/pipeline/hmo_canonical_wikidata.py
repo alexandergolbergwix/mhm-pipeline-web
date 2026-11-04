@@ -126,8 +126,11 @@ def identity_control_number(entity: CanonicalHmoEntity) -> str:
 
 
 def identity_records_for(entity: CanonicalHmoEntity, wd_type: str) -> list[str]:
-    """Manuscripts carry only their own record; persons/works span records."""
-    if wd_type == "manuscript":
+    """Manuscripts and MS-scoped works carry only their own record."""
+    if wd_type == "manuscript" or (
+        wd_type == "work"
+        and re.search(r"MS_\d{9,}", f"{entity.source_uri or ''} {entity.local_id or ''}")
+    ):
         cn = identity_control_number(entity)
         return [cn] if cn else []
     return list(entity.control_numbers)
@@ -525,11 +528,20 @@ def _merge_transcription_statements(
         if statement.property_id in _TRANSCRIPTION_PIDS:
             if not statement.references and control_number:
                 statement.references = nli_reference(control_number)
-            raw_val = str(statement.value or "")
+            raw_val = str(statement.value or "").strip().replace('""', '"')
+            while len(raw_val) >= 2 and raw_val.startswith('"') and (
+                raw_val.endswith('"') or raw_val.endswith('".')
+            ):
+                raw_val = (
+                    raw_val[1:-2].strip()
+                    if raw_val.endswith('".')
+                    else raw_val[1:-1].strip()
+                )
             if "\n" in raw_val or "\r" in raw_val:
-                statement.value = " | ".join(
+                raw_val = " | ".join(
                     p.strip() for p in re.split(r"[\r\n]+", raw_val) if p.strip()
                 )
+            statement.value = raw_val
 
     grouped: dict[str, list[WikidataStatement]] = {}
     for statement in statements:
@@ -831,9 +843,10 @@ def _append_context_work_author(
         if not name:
             continue
         qid = normalize_wikidata_qid(candidate.get("wikidata_qid"))
-        expected_name = _normalise_label(_strip_name_quotes(name)).rstrip(
+        clean_author_name = _normalise_label(_strip_name_quotes(name)).rstrip(
             " .,;:/-",
-        ).casefold()
+        )
+        expected_name = clean_author_name.casefold()
         kept: list[WikidataStatement] = []
         for statement in statements:
             if statement.property_id not in {P_AUTHOR, P_AUTHOR_NAME_STRING}:
@@ -850,6 +863,8 @@ def _append_context_work_author(
                     and statement_name == expected_name
                 )
             ):
+                if statement.property_id == P_AUTHOR_NAME_STRING:
+                    statement.value = clean_author_name
                 kept.append(statement)
         statements[:] = kept
         if any(
@@ -860,7 +875,7 @@ def _append_context_work_author(
         statements.append(
             WikidataStatement(
                 property_id=P_AUTHOR if qid else P_AUTHOR_NAME_STRING,
-                value=qid or name,
+                value=qid or clean_author_name,
                 value_type="item" if qid else "string",
                 references=nli_reference(control_number),
             ),
@@ -1950,8 +1965,21 @@ def _sanitize_canonical_claims(
             )
             record = context.marc_by_cn.get(cn)
         holder_qid = None
+        expected_script_qids: set[str] | None = None
         if record is not None:
+            from converter.wikidata.item_builder import (  # noqa: PLC0415
+                SCRIPT_MODE_TO_QID,
+                SCRIPT_TYPE_TO_QID,
+            )
+
             holder_qid = _current_holder_qid(record, _current_holder_names(record))
+            expected_script_qids = set()
+            st = record.get("script_type")
+            if st and str(st) in SCRIPT_TYPE_TO_QID:
+                expected_script_qids.add(SCRIPT_TYPE_TO_QID[str(st)])
+            sm = record.get("script_mode")
+            if sm and str(sm) in SCRIPT_MODE_TO_QID:
+                expected_script_qids.add(SCRIPT_MODE_TO_QID[str(sm)])
         for statement in item.statements or []:
             pid = str(statement.property_id or "")
             value = str(statement.value or "")
@@ -1964,6 +1992,8 @@ def _sanitize_canonical_claims(
                 ):
                     continue
             if pid == "P195" and record is not None and value != holder_qid:
+                continue
+            if pid == "P9302" and expected_script_qids is not None and value not in expected_script_qids:
                 continue
             if pid == "P1684" and is_catalog_note_placeholder(value):
                 continue
@@ -2495,7 +2525,8 @@ def _work_labels_and_aliases(
 ) -> tuple[dict[str, str], dict[str, list[str]]]:
     labels: dict[str, str] = {}
     for lang, value in raw_labels.items():
-        title = normalise(str(value).strip())
+        stripped = re.sub(r"\s*\(MS\s+\d+\)\s*$", "", str(value).strip(), flags=re.IGNORECASE)
+        title = normalise(stripped)
         if not title:
             continue
         if has_hebrew(title):

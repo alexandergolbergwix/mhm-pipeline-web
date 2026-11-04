@@ -1735,11 +1735,20 @@ async def rebuild_selected_wikidata_items(
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, "selected items are not in the cached build",
         )
-    record_ids: list[str] = []
+    manuscript_rids = {
+        str(rid).strip()
+        for it in selected
+        if str(it.get("entity_type") or "") == "manuscript"
+        for rid in (it.get("records") or [])
+        if str(rid).strip()
+    }
+    record_ids: list[str] = sorted(manuscript_rids)
     for it in selected:
-        for rid in it.get("records") or []:
-            cn = str(rid).strip()
-            if cn and cn not in record_ids:
+        it_rids = [str(rid).strip() for rid in (it.get("records") or []) if str(rid).strip()]
+        if manuscript_rids and (set(it_rids) & manuscript_rids):
+            continue
+        for cn in it_rids:
+            if cn not in record_ids:
                 record_ids.append(cn)
 
     from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
@@ -1773,12 +1782,35 @@ async def rebuild_selected_wikidata_items(
     }
 
     if source == "canonical":
-        all_entities = await _canonical_entities_for_run(db, run_id)
+        from sqlalchemy import or_  # noqa: PLC0415
+
         wanted_cn_keys = set(_cn_keys(record_ids))
-        subset_entities = [
-            entity for entity in all_entities
-            if wanted_cn_keys & set(_cn_keys(entity.control_numbers or []))
+        linked_local_ids = set(wanted)
+        for it in selected:
+            for st in it.get("statements") or []:
+                val = str(st.get("value") or "")
+                if val.startswith("__LOCAL:"):
+                    linked_local_ids.add(val.removeprefix("__LOCAL:"))
+        cn_clauses = [
+            HmoCanonicalEntity.local_id.in_(sorted(linked_local_ids)),
+            *[HmoCanonicalEntity.source_uri.contains(cn) for cn in sorted(wanted_cn_keys)],
+            *[HmoCanonicalEntity.local_id.contains(cn) for cn in sorted(wanted_cn_keys)],
         ]
+        subset_rows = (
+            await db.execute(
+                select(HmoCanonicalEntity).where(
+                    HmoCanonicalEntity.run_id == run_id,
+                    or_(*cn_clauses),
+                )
+            )
+        ).scalars().all()
+        subset_entities = [normalize_live_entity(r.snapshot) for r in subset_rows]
+        if not subset_entities:
+            all_entities = await _canonical_entities_for_run(db, run_id)
+            subset_entities = [
+                entity for entity in all_entities
+                if wanted_cn_keys & set(_cn_keys(entity.control_numbers or []))
+            ]
         if not subset_entities:
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND,
@@ -1811,7 +1843,14 @@ async def rebuild_selected_wikidata_items(
             legacy_native_items=legacy_native.get("native_items") or [],
             return_native=True,
         )
-        new_items = result["items"]
+        new_items = [
+            it for it in result["items"]
+            if str(it.get("local_id") or "") in wanted
+            or (
+                bool(it.get("records"))
+                and set(_cn_keys(it.get("records") or [])) <= wanted_cn_keys
+            )
+        ]
     else:
         legacy_result = await wikidata_studio.build_items_for_run(
             marc_records=slice_inputs["marc_records"],
@@ -1844,7 +1883,16 @@ async def rebuild_selected_wikidata_items(
             "at": datetime.now(UTC).isoformat(),
         },
     }
-    await _replace_item_rows(db, run_id, approved_only=True, source=source, items=merged)
+    from app.pipeline.wikidata_item_row_views import patch_wikidata_item_rows  # noqa: PLC0415
+
+    await patch_wikidata_item_rows(
+        db,
+        run_id,
+        approved_only=True,
+        source=source,
+        replaced_local_ids=rebuilt_old_ids | new_ids,
+        new_items=new_items,
+    )
     await db.flush()
     return {
         "selected": len(rebuilt_old_ids),

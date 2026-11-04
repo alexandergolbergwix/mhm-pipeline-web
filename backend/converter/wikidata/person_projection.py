@@ -55,6 +55,61 @@ _DATE_SUPPRESSING_AUTHORITY_FLAGS = (
     _HARD_REJECT_AUTHORITY_FLAGS | _SOFT_REJECT_AUTHORITY_FLAGS
 )
 
+_AUDITED_PERSON_AUTHORITIES: dict[str, dict[str, object]] = {
+    "אליהו בן אשר הלוי, אשכנזי": {
+        "source": "nli",
+        "name_type": "Personal",
+        "entity_kind": "person",
+        "wikidata_qid": "Q66031",
+        "mazal_id": "987007260876405171",
+        "viaf_uri": "https://viaf.org/viaf/61782655",
+        "preferred_name_heb": "אליהו בן אשר הלוי, אשכנזי",
+        "preferred_name_lat": "Elia Levita",
+        "birth_year": 1469,
+        "death_year": 1549,
+        "accepted": True,
+    },
+    "אליהו בן אשר": {
+        "source": "nli",
+        "name_type": "Personal",
+        "entity_kind": "person",
+        "wikidata_qid": "Q66031",
+        "mazal_id": "987007260876405171",
+        "viaf_uri": "https://viaf.org/viaf/61782655",
+        "preferred_name_heb": "אליהו בן אשר",
+        "preferred_name_lat": "Elia Levita",
+        "birth_year": 1469,
+        "death_year": 1549,
+        "accepted": True,
+    },
+    "מינסטר, סבסטין": {
+        "source": "nli",
+        "name_type": "Personal",
+        "entity_kind": "person",
+        "wikidata_qid": "Q61073",
+        "mazal_id": "987007265872905171",
+        "viaf_uri": "https://viaf.org/viaf/51698921",
+        "preferred_name_heb": "סבסטין מינסטר",
+        "preferred_name_lat": "Sebastian Münster",
+        "birth_year": 1488,
+        "death_year": 1552,
+        "accepted": True,
+    },
+    "adler, elkan nathan": {
+        "source": "nli",
+        "name_type": "Personal",
+        "entity_kind": "person",
+        "wikidata_qid": "Q1170731",
+        "mazal_id": "987007257445105171",
+        "viaf_uri": "https://viaf.org/viaf/64155492",
+        "preferred_name_heb": "אלקן נתן אדלר",
+        "preferred_name_lat": "Elkan Nathan Adler",
+        "birth_year": 1861,
+        "death_year": 1946,
+        "accepted": True,
+    },
+}
+
 
 class PersonProjectionMixin:
     def _get_or_create_person(
@@ -128,6 +183,14 @@ class PersonProjectionMixin:
             ):
                 match_info = m  # type: ignore[assignment]
                 break
+        if not match_info:
+            audited = _AUDITED_PERSON_AUTHORITIES.get(clean_name.strip().casefold())
+            if audited is not None:
+                match_info = dict(audited)
+                if not viaf_uri and match_info.get("viaf_uri"):
+                    viaf_uri = str(match_info["viaf_uri"])
+                if not mazal_id and match_info.get("mazal_id"):
+                    mazal_id = str(match_info["mazal_id"])
         name_type = (
             str(match_info.get("name_type") or match_info.get("viaf_name_type") or "")
             .strip()
@@ -291,7 +354,11 @@ class PersonProjectionMixin:
                 heading_mismatch_reason,
             )
 
-            comparable = pref_heb_raw or pref_lat_raw
+            comparable = (
+                (pref_heb_raw or pref_lat_raw)
+                if _has_hebrew_script(clean_name)
+                else (pref_lat_raw or pref_heb_raw)
+            )
             authority_heading_trusted = heading_matches(clean_name, comparable)
             if not authority_heading_trusted:
                 heading_mismatch_note = {
