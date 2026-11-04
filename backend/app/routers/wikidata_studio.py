@@ -446,15 +446,66 @@ def _merge_rebuilt_items(
 
     Selected local_ids are replaced; a rebuilt record may also mint a
     person/work local_id that other rows share — those are replaced too.
+    Any ``__LOCAL:`` reference in untouched ``kept`` rows whose target ID
+    changed during the partial rebuild is rewritten to the matching new
+    work by title so the cached corpus never gains dangling local refs.
     """
-    replaced = selected_old_ids | {
-        str(it.get("local_id") or "") for it in new_items
+    new_by_id = {
+        str(it.get("local_id") or ""): it
+        for it in new_items
+        if str(it.get("local_id") or "")
     }
+    new_work_id_by_title: dict[str, str] = {}
+    for lid, it in new_by_id.items():
+        if str(it.get("entity_type") or "") != "work":
+            continue
+        labels = it.get("labels") or {}
+        for t in labels.values():
+            if t:
+                new_work_id_by_title.setdefault(str(t).strip(), lid)
+        for st in it.get("statements") or []:
+            if str(st.get("property") or st.get("property_id") or "") == "P1476" and st.get("value"):
+                new_work_id_by_title.setdefault(str(st["value"]).strip(), lid)
+
+    replaced = selected_old_ids | set(new_by_id.keys())
     kept = [
         it for it in cached_items
         if str(it.get("local_id") or "") not in replaced
     ]
-    return kept + list(new_items)
+    merged_ids = {str(it.get("local_id") or "") for it in kept} | set(new_by_id.keys())
+    relinked_kept: list[dict[str, Any]] = []
+    for it in kept:
+        stmts = it.get("statements")
+        if not isinstance(stmts, list):
+            relinked_kept.append(it)
+            continue
+        changed_it = False
+        new_stmts: list[dict[str, Any]] = []
+        for st in stmts:
+            val = str(st.get("value") or "")
+            if not val.startswith("__LOCAL:"):
+                new_stmts.append(st)
+                continue
+            target = val.removeprefix("__LOCAL:")
+            if target in merged_ids:
+                new_stmts.append(st)
+                continue
+            title_guess = target.split(":", 1)[-1].split(":author:", 1)[0].replace("_", " ").strip()
+            for q in st.get("qualifiers") or []:
+                if isinstance(q, dict) and str(q.get("property") or q.get("property_id") or "") == "P1932" and q.get("value"):
+                    title_guess = str(q["value"]).strip()
+                    break
+            replacement_id = new_work_id_by_title.get(title_guess)
+            if replacement_id:
+                patched_st = {**st, "value": f"__LOCAL:{replacement_id}"}
+                if "value_id" in patched_st:
+                    patched_st["value_id"] = f"__LOCAL:{replacement_id}"
+                new_stmts.append(patched_st)
+                changed_it = True
+            else:
+                new_stmts.append(st)
+        relinked_kept.append({**it, "statements": new_stmts} if changed_it else it)
+    return relinked_kept + list(new_items)
 
 
 class StudioBuildResponse(BaseModel):
@@ -1866,10 +1917,13 @@ async def rebuild_selected_wikidata_items(
         )
         new_items = finished["items"]
 
+    from sqlalchemy.orm.attributes import flag_modified  # noqa: PLC0415
+
     rebuilt_old_ids = {str(it.get("local_id") or "") for it in selected}
     new_ids = {str(it.get("local_id") or "") for it in new_items}
     merged = _merge_rebuilt_items(cached.result_items or [], rebuilt_old_ids, new_items)
     cached.result_items = merged
+    flag_modified(cached, "result_items")
     cached.record_count = len(merged)
     cached.summary = {
         **(cached.summary or {}),

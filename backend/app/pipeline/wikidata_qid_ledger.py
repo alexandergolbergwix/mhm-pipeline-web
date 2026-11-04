@@ -67,7 +67,25 @@ def ledger_key_for_item(
 
 def lookup_ledger_qid(ledger: dict[str, str], key: str) -> str | None:
     qid = ledger.get(key)
-    return str(qid) if qid else None
+    if qid:
+        return str(qid)
+    if ":author:" in key:
+        base_key, author_part = key.split(":author:", 1)
+        if base_key in ledger and not any(
+            k.startswith(f"{base_key}:author:") for k in ledger
+        ):
+            return str(ledger[base_key])
+        prefix_hits = [
+            v for k, v in ledger.items()
+            if k.startswith(f"{base_key}:author:")
+            and (
+                author_part.startswith(k.split(":author:", 1)[1])
+                or k.split(":author:", 1)[1].startswith(author_part)
+            )
+        ]
+        if len(set(prefix_hits)) == 1:
+            return str(prefix_hits[0])
+    return None
 
 
 async def load_global_ledger(
