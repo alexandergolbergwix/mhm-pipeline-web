@@ -1311,6 +1311,37 @@ async def load_foreign_accept_map(
 
 
 
+async def persist_upload_outcomes(
+    db: AsyncSession,
+    items: list[Any],
+    outcomes: list[UploadOutcome],
+    *,
+    audit_ctx: WikibaseAuditContext | None,
+    is_test: bool = False,
+) -> None:
+    """Persist audit and ledger rows after network writes complete (Rule W-40)."""
+    if audit_ctx is None:
+        return
+    ns = ledger_namespace(is_test=is_test)
+    items_by_id = {_local_id(it, i): it for i, it in enumerate(items)}
+    for outcome in outcomes:
+        await _record_outcome_audit(db, audit_ctx, outcome)
+        if (
+            outcome.qid
+            and str(outcome.qid).strip().startswith("Q")
+            and outcome.status in ("created", "adopted", "updated", "exists", "skipped")
+        ):
+            item = items_by_id.get(outcome.local_id)
+            if item is not None:
+                await record_ledger_mapping(
+                    db,
+                    ledger_key_for_item(item, ns),
+                    outcome.qid,
+                    local_key=outcome.local_id,
+                    label=outcome.label,
+                )
+
+
 async def upload_items(
     items: list[Any], *,
     token: str,
@@ -1349,25 +1380,9 @@ async def upload_items(
         quality_preflight,
     )
     if db is not None and audit_ctx is not None and not resolved.dry_run:
-        for outcome in outcomes:
-            await _record_outcome_audit(db, audit_ctx, outcome)
-            if (
-                outcome.qid
-                and str(outcome.qid).strip().startswith("Q")
-                and outcome.status in ("created", "adopted", "updated", "exists", "skipped")
-            ):
-                item = next(
-                    (it for it in items if _local_id(it, 0) == outcome.local_id),
-                    None,
-                )
-                if item is not None:
-                    await record_ledger_mapping(
-                        db,
-                        ledger_key_for_item(item, ns),
-                        outcome.qid,
-                        local_key=outcome.local_id,
-                        label=outcome.label,
-                    )
+        await persist_upload_outcomes(
+            db, items, outcomes, audit_ctx=audit_ctx, is_test=resolved.is_test,
+        )
     return outcomes
 
 

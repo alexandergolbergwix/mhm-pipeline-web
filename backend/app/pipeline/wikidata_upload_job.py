@@ -791,17 +791,23 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             async def _do_write(payload: Any = write_item) -> list[Any]:
                 slot = await uploader_slots.get()
                 try:
-                    async with session_scope() as db:
-                        return await wikidata_upload.upload_items(
-                            [payload], token=token or "", mode=mode,
-                            audit_ctx=audit_ctx, db=db, ledger=ledger,
-                            run_id=run_id,
-                            uploader=slot,
-                            existence_cache=existence_cache,
-                            created_qids=created_qids,
-                            accept_by_local_id=accept_by_local_id,
-                            quality_preflight=quality_preflight,
-                        )
+                    res = await wikidata_upload.upload_items(
+                        [payload], token=token or "", mode=mode,
+                        audit_ctx=None, db=None, ledger=ledger,
+                        run_id=run_id,
+                        uploader=slot,
+                        existence_cache=existence_cache,
+                        created_qids=created_qids,
+                        accept_by_local_id=accept_by_local_id,
+                        quality_preflight=quality_preflight,
+                    )
+                    if audit_ctx is not None and not mode.dry_run and res:
+                        async with session_scope() as db:
+                            await wikidata_upload.persist_upload_outcomes(
+                                db, [payload], res,
+                                audit_ctx=audit_ctx, is_test=mode.is_test,
+                            )
+                    return res
                 finally:
                     uploader_slots.put_nowait(slot)
 
@@ -1162,17 +1168,23 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             async def _do_link_write(payload: Any = clone) -> list[Any]:
                 slot = await uploader_slots.get()
                 try:
-                    async with session_scope() as db:
-                        return await wikidata_upload.upload_items(
-                            [payload], token=token or "", mode=mode,
-                            audit_ctx=audit_ctx, db=db, ledger=ledger,
-                            run_id=run_id,
-                            uploader=slot,
-                            existence_cache=existence_cache,
-                            created_qids=created_qids,
-                            accept_by_local_id=accept_by_local_id,
-                            quality_preflight=quality_preflight,
-                        )
+                    res = await wikidata_upload.upload_items(
+                        [payload], token=token or "", mode=mode,
+                        audit_ctx=None, db=None, ledger=ledger,
+                        run_id=run_id,
+                        uploader=slot,
+                        existence_cache=existence_cache,
+                        created_qids=created_qids,
+                        accept_by_local_id=accept_by_local_id,
+                        quality_preflight=quality_preflight,
+                    )
+                    if audit_ctx is not None and not mode.dry_run and res:
+                        async with session_scope() as db:
+                            await wikidata_upload.persist_upload_outcomes(
+                                db, [payload], res,
+                                audit_ctx=audit_ctx, is_test=mode.is_test,
+                            )
+                    return res
                 finally:
                     uploader_slots.put_nowait(slot)
 
@@ -1253,6 +1265,9 @@ async def load_wikidata_upload_item_ids(
         ledger = await wikidata_upload.load_ledger_for_prepare(
             db, is_test=mode.is_test,
         )
+    from app.db import get_engine  # noqa: PLC0415
+
+    await get_engine().dispose()
     ordered = sort_items_for_upload(list(native))
     known_qids = _resolve_existing_qid_map(ordered, ledger, is_test=mode.is_test)
     ids = [wikidata_studio.local_id_for_item(it) for it in ordered]
@@ -1287,50 +1302,60 @@ async def run_wikidata_upload_shard(
         partition_unresolved_local,
         sort_items_for_upload,
     )
+    from app.db import get_engine  # noqa: PLC0415
     from app.pipeline.wikidata_existence import (  # noqa: PLC0415
         prefetch_entities_for_upload,
     )
 
-    async with session_scope() as db:
-        job = await db.get(RunJob, job_id)
-        if job is None:
-            raise ValueError(f"job {job_id} not found")
-        params = dict(job.params or {})
-        mode = wikidata_upload.resolve_upload_mode(
-            params.get("upload_target"), dry_run=params.get("dry_run"),
-        )
-        approved_only = bool(params.get("approved_only", True))
-        source = str(params.get("source") or "canonical")
-        item_approved_only = bool(params.get("item_approved_only", False))
-        token = str(params.get("_wikidata_token") or "")
-        auth = SimpleNamespace(user=SimpleNamespace(id=job.created_by))
-        native = await _build_native_items(
-            db, run_id, auth, approved_only=approved_only, source=source,
-        )
-        override_rows = (
-            await db.execute(
-                select(WikidataItemOverride).where(
-                    WikidataItemOverride.run_id == run_id,
+    for _db_attempt in range(5):
+        try:
+            async with session_scope() as db:
+                job = await db.get(RunJob, job_id)
+                if job is None:
+                    raise ValueError(f"job {job_id} not found")
+                params = dict(job.params or {})
+                mode = wikidata_upload.resolve_upload_mode(
+                    params.get("upload_target"), dry_run=params.get("dry_run"),
                 )
-            )
-        ).scalars().all()
-        if item_approved_only:
-            approved_ids = {r.local_id for r in override_rows if r.approved}
-            native = [
-                it for it in native
-                if wikidata_studio.local_id_for_item(it) in approved_ids
-            ]
-        accept_by_local_id = {
-            r.local_id: wikidata_upload.ForeignAccept(
-                accept_foreign_modify=bool(r.accept_foreign_modify),
-                accepted_foreign_qid=str(r.accepted_foreign_qid),
-            )
-            for r in override_rows
-            if r.accept_foreign_modify and r.accepted_foreign_qid
-        }
-        ledger = await wikidata_upload.load_ledger_for_prepare(
-            db, is_test=mode.is_test,
-        )
+                approved_only = bool(params.get("approved_only", True))
+                source = str(params.get("source") or "canonical")
+                item_approved_only = bool(params.get("item_approved_only", False))
+                token = str(params.get("_wikidata_token") or "")
+                auth = SimpleNamespace(user=SimpleNamespace(id=job.created_by))
+                native = await _build_native_items(
+                    db, run_id, auth, approved_only=approved_only, source=source,
+                )
+                override_rows = (
+                    await db.execute(
+                        select(WikidataItemOverride).where(
+                            WikidataItemOverride.run_id == run_id,
+                        )
+                    )
+                ).scalars().all()
+                if item_approved_only:
+                    approved_ids = {r.local_id for r in override_rows if r.approved}
+                    native = [
+                        it for it in native
+                        if wikidata_studio.local_id_for_item(it) in approved_ids
+                    ]
+                accept_by_local_id = {
+                    r.local_id: wikidata_upload.ForeignAccept(
+                        accept_foreign_modify=bool(r.accept_foreign_modify),
+                        accepted_foreign_qid=str(r.accepted_foreign_qid),
+                    )
+                    for r in override_rows
+                    if r.accept_foreign_modify and r.accepted_foreign_qid
+                }
+                ledger = await wikidata_upload.load_ledger_for_prepare(
+                    db, is_test=mode.is_test,
+                )
+            break
+        except Exception as exc:  # noqa: BLE001
+            if _db_attempt >= 4 or "too many connections" not in str(exc).lower():
+                raise
+            await asyncio.sleep(2.0 * (_db_attempt + 1))
+    finally_dispose = get_engine()
+    await finally_dispose.dispose()
 
     scope = {str(x) for x in local_ids if str(x)}
     items = [
@@ -1427,6 +1452,7 @@ async def run_wikidata_upload_shard(
     # per-item LLM call (~11 s) and sequential processing made a 80-item
     # shard take 25+ min. Cross-item local links simply defer to step-2.
     lanes = asyncio.Semaphore(3)
+    outcome_objs: list[Any] = []
 
     async def _one(item: Any) -> list[dict[str, Any]]:
         async with lanes:
@@ -1438,17 +1464,17 @@ async def run_wikidata_upload_shard(
                 )
                 if deferred_locals:
                     deferred[local_id] = deferred_locals
-                async with session_scope() as db:
-                    results = await wikidata_upload.upload_items(
-                        [write_item], token=token or "", mode=mode,
-                        audit_ctx=audit_ctx, db=db, ledger=ledger,
-                        run_id=run_id,
-                        uploader=slot,
-                        accept_by_local_id=accept_by_local_id,
-                        existence_cache=existence_cache,
-                        created_qids=created_qids,
-                        quality_preflight=quality_preflight,
-                    )
+                results = await wikidata_upload.upload_items(
+                    [write_item], token=token or "", mode=mode,
+                    audit_ctx=None, db=None, ledger=ledger,
+                    run_id=run_id,
+                    uploader=slot,
+                    accept_by_local_id=accept_by_local_id,
+                    existence_cache=existence_cache,
+                    created_qids=created_qids,
+                    quality_preflight=quality_preflight,
+                )
+                outcome_objs.extend(results)
                 for row in results:
                     wikidata_upload.remember_created_qid(
                         created_qids,
@@ -1462,9 +1488,7 @@ async def run_wikidata_upload_shard(
             finally:
                 uploader_slots.put_nowait(slot)
 
-    for batch_idx, batch in enumerate(items[i:i + 3] for i in range(0, len(items), 3)):
-        if batch_idx % 4 == 0 and await is_cancel_requested(job_id):
-            break
+    for batch in (items[i:i + 3] for i in range(0, len(items), 3)):
         for rows in await asyncio.gather(*(_one(it) for it in batch)):
             outcomes.extend(rows)
             if on_progress is not None:
@@ -1472,6 +1496,21 @@ async def run_wikidata_upload_shard(
                     on_progress(len(outcomes))
                 except Exception:  # noqa: BLE001 — telemetry only
                     pass
+
+    if audit_ctx is not None and not mode.dry_run and outcome_objs:
+        for _db_attempt in range(5):
+            try:
+                async with session_scope() as db:
+                    await wikidata_upload.persist_upload_outcomes(
+                        db, items, outcome_objs,
+                        audit_ctx=audit_ctx, is_test=mode.is_test,
+                    )
+                break
+            except Exception as exc:  # noqa: BLE001
+                if _db_attempt >= 4 or "too many connections" not in str(exc).lower():
+                    raise
+                await asyncio.sleep(2.0 * (_db_attempt + 1))
+        await get_engine().dispose()
     return {
         "outcomes": outcomes,
         "created_qids": dict(created_qids),
