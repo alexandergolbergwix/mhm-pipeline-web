@@ -403,13 +403,15 @@ def wikidata_provider(items: list[dict[str, Any]] | None) -> list[ProviderEntity
         if not (isinstance(qid, str) and qid.startswith("Q") and qid[1:].isdigit()):
             continue
         ext = _extract_external_ids(item)
-        control_number = item.get("local_id") if entity_type == "manuscript" else None
+        raw_lid = str(item.get("local_id") or "").strip()
+        clean_lid = raw_lid.removeprefix("QDraft_MS_").removeprefix("marc:")
+        control_number = (ext.get("cn") or clean_lid) if entity_type == "manuscript" else None
         out.append(ProviderEntity(
             entity_type=entity_type,
             label=_best_item_label(item),
             source=SOURCE_WIKIDATA,
             qid=qid,
-            control_number=control_number or ext.get("cn"),
+            control_number=control_number,
             viaf_id=ext.get("viaf"),
             nli_authority_id=ext.get("nli"),
             raw_uri=qid,
@@ -516,6 +518,41 @@ def build_aggregated_summary(
     }
 
 
+def wikibase_ledger_provider(
+    rdf_entities: list[ProviderEntity],
+    live_wikibase_qids: dict[str, str],
+) -> list[ProviderEntity]:
+    """Derive live project-Wikibase entities from the cross-run HMO ledger
+    (``wikibase_entity_mappings``, Rule W-278) when live SPARQL returns empty."""
+    if not rdf_entities or not live_wikibase_qids:
+        return []
+    namespaces = (
+        "https://w3id.org/mhm/ontology#",
+        "http://www.ontology.org.il/HebrewManuscripts/2025-12-06#",
+    )
+    source_uris = set(live_wikibase_qids)
+    for uri in live_wikibase_qids:
+        for namespace in namespaces:
+            if uri.startswith(namespace):
+                source_uris.update(ns + uri[len(namespace):] for ns in namespaces)
+                break
+    out: list[ProviderEntity] = []
+    for e in rdf_entities:
+        raw = e.raw_uri or ""
+        if raw in source_uris:
+            out.append(ProviderEntity(
+                entity_type=e.entity_type,
+                label=e.label,
+                source=SOURCE_WIKIBASE,
+                qid=e.qid,
+                control_number=e.control_number,
+                viaf_id=e.viaf_id,
+                nli_authority_id=e.nli_authority_id,
+                raw_uri=e.raw_uri,
+            ))
+    return out
+
+
 def compute_aggregated_summary(
     graph: rdflib.Graph,
     studio_items: list[dict[str, Any]] | None,
@@ -523,6 +560,7 @@ def compute_aggregated_summary(
     authority_matches: list[dict[str, Any]] | None = None,
     *,
     wikibase_configured: bool,
+    live_wikibase_qids: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Synchronous core: merge all sources into the aggregated summary.
 
@@ -531,12 +569,30 @@ def compute_aggregated_summary(
     """
     rdf_entities = rdf_provider(graph)
     wd_entities = wikidata_provider(studio_items)
+    if wd_entities and authority_matches:
+        for m in authority_matches:
+            if not isinstance(m, dict) or m.get("entity_kind") != "place":
+                continue
+            qid = str(m.get("wikidata_qid") or "").strip()
+            if not (qid.startswith("Q") and qid[1:].isdigit()):
+                continue
+            label = str(m.get("entity_text") or m.get("matched_name") or "").strip()
+            wd_entities.append(ProviderEntity(
+                entity_type="place",
+                label=label,
+                source=SOURCE_WIKIDATA,
+                qid=qid,
+                nli_authority_id=m.get("mazal_id") or None,
+                raw_uri=qid,
+            ))
     wb_entities = list(wikibase_entities or [])
+    if not wb_entities and live_wikibase_qids:
+        wb_entities = wikibase_ledger_provider(rdf_entities, live_wikibase_qids)
     merged = merge_entities(rdf_entities + wd_entities + wb_entities)
     sources_available = {
         SOURCE_RDF:      len(graph) > 0,
         SOURCE_WIKIDATA: bool(wd_entities),
-        SOURCE_WIKIBASE: wikibase_configured,
+        SOURCE_WIKIBASE: wikibase_configured or bool(wb_entities),
     }
     return build_aggregated_summary(
         merged, aggregated_persons_by_role(graph, authority_matches), len(graph), sources_available,

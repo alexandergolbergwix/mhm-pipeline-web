@@ -4,10 +4,38 @@ from __future__ import annotations
 import uuid
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 
 pytestmark = pytest.mark.asyncio
+
+
+async def test_public_wikidata_read_survives_a_login_403(monkeypatch):
+    from app.services.research_agent import wiki
+
+    requests = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.params.get("action") == "query":
+            return httpx.Response(403, text="Wikimedia robot policy")
+        return httpx.Response(200, json={"entities": {
+            "Q123": {"id": "Q123", "labels": {"en": {"value": "Manuscript"}}, "claims": {}},
+        }})
+
+    client_type = httpx.AsyncClient
+    monkeypatch.setattr(wiki.httpx, "AsyncClient", lambda **kwargs: client_type(
+        **kwargs, transport=httpx.MockTransport(respond),
+    ))
+    entities = await wiki.fetch_wikidata_entities_batch(
+        ["Q123"], bot_token="Research@Fixture:not-a-credential",
+    )
+    assert entities["Q123"]["labels"]["en"] == "Manuscript"
+    assert len(requests) == 2
+    assert requests[-1].url.params["action"] == "wbgetentities"
+    assert "https://github.com/" in requests[-1].headers["User-Agent"]
+    assert "@biu.ac.il" in requests[-1].headers["User-Agent"]
 
 
 async def _mint(sample_run) -> dict:

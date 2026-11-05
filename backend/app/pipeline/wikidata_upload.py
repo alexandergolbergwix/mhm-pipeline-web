@@ -608,8 +608,44 @@ def _apply_work_identity_gate(
     from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
         work_qid_refuses_update,
     )
+    from converter.wikidata.work_identity import (  # noqa: PLC0415
+        compare_work_identity,
+        work_identity_for_item,
+        work_identity_from_metadata,
+    )
 
     p31 = fetch_entity_p31([qid], is_test=is_test).get(qid) or []
+    proposed = work_identity_for_item(prepared.item)
+    strong = prepared.method in {"prebuilt", "ledger"} or "identifier" in prepared.method
+    has_author_evidence = bool(
+        proposed.author_qids or proposed.author_names or proposed.unresolved_authors
+    )
+    if not is_test and (has_author_evidence or proposed.source_scoped):
+        from app.pipeline.wikidata_existence import fetch_entity_duplicate_metadata  # noqa: PLC0415
+
+        try:
+            metadata = fetch_entity_duplicate_metadata([qid], is_test=False).get(qid)
+        except (ValueError, Exception) as exc:  # noqa: BLE001 — fail-open on lookup failure
+            logger.warning("Could not read work identity metadata for %s: %s", qid, exc)
+            metadata = None
+        if metadata:
+            try:
+                existing = work_identity_from_metadata(metadata)
+                compatible = compare_work_identity(
+                    proposed, existing, strong_identifier=strong,
+                ) == "match"
+            except ValueError as exc:
+                logger.warning("Invalid work author metadata for %s: %s", qid, exc)
+                compatible = True
+            if not compatible:
+                prepared.blocked = True
+                prepared.block_status = "blocked"
+                prepared.block_message = (
+                    f"Work {qid} has conflicting or unverified author/source evidence; "
+                    "refusing adoption or CREATE until source review."
+                )
+                prepared.method = "work_identity_review"
+                return prepared
     if not work_qid_refuses_update(qid, p31):
         return prepared
     return _skip_work_link_only(
@@ -818,6 +854,7 @@ def _make_reconciler() -> Any:
 
 def _reconcile_for_upload(
     reconciler: Any, item: Any, entity_type: str,
+    *, check_work_identity: bool = True,
 ) -> tuple[str | None, str]:
     if entity_type == "person":
         viaf = _find_statement_value(item, "P214")
@@ -844,26 +881,40 @@ def _reconcile_for_upload(
         return (qid, "p3959/shelfmark" if qid else "none")
 
     if entity_type == "work":
+        from converter.wikidata.reconciler import WorkIdentityUncertainError  # noqa: PLC0415
+        from converter.wikidata.work_identity import work_identity_for_item  # noqa: PLC0415
+
+        identity = work_identity_for_item(item)
+        check_candidate = getattr(reconciler, "work_candidate_matches", None)
         p2888 = _find_statement_value(item, "P2888")
         reconcile_p2888 = getattr(reconciler, "reconcile_by_exact_match_uri", None)
         if p2888 and callable(reconcile_p2888):
             qid_p2888 = reconcile_p2888(str(p2888))
             if qid_p2888:
+                if check_work_identity and callable(check_candidate) and not check_candidate(
+                    qid_p2888, item, strong_identifier=True,
+                ):
+                    raise WorkIdentityUncertainError(
+                        f"P2888 candidate {qid_p2888} conflicts with source work evidence."
+                    )
                 return (qid_p2888, "p2888_identifier")
+        if identity.source_scoped:
+            return (None, "source_scoped_work")
         labels = getattr(item, "labels", {}) or {}
         title = labels.get("he") or labels.get("en") or ""
         p50 = _find_statement_value(item, "P50")
         p2093 = _find_statement_value(item, "P2093")
         if title:
             has_hebrew = any("\u0590" <= c <= "\u05ff" for c in str(title))
-            try:
+            reconcile_item = getattr(reconciler, "reconcile_work_item", None)
+            if callable(reconcile_item):
+                qid = reconcile_item(item)
+            elif p2093:
                 qid = reconciler.reconcile_work_by_label_and_author(
-                    str(title),
-                    lang="he" if has_hebrew else "en",
-                    author_qid=str(p50) if p50 else None,
-                    author_name=str(p2093) if p2093 else None,
+                    str(title), lang="he" if has_hebrew else "en",
+                    author_qid=str(p50) if p50 else None, author_name=str(p2093),
                 )
-            except TypeError:
+            else:
                 qid = reconciler.reconcile_work_by_label_and_author(
                     str(title),
                     lang="he" if has_hebrew else "en",
@@ -871,6 +922,8 @@ def _reconcile_for_upload(
                 )
             if qid:
                 return (qid, "label+author")
+            if identity.author_qids or identity.author_names or identity.unresolved_authors:
+                return (None, "none")
             from app.pipeline.wikidata_duplicate_probe import (  # noqa: PLC0415
                 probe_work_title_allowlisted,
             )
@@ -904,6 +957,7 @@ def _prepare_for_upload(
     )
     from converter.wikidata.reconciler import (  # noqa: PLC0415
         ReconciliationUnavailableError,
+        WorkIdentityUncertainError,
     )
 
     coerce_monolingual_text_statements(items)
@@ -1056,7 +1110,17 @@ def _prepare_for_upload(
 
         if not existing:
             try:
-                existing, method = _reconcile_for_upload(reconciler, item, et)
+                existing, method = _reconcile_for_upload(
+                    reconciler, item, et, check_work_identity=not enforce_ownership,
+                )
+            except WorkIdentityUncertainError as exc:
+                prepared.append(PreparedItem(
+                    item=item, local_id=local_id, label=label, entity_type=et,
+                    existing_qid=None, method="work_identity_review", blocked=True,
+                    block_status="blocked", block_message=str(exc),
+                    had_builder_qid=had_builder_qid,
+                ))
+                continue
             except ReconciliationUnavailableError as exc:
                 if is_test:
                     # Test wiki is disposable; do not strand the canary on
@@ -1094,6 +1158,23 @@ def _prepare_for_upload(
             adopt_candidate=adopt_candidate,
             ownership="absent" if not existing else "unknown",
         )
+        check_candidate = getattr(reconciler, "work_candidate_matches", None)
+        if et == "work" and existing and not is_test and not enforce_ownership and callable(check_candidate):
+            try:
+                compatible = check_candidate(
+                    existing, item,
+                    strong_identifier=method in {"prebuilt", "ledger"} or "identifier" in method,
+                )
+            except ReconciliationUnavailableError as exc:
+                compatible = False
+                row.block_message = str(exc)
+            if not compatible:
+                row.blocked = True
+                row.block_status = "blocked"
+                row.block_message = row.block_message or (
+                    f"Work {existing} has conflicting or unverified author/source evidence."
+                )
+                row.method = "work_identity_review"
         prepared.append(row)
     _rollup_skipped_person_refs(prepared)
 
@@ -1172,6 +1253,9 @@ def _reconcile_sync(items: list[Any]) -> list[ReconcileOutcome]:
     )
 
     reconciler = _make_reconciler()
+    from converter.wikidata.reconciler import prewarm_reconciler_for_items  # noqa: PLC0415
+
+    prewarm_reconciler_for_items(reconciler, items)
     out: list[ReconcileOutcome] = []
     for i, item in enumerate(items):
         local_id = _local_id(item, i)

@@ -22,7 +22,7 @@ REFUSAL_MESSAGE = (
     "Ask about those topics."
 )
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+_TOKEN_RE = re.compile(r"[a-z0-9\u0590-\u05ff]+", re.IGNORECASE)
 
 # Jailbreak / instruction-override markers (lexical first pass).
 _INJECTION_PATTERNS = (
@@ -50,9 +50,14 @@ _INJECTION_PATTERNS = (
 
 # Academic context that must NOT over-refuse (historical violence, medicine, etc.).
 _ACADEMIC_ANCHORS = frozenset({
-    "manuscript", "manuscripts", "marc", "codex", "hebrew", "scribe", "wikidata",
-    "wikibase", "sparql", "provenance", "shelfmark", "catalogue", "catalog",
-    "hmo", "qid", "foliation", "corpus", "codexes", "codices",
+    "manuscript", "manuscripts", "marc", "codex", "hebrew", "scribe", "scribes",
+    "wikidata", "wikibase", "sparql", "provenance", "shelfmark", "shelfmarks",
+    "catalogue", "catalog", "hmo", "qid", "qids", "foliation", "corpus",
+    "codexes", "codices", "colophon", "colophons", "paleography", "codicology",
+    "eda", "artifact", "artifacts", "canvas", "dataset", "datasets",
+    "holder", "holders", "holding", "collection", "collections",
+    "כתב", "כתבי", "יד", "חיבור", "חיבורים", "מעתיק", "מעתיקים", "בעלים",
+    "קולופון", "נתונים", "מפה", "גרף", "טבלה", "ויקידאטה", "ויקיבייס", "ספרייה",
 })
 
 _STOPWORDS = frozenset({
@@ -81,6 +86,14 @@ ALLOWED_UTTERANCES = (
     "wikidata studio item for this manuscript",
     "hebrew manuscript shelfmark catalogue note",
     "scribe illuminator owner of this codex",
+    "update the data refresh the report things have been changed",
+    "refresh reload rerun retry the analysis chart table map",
+    "export download csv pdf of the table report places",
+    "run exploratory data analysis eda chart distribution",
+    "show current holder holding institution and former owners",
+    "what can you do capabilities examples",
+    "continue retry the live claims pull wikidata_pack",
+    "עדכן את הנתונים בטבלה רענן את הדוח והמפה",
 )
 
 REJECTED_UTTERANCES = (

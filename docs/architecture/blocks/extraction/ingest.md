@@ -67,6 +67,9 @@ the rest of the pipeline reads:
   recognised title heads. Each row retains `source_field`, `source_text`, and
   `candidate_kind`; stale 500-derived contents are removed before the fresh
   list is merged (Rules W-33/W-68).
+- **Inserted sermon (W-296)**: an anchored `בראשו/בסופו ... שילב/הוסיף המעתיק/הסופר`
+  note can identify `דרשה על פרשת ...`. The entry retains `genre="Sermons"`
+  and `identity_scope="record"`. It supplies no inferred author, folio, or physical unit.
 - **Editorial metadata**: `_extract_editorial_metadata` → `editor_names`,
   `edition_statement`, `edition_features`.
 - **Provenance events**: `_extract_provenance_events` builds

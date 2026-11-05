@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 
 import requests
@@ -21,6 +21,12 @@ from converter.wikidata.property_mapping import (
     Q_NLI,
     extract_viaf_id,
     extract_wikidata_qid,
+)
+from converter.wikidata.work_identity import (
+    WorkIdentity,
+    author_name_key,
+    compare_work_identity,
+    work_identity_for_item,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,6 +50,10 @@ class ReconciliationUnavailableError(Exception):
     outage during a batch must never be mistaken for "absent" and mint
     duplicates (the 2026-04 mass-duplicate failure mode).
     """
+
+
+class WorkIdentityUncertainError(ReconciliationUnavailableError):
+    """Existing work evidence needs review rather than CREATE or adoption."""
 
 
 @dataclass
@@ -105,6 +115,8 @@ class WikidataReconciler:
     def __init__(self, sparql_endpoint: str = _SPARQL_ENDPOINT) -> None:
         self._endpoint = sparql_endpoint
         self._cache: dict[str, str | None] = {}
+        self._work_candidates: dict[str, WorkIdentity] = {}
+        self._uncertain_work_keys: dict[str, str] = {}
         self._last_request_time: float = 0.0
         self._query_lock = threading.Lock()
         self._session = requests.Session()
@@ -382,80 +394,141 @@ class WikidataReconciler:
         Returns:
             QID of the matching Wikidata work, or None if no safe match.
         """
-        clean_title = (title or "").strip()
-        if not clean_title:
-            return None
-        norm_author_name = (
-            " ".join(str(author_name or "").strip().rstrip(" ,.;:/-").split()).casefold()
+        identity = WorkIdentity(
+            frozenset([author_qid]) if author_qid else frozenset(),
+            frozenset([author_name_key(author_name)]) if author_name else frozenset(),
         )
-        cache_key = (
-            f"work:{lang}:{clean_title}:{author_qid or ''}:{norm_author_name}"
-            if norm_author_name
-            else f"work:{lang}:{clean_title}:{author_qid or ''}"
-        )
-        if cache_key in self._cache:
-            return self._cache[cache_key]
+        return self._reconcile_work_identity(title, lang, identity)
 
-        # Escape double quotes in the title for SPARQL string-literal safety.
-        safe_title = clean_title.replace("\\", "\\\\").replace('"', '\\"')
-        # Q47461344 = written work; cover subclasses via wdt:P31/wdt:P279*.
-        sparql = f"""
+    def reset_work_cache(self) -> None:
+        for key in list(self._cache):
+            if key.startswith(("work:", "p2888:")):
+                del self._cache[key]
+        self._work_candidates.clear()
+        self._uncertain_work_keys.clear()
+
+    def reconcile_work_item(self, item: object) -> str | None:
+        identity = work_identity_for_item(item)
+        if identity.source_scoped:
+            return None
+        labels = getattr(item, "labels", {}) or {}
+        title = str(labels.get("he") or labels.get("en") or "")
+        language = "he" if any("\u0590" <= char <= "\u05ff" for char in title) else "en"
+        return self._reconcile_work_identity(title, language, identity)
+
+    def _collect_work_candidates(
+        self, bindings: Iterable[Mapping[str, object]],
+    ) -> dict[str, WorkIdentity]:
+        grouped: dict[str, tuple[set[str], set[str], set[str]]] = {}
+        unknown_authors: set[str] = set()
+        for row in bindings:
+            def bound(name: str, binding: Mapping[str, object] = row) -> str:
+                value = binding.get(name)
+                if value is None:
+                    return ""
+                raw = value.get("value") if isinstance(value, Mapping) else None
+                if not isinstance(raw, str):
+                    raise WorkIdentityUncertainError("Invalid work identity query binding.")
+                return raw
+
+            qid = extract_wikidata_qid(bound("item"))
+            if not qid:
+                continue
+            qids, names, records = grouped.setdefault(qid, (set(), set(), set()))
+            author = extract_wikidata_qid(bound("author"))
+            if author:
+                qids.add(author)
+            elif bound("author"):
+                unknown_authors.add(qid)
+            if bound("authorStr"):
+                name_binding = row.get("authorStr")
+                if isinstance(name_binding, Mapping) and name_binding.get("type") == "bnode":
+                    unknown_authors.add(qid)
+                else:
+                    names.add(author_name_key(bound("authorStr")))
+            if bound("sourceCn"):
+                records.add(bound("sourceCn"))
+        candidates = {
+            qid: WorkIdentity(
+                frozenset(qids), frozenset(names), frozenset(records),
+                unresolved_authors=qid in unknown_authors,
+            )
+            for qid, (qids, names, records) in grouped.items()
+        }
+        self._work_candidates.update(candidates)
+        return candidates
+
+    def _choose_work_candidate(
+        self, title: str, identity: WorkIdentity, candidates: Mapping[str, WorkIdentity],
+        *, capped: bool = False,
+    ) -> str | None:
+        matches = [qid for qid, candidate in candidates.items()
+                   if compare_work_identity(identity, candidate) == "match"]
+        if len(matches) == 1 and not capped:
+            return matches[0]
+        if len(matches) > 1 or capped or any(
+            compare_work_identity(identity, candidate) == "uncertain"
+            for candidate in candidates.values()
+        ):
+            raise WorkIdentityUncertainError(f"Work identity for {title!r} needs source review.")
+        return None
+
+    def _reconcile_work_identity(
+        self, title: str, language: str, identity: WorkIdentity,
+    ) -> str | None:
+        clean = str(title or "").strip()
+        if not clean or identity.source_scoped:
+            return None
+        if identity.unresolved_authors:
+            raise WorkIdentityUncertainError(f"Author evidence for {clean!r} is unresolved.")
+        key = identity.cache_key(clean, language)
+        if key in self._uncertain_work_keys:
+            raise WorkIdentityUncertainError(self._uncertain_work_keys[key])
+        if key in self._cache:
+            return self._cache[key]
+        safe_title = _sparql_escape(clean)
+        rows = self._query(f"""
         SELECT ?item ?author ?authorStr WHERE {{
-          ?item wdt:P31/wdt:P279* wd:Q47461344 .
-          ?item rdfs:label "{safe_title}"@{lang} .
+          {{ SELECT DISTINCT ?item WHERE {{
+            ?item wdt:P31/wdt:P279* wd:Q47461344 .
+            ?item rdfs:label "{safe_title}"@{language} .
+          }} LIMIT 10 }}
           OPTIONAL {{ ?item wdt:P50 ?author . }}
           OPTIONAL {{ ?item wdt:P2093 ?authorStr . }}
-        }} LIMIT 10
-        """
-        results = self._query(sparql)
-        by_cand: dict[str, tuple[set[str], set[str]]] = {}
-        order: list[str] = []
-        for binding in results:
-            cand_uri = binding.get("item", {}).get("value", "")
-            cand_qid = extract_wikidata_qid(cand_uri)
-            if not cand_qid:
-                continue
-            if cand_qid not in by_cand:
-                by_cand[cand_qid] = (set(), set())
-                order.append(cand_qid)
-            cand_author = binding.get("author", {}).get("value", "")
-            cand_author_qid = extract_wikidata_qid(cand_author) if cand_author else None
-            if cand_author_qid:
-                by_cand[cand_qid][0].add(cand_author_qid)
-            cand_str = str(binding.get("authorStr", {}).get("value", "") or "").strip()
-            if cand_str:
-                by_cand[cand_qid][1].add(
-                    " ".join(cand_str.rstrip(" ,.;:/-").split()).casefold()
-                )
+        }}
+        """)
+        candidates = self._collect_work_candidates(rows)
+        try:
+            chosen = self._choose_work_candidate(
+                clean, identity, candidates, capped=len(candidates) >= 10,
+            )
+        except WorkIdentityUncertainError as exc:
+            self._uncertain_work_keys[key] = str(exc)
+            raise
+        self._cache[key] = chosen
+        return chosen
 
-        qid: str | None = None
-        for cand_qid in order:
-            cand_qids, cand_strs = by_cand[cand_qid]
-            if author_qid and cand_qids and author_qid not in cand_qids:
-                logger.warning(
-                    "RECONCILE WORK REJECT: %s matches title %r but its P50=%s "
-                    "differs from proposed author %s — treating as different work",
-                    cand_qid,
-                    clean_title,
-                    sorted(cand_qids),
-                    author_qid,
-                )
-                continue
-            if norm_author_name and cand_strs and norm_author_name not in cand_strs:
-                logger.warning(
-                    "RECONCILE WORK REJECT: %s matches title %r but its P2093=%s "
-                    "differs from proposed author %r — treating as different work",
-                    cand_qid,
-                    clean_title,
-                    sorted(cand_strs),
-                    author_name,
-                )
-                continue
-            qid = cand_qid
-            break
-
-        self._cache[cache_key] = qid
-        return qid
+    def work_candidate_matches(
+        self, qid: str, item: object, *, strong_identifier: bool = True,
+    ) -> bool:
+        identity = work_identity_for_item(item)
+        candidate = self._work_candidates.get(qid)
+        if candidate is None or (identity.source_scoped and not candidate.source_records):
+            if not qid.startswith("Q") or not qid[1:].isdigit():
+                return False
+            rows = self._query(f"""
+            SELECT ?item ?author ?authorStr ?sourceCn WHERE {{
+              VALUES ?item {{ wd:{qid} }}
+              OPTIONAL {{ ?item wdt:P50 ?author . }}
+              OPTIONAL {{ ?item wdt:P2093 ?authorStr . }}
+              OPTIONAL {{ ?item (p:P50|p:P2093|p:P1476|p:P31) ?statement .
+                         ?statement prov:wasDerivedFrom/pr:P3959 ?sourceCn . }}
+            }}
+            """)
+            candidate = self._collect_work_candidates(rows).get(qid)
+        return candidate is not None and compare_work_identity(
+            identity, candidate, strong_identifier=strong_identifier,
+        ) == "match"
 
     def reconcile_by_exact_match_uri(self, uri: str) -> str | None:
         """Find an existing Wikidata item carrying ``wdt:P2888 <uri>``."""
@@ -466,6 +539,8 @@ class WikidataReconciler:
         ):
             return None
         cache_key = f"p2888:{clean}"
+        if cache_key in self._uncertain_work_keys:
+            raise WorkIdentityUncertainError(self._uncertain_work_keys[cache_key])
         if cache_key in self._cache:
             return self._cache[cache_key]
 
@@ -475,6 +550,10 @@ class WikidataReconciler:
         }} LIMIT 2
         """
         results = self._query(sparql)
+        if len(results) > 1:
+            message = f"Multiple items carry the exact work URI {clean!r}."
+            self._uncertain_work_keys[cache_key] = message
+            raise WorkIdentityUncertainError(message)
         qid: str | None = None
         if len(results) == 1:
             cand_uri = str(results[0].get("item", {}).get("value", ""))
@@ -1043,10 +1122,11 @@ def prewarm_reconciler_for_items(
     """Collect identifier probes from built items and batch-fill the cache."""
     if not hasattr(reconciler, "_cache") or not hasattr(reconciler, "_query"):
         return
+    reconciler.reset_work_cache()
     probes: list[tuple[str, str, str]] = []
     shelfmarks: list[str] = []
     p2888_uris: list[str] = []
-    work_specs: list[tuple[str, str, str | None]] = []
+    work_specs: list[tuple[str, str, WorkIdentity]] = []
     for item in items:
         entity_type = str(getattr(item, "entity_type", "") or "")
         statements = getattr(item, "statements", []) or []
@@ -1075,16 +1155,18 @@ def prewarm_reconciler_for_items(
             p2888 = _value("P2888")
             if p2888:
                 p2888_uris.append(p2888)
-            author_qid = _value("P50") or None
+            identity = work_identity_for_item(item)
+            if identity.source_scoped:
+                continue
             labels = getattr(item, "labels", {}) or {}
             for lang in ("he", "en"):
                 title = str(labels.get(lang) or "").strip()
                 if title:
-                    work_specs.append((title, lang, author_qid))
+                    work_specs.append((title, lang, identity))
     prewarm_identifier_cache(reconciler, probes)
     prewarm_manuscript_shelfmarks(reconciler, shelfmarks)
     prewarm_exact_match_uris(reconciler, p2888_uris)
-    prewarm_work_titles(reconciler, work_specs)
+    _prewarm_work_identities(reconciler, work_specs)
 
 
 def prewarm_exact_match_uris(
@@ -1124,7 +1206,11 @@ def prewarm_exact_match_uris(
             continue
         for u in chunk:
             hits = list(dict.fromkeys(found.get(u, [])))
-            reconciler._cache[f"p2888:{u}"] = hits[0] if len(hits) == 1 else None
+            key = f"p2888:{u}"
+            if len(hits) > 1:
+                reconciler._uncertain_work_keys[key] = f"Multiple items carry {u!r}."
+            else:
+                reconciler._cache[key] = hits[0] if hits else None
 
 
 def prewarm_work_titles(
@@ -1137,49 +1223,54 @@ def prewarm_work_titles(
     label query and its P50 rejection rule are replicated on the batched
     results so the cache holds exactly what the per-item call would decide.
     """
-    pending: list[tuple[str, str, str | None]] = []
+    _prewarm_work_identities(reconciler, (
+        (title, lang, WorkIdentity(frozenset([qid]) if qid else frozenset()))
+        for title, lang, qid in specs
+    ))
+
+
+def _prewarm_work_identities(
+    reconciler: WikidataReconciler,
+    specs: Iterable[tuple[str, str, WorkIdentity]],
+) -> None:
+    pending: list[tuple[str, str, WorkIdentity]] = []
     seen: set[str] = set()
-    for title, lang, author_qid in specs:
+    for title, lang, identity in specs:
         title = str(title or "").strip()
-        key = f"work:{lang}:{title}:{author_qid or ''}"
+        key = identity.cache_key(title, lang)
         if not title or key in reconciler._cache or key in seen:
             continue
         seen.add(key)
-        pending.append((title, lang, author_qid))
-    by_lang: dict[str, list[tuple[str, str, str | None]]] = {}
-    for title, lang, author_qid in pending:
-        by_lang.setdefault(lang, []).append((title, lang, author_qid))
+        pending.append((title, lang, identity))
+    by_lang: dict[str, list[tuple[str, str, WorkIdentity]]] = {}
+    for title, lang, identity in pending:
+        by_lang.setdefault(lang, []).append((title, lang, identity))
     for lang, rows in by_lang.items():
         for start in range(0, len(rows), _PREWARM_BATCH):
             chunk = rows[start:start + _PREWARM_BATCH]
             titles = list(dict.fromkeys(t for t, _, _ in chunk))
             values_expr = " ".join(f'"{_sparql_escape(t)}"@{lang}' for t in titles)
             sparql = (
-                "SELECT ?title ?item ?author WHERE { "
+                "SELECT ?title ?item ?author ?authorStr WHERE { "
                 "?item wdt:P31/wdt:P279* wd:Q47461344 . "
                 f"?item rdfs:label ?title . VALUES ?title {{ {values_expr} }} "
-                "OPTIONAL { ?item wdt:P50 ?author . } }"
+                "OPTIONAL { ?item wdt:P50 ?author . } "
+                "OPTIONAL { ?item wdt:P2093 ?authorStr . } }"
             )
-            rows_by_title: dict[str, list[tuple[str | None, str | None]]] = {}
+            rows_by_title: dict[str, list[Mapping[str, object]]] = {}
             try:
                 for row in reconciler._query(sparql):
                     title_val = str(row.get("title", {}).get("value", ""))
-                    cand_qid = extract_wikidata_qid(
-                        str(row.get("item", {}).get("value", "")),
-                    )
-                    author_uri = str(row.get("author", {}).get("value", ""))
-                    cand_author = extract_wikidata_qid(author_uri) if author_uri else None
-                    if title_val and cand_qid:
-                        rows_by_title.setdefault(title_val, []).append(
-                            (cand_qid, cand_author),
-                        )
+                    if title_val:
+                        rows_by_title.setdefault(title_val, []).append(row)
             except ReconciliationUnavailableError:
                 continue
-            for title, lang_key, author_qid in chunk:
-                chosen: str | None = None
-                for cand_qid, cand_author in rows_by_title.get(title, []):
-                    if author_qid and cand_author and cand_author != author_qid:
-                        continue
-                    chosen = cand_qid
-                    break
-                reconciler._cache[f"work:{lang_key}:{title}:{author_qid or ''}"] = chosen
+            for title, lang_key, identity in chunk:
+                key = identity.cache_key(title, lang_key)
+                candidates = reconciler._collect_work_candidates(rows_by_title.get(title, []))
+                try:
+                    chosen = reconciler._choose_work_candidate(title, identity, candidates)
+                except WorkIdentityUncertainError as exc:
+                    reconciler._uncertain_work_keys[key] = str(exc)
+                    continue
+                reconciler._cache[key] = chosen

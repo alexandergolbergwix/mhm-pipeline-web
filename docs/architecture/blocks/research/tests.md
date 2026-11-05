@@ -20,3 +20,6 @@
 - `backend/tests/unit/test_research_jev_prefilter.py` — the Jev gate: allow/reject questions, fail-closed regex jailbreaks (no API call), outage fallback, per-project cache (W-273).
 - `backend/tests/unit/test_research_model_fallback.py` — 402 detection + humanized message, Qubrid→Gemini fallback order (W-273).
 - `backend/tests/test_research_agent_scope.py` — role-play/extraction/encoding jailbreak patterns and `quarantine_mapping` on strings of any key (W-273).
+- `backend/tests/unit/test_research_jev_prefilter.py` — English and Hebrew refresh requests, explicit topic rejection, and Jev refusal preservation (W-295).
+- `backend/tests/test_research_summary_cache.py`, `test_research_aggregate.py` — upload invalidation of a warm summary, all Studio variants, control-number identity, and namespace-limited Wikibase aliases (W-295).
+- `backend/tests/test_research_wikidata_skills.py` — public reads after a login HTTP 403, with a compliant User-Agent (R27).

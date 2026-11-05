@@ -47,7 +47,7 @@ from app.settings import get_settings
 router = APIRouter(tags=["research"])
 logger = logging.getLogger(__name__)
 
-_SUMMARY_ALGORITHM_VERSION = "linked-data-overview-v3"
+_SUMMARY_ALGORITHM_VERSION = "linked-data-overview-v4"
 _TTL_RESTORE_LOCK = asyncio.Lock()
 
 
@@ -111,6 +111,22 @@ async def _summary_fingerprint(
             parts.append(f"{run_id}:{built}:{triples_count or 0}")
         parts.append(f"studio:{run_id}:{studio_fps.get(run_id, 'none')}")
     parts.append(f"wb:{hashlib.sha256(wikibase_url.encode()).hexdigest()[:12]}")
+    from app.models.wikibase_entity_mapping import (  # noqa: PLC0415
+        ENTITY_KIND_INSTANCE,
+        WikibaseEntityMapping,
+    )
+
+    mappings = (await db.execute(
+        select(
+            WikibaseEntityMapping.ontology_uri,
+            WikibaseEntityMapping.wikibase_id,
+            WikibaseEntityMapping.run_id,
+        ).where(WikibaseEntityMapping.entity_kind == ENTITY_KIND_INSTANCE)
+    )).all()
+    ledger_digest = hashlib.sha256()
+    for uri, qid, mapping_run_id in sorted(mappings, key=lambda row: tuple(str(v) for v in row)):
+        ledger_digest.update(f"{uri}\0{qid}\0{mapping_run_id}\n".encode())
+    parts.append(f"ledger:{ledger_digest.hexdigest()}")
     parts.append(f"summary:{_SUMMARY_ALGORITHM_VERSION}")
     return "|".join(parts)
 
@@ -239,11 +255,22 @@ async def research_summary(
         return cached
 
     # Fetch DB inputs BEFORE releasing the DB connection for rdflib/network work.
+    studio_items: list[dict[str, Any]] = []
+    for src in ("canonical", "legacy"):
+        try:
+            studio_items.extend(
+                await studio_items_for_project(run_ids, db, approved_only=False, source=src)
+            )
+        except Exception as exc:
+            logger.warning("studio items (%s) unavailable for project %s: %s", src, project_id, exc)
+
     try:
-        studio_items = await studio_items_for_project(run_ids, db)
+        from app.pipeline.hmo_item_reconcile import load_live_instance_qids  # noqa: PLC0415
+
+        live_wb_qids = await load_live_instance_qids(db)
     except Exception as exc:
-        logger.warning("studio items unavailable for project %s: %s", project_id, exc)
-        studio_items = []
+        logger.warning("live wikibase ledger unavailable for project %s: %s", project_id, exc)
+        live_wb_qids = {}
 
     authority_match_rows = await db.execute(
         select(
@@ -294,6 +321,7 @@ async def research_summary(
     fresh = await asyncio.to_thread(
         compute_aggregated_summary, graph, studio_items, wikibase_entities, authority_matches,
         wikibase_configured=bool(wikibase_url),
+        live_wikibase_qids=live_wb_qids,
     )
 
     if not _is_coherent_summary(fresh):
@@ -303,6 +331,7 @@ async def research_summary(
         fresh = await asyncio.to_thread(
             compute_aggregated_summary, graph, studio_items, wikibase_entities, authority_matches,
             wikibase_configured=bool(wikibase_url),
+            live_wikibase_qids=live_wb_qids,
         )
 
     if _is_coherent_summary(fresh):

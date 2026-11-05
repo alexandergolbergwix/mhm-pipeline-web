@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** — it indexes every architectural
-rule (Rules W-1…W-294) and points at the topic file under
+rule (Rules W-1…W-296) and points at the topic file under
 [docs/architecture/rules/](docs/architecture/rules/) that holds its full
 text. Read the topic file for the area you are touching; each rule records a
 real production incident plus the invariant that closes it — check it before touching RDF

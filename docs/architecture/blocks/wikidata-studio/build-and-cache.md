@@ -7,6 +7,11 @@ job, moratorium, QS download, AI review + autofix).*
 
 ### Build pipeline + fingerprint cache
 
+Research summaries use `studio_items_for_project` to read existing snapshots
+and attach live Wikidata QIDs from the ledger.
+`studio_fingerprints_for_project` reads scalar metadata for both sources and
+approval modes. See [research refresh rules](../research/refresh-and-audit.md).
+
 `GET /runs/{id}/wikidata-studio` (`wikidata_studio.py:643`) loads records,
 matches, entity approvals, and overrides, plus `hmo_instance_qids_for_run`
 (control_number → live HMO Wikibase QID, so P2888/P973 point at the uploaded
@@ -25,13 +30,17 @@ item instead of the static slug), then computes
   the 409 detail is never shown as an error while the build runs (HMO-parity,
   frontend R15/W-106).
 
-The build schema is part of the fingerprint. Schema `source-aware-works-v12`
+The build schema is part of the fingerprint. Schema `source-aware-works-v13`
 (Rule W-294's MARC 942 shelfmark labels, manuscript codex P31, homonymous work separation, Ktiv P361, and 500/740/581/957/title-page projection) also treats a cached
 person carrying an ERROR-level `NO_IDENTIFIER` issue as
 stale (`wikidata_studio.py:50`). The current builder either emits an external
 identifier or omits the person, so this shape can only come from an older
 cache. GET marks that cache `cache_stale=true`; the curator must force-rebuild
 before reviewing or uploading it.
+
+Schema v13 adds source-scoped authors, named unknown scribes, qualified claim
+identity, and physical-form evidence (W-296). The canonical salt is
+`hmo-wikidata-v16`. See [Gila audit completion](gila-audit-completion.md).
 
 ### Sharded build on Modal (batch-build parity with rdf_build)
 

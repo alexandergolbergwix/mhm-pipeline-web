@@ -369,7 +369,7 @@ def canonical_wikidata_fingerprint(
     # v15 — merge per-fragment transcription claims (P1684/P1922/P3132) into
     # one claim per property with an NLI reference (run 47e03437 AI-verdict
     # fails: 62-claim spam drowned P31 in the judge prompt).
-    salt = "hmo-wikidata-v15:"  # W-214 rejects identifiers for a different given name.
+    salt = "hmo-wikidata-v16:"  # Source-scoped authors, roles, and manuscript form.
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -924,15 +924,14 @@ def _context_work_author_evidence(
                 _contents_row_fields(content, parse_contents_entry)
             )
             from converter.wikidata.content_projection import (  # noqa: PLC0415
+                _content_author,
                 structured_work_attribution,
             )
 
             entry = content if isinstance(content, Mapping) else {"title": content}
             attribution = structured_work_attribution(entry)
-            if title_matches(getattr(attribution, "title", "")) and getattr(
-                attribution, "author_name", "",
-            ):
-                add_name(attribution.author_name)
+            if title_matches(attribution.title):
+                add_name(_content_author(record, attribution, dict(entry)))
             if not title_matches(content_title):
                 continue
             if isinstance(content, Mapping):
@@ -985,13 +984,25 @@ def _context_work_author_evidence(
         if len(candidate.split()) >= 2:
             explicit_names.add(name_key(candidate))
     if explicit_names:
-        return explicit_names, set()
+        from converter.wikidata.work_projection import _find_work_author_match  # noqa: PLC0415
+
+        explicit_qids: set[str] = set()
+        for raw_cn in item.records or []:
+            record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)))
+            if not record:
+                continue
+            for name in explicit_names:
+                match = _find_work_author_match(name, record)
+                qid = normalize_wikidata_qid((match or {}).get("wikidata_qid"))
+                if qid:
+                    explicit_qids.add(qid)
+        return explicit_names, explicit_qids
 
     names: set[str] = set()
     qids: set[str] = set()
     for raw_cn in item.records or []:
         record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)))
-        if not record:
+        if not record or not title_matches(record.get("title")):
             continue
         candidates = [
             match for match in record.get("marc_authority_matches") or []
@@ -1144,7 +1155,7 @@ def _sanitize_work_authors_against_context(
             kept = [
                 statement
                 for statement in item.statements or []
-                if statement.property_id != P_AUTHOR_NAME_STRING
+                if statement.property_id not in {P_AUTHOR, P_AUTHOR_NAME_STRING}
             ]
             changed += len(item.statements or []) - len(kept)
             item.statements = kept
@@ -1410,6 +1421,9 @@ def build_canonical_studio_result(
     _sanitize_canonical_claims(native_items, context)
     _align_person_p1559_to_hebrew_label(native_items)
     _scrub_person_aliases(native_items)
+    from converter.wikidata.work_author_claims import promote_safe_work_author_claims  # noqa: PLC0415
+
+    promote_safe_work_author_claims(native_items)
     normalize_work_author_claims(native_items)
     meter.finish_pass()
 
@@ -1943,6 +1957,7 @@ def _sanitize_canonical_claims(
 ) -> None:
     """Remove known broad subjects and unsupported canonical holder claims."""
     from converter.wikidata.catalog_notes import is_catalog_note_placeholder  # noqa: PLC0415
+    from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
     from converter.wikidata.manuscript_projection import (  # noqa: PLC0415
         _current_holder_names,
         _current_holder_qid,
@@ -1950,6 +1965,8 @@ def _sanitize_canonical_claims(
     from converter.wikidata.marc_subject_resolve import (  # noqa: PLC0415
         canonical_reference_grounded_in_subjects,
     )
+
+    form_builder = WikidataItemBuilder()
 
     for item in items:
         kept: list[WikidataStatement] = []
@@ -1966,6 +1983,7 @@ def _sanitize_canonical_claims(
             record = context.marc_by_cn.get(cn)
         holder_qid = None
         expected_script_qids: set[str] | None = None
+        expected_instance_qids: set[str] | None = None
         if record is not None:
             from converter.wikidata.item_builder import (  # noqa: PLC0415
                 SCRIPT_MODE_TO_QID,
@@ -1973,6 +1991,7 @@ def _sanitize_canonical_claims(
             )
 
             holder_qid = _current_holder_qid(record, _current_holder_names(record))
+            expected_instance_qids = set(form_builder._determine_instance_type(record))
             expected_script_qids = set()
             st = record.get("script_type")
             if st and str(st) in SCRIPT_TYPE_TO_QID:
@@ -1992,6 +2011,11 @@ def _sanitize_canonical_claims(
                 ):
                     continue
             if pid == "P195" and record is not None and value != holder_qid:
+                continue
+            if (
+                pid == "P31" and value == "Q123172729"
+                and expected_instance_qids is not None and value not in expected_instance_qids
+            ):
                 continue
             if pid == "P9302" and expected_script_qids is not None and value not in expected_script_qids:
                 continue

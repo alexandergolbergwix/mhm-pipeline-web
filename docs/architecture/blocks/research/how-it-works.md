@@ -14,7 +14,9 @@ run in `asyncio.to_thread` since rdflib is synchronous.
 the two-tier inference cache under `kind="research.summary"`. The cache key
 folds in each run's `RdfArtifact.built_at` + triple count, each run's Wikidata
 Studio fingerprint, the Wikibase URL, and `_SUMMARY_ALGORITHM_VERSION`
-(`linked-data-overview-v3`). `_is_coherent_summary` refuses "triples > 0 but
+(`linked-data-overview-v4`). The key also includes a digest of instance mappings.
+See [refresh and source counts](refresh-and-audit.md) for ledger lookup details.
+`_is_coherent_summary` refuses "triples > 0 but
 zero entities", zero manuscripts, or a large graph (≥1000 triples) with
 manuscripts but zero works (Rule W-230). On an incoherent live graph it
 force-reseeds TTLs from Postgres and recomputes once.

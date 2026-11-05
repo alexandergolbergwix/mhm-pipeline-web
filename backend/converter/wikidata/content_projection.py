@@ -145,6 +145,22 @@ def _entry_author(entry: dict[str, object]) -> str | None:
     return structured_work_attribution(entry).author_name
 
 
+def _work_genre_qid(entry: dict[str, object]) -> str | None:
+    genre = entry.get("genre")
+    if not isinstance(genre, str) or not genre.strip():
+        return None
+    from converter.wikidata.marc_subject_resolve import resolve_genre_qid  # noqa: PLC0415
+
+    return resolve_genre_qid(genre, allow_network=False)
+
+
+def _content_genre_qids(record: dict[str, object]) -> set[str]:
+    return {
+        qid for entry in record.get("contents") or []
+        if isinstance(entry, dict) and (qid := _work_genre_qid(entry))
+    }
+
+
 def _record_author(record: dict[str, object]) -> str | None:
     """Read a primary author before an attributed author (W-206)."""
     allowed_roles = ("author", "presumed author", "attributed author")
@@ -178,6 +194,7 @@ def _record_author(record: dict[str, object]) -> str | None:
 def _content_author(
     record: dict[str, object],
     attribution: StructuredWorkAttribution,
+    entry: dict[str, object],
 ) -> str | None:
     """Use a record author only when it identifies one unambiguous work."""
     if attribution.author_name:
@@ -189,7 +206,8 @@ def _content_author(
             content.get("title") if isinstance(content, dict) else content
         )
     ]
-    if len(content_entries) == 1 or (
+    source_field = str(entry.get("source_field") or "505").strip().upper()
+    if (len(content_entries) == 1 and source_field == "505") or (
         _work_title_key(attribution.title)
         and _work_title_key(attribution.title) == _work_title_key(record.get("title"))
     ):
@@ -282,7 +300,7 @@ class ContentProjectionMixin:
             entry = content if isinstance(content, dict) else {"title": str(content)}
             attribution = structured_work_attribution(entry)
             if _work_title_key(attribution.title) == target:
-                return _content_author(record, attribution)
+                return _content_author(record, attribution, entry)
 
         entities = [
             entity for entity in record.get("entities") or []
@@ -342,7 +360,7 @@ class ContentProjectionMixin:
             raw_title = _structured_text(entry.get("title"))
             attribution = structured_work_attribution(entry)
             candidate_title = attribution.title
-            embedded_author = _content_author(record, attribution)
+            embedded_author = _content_author(record, attribution, entry)
             cleaned = _clean_work_title(candidate_title)
             work_key = _work_title_key(cleaned)
             work_qid = (
@@ -366,6 +384,11 @@ class ContentProjectionMixin:
                 source_text=entry.get("source_text") or raw_title,
             )
             evidence = decision.evidence()
+            genre_qid = _work_genre_qid(entry)
+            if genre_qid:
+                evidence.update({"genre_qid": genre_qid, "scope": "contained_work"})
+            if entry.get("identity_scope") == "record":
+                evidence["identity_scope"] = "record"
             if attribution.author_name:
                 evidence["author_name"] = attribution.author_name
                 evidence["author_source"] = attribution.author_source
@@ -399,8 +422,18 @@ class ContentProjectionMixin:
             # fall back to DS unknown-text (Q234460) + P1932 rather than invent
             # a fuzzy work QID.
             if embedded_author or approved or len(work_title) >= 8:
-                work_item = self._get_or_create_work(work_title, embedded_author, record)
+                work_item = self._get_or_create_work(
+                    work_title, embedded_author, record,
+                    source_scoped=entry.get("identity_scope") == "record",
+                )
                 remember_evidence(work_item, evidence)
+                if genre_qid and not any(
+                    s.property_id == P_GENRE and s.value == genre_qid
+                    for s in work_item.statements
+                ):
+                    work_item.statements.append(WikidataStatement(
+                        property_id=P_GENRE, value=genre_qid, value_type="item", references=ref,
+                    ))
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_EXEMPLAR_OF,
@@ -483,7 +516,9 @@ class ContentProjectionMixin:
                     folio_range = str(folio.get("text") or "").strip(":")
                     break
 
-            author_name = embedded_author or _record_author(record)
+            author_name = embedded_author
+            if _work_title_key(decision.title) == _work_title_key(record.get("title")):
+                author_name = author_name or _record_author(record)
             named_as = decision.title or work_title or raw
             if work_qid:
                 local_work = self._find_work_for_title(decision.title, author_name, record)
@@ -588,11 +623,12 @@ class ContentProjectionMixin:
             if isinstance(g, dict)
         }
         seen_genre_qids: set[str] = set()
+        scoped_genres = _content_genre_qids(record)
 
         def _append_genre(
             qid: str, *, qualifiers: list | None = None, references: list | None = None
         ) -> None:
-            if not qid or qid in seen_genre_qids:
+            if not qid or qid in seen_genre_qids or qid in scoped_genres:
                 return
             seen_genre_qids.add(qid)
             item.statements.append(
@@ -694,9 +730,10 @@ class ContentProjectionMixin:
         )
 
         seen_qids: set[str] = set()
+        scoped_genres = _content_genre_qids(record)
 
         def _append_p921(qid: str) -> None:
-            if not qid or qid in seen_qids:
+            if not qid or qid in seen_qids or qid in scoped_genres:
                 return
             seen_qids.add(qid)
             item.statements.append(

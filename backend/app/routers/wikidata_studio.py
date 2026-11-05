@@ -374,24 +374,64 @@ async def studio_items_for_project(
     """All built Wikidata Studio item dicts cached across a project's runs.
 
     Reads the ``WikidataStudioCache`` rows only — it never triggers a
-    (slow, network-bound) rebuild. Runs without a cached build contribute
-    nothing. Each item dict already carries ``local_id`` + ``existing_qid``
-    (stamped in ``build_studio`` before the cache upsert).
+    (slow, network-bound) rebuild. Hydrates ``existing_qid`` from the global
+    Wikidata QID ledger (``load_global_ledger``) so items created or adopted
+    during upload after the build are reflected in research summaries and
+    dataset tools.
     """
     if not run_ids:
         return []
-    rows = (
+    from app.pipeline.wikidata_qid_ledger import (  # noqa: PLC0415
+        ledger_key_for_item,
+        load_global_ledger,
+        lookup_ledger_qid,
+    )
+
+    run_uuids = [uuid.UUID(str(r)) for r in run_ids]
+    all_rows = (
         await db.execute(
             select(WikidataStudioCache).where(
-                WikidataStudioCache.run_id.in_([uuid.UUID(r) for r in run_ids]),
-                WikidataStudioCache.approved_only == approved_only,
+                WikidataStudioCache.run_id.in_(run_uuids),
                 WikidataStudioCache.source == source,
             )
         )
     ).scalars().all()
+    by_run: dict[uuid.UUID, WikidataStudioCache] = {}
+    for row in all_rows:
+        if approved_only and not row.approved_only:
+            continue
+        prev = by_run.get(row.run_id)
+        if prev is None or row.approved_only == approved_only:
+            by_run[row.run_id] = row
+
+    try:
+        ledger = await load_global_ledger(db, is_test=False)
+    except Exception as exc:
+        logger.warning("Wikidata ledger unavailable for research items: %s", exc)
+        ledger = {}
+
     items: list[dict[str, Any]] = []
-    for row in rows:
-        items.extend(row.result_items or [])
+    for row in by_run.values():
+        for raw_item in row.result_items or []:
+            if not isinstance(raw_item, dict):
+                continue
+            existing = str(raw_item.get("existing_qid") or "").strip()
+            if not existing and ledger:
+                lkey = ledger_key_for_item(raw_item, ns="wikidata")
+                q = lookup_ledger_qid(ledger, lkey)
+                if not q:
+                    lid = str(raw_item.get("local_id") or "").strip()
+                    etype = str(raw_item.get("entity_type") or "").strip()
+                    if etype == "manuscript" and lid:
+                        clean_cn = lid.removeprefix("QDraft_MS_").removeprefix("marc:")
+                        q = (
+                            ledger.get(f"wikidata:marc:{lid}")
+                            or ledger.get(f"wikidata:marc:{clean_cn}")
+                            or ledger.get(f"wikidata:marc:QDraft_MS_{clean_cn}")
+                        )
+                if q:
+                    raw_item = {**raw_item, "existing_qid": q}
+            items.append(raw_item)
     return items
 
 
@@ -400,20 +440,29 @@ async def studio_fingerprints_for_project(
 ) -> dict[str, str]:
     """Per-run Wikidata Studio cache fingerprint, for summary cache-keying.
 
-    Folding this into the research-summary cache key makes approving a match
-    (which changes the Studio fingerprint) invalidate the aggregated summary.
+    Includes both sources and approval modes. The summary adds its own
+    ledger digest to detect uploads after a build.
     """
     if not run_ids:
         return {}
     rows = (
         await db.execute(
-            select(WikidataStudioCache).where(
-                WikidataStudioCache.run_id.in_([uuid.UUID(r) for r in run_ids]),
-                WikidataStudioCache.approved_only == approved_only,
+            select(
+                WikidataStudioCache.run_id,
+                WikidataStudioCache.source,
+                WikidataStudioCache.approved_only,
+                WikidataStudioCache.input_fingerprint,
+            ).where(
+                WikidataStudioCache.run_id.in_([uuid.UUID(str(r)) for r in run_ids]),
             )
         )
-    ).scalars().all()
-    return {str(row.run_id): row.input_fingerprint for row in rows}
+    ).all()
+    out: dict[str, list[str]] = {}
+    for row in sorted(rows, key=lambda r: (str(r.source or ""), int(bool(r.approved_only)))):
+        out.setdefault(str(row.run_id), []).append(
+            f"{row.source}:{row.approved_only}:{row.input_fingerprint}"
+        )
+    return {k: "+".join(v) for k, v in out.items()}
 
 
 class StudioSummary(BaseModel):

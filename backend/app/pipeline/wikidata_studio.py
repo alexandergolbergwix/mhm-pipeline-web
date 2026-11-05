@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 # v11: collection-level Bible/Tanakh titles no longer map to work QIDs
 # (Rule W-70 fail-closed) — cached rows still carrying those links must
 # not upload.
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v12"
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v13"
 
 
 def studio_cache_has_stale_validation(

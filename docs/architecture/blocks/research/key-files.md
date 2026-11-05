@@ -24,6 +24,8 @@
 | `backend/app/routers/research_agent.py` | Sessions, JWT tools, canvas CRUD/download/export, thread list/patch, reply cache, local AG-UI stub |
 | `backend/app/services/research_agent/` | Grants, tool wrappers, wiki reads, `scope`/`sanitize`/`sparql_templates`/`title`/`pdf`, data skills (`data_info/select/distinct/search/agg`), movement-map + PDF skills, local AG-UI |
 | `backend/app/models/research_agent.py` | `ResearchAgentThread`, `ResearchAgentArtifact`, `ResearchAgentGrant`, `ResearchAgentReplyCache` |
+| `backend/app/services/research_agent/jev_prefilter.py` | Jev questions for relevance, instruction override, and harm; corpus follow-ups pass both gates (W-295) |
+| `backend/app/routers/wikidata_studio.py` | `studio_items_for_project` attaches live ledger QIDs; `studio_fingerprints_for_project` reads scalar metadata for both cache sources and modes |
 | `backend/app/migrations/versions/0042_research_agent.py` | Thread / artifact / grant tables |
 | `backend/app/migrations/versions/0043_research_reply_cache.py` | Reply cache table |
 | `modal/modal_research_agent.py` | Pydantic AI + AG-UI deploy target (never imported; Rules W-15 / W-228 / W-231; `retries=3`; reply-cache lookup/store + Qubrid Chat Completions) |

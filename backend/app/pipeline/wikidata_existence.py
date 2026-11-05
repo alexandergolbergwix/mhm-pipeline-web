@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 
 Ownership = Literal["own", "foreign", "unknown", "absent"]
 
-_USER_AGENT = "MHM-Pipeline-Web/1.0 (Wikidata Studio; academic research)"
+_USER_AGENT = (
+    "MHMPipeline/1.0 (https://github.com/alexgoldberg/mhm-pipeline; "
+    "alexander.goldberg@biu.ac.il)"
+)
 _PROD_API = "https://www.wikidata.org/w/api.php"
 _TEST_API = "https://test.wikidata.org/w/api.php"
 _WBGETENTITIES_BATCH = 50
@@ -356,6 +359,19 @@ def fetch_entity_duplicate_metadata(
         live_descriptions_from_entity,
         live_p2888_from_entity,
     )
+    from converter.wikidata.work_identity import work_identity_from_entity  # noqa: PLC0415
+
+    def metadata(entity: dict[str, object]) -> dict[str, object]:
+        identity = work_identity_from_entity(entity)
+        return {
+            "descriptions": live_descriptions_from_entity(entity),
+            "p2888": live_p2888_from_entity(entity),
+            "authors": live_authors_from_entity(entity),
+            "author_qids": sorted(identity.author_qids),
+            "author_names": sorted(identity.author_names),
+            "source_records": sorted(identity.source_records),
+            "unresolved_authors": identity.unresolved_authors,
+        }
 
     api = _api_base(is_test=is_test)
     cleaned: list[str] = []
@@ -367,11 +383,7 @@ def fetch_entity_duplicate_metadata(
             seen.add(norm)
             cached = _PREFETCHED_ENTITIES.get((is_test, norm))
             if isinstance(cached, dict) and "claims" in cached and "descriptions" in cached:
-                out[norm] = {
-                    "descriptions": live_descriptions_from_entity(cached),
-                    "p2888": live_p2888_from_entity(cached),
-                    "authors": live_authors_from_entity(cached),
-                }
+                out[norm] = metadata(cached)
                 continue
             cleaned.append(norm)
     if not cleaned:
@@ -396,11 +408,7 @@ def fetch_entity_duplicate_metadata(
         for qid, ent in entities.items():
             if not isinstance(ent, dict) or ent.get("missing") is not None:
                 continue
-            out[str(qid)] = {
-                "descriptions": live_descriptions_from_entity(ent),
-                "p2888": live_p2888_from_entity(ent),
-                "authors": live_authors_from_entity(ent),
-            }
+            out[str(qid)] = metadata(ent)
     return out
 
 

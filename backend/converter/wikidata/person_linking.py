@@ -20,6 +20,7 @@ from converter.wikidata.item_builder import (
     WikidataStatement,
     _is_anonymous_name,
     _is_institutional_name,
+    _is_role_descriptor,
     _person_key,
     _strip_name_quotes,
     logger,
@@ -73,22 +74,24 @@ class PersonLinkingMixin:
         Anonymous / unresolved authorship stays in source evidence only —
         never as manuscript-side P50 (including somevalue).
         """
-        seen_person_keys: set[str] = set()
+        seen_person_keys: set[tuple[str, str]] = set()
 
         def _add_person_statement(
             name: str,
             role: str,
             viaf_uri: str | None,
             mazal_id: str | None,
+            source_field: str = "",
         ) -> None:
             if not name:
                 return
             key = _person_key(name, viaf_uri, mazal_id)
-            if key in seen_person_keys:
+            role_norm = normalize_marc_role(role)
+            claim_key = (key, role_norm)
+            if claim_key in seen_person_keys:
                 return
 
             # Normalize role for lookup (case-insensitive, strip MARC wrappers).
-            role_norm = normalize_marc_role(role)
             # A seller is not an owner (the data model forbids modelling auction
             # houses as P127) and a censor is not one either. A *former* owner,
             # however, is now a P3342 "significant person" edge rather than a
@@ -96,19 +99,19 @@ class PersonLinkingMixin:
             # approved former-owner rows produced nothing at all (Rule W-146).
             if role_norm in {"seller", "censor"}:
                 logger.info("Skipping non-ownership role %r for %r", role, name)
-                seen_person_keys.add(key)
+                seen_person_keys.add(claim_key)
                 return
             if role_norm in {"editor", "compiler", "contributor"}:
                 # Editorial roles are not manuscript-side claims; authorship of
                 # contained works belongs on the work item via P1574 → P50.
                 logger.info("Skipping work-side editorial role %r for %r", role, name)
-                seen_person_keys.add(key)
+                seen_person_keys.add(claim_key)
                 return
             pid = ROLE_TO_PID.get(role_norm) or ROLE_TO_PID.get(role_norm.upper())
             if pid is None:
                 logger.warning("Skipping unsupported MARC/NER role %r for %r", role, name)
                 return
-            seen_person_keys.add(key)
+            seen_person_keys.add(claim_key)
 
             # Institutional "authors" were mis-attached as P50 (Geagea /
             # Q139085958). Re-route institutional names away from authorship.
@@ -129,6 +132,10 @@ class PersonLinkingMixin:
                 return
 
             person_item = self._get_or_create_person(name, viaf_uri, mazal_id, role, record)
+            resolved_key = (person_item.local_id, role_norm)
+            if resolved_key != claim_key and resolved_key in seen_person_keys:
+                return
+            seen_person_keys.add(resolved_key)
             resolved_qid = self._person_qids.get(key) or person_item.existing_qid
 
             # Guard: well-known institutional QIDs must never appear as P50.
@@ -210,6 +217,25 @@ class PersonLinkingMixin:
                         references=ref,
                     )
                 )
+            elif (
+                not person_item.labels
+                and pid == "P11603"
+                and source_field[:3] in {"700", "800"}
+                and not _is_anonymous_name(clean_name)
+                and not _is_role_descriptor(clean_name)
+                and not _is_institutional_name(clean_name)
+            ):
+                item.statements.append(WikidataStatement(
+                    property_id=pid,
+                    value=None,
+                    value_type="somevalue",
+                    qualifiers=[*role_qualifiers, {
+                        "property": P_OBJECT_NAMED_AS,
+                        "value": clean_name.strip().rstrip(",;:"),
+                        "type": "string",
+                    }],
+                    references=ref,
+                ))
             elif not person_item.labels:
                 logger.info("Skipping unresolved %s claim for %r", role, name)
                 return
@@ -241,11 +267,14 @@ class PersonLinkingMixin:
 
         # From MARC authority matches (structured name fields 100/700/etc.)
         for match in record.get("marc_authority_matches") or []:
+            if match.get("approved") is False:
+                continue
             _add_person_statement(
                 str(match.get("name", "")),
                 str(match.get("role", "")),
                 match.get("viaf_uri"),
                 match.get("mazal_id"),
+                str(match.get("field") or ""),
             )
 
         # From NER entities (extracted from note fields)
@@ -268,4 +297,5 @@ class PersonLinkingMixin:
                 str(contrib.get("role", "")),
                 contrib.get("viaf_uri"),
                 contrib.get("mazal_id"),
+                str(contrib.get("field") or ""),
             )

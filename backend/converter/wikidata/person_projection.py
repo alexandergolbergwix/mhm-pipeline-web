@@ -56,6 +56,18 @@ _DATE_SUPPRESSING_AUTHORITY_FLAGS = (
 )
 
 _AUDITED_PERSON_AUTHORITIES: dict[str, dict[str, object]] = {
+    "קנטריני, יצחק חיים": {
+        "source": "nli",
+        "name_type": "Personal",
+        "entity_kind": "person",
+        "wikidata_qid": "Q6076130",
+        "mazal_id": "987007259482805171",
+        "viaf_uri": "https://viaf.org/viaf/37971001",
+        "preferred_name_heb": "קנטריני, יצחק חיים",
+        "preferred_name_lat": "Isaac Chayyim Cantarini",
+        "role": "author",
+        "accepted": True,
+    },
     "אליהו בן אשר הלוי, אשכנזי": {
         "source": "nli",
         "name_type": "Personal",
@@ -111,6 +123,34 @@ _AUDITED_PERSON_AUTHORITIES: dict[str, dict[str, object]] = {
 }
 
 
+def audited_person_authority(name: str) -> dict[str, object] | None:
+    key = _strip_name_quotes(name).strip().rstrip(" ,.;:/-").casefold()
+    authority = _AUDITED_PERSON_AUTHORITIES.get(key)
+    return dict(authority) if authority is not None else None
+
+
+def person_authority_is_trusted(name: str, evidence: dict[str, object]) -> bool:
+    if evidence.get("approved") is False or evidence.get("rejection_reason"):
+        return False
+    if evidence.get("guard_flags"):
+        return False
+    kind = str(evidence.get("entity_kind") or "").strip().casefold()
+    name_type = str(evidence.get("name_type") or "").strip().casefold()
+    if kind and kind not in {"person", "personal", "individual"}:
+        return False
+    if name_type and name_type not in {"person", "personal", "individual"}:
+        return False
+    preferred_he = str(evidence.get("preferred_name_heb") or "").strip()
+    preferred_lat = str(evidence.get("preferred_name_lat") or "").strip()
+    preferred = ((preferred_he or preferred_lat) if _has_hebrew_script(name)
+                 else (preferred_lat or preferred_he))
+    if not preferred:
+        return True
+    from converter.authority.heading_fidelity import heading_matches  # noqa: PLC0415
+
+    return heading_matches(name, preferred)
+
+
 class PersonProjectionMixin:
     def _get_or_create_person(
         self,
@@ -122,6 +162,7 @@ class PersonProjectionMixin:
     ) -> WikidataItem:
         """Get existing or create new person item with full authority data."""
         key = _person_key(name, viaf_uri, mazal_id)
+        source_key = f"{key}:source:{source_record.get('_control_number') or ''}"
         if key in self._person_items:
             person = self._person_items[key]
             _associate_item_with_source_record(person, source_record)
@@ -131,6 +172,8 @@ class PersonProjectionMixin:
             # callers can still inspect .labels==() to route to P2093,
             # but don't re-emit the warning.
             return self._skipped_person_stubs[key]
+        if source_key in self._skipped_person_keys:
+            return self._skipped_person_stubs[source_key]
 
         person = WikidataItem(entity_type="person", local_id=key)
         _associate_item_with_source_record(person, source_record)
@@ -172,10 +215,15 @@ class PersonProjectionMixin:
         # no identifiers invites mass deletion requests from the community. Skip
         # the item and let callers fall back to P2093 (author name string).
         match_info: dict[str, object] = {}
+        audited_identity_rejected = False
         for m in source_record.get("marc_authority_matches") or []:
             mid = str(m.get("mazal_id", ""))
             vid = str(m.get("viaf_uri", ""))
             m_name = _strip_name_quotes(str(m.get("name") or m.get("entity_text") or ""))
+            if m.get("approved") is False:
+                if m_name.rstrip(" ,.;:/-") == clean_name.rstrip(" ,.;:/-"):
+                    audited_identity_rejected = True
+                continue
             if (
                 (mazal_id and mid == mazal_id)
                 or (viaf_uri and vid == viaf_uri)
@@ -183,14 +231,22 @@ class PersonProjectionMixin:
             ):
                 match_info = m  # type: ignore[assignment]
                 break
-        if not match_info:
-            audited = _AUDITED_PERSON_AUTHORITIES.get(clean_name.strip().casefold())
+        if not match_info and not audited_identity_rejected:
+            audited = audited_person_authority(clean_name)
             if audited is not None:
                 match_info = dict(audited)
                 if not viaf_uri and match_info.get("viaf_uri"):
                     viaf_uri = str(match_info["viaf_uri"])
                 if not mazal_id and match_info.get("mazal_id"):
                     mazal_id = str(match_info["mazal_id"])
+        if match_info and person_authority_is_trusted(clean_name, match_info):
+            viaf_uri = viaf_uri or str(match_info.get("viaf_uri") or "") or None
+            mazal_id = mazal_id or str(match_info.get("mazal_id") or "") or None
+            resolved_key = _person_key(name, viaf_uri, mazal_id)
+            if resolved_key in self._person_items:
+                existing = self._person_items[resolved_key]
+                _associate_item_with_source_record(existing, source_record)
+                return existing
         name_type = (
             str(match_info.get("name_type") or match_info.get("viaf_name_type") or "")
             .strip()
@@ -277,15 +333,15 @@ class PersonProjectionMixin:
         if not has_identifier:
             logger.warning(
                 "Skipping person %r — no external identifier (Wikidata:Notability). "
-                "Callers should use P2093 (author name string) instead.",
+                "Callers must preserve the source name through the role-specific fallback.",
                 clean_name,
             )
             # Return the stub (so the caller's `if not person_item.labels`
             # branch fires and routes to P2093) but do NOT persist it in
             # ``_person_items`` — otherwise 251 empty-label items surface in
             # build_all's output and get rejected as NO_IDENTIFIER/EMPTY_LABEL.
-            self._skipped_person_keys.add(key)
-            self._skipped_person_stubs[key] = person
+            self._skipped_person_keys.add(source_key)
+            self._skipped_person_stubs[source_key] = person
             return person
 
         # Keep the authority QID until the heading comparison completes. A

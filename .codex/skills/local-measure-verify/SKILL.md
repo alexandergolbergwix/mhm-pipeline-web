@@ -82,6 +82,16 @@ Wikidata Studio, all items:
   --run-id <run_id> --scope all
 ```
 
+## Deterministic Gila audit
+
+Use `--channel wikidata --gila-audit` for a full-run local proposal report.
+This mode skips the AI judge and provider-key lookup. It includes known QIDs,
+three review classes, catalog-status notes, and recent per-item upload outcomes.
+`--audit-live-snapshot PATH` accepts a `wbgetentities` JSON and adds work review
+proposals with revision, claim IDs, and source control numbers.
+The report performs no live repair and always leaves `corrected_qids` empty.
+See `docs/architecture/blocks/wikidata-studio/gila-audit-completion.md`.
+
 ## Extending to a new channel
 
 Add a `Channel` subclass in `local_measure_verify.py` implementing

@@ -27,7 +27,10 @@ from app.pipeline import wikidata_upload as wu
 from converter.wikidata.reconciler import (
     ReconciliationUnavailableError,
     WikidataReconciler,
+    WorkIdentityUncertainError,
+    prewarm_reconciler_for_items,
 )
+from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
 # ── Stub item / statement types (mirror item_builder's WikidataItem shape) ──
 
@@ -211,6 +214,117 @@ def test_work_reconciles_by_label_and_author():
     assert rec.work_calls == [("פירוש רש\"י", "he", "Q42")]
     assert prepared[0].existing_qid == "Q300"
     assert prepared[0].blocked is False
+
+
+@pytest.mark.parametrize("path", ["direct", "web", "prewarm", "bridge", "prebuilt", "ledger"])
+def test_cantarini_does_not_adopt_the_mixed_work(monkeypatch, path: str) -> None:
+    name = "קנטריני, יצחק חיים"
+
+    def binding(qid: str, prop: str, value: str) -> dict[str, dict[str, str]]:
+        return {"item": {"value": f"http://www.wikidata.org/entity/{qid}"},
+                "title": {"value": "דרושים"}, prop: {"value": value}}
+
+    bindings = [binding("Q141175543", "authorStr", name),
+                binding("Q141175543", "authorStr", "אברהם"),
+                binding("Q141755239", "author", "http://www.wikidata.org/entity/Q6076130")]
+    reconciler = WikidataReconciler()
+    calls: list[str] = []
+
+    def query(sparql: str) -> list[dict[str, dict[str, str]]]:
+        calls.append(sparql)
+        return bindings
+
+    monkeypatch.setattr(reconciler, "_query", query)
+    work = WikidataItem(
+        entity_type="work", local_id="work:cantarini", labels={"he": "דרושים"},
+        records=["990001915930205171"], statements=[
+            WikidataStatement("P31", "Q47461344", "item"),
+            WikidataStatement("P1476", "דרושים", "monolingualtext"),
+            WikidataStatement("P50", "Q6076130", "item"),
+        ], work_candidate_evidence=[{
+            "accepted": True, "title": "דרושים", "source_field": "100/245", "author_name": name,
+        }],
+    )
+    if path == "direct":
+        assert reconciler.reconcile_work_by_label_and_author(
+            "דרושים", author_qid="Q6076130", author_name=name,
+        ) == "Q141755239"
+        return
+    if path == "prewarm":
+        prewarm_reconciler_for_items(reconciler, [work])
+    warmed = len(calls)
+    if path == "bridge":
+        work.statements.append(WikidataStatement(
+            "P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q3398", "url",
+        ))
+        monkeypatch.setattr(reconciler, "reconcile_by_exact_match_uri", lambda uri: "Q141175543")
+    if path == "prebuilt":
+        work.existing_qid = "Q141175543"
+    ledger = None
+    if path == "ledger":
+        from app.pipeline.wikidata_qid_ledger import ledger_key_for_item
+
+        ledger = {ledger_key_for_item(work): "Q141175543"}
+    prepared = wu._prepare_for_upload([work], reconciler, ledger=ledger)[0]
+    assert prepared.blocked or prepared.existing_qid == "Q141755239"
+    if path == "prewarm":
+        assert len(calls) == warmed
+
+
+def test_source_scoped_sermon_does_not_adopt_a_title_only_candidate(monkeypatch) -> None:
+    reconciler = WikidataReconciler()
+    calls: list[str] = []
+
+    def query(sparql: str) -> list[dict[str, dict[str, str]]]:
+        calls.append(sparql)
+        return [{"item": {"value": "http://www.wikidata.org/entity/Q123"}}]
+
+    monkeypatch.setattr(reconciler, "_query", query)
+    work = WikidataItem(
+        entity_type="work", local_id="work:sermon:source:990003",
+        labels={"he": "דרשה על פרשת ויגש"}, records=["990003"],
+        work_candidate_evidence=[{"accepted": True, "identity_scope": "record"}],
+    )
+    assert wu._reconcile_for_upload(reconciler, work, "work")[0] is None
+    assert calls == []
+
+
+def test_ambiguous_exact_match_uri_does_not_mean_absence(monkeypatch) -> None:
+    reconciler = WikidataReconciler()
+    monkeypatch.setattr(reconciler, "_query", lambda query: [
+        {"item": {"value": "http://www.wikidata.org/entity/Q123"}},
+        {"item": {"value": "http://www.wikidata.org/entity/Q124"}},
+    ])
+    with pytest.raises(WorkIdentityUncertainError):
+        reconciler.reconcile_by_exact_match_uri("https://example.org/work")
+
+
+def test_live_work_gate_checks_authors_before_an_owned_ledger_bypass(monkeypatch) -> None:
+    work = WikidataItem(
+        entity_type="work", local_id="work:cantarini", existing_qid="Q141175543",
+        statements=[WikidataStatement("P50", "Q6076130", "item", qualifiers=[{
+            "property": "P1932", "value": "קנטריני, יצחק חיים", "type": "string",
+        }])],
+    )
+    prepared = wu.PreparedItem(
+        item=work, local_id=work.local_id, label="דרושים", entity_type="work",
+        existing_qid=work.existing_qid, method="ledger", blocked=False,
+        block_status="", block_message="",
+    )
+    monkeypatch.setattr("app.pipeline.wikidata_existence.confirm_qid_alive",
+                        lambda *args, **kwargs: True)
+    monkeypatch.setattr("app.pipeline.wikidata_existence.fetch_entity_p31",
+                        lambda *args, **kwargs: {"Q141175543": ["Q47461344"]})
+    monkeypatch.setattr("app.pipeline.wikidata_existence.fetch_entity_duplicate_metadata",
+                        lambda *args, **kwargs: {"Q141175543": {
+                            "authors": ["קנטריני, יצחק חיים", "אברהם"], "p2888": [],
+                        }})
+    result = wu._apply_existence_and_ownership(
+        prepared, accept=None, ownership_checker=None, is_test=False,
+    )
+    assert result.blocked
+    assert result.method == "work_identity_review"
+    assert result.link_qid is None
 
 
 # ── _upload_sync: blocked items never reach the uploader ──────────────────

@@ -53,4 +53,6 @@
     questions answer from the DB at the funnel (no LLM); the model layer is
     Qubrid only, with a 402 circuit breaker and the recharge message.
     *Why:* provider policy is Qubrid-only, and exact counts must survive
-    every model outage.
+     every model outage.
+33. **R33 — Corpus refreshes must pass both prompt gates (W-295).** The local router recognizes follow-ups and Hebrew tokens. Jev treats report updates and public wiki reads as research requests. Its harm question does not double as a relevance question. Explicit injection patterns and rejected topic clusters still refuse. *Why:* the production journal recorded local and Jev refusals for the curator's data refresh request.
+34. **R34 — Source counts must follow upload ledgers (W-295).** The summary reads both Studio sources, attaches live Wikidata QIDs, and uses the project Wikibase ledger when SPARQL returns no entities. Its cache key includes mapping content and all Studio variants. URI aliases apply only to known HMO namespaces. *Why:* the canvas showed empty wiki counts after uploads, and a cached summary could retain those counts.

@@ -47,6 +47,8 @@ The sealed Publication path is the only path for a live wikidata.org write
   foreign-modify accept, HMO→Wikidata PQ mapping.
 - [Local quality audit](quality-audit.md) — read-only measurement, count
   interpretation, and safe remediation order.
+- [Gila audit completion](gila-audit-completion.md) — source-qualified claims,
+  the accepted model, and the full-run review report (W-296).
 - [Tests](tests.md) — the test suites pinning this block.
 
 ## Related blocks

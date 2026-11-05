@@ -156,3 +156,49 @@ async def test_coherent_result_is_served_and_cached(project_with_real_rdf, db_se
     # Second call (now cache-warm) still coherent.
     resp2 = await client.get(f"/api/projects/{project_id}/research/summary")
     assert resp2.json()["total_manuscripts"] == 1
+
+
+@pytest.mark.asyncio
+async def test_upload_ledger_change_invalidates_a_warm_summary(project_with_real_rdf, db_session):
+    from app.models.wikidata_studio_cache import WikidataStudioCache
+    from app.pipeline.wikidata_qid_ledger import record_ledger_mapping
+
+    project_id = project_with_real_rdf["project_id"]
+    client = project_with_real_rdf["client"]
+    db_session.add(WikidataStudioCache(
+        run_id=project_with_real_rdf["run_id"], approved_only=True, source="canonical",
+        input_fingerprint="a" * 64,
+        result_items=[{
+            "entity_type": "manuscript", "local_id": "QDraft_MS_990001",
+            "labels": {"en": "Test Manuscript"}, "statements": [],
+        }],
+    ))
+    await db_session.commit()
+    first = await client.get(f"/api/projects/{project_id}/research/summary")
+    assert first.status_code == 200
+    assert first.json()["by_type"]["manuscript"]["by_source"]["wikidata"] == 0
+
+    await record_ledger_mapping(db_session, "wikidata:marc:QDraft_MS_990001", "Q123")
+    second = await client.get(f"/api/projects/{project_id}/research/summary")
+    assert second.status_code == 200
+    assert second.json()["by_type"]["manuscript"]["by_source"]["wikidata"] == 1
+
+
+@pytest.mark.asyncio
+async def test_all_studio_cache_variants_contribute_fingerprints(sample_run, db_session):
+    from app.models.wikidata_studio_cache import WikidataStudioCache
+    from app.routers.wikidata_studio import studio_fingerprints_for_project
+
+    for source, approved_only, token in (
+        ("canonical", True, "a"), ("canonical", False, "b"),
+        ("legacy", True, "c"), ("legacy", False, "d"),
+    ):
+        db_session.add(WikidataStudioCache(
+            run_id=sample_run["run_id"], source=source, approved_only=approved_only,
+            input_fingerprint=token * 64,
+        ))
+    await db_session.commit()
+    result = await studio_fingerprints_for_project([str(sample_run["run_id"])], db_session)
+    fingerprint = result[str(sample_run["run_id"])]
+    for token in "abcd":
+        assert token * 64 in fingerprint

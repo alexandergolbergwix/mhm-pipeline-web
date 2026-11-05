@@ -32,13 +32,14 @@ from converter.wikidata.property_mapping import P_SUBTITLE
 
 
 def _match_text(value: object) -> str:
-    return re.sub(r"\s+", " ", _normalise_label(str(value or ""))).strip().casefold()
+    text = re.sub(r"\s+", " ", _normalise_label(str(value or "")))
+    return text.strip().rstrip(" ,.;:/-").casefold()
 
 
 def _find_work_author_match(
     author_name: str, source_record: dict[str, object]
 ) -> dict[str, object] | None:
-    """Find an exact approved author authority row for a work candidate."""
+    """Find exact approved or audited authority evidence for a work author."""
     target = _match_text(author_name)
     if not target:
         return None
@@ -48,10 +49,9 @@ def _find_work_author_match(
             continue
         if _match_text(author.get("name")) == target and author.get("raw_name_a"):
             target_variants.add(_match_text(author.get("raw_name_a")))
+    audited_identity_rejected = False
     for raw_match in source_record.get("marc_authority_matches") or []:
         if not isinstance(raw_match, dict):
-            continue
-        if raw_match.get("approved") is False:
             continue
         role = str(raw_match.get("role") or "").strip().casefold()
         if role and role not in {"author", "attributed author", "presumed author"}:
@@ -63,8 +63,17 @@ def _find_work_author_match(
             raw_match.get("preferred_name_heb"),
         )
         if any(_match_text(candidate) in target_variants for candidate in names):
+            from converter.wikidata.person_projection import person_authority_is_trusted  # noqa: PLC0415
+
+            if not person_authority_is_trusted(author_name, raw_match):
+                audited_identity_rejected = True
+                continue
             return raw_match
-    return None
+    if audited_identity_rejected:
+        return None
+    from converter.wikidata.person_projection import audited_person_authority  # noqa: PLC0415
+
+    return audited_person_authority(author_name)
 
 
 def _work_description_with_attestation(
@@ -253,6 +262,11 @@ class WorkProjectionMixin:
                 value_type="string",
             )
 
+        if statement.property_id == P_AUTHOR:
+            statement.qualifiers.append({
+                "property": "P1932", "value": author_name.strip().rstrip(",;:"), "type": "string",
+            })
+
         control_number = str(source_record.get("_control_number") or "").strip()
         if control_number:
             statement.references = list(nli_reference(control_number))
@@ -263,6 +277,8 @@ class WorkProjectionMixin:
         title: str,
         author_name: str | None,
         source_record: dict[str, object],
+        *,
+        source_scoped: bool = False,
     ) -> WikidataItem:
         """Get existing or create new work item for a Hebrew manuscript work."""
         # Strip trailing MARC ISBD punctuation (", ;", " :", " .", " /") BEFORE
@@ -286,13 +302,19 @@ class WorkProjectionMixin:
         if is_scripture_title(title):
             author_name = None
         key = _work_key(title)
-        work = self._find_work_for_title(title, author_name, source_record)
+        if source_scoped:
+            control_number = str(source_record.get("_control_number") or "").strip()
+            if not control_number:
+                raise ValueError("A source-scoped work requires a source control number.")
+            key = f"{key}:source:{control_number}"
+            work = self._work_items.get(key)
+        else:
+            work = self._find_work_for_title(title, author_name, source_record)
         if work is not None:
             _associate_item_with_source_record(work, source_record)
             self._ensure_work_author(work, author_name, source_record)
             return work
 
-        key = _work_key(title)
         if key in self._work_items and author_name and self._work_has_conflicting_author(
             self._work_items[key], author_name, source_record,
         ):
@@ -312,7 +334,7 @@ class WorkProjectionMixin:
         # P50 author conflicts with our proposed author (cross-verification
         # pattern reused from person reconciliation).
         existing_qid: str | None = known_work_qid_for_title(title)
-        if existing_qid is None and self._reconciler is not None:
+        if existing_qid is None and self._reconciler is not None and not source_scoped:
             try:
                 # Resolve author QID from cache when available so the
                 # reconciler can perform author-conflict rejection.
@@ -324,6 +346,7 @@ class WorkProjectionMixin:
                     title=title,
                     lang="he",
                     author_qid=author_qid,
+                    author_name=author_name,
                 )
             except Exception as exc:  # noqa: BLE001 - reconciler failures must not block builds
                 logger.warning(

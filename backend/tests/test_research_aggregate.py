@@ -17,6 +17,7 @@ from app.pipeline.research_aggregate import (
     build_aggregated_summary,
     compute_aggregated_summary,
     merge_entities,
+    wikibase_ledger_provider,
     wikibase_provider,
     wikidata_provider,
 )
@@ -113,6 +114,15 @@ class TestWikidataProvider:
         ])
         assert ents[0].control_number == "990123"
 
+    def test_prefixed_manuscripts_merge_with_the_rdf_control_number(self):
+        entities = wikidata_provider([{
+            "entity_type": "manuscript", "existing_qid": "Q123",
+            "local_id": "QDraft_MS_990001", "labels": {},
+        }])
+        merged = merge_entities([_ms(SOURCE_RDF, cn="990001"), *entities])
+        assert len(merged) == 1
+        assert merged[0].sources == {SOURCE_RDF, SOURCE_WIKIDATA}
+
     def test_counts_place_items_with_qid(self):
         ents = wikidata_provider([
             {"entity_type": "place", "existing_qid": "Q90", "labels": {"en": "Paris"}},
@@ -123,6 +133,18 @@ class TestWikidataProvider:
 
 
 class TestWikibaseProvider:
+    def test_ledger_does_not_match_unrelated_namespaces_by_fragment(self):
+        rdf = [_ms(SOURCE_RDF, cn="1", uri="https://unrelated.example/MS_1")]
+        ledger = {f"{HM}MS_1": "Q42"}
+        assert wikibase_ledger_provider(rdf, ledger) == []
+
+    def test_ledger_supports_the_legacy_hmo_namespace(self):
+        rdf = [_ms(SOURCE_RDF, cn="1", uri=f"{HM}MS_1")]
+        ledger = {"http://www.ontology.org.il/HebrewManuscripts/2025-12-06#MS_1": "Q42"}
+        result = wikibase_ledger_provider(rdf, ledger)
+        assert len(result) == 1
+        assert result[0].source == SOURCE_WIKIBASE
+
     def test_returns_empty_when_unconfigured(self):
         async def runner(url, query):  # pragma: no cover - never called
             raise AssertionError("should not be called when url empty")

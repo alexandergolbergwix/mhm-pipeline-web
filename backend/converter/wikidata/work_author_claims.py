@@ -129,13 +129,26 @@ def promote_safe_work_author_claims(
                 else f"__LOCAL:{person.local_id}"
             )
             if target in existing_p50:
+                retained = next(s for s in work.statements if s.property_id == "P50" and s.value == target)
+                references = list(retained.references or [])
+                for reference in statement.references or []:
+                    if reference not in references:
+                        references.append(reference)
+                retained.references = references
                 changed += 1
                 continue
+            qualifiers = list(statement.qualifiers)
+            if not any(q.get("property") == "P1932" and q.get("value") == statement.value
+                       for q in qualifiers):
+                qualifiers.append({
+                    "property": "P1932", "value": str(statement.value), "type": "string",
+                })
             rewritten.append(replace(
                 statement,
                 property_id="P50",
                 value=target,
                 value_type="item",
+                qualifiers=qualifiers,
             ))
             existing_p50.add(target)
             changed += 1

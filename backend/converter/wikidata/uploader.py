@@ -19,10 +19,13 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from converter.wikidata.item_builder import WikidataItem, WikidataStatement
 from converter.wikidata.property_mapping import repair_wikidata_time
+
+if TYPE_CHECKING:
+    from wikibaseintegrator.models import Claim
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,29 @@ def _item_qid(value: object) -> str:
         if isinstance(item_id, str):
             return item_id
     return str(value)
+
+
+def _reference_identity(reference: Mapping[str, object]) -> str:
+    snaks = reference.get("snaks")
+    if not isinstance(snaks, Mapping):
+        raise ValueError("A Wikidata reference must contain snaks.")
+    normalized: dict[str, list[str]] = {}
+    for pid, entries in snaks.items():
+        if not isinstance(entries, list):
+            raise ValueError("Reference snaks must be lists.")
+        values: set[str] = set()
+        for snak in entries:
+            if not isinstance(snak, Mapping):
+                raise ValueError("A reference snak must be an object.")
+            values.add(json.dumps(
+                {
+                    key: snak[key]
+                    for key in ("snaktype", "property", "datatype", "datavalue") if key in snak
+                },
+                sort_keys=True, ensure_ascii=False,
+            ))
+        normalized[str(pid)] = sorted(values)
+    return json.dumps(normalized, sort_keys=True, ensure_ascii=False)
 
 
 def quantity_amounts_equal(left: object, right: object) -> bool:
@@ -739,6 +765,28 @@ class WikidataUploader:
         else:
             wbi_item = wbi.item.new()
 
+        if item.existing_qid and item.entity_type == "work" and not self._is_test:
+            from converter.wikidata.work_identity import (  # noqa: PLC0415
+                compare_work_identity,
+                work_identity_for_item,
+                work_identity_from_entity,
+            )
+
+            entity = wbi_item.get_json()
+            if not isinstance(entity, Mapping) or entity.get("id") != item.existing_qid:
+                raise ClaimBuildError(["WORK_IDENTITY: the current entity does not match the target."])
+            try:
+                comparison = compare_work_identity(
+                    work_identity_for_item(item), work_identity_from_entity(entity),
+                    strong_identifier=True,
+                )
+            except ValueError as exc:
+                raise ClaimBuildError([f"WORK_IDENTITY: invalid current work evidence: {exc}"]) from exc
+            if comparison != "match":
+                raise ClaimBuildError([
+                    f"WORK_IDENTITY: {item.existing_qid} conflicts with the proposed author/source scope.",
+                ])
+
         # Labels — never overwrite an existing label on an item we did not create.
         # On items we created/own (or project-owned manuscripts matched via P3959),
         # allow updating labels and descriptions when our projection improves them
@@ -816,6 +864,7 @@ class WikidataUploader:
                 wbi_item.aliases.set(lang, alias)
 
         # Statements — use WBI's built-in dedup for existing items
+        from wikibaseintegrator.models import References  # noqa: PLC0415
         from wikibaseintegrator.wbi_enums import ActionIfExists  # noqa: PLC0415
 
         added_properties: list[str] = []
@@ -891,10 +940,20 @@ class WikidataUploader:
                             if nc == ec:
                                 ec_refs = getattr(ec, "references", None)
                                 nc_refs = getattr(nc, "references", None)
-                                ec_ref_len = len(ec_refs) if ec_refs is not None else 0
-                                nc_ref_len = len(nc_refs) if nc_refs is not None else 0
-                                if ec_ref_len > 1 or (ec_ref_len == 0 and nc_ref_len > 0):
-                                    ec.references = nc.references
+                                existing_refs = list(ec_refs or [])
+                                replacement = References()
+                                seen_refs: set[str] = set()
+                                before = [_reference_identity(r.get_json()) for r in existing_refs]
+                                after: list[str] = []
+                                for reference in [*existing_refs, *list(nc_refs or [])]:
+                                    identity = _reference_identity(reference.get_json())
+                                    if identity in seen_refs:
+                                        continue
+                                    seen_refs.add(identity)
+                                    after.append(identity)
+                                    replacement.add(reference)
+                                if after != before:
+                                    ec.references = replacement
                                     needs_ref_fix = True
                                 break
                 if not same_claims:
@@ -1023,10 +1082,17 @@ class WikidataUploader:
         refs = References()
         if stmt.references:
             ref = Reference()
+            seen_snaks: set[str] = set()
             for ref_snak in stmt.references:
                 ref_claim = self._build_reference_snak(ref_snak)
-                if ref_claim:
-                    ref.add(ref_claim)
+                if ref_claim is None:
+                    continue
+                snak = ref_claim.get_json()["mainsnak"]
+                identity = _reference_identity({"snaks": {snak["property"]: [snak]}})
+                if identity in seen_snaks:
+                    continue
+                seen_snaks.add(identity)
+                ref.add(ref_claim)
             refs.add(ref)
 
         value = stmt.value
@@ -1150,7 +1216,7 @@ class WikidataUploader:
         )
         return None
 
-    def _build_reference_snak(self, ref_snak: dict[str, str]) -> object | None:
+    def _build_reference_snak(self, ref_snak: dict[str, str]) -> Claim | None:
         """Build a reference snak for WikibaseIntegrator."""
         from wikibaseintegrator import datatypes  # noqa: PLC0415
 

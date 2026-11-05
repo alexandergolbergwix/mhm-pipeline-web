@@ -459,5 +459,27 @@ Wikimedia rejected with `HTTP 403 (Wikimedia robot policy)`.
    `942$z` is absent, and `CorpusView` renders multi-step arcs
    (`production` → `intermediate 751/541/583/942 waypoints` → `current
    holding institution`) with a `Current holder` filter and top-holders
-   breakdown (`_MOVEMENT_SCHEMA_VERSION = "v2-holders-waypoints"`).
+    breakdown (`_MOVEMENT_SCHEMA_VERSION = "v2-holders-waypoints"`).
 
+### Rule W-295 — Corpus refresh requests and source counts must reflect current project data (added 2026-11-04)
+
+The production journal recorded `local_reject_after_jev` and
+`harmful_or_exfiltration` for an ordinary request to refresh the corpus data.
+The canvas also showed no wiki entities after successful uploads.
+
+1. The local router recognizes English follow-ups and Hebrew tokens.
+2. Jev explicitly treats data refreshes, report updates, public wiki reads,
+   and canvas exports as research requests. Its harm question tests harm
+   separately from topic relevance. Every Jev check still applies.
+3. A safe Jev result can resolve local `out_of_domain` uncertainty.
+   Explicit injection patterns and rejected topic clusters still refuse.
+4. The summary reads both Studio sources and attaches live ledger QIDs.
+   It normalizes manuscript control numbers before cross-source identity checks.
+5. A project Wikibase fallback matches exact source URIs or known HMO aliases.
+   It never treats arbitrary equal URI fragments as the same entity.
+6. Summary fingerprints include all Studio variants and instance mapping content.
+   Fingerprint queries select scalar metadata rather than Studio result blobs.
+7. Operators inspect item outcomes before they report a complete upload.
+   A job can report `succeeded` while individual items report `failed`.
+
+Details and the audited receipts: [research refresh and audit](../blocks/research/refresh-and-audit.md).

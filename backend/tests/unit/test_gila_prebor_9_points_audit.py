@@ -1,11 +1,9 @@
-"""Unit tests for Prof. Gila Prebor's 9-point Wikidata conversion audit (Rule W-293)."""
+"""Gila Prebor's source-scoped conversion audit (Rules W-294/W-296)."""
 
 from __future__ import annotations
 
-import csv
-from pathlib import Path
-
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
+from app.pipeline.wikidata_gila_audit import build_gila_audit_report
 from app.pipeline.wikidata_qid_ledger import ledger_key_for_item
 from app.pipeline.wikidata_studio import finish_native_items
 from converter.wikidata.item_builder import WikidataItemBuilder
@@ -327,3 +325,226 @@ def test_point8_subjects_bibliography_581_colophon_folio_and_title_page_p1684() 
     assert "שמואל(?)" in str(roles[Q_COLOPHON].value)
     assert Q_TITLE_PAGE in roles
     assert "ספר אמרי שפר" in str(roles[Q_TITLE_PAGE].value)
+
+
+def test_secondary_500_work_does_not_inherit_the_main_work_author() -> None:
+    record = prepare_record_for_pipeline({
+        "001": "990000802880205171", "100$a": "בגי, יוסף בן משה",
+        "245$a": "אגרת סוכה",
+        "500$a": "בדפים 21ב-22ב: לקוטים בין השאר מספר עץ חיים.",
+    })
+    items = WikidataItemBuilder().build_all([record])
+    supplement = next(item for item in items if item.labels.get("he", "").startswith("לקוטים"))
+    assert not _statements(supplement, "P50")
+    assert not _statements(supplement, "P2093")
+    main = next(
+        item for item in items
+        if item.entity_type == "work" and item.labels.get("he") == "אגרת סוכה"
+    )
+    assert [s.value for s in _statements(main, "P2093")] == ["בגי, יוסף בן משה"]
+
+
+def test_contents_ner_work_needs_its_own_author_evidence() -> None:
+    record = prepare_record_for_pipeline({
+        "001": "990000802880205171", "100$a": "בגי, יוסף בן משה",
+        "245$a": "אגרת סוכה",
+    })
+    record["entities"] = [{
+        "type": "WORK", "source": "contents_ner", "text": "דרשה על פרשת ויגש",
+        "start": 0, "end": 17, "approved": True,
+    }]
+    items = WikidataItemBuilder().build_all([record])
+    supplement = next(item for item in items if item.labels.get("he") == "דרשה על פרשת ויגש")
+    assert not _statements(supplement, "P50")
+    assert not _statements(supplement, "P2093")
+
+
+def test_scan_filename_does_not_establish_codex_form() -> None:
+    record = prepare_record_for_pipeline({
+        "001": "990001915930205171", "245$a": "דרושים",
+        "907$n": "leaf0003.tif", "907$i": "20",
+    })
+    item = WikidataItemBuilder().build_manuscript_item(record)
+    assert Q_MANUSCRIPT_CODEX not in {s.value for s in _statements(item, "P31")}
+    assert Q_MANUSCRIPT in {s.value for s in _statements(item, "P31")}
+
+
+def test_named_scribes_survive_without_identifierless_person_items() -> None:
+    record = prepare_record_for_pipeline({
+        "001": "990000885680205171", "245$a": "חזוק אמונה",
+        "700$a": "פיבש יואל בן שמואל שליט|שמואל(?)",
+        "700$e": "(מעתיק)|(מעתיק)",
+    })
+    items = WikidataItemBuilder().build_all([record])
+    assert not [item for item in items if item.entity_type == "person"]
+    serialized = finish_native_items(items)["items"]
+    manuscript = next(item for item in serialized if item["entity_type"] == "manuscript")
+    scribes = [s for s in manuscript["statements"] if s["property"] == "P11603"]
+    assert len(scribes) == 2
+    assert all(s["value_type"] == "somevalue" for s in scribes)
+    assert {q["value"] for s in scribes for q in s["qualifiers"] if q["property"] == "P1932"} == {
+        "פיבש יואל בן שמואל שליט", "שמואל(?)",
+    }
+    uncertain = next(
+        s for s in scribes if any(q.get("value") == "שמואל(?)" for q in s["qualifiers"])
+    )
+    assert any(
+        q.get("property") == "P1480" and q.get("value") == "Q30230067"
+        for q in uncertain["qualifiers"]
+    )
+    assert all(s["references"] for s in scribes)
+
+
+def test_same_person_can_hold_two_source_roles() -> None:
+    record = prepare_record_for_pipeline({
+        "001": "990000885680205171", "245$a": "חזוק אמונה",
+        "700$a": "אליהו בן אשר|אליהו בן אשר", "700$e": "(ממנו)|former owner",
+    })
+    item = WikidataItemBuilder().build_manuscript_item(record)
+    roles = {
+        q["value"] for s in _statements(item, "P3342")
+        for q in s.qualifiers if q["property"] == "P3831"
+    }
+    assert roles == {Q_SENDER_ROLE, Q_FORMER_OWNER_ROLE}
+
+
+def test_exact_audited_cantarini_author_has_a_public_author_link() -> None:
+    record = prepare_record_for_pipeline({
+        "001": "990001915930205171", "100$a": "קנטריני, יצחק חיים,", "245$a": "דרושים",
+    })
+    items = WikidataItemBuilder().build_all([record])
+    work = next(item for item in items if item.entity_type == "work")
+    assert [s.value for s in _statements(work, "P50")] == ["Q6076130"]
+    assert not _statements(work, "P2093")
+
+
+def test_an_explicitly_rejected_author_match_does_not_use_the_audited_fallback() -> None:
+    record = prepare_record_for_pipeline({
+        "001": "990001915930205171", "100$a": "קנטריני, יצחק חיים,", "245$a": "דרושים",
+    })
+    record["marc_authority_matches"] = [{
+        "name": "קנטריני, יצחק חיים", "role": "author", "approved": False,
+        "wikidata_qid": "Q6076130",
+    }]
+    items = WikidataItemBuilder().build_all([record])
+    work = next(item for item in items if item.entity_type == "work")
+    assert not _statements(work, "P50")
+    assert _statements(work, "P2093")
+
+
+def test_inserted_sermon_has_its_own_work_and_genre_without_a_physical_unit() -> None:
+    record = prepare_record_for_pipeline({
+        "001": "990000885680205171", "100$a": "יצחק בן אברהם", "245$a": "חזוק אמונה",
+        "500$a": "בראשו שילב המעתיק דרשה על פרשת ויגש.",
+        "650$a": "Jewish sermons, Hebrew|Messiah",
+    })
+    items = WikidataItemBuilder().build_all([record])
+    sermon = next(item for item in items if item.labels.get("he") == "דרשה על פרשת ויגש")
+    manuscript = next(item for item in items if item.entity_type == "manuscript")
+    assert [s.value for s in _statements(sermon, "P136")] == ["Q60797"]
+    assert not _statements(sermon, "P50") and not _statements(sermon, "P2093")
+    assert "Q60797" not in {s.value for s in _statements(manuscript, "P921")}
+    assert not _statements(manuscript, "P2635")
+    link = next(
+        s for s in _statements(manuscript, "P1574") if s.value == f"__LOCAL:{sermon.local_id}"
+    )
+    assert not any(q.get("property") == "P958" for q in link.qualifiers)
+    assert any(
+        e.get("source_field") == "500"
+        and e.get("source_text") == "בראשו שילב המעתיק דרשה על פרשת ויגש."
+        for e in sermon.work_candidate_evidence
+    )
+
+
+def test_same_descriptive_sermon_title_does_not_merge_unidentified_works() -> None:
+    records = [prepare_record_for_pipeline({
+        "001": cn, "245$a": "לקוטים",
+        "500$a": "בראשו שילב המעתיק דרשה על פרשת ויגש.",
+    }) for cn in ("990001", "990002")]
+    items = WikidataItemBuilder().build_all(records)
+    sermons = [item for item in items if item.labels.get("he") == "דרשה על פרשת ויגש"]
+    assert len(sermons) == 2
+    assert {tuple(item.records) for item in sermons} == {("990001",), ("990002",)}
+
+
+def test_audit_distinguishes_an_unresolved_scribe_from_lost_source_data() -> None:
+    source = {"001": "990001", "245$a": "כותרת", "700$a": "אהרן בן יצחק", "700$e": "(מעתיק)"}
+    native = WikidataItemBuilder().build_all([prepare_record_for_pipeline(source)])
+    proposed = finish_native_items(native)["items"]
+    report = build_gila_audit_report([source], proposed, qids_by_cn={"990001": "Q123"})
+    cases = report["records"][0]["cases"]
+    assert any(case["classification"] == "identity_or_scope_uncertain"
+               and case["reason"] == "named_scribe_identity_unresolved" for case in cases)
+    assert not any(case["reason"] == "source_scribe_claim_absent" for case in cases)
+    assert report["checked_qids"] == ["Q123"]
+    assert report["corrected_qids"] == []
+    assert report["live_verified"] is False
+
+
+def test_audit_preserves_catalog_status_without_claiming_a_colophon_omission() -> None:
+    source = {"001": "990001", "245$a": "דרושים", "590$a": "רשומה זמנית"}
+    native = WikidataItemBuilder().build_all([prepare_record_for_pipeline(source)])
+    report = build_gila_audit_report([source], finish_native_items(native)["items"])
+    row = report["records"][0]
+    assert row["record_status_notes"] == ["רשומה זמנית"]
+    assert not any(case["reason"] == "full_qualified_colophon_absent" for case in row["cases"])
+    assert any(case["classification"] == "absent_in_source" for case in row["cases"])
+
+
+def test_audit_reports_existing_mixed_work_claims_for_source_review() -> None:
+    cantarini = "990001915930205171"
+    abraham = "990001123390205171"
+    source = [
+        {"001": cantarini, "245$a": "דרושים", "100$a": "קנטריני, יצחק חיים"},
+        {"001": abraham, "245$a": "דרושים", "100$a": "אברהם"},
+    ]
+    authors = [{
+        "id": f"Q141175543${index}",
+        "mainsnak": {"datavalue": {"value": name}},
+        "references": [{"snaks": {"P3959": [{"datavalue": {"value": cn}}]}}],
+    } for index, (name, cn) in enumerate((("קנטריני, יצחק חיים", cantarini), ("אברהם", abraham)))]
+    report = build_gila_audit_report(source, [], live_entities={
+        "Q141175543": {"lastrevid": 123, "claims": {"P2093": authors}},
+    })
+    repair = report["work_repair_proposals"][0]
+    assert repair["qid"] == "Q141175543" and repair["revision"] == 123
+    assert repair["action"] == "review_source_partition"
+    assert repair["requires_review"] is True
+    assert repair["source_authors"][cantarini] == ["קנטריני, יצחק חיים"]
+    assert {claim["claim_id"] for claim in repair["claims"]} == {
+        "Q141175543$0", "Q141175543$1",
+    }
+    assert report["corrected_qids"] == []
+
+
+def test_identifier_backed_local_scribe_does_not_also_become_an_unknown_scribe() -> None:
+    records = [prepare_record_for_pipeline({
+        "001": cn, "245$a": "כותרת", "700$a": "אהרן בן יצחק", "700$e": "(מעתיק)",
+    }) for cn in ("990001", "990002")]
+    records[1]["marc_authority_matches"] = [{
+        "name": "אהרן בן יצחק", "role": "scribe", "field": "700", "approved": True,
+        "entity_kind": "person", "name_type": "Personal",
+        "mazal_id": "987007123456705171", "viaf_uri": "https://viaf.org/viaf/123",
+    }]
+    items = finish_native_items(WikidataItemBuilder().build_all(records))["items"]
+    first = next(item for item in items if item["entity_type"] == "manuscript"
+                 and item["records"] == ["990001"])
+    second = next(item for item in items if item["entity_type"] == "manuscript"
+                  and item["records"] == ["990002"])
+    assert [s["value_type"] for s in first["statements"] if s["property"] == "P11603"] == ["somevalue"]
+    second_claims = [s for s in second["statements"] if s["property"] == "P11603"]
+    assert len(second_claims) == 1
+    assert second_claims[0]["value_type"] == "item"
+    people = [item for item in items if item["entity_type"] == "person"]
+    assert len(people) == 1
+
+
+def test_audit_does_not_call_present_unparsed_extent_absent_source_data() -> None:
+    source = {"001": "990001", "245$a": "כותרת", "300$a": "דפים לא ממוספרים"}
+    native = WikidataItemBuilder().build_all([prepare_record_for_pipeline(source)])
+    report = build_gila_audit_report([source], finish_native_items(native)["items"])
+    row = report["records"][0]
+    assert row["source_extent_text"] == "דפים לא ממוספרים"
+    assert not any(case["field"] == "300$a" and case["classification"] == "absent_in_source"
+                   for case in row["cases"])
+    assert any(case["reason"] == "physical_extent_not_numeric" for case in row["cases"])

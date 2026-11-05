@@ -51,8 +51,8 @@ def test_958a_covers_the_traditions_in_the_corpus() -> None:
 
 
 def test_958a_unmapped_tradition_fails_closed() -> None:
-    """פרובנצלית / מערבית / קראית have no verified QID (Rule R8)."""
-    for he in ("פרובנצלית", "מערבית", "קראית"):
+    """Unknown traditions have no verified QID (Rule R8)."""
+    for he in ("קראית", "כתב בלתי מזוהה"):
         assert _p9302({"001": "a", "958$a": he}) == set(), he
 
 
@@ -66,11 +66,11 @@ def test_958b_multiword_resolves_to_first_matching_token() -> None:
     assert prepared["script_mode"] in {"SquareScript", "CursiveScript"}
 
 
-def test_958_does_not_overwrite_an_existing_script_type() -> None:
+def test_958_replaces_a_stale_cached_script_type() -> None:
     prepared = prepare_record_for_pipeline({
         "001": "a", "script_type": "AshkenaziScript", "958$a": "תימנית",
     })
-    assert prepared["script_type"] == "AshkenaziScript"
+    assert prepared["script_type"] == "YemeniteScript"
 
 
 # ── 957 → P1684 ──────────────────────────────────────────────────────────

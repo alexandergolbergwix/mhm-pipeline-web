@@ -144,6 +144,149 @@ def test_a_work_keeps_the_record_author_when_the_title_matches() -> None:
     assert "moshe ben yosef" in str(author_claims[0].value).casefold()
 
 
+def test_full_canonical_build_does_not_restore_a_secondary_work_author() -> None:
+    from converter.wikidata.item_builder import WikidataItemBuilder
+
+    work = normalize_live_entity({
+        "local_id": "Work_supplement", "source_uri": "https://w3id.org/mhm/ontology#Work_supplement",
+        "wikibase_id": "Q6104", "entity_type": "F1_Work",
+        "labels": {"he": "לקוטים בין השאר מספר עץ חיים"},
+        "control_numbers": ["990000802880205171"],
+        "claims": [{"wikidata_property": "P2093", "property_id": "P2093",
+                    "value": "בגי, יוסף בן משה", "datatype": "string"}],
+    })
+    context = canonical_studio_context(marc_records=[{
+        "001": "990000802880205171", "245$a": "אגרת סוכה", "100$a": "בגי, יוסף בן משה",
+        "500$a": "בדפים 21ב-22ב: לקוטים בין השאר מספר עץ חיים.",
+    }])
+    legacy = WikidataItemBuilder().build_all(list(context.marc_by_cn.values()))
+    result = build_canonical_studio_result(
+        [work], context=context, reconcile=False, legacy_native_items=legacy,
+    )
+    supplement = next(
+        item for item in result["items"]
+        if item["labels"].get("he") == "לקוטים בין השאר מספר עץ חיים"
+    )
+    assert not [s for s in supplement["statements"] if s["property"] in {"P50", "P2093"}]
+
+
+def test_full_canonical_build_keeps_the_audited_cantarini_author() -> None:
+    from converter.wikidata.item_builder import WikidataItemBuilder
+
+    work = normalize_live_entity({
+        "local_id": "Work_cantarini", "source_uri": "https://w3id.org/mhm/ontology#Work_cantarini",
+        "wikibase_id": "Q3398", "entity_type": "F1_Work", "labels": {"he": "דרושים"},
+        "control_numbers": ["990001915930205171"],
+    })
+    context = canonical_studio_context(marc_records=[{
+        "001": "990001915930205171", "245$a": "דרושים", "100$a": "קנטריני, יצחק חיים,",
+    }])
+    legacy = WikidataItemBuilder().build_all(list(context.marc_by_cn.values()))
+    result = build_canonical_studio_result(
+        [work], context=context, reconcile=False, legacy_native_items=legacy,
+    )
+    projected = next(
+        item for item in result["items"]
+        if item["entity_type"] == "work" and item["labels"].get("he") == "דרושים"
+    )
+    assert [s["value"] for s in projected["statements"] if s["property"] == "P50"] == ["Q6076130"]
+
+
+def test_canonical_codex_type_requires_physical_evidence_from_the_source() -> None:
+    manuscript = _manuscript_entity(claims=[{
+        "wikidata_property": "P31", "property_id": "P31",
+        "value": "Q123172729", "datatype": "wikibase-item",
+    }])
+    context = canonical_studio_context(marc_records=[{
+        "001": "990001", "245$a": "דרושים", "907$n": "leaf0003.tif",
+    }])
+    result = build_canonical_studio_result([manuscript], context=context, reconcile=False)
+    projected = next(item for item in result["items"] if item["entity_type"] == "manuscript")
+    assert not any(
+        s["property"] == "P31" and s["value"] == "Q123172729"
+        for s in projected["statements"]
+    )
+
+
+def test_full_canonical_build_does_not_restore_a_rejected_author_qid() -> None:
+    from converter.wikidata.item_builder import WikidataItemBuilder
+
+    work = normalize_live_entity({
+        "local_id": "Work_guarded", "source_uri": "https://w3id.org/mhm/ontology#Work_guarded",
+        "wikibase_id": "Q6104", "entity_type": "F1_Work", "labels": {"he": "ספר אהרן"},
+        "control_numbers": ["990001"],
+    })
+    context = canonical_studio_context(
+        marc_records=[{"001": "990001", "245$a": "ספר אהרן", "100$a": "אהרן בן יצחק"}],
+        approved_matches=[{
+            "control_number": "990001", "entity_text": "אהרן בן יצחק",
+            "entity_kind": "person", "role": "author", "approved": True,
+            "wikidata_qid": "Q42", "payload": {
+                "preferred_name_heb": "משה בן יעקב", "name_type": "Personal",
+                "guard_flags": ["wikidata_crosscheck_fail"],
+            },
+        }],
+    )
+    legacy = WikidataItemBuilder().build_all(list(context.marc_by_cn.values()))
+    result = build_canonical_studio_result(
+        [work], context=context, reconcile=False, legacy_native_items=legacy,
+    )
+    projected = next(item for item in result["items"] if item["entity_type"] == "work")
+    assert not [s for s in projected["statements"] if s["property"] == "P50"]
+    assert [s["value"] for s in projected["statements"] if s["property"] == "P2093"] == ["אהרן בן יצחק"]
+
+
+def test_full_canonical_build_retains_a_safe_local_author_for_one_505_work() -> None:
+    from converter.wikidata.item_builder import WikidataItemBuilder
+
+    work = normalize_live_entity({
+        "local_id": "Work_505", "source_uri": "https://w3id.org/mhm/ontology#Work_505",
+        "wikibase_id": "Q6104", "entity_type": "F1_Work", "labels": {"he": "ספר תפילות"},
+        "control_numbers": ["990001"],
+    })
+    context = canonical_studio_context(
+        marc_records=[{
+            "001": "990001", "245$a": "קובץ", "100$a": "אהרן בן יצחק", "505$a": "ספר תפילות",
+        }], approved_matches=[{
+            "control_number": "990001", "entity_text": "אהרן בן יצחק",
+            "entity_kind": "person", "role": "author", "approved": True,
+            "mazal_id": "987007123456705171", "payload": {"name_type": "Personal"},
+        }],
+    )
+    legacy = WikidataItemBuilder().build_all(list(context.marc_by_cn.values()))
+    result = build_canonical_studio_result(
+        [work], context=context, reconcile=False, legacy_native_items=legacy,
+    )
+    projected = next(item for item in result["items"] if item["entity_type"] == "work")
+    authors = [s for s in projected["statements"] if s["property"] == "P50"]
+    assert len(authors) == 1 and authors[0]["value"].startswith("__LOCAL:")
+    assert not [s for s in projected["statements"] if s["property"] == "P2093"]
+
+
+def test_full_canonical_build_keeps_title_page_and_colophon_separate() -> None:
+    from converter.wikidata.item_builder import WikidataItemBuilder
+
+    manuscript = _manuscript_entity(claims=[{
+        "wikidata_property": "P1684", "property_id": "P1684",
+        "value": text, "datatype": "string",
+    } for text in ("ספר התורה", "תם ונשלם הספר")])
+    context = canonical_studio_context(marc_records=[{
+        "001": "990001", "245$a": "כותרת",
+        "500$a": 'בשער שבראשו: "ספר התורה".',
+        "957$a": 'קולופון (בדף 21א): "תם ונשלם הספר".',
+    }])
+    legacy = WikidataItemBuilder().build_all(list(context.marc_by_cn.values()))
+    result = build_canonical_studio_result(
+        [manuscript], context=context, reconcile=False, legacy_native_items=legacy,
+    )
+    item = next(row for row in result["items"] if row["entity_type"] == "manuscript")
+    inscriptions = [s for s in item["statements"] if s["property"] == "P1684"]
+    assert len(inscriptions) == 2
+    assert {s["value"] for s in inscriptions} == {"ספר התורה", "תם ונשלם הספר"}
+    assert all(any(q.get("property") == "P3831" for q in s["qualifiers"])
+               for s in inscriptions)
+
+
 def test_canonical_fingerprint_reports_each_entity() -> None:
     calls: list[tuple[int, int]] = []
     canonical_wikidata_fingerprint(
@@ -1089,7 +1232,7 @@ def test_canonical_work_ms_scope_suffix_still_matches_245() -> None:
     assert items[0].work_candidate_evidence[0]["reason"] == "marc_245_title"
 
 
-def test_canonical_known_work_qid_map_recovers_without_marc() -> None:
+def test_collective_scripture_label_does_not_resolve_without_marc() -> None:
     work = normalize_live_entity({
         "local_id": "Work_tanakh",
         "source_uri": "https://w3id.org/mhm/ontology#Work_tanakh",
@@ -1098,9 +1241,7 @@ def test_canonical_known_work_qid_map_recovers_without_marc() -> None:
         "labels": {"he": 'תנ"ך'},
     })
     items = native_items_from_hmo([work])
-    assert len(items) == 1
-    assert items[0].existing_qid == "Q83367"
-    assert items[0].work_candidate_evidence[0]["accepted"] is True
+    assert items == []
 
 
 def test_canonical_placeholder_245_work_still_dropped() -> None:

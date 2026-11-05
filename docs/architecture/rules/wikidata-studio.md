@@ -3243,6 +3243,40 @@ Following Prof. Gila Prebor's audit of `Q141747170` (*Hizzuk Emunah*, `990000885
 6. **Folio-prefixed `500$a` works & `740$a` analytical titles:** `_extract_work_mentions` parses `דף X: ...` / `בדפים X: ...` with `folio_range` → `P1574` + `P958`, and `_extract_740_related_works` promotes `740$a` into `related_works` (`source_field="740"`).
 7. **Exact-year dates, Hebrew dates, places, and scripts:** `P571` emits `P1480 = Q5727902` (`circa`) only when the source string has an explicit approximate marker (27/897 records, never on exact years `1681`/`1650`/`1675`) and records the Hebrew date string in `P1932` (779/897 records). `751$e = place of writing` resolves through `_PLACE_LABEL_QID_OVERRIDES` + KIMA into `P1071` (`Panevėžys` `Q1719466`, `Metz` `Q22690`), `related place` uses `P7153` + `P3831 = Q127695525` (`place of attestation`, never `provenance`), `500$a` `"באיטלקית באותיות לטיניות"` emits `P282 = Q8229` (`Latin script`) without false `ItalianScript` `P9302`, and `958$a = "קראית-אשכנזית"` maps to `AshkenaziScript` (`Q121094898`).
 8. **Subjects, `581$a` bibliography, colophon folios, and title-page inscriptions:** `SUBJECT_TO_QID` covers `Midrash`, `Messiah`, `Religious disputations`, `Karaite law`, and `Jewish ethics`; `581$a` + `942` catalog entries feed `P528` (532/897 records); `957$a` parenthetical folios (`קולופון (בדף 21א):`) populate `P7416 = "21א"` on `P1684` (`Q372474`); and `500$a` `"בשער שבראשו: ..."` emits `P1684` with `P3831 = Q1339862` (`title page`).
-9. **Build rollup indexing & sharded upload batch prefetch:** `_index_entities_by_control_number` indexes only summarized non-uploadable entities and precomputes `uploadable_ids` once per pass (eliminating the 72M-iteration \(O(N \times M)\) scan in `_rollup_sources_for`); `prefetch_entities_for_upload` batch-fetches full `wbgetentities` payloads (`50/request`) to serve labels, `P31`, duplicate metadata, `P3959`, and `wbi.item.new().from_json(...)` in memory; `warm_ownership_cache` batch-resolves creator ownership via `list=usercontribs` (`500/page`) and `share_caches_from` shares caches across slot uploaders; `_rate_limit()` runs only before `.write()` (never before read-only `exists` checks); and ledger-matched works owned by our account bypass LLM duplicate confirmation.
+9. **Full-corpus audit and correction report:** Check every existing record and repair the conversion rules. Export the checked QIDs, verified corrected QIDs, changed fields, and unresolved cases. Distinguish absent source data, untransferred source data, and uncertain identity or scope. Inspect per-item outcomes and live read-back before declaring completion.
+
+**Separate performance work:** `_index_entities_by_control_number` indexes only summarized non-uploadable entities and precomputes `uploadable_ids` once per pass (eliminating the 72M-iteration \(O(N \times M)\) scan in `_rollup_sources_for`); `prefetch_entities_for_upload` batch-fetches full `wbgetentities` payloads (`50/request`) to serve labels, `P31`, duplicate metadata, `P3959`, and `wbi.item.new().from_json(...)` in memory; `warm_ownership_cache` batch-resolves creator ownership via `list=usercontribs` (`500/page`) and `share_caches_from` shares caches across slot uploaders; `_rate_limit()` runs only before `.write()` (never before read-only `exists` checks); and ledger-matched works owned by our account bypass LLM duplicate confirmation.
 Tests: `backend/tests/unit/test_gila_prebor_9_points_audit.py`, `backend/tests/unit/test_wikidata_existence.py`, `backend/tests/unit/test_wikidata_duplicate_confirm.py`.
 
+## Rule W-296 — Source-qualified builder fixes and honest corpus audit proposals (added 2026-11-05)
+
+The full letter exposed gaps after the first audit pass.
+The local rebuild must preserve source facts and unresolved identities through
+the canonical merge and upload compiler.
+
+1. Retain explicit MARC 700/800 scribes as `P11603 somevalue` with `P1932` source
+   names when no authority-backed identity exists. Preserve source uncertainty.
+   Do not create identifierless people.
+2. Keep separate roles and folio ranges in statement identity. Qualifier order
+   and display labels do not distinguish facts.
+3. Use exact approved or audited author evidence. Explicit rejection blocks
+   fallback. Cantarini's verified NLI/VIAF/QID tuple supplies `P50 → Q6076130`.
+4. A secondary 500/740 or NER work needs its own author evidence. Canonical
+   sanitation must not restore the parent record's author by fallback.
+5. An anchored inserted sermon remains a separate, source-scoped work.
+   Its section genre does not classify the whole manuscript. The parser infers
+   no physical unit, folio, or authorship from insertion by a scribe.
+6. Image metadata does not prove codex form. The final canonical pass enforces
+   the same physical evidence as the builder. An exact source date removes
+   stale circa only for the same date and precision.
+7. Owned updates deduplicate exact reference semantics while preserving distinct
+   sources. Reference repairs must reach the write path even when values match.
+8. The user chose separate manuscript/work entities. Keep written-work P31 on
+   works and physical P31 on manuscripts. Record this decision in Gila's response.
+9. `--gila-audit` exports local proposals, known QIDs, catalog-status notes,
+   recent item outcomes, and three review classes. Live snapshots can supply
+   revision/claim-scoped work review proposals. The report performs no repair
+   and leaves `corrected_qids` empty.
+
+Schemas: `source-aware-works-v13` and `hmo-wikidata-v16`.
+Details: [Gila audit completion](../blocks/wikidata-studio/gila-audit-completion.md).

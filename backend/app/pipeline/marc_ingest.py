@@ -1098,6 +1098,12 @@ _FOLIO_PREFIXED_500_RE = _re.compile(
     _re.UNICODE,
 )
 
+_INSERTED_SERMON_RE = _re.compile(
+    r"^(?:בראשו|בסופו)\s+(?:שילב|הוסיף)\s+(?:המעתיק|הסופר)\s+"
+    r"(?P<title>דרשה\s+על\s+פרשת\s+[^.;|]+)[.;]?\s*$",
+    _re.UNICODE,
+)
+
 
 def _extract_work_mentions(record: dict[str, Any]) -> None:
     """Extract named works from semantically anchored MARC 500 notes."""
@@ -1113,6 +1119,16 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
     work_mentions: list[dict[str, str]] = []
     seen_titles: set[str] = set()
     for note in candidates:
+        sermon = _INSERTED_SERMON_RE.fullmatch(note.strip())
+        if sermon:
+            title = clean_marc_label(sermon.group("title").strip())
+            key = title.casefold()
+            if key not in seen_titles:
+                seen_titles.add(key)
+                work_mentions.append({
+                    "title": title, "source_field": "500", "candidate_kind": "named_work",
+                    "source_text": note.strip(), "genre": "Sermons", "identity_scope": "record",
+                })
         folio_match = _FOLIO_PREFIXED_500_RE.match(note.strip())
         if folio_match:
             folio_range = folio_match.group("folio").strip()
@@ -1740,6 +1756,10 @@ def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
         }
         if wm.get("folio_range"):
             row_out["folio_range"] = str(wm.get("folio_range")).strip()
+        if wm.get("genre"):
+            row_out["genre"] = str(wm["genre"])
+        if wm.get("identity_scope"):
+            row_out["identity_scope"] = str(wm["identity_scope"])
         contents.append(row_out)
         existing.add(key)
     if contents:

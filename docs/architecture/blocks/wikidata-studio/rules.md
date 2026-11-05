@@ -1067,7 +1067,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   intervention from the HMO stage) into a single claim per property — joined
   value capped at 4000 chars, catalogue-note placeholders dropped before the
   join (Rule W-72 filter), NLI reference attached. The build fingerprint salt
-  is `hmo-wikidata-v15`. *Why:* a manuscript carrying 62 inscription claims
+  is `hmo-wikidata-v16` after W-296. *Why:* a manuscript carrying 62 inscription claims
   pushed its P31 past the judge's 40-statement projection and 111 items failed
   AI verify for "no instance of" that was present (run 47e03437, Rule W-286).
 
@@ -1156,5 +1156,19 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   share caches across slot uploaders (`share_caches_from`), skip `_rate_limit()`
   on unchanged `exists` items, and bypass LLM confirm on owned ledger works.
   *Why:* Prof. Gila Prebor's audit of `Q141747170`, `Q141747098`, and `Q141175895`
-  against Ktiv MARC records identified these 9 systematic conversion gaps, and
-  per-item unbatched API/LLM calls caused 2,423-item uploads to take 7+ hours.
+  against Ktiv MARC records identified conversion gaps. Her ninth point requires
+  a full-corpus audit and correction report. Separate performance defects caused
+  2,423-item uploads to take 7+ hours.
+
+- **R150 — Source scope and qualified meaning survive every projection (W-296).**
+  Preserve named unresolved scribes without identifierless person items.
+  Keep distinct person roles and folio ranges. Keep author and genre evidence
+  on the matching work. Reject image-only codex inference. Preserve exact dates
+  and distinct references. The user chose separate manuscript/work entities.
+  *Why:* the full letter exposed losses and false claims after the first audit pass.
+- **R151 — A local audit report is a proposal, with explicit review cases (W-296).**
+  Export every source record/QID, catalog-status notes, recent item outcomes,
+  and the three review classes. A work review proposal retains revision and claim IDs.
+  Keep `corrected_qids` empty until a separate write and live read-back establish correction.
+  *Why:* successful jobs and selected-field checks previously overstated completion.
+  Details: [Gila audit completion](gila-audit-completion.md).

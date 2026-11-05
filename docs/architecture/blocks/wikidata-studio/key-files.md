@@ -41,6 +41,8 @@
 | `backend/converter/transformer/extent.py` | Single MARC 300$a extent parser — sums leaf sequences, reads page/gematria units, fails closed (Rule W-140) |
 | `backend/app/pipeline/marc_llm_extract.py` | Span-grounded tier-1 extraction of owner/place/material from MARC provenance prose; proposals only (Rule W-140) |
 | `backend/scripts/check_wikidata_export_quality.py` | Read-only compact audit of work identity, author, language, quote, validation, linked-QID handling, and export-field failures (W-199) |
+| `backend/app/pipeline/wikidata_gila_audit.py` | Source comparison, three review classes, catalog-status evidence, and revision/claim-scoped work review proposals (W-296) |
+| `backend/scripts/local_measure_verify.py` | Read-only local build/verify; `--gila-audit` writes the full-run local proposal report without an AI judge (W-296) |
 | `backend/converter/wikidata/marc_field_map.py` | The MARC field → Wikidata target table (W-275): one deliberate fate per field — `map` / `evidence` / `out_of_model` — plus per-field and per-property coverage targets; source of the WP8 ledger |
 | `backend/scripts/marc_wikidata_coverage.py` | Coverage harness (W-275): parses a MARC TSV, joins claims by P3959 (`--projected` / `--claims` / `--live`), prints the per-field table against the targets, exits non-zero on regression or `--fail-below-target` |
 | `backend/app/pipeline/marc_ingest.py` | MARC ingest/normalisation — `035$a` falls back into the P3959 identity channel when `001` is absent (W-276); MARC 880 resolves as its linked tag (W-276) |

@@ -73,7 +73,7 @@ import subprocess
 import sys
 import uuid
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -426,9 +426,12 @@ async def _async_main(args: argparse.Namespace) -> int:
     _load_dotenv()
     if not os.environ.get("DATABASE_URL"):
         raise SystemExit("DATABASE_URL is required (Heroku prod or local .env).")
-    env_name, key = _resolve_tier_key(args.tier_model)
-    if not key:
-        raise SystemExit(f"missing {env_name} for tier model {args.tier_model}")
+    if args.gila_audit and args.channel != "wikidata":
+        raise SystemExit("--gila-audit requires --channel wikidata.")
+    if not args.gila_audit:
+        env_name, key = _resolve_tier_key(args.tier_model)
+        if not key:
+            raise SystemExit(f"missing {env_name} for tier model {args.tier_model}")
 
     channel = CHANNELS[args.channel]()
     run_id = uuid.UUID(args.run_id)
@@ -439,6 +442,66 @@ async def _async_main(args: argparse.Namespace) -> int:
     # 1. build items measurement-only (no DB writes)
     items, marc_records = await channel.build_measurement(run_id, scratch)
     items_by_id = {_local_id(i): i for i in items if _local_id(i)}
+
+    if args.gila_audit:
+        from app.models.run_job import RunJob
+        from app.pipeline.marc_ingest import prepare_record_for_pipeline
+        from app.pipeline.wikidata_gila_audit import build_gila_audit_report
+        from app.pipeline.wikidata_qid_ledger import load_global_ledger
+
+        async with session_scope() as db:
+            ledger = await load_global_ledger(db, is_test=False)
+            jobs = (await db.execute(select(RunJob.id, RunJob.result).where(
+                RunJob.run_id == run_id, RunJob.kind == "wikidata_upload",
+                RunJob.status == "succeeded",
+            ).order_by(RunJob.created_at.desc()).limit(10))).all()
+        qids_by_cn: dict[str, str] = {}
+        for raw in marc_records:
+            cn = str(prepare_record_for_pipeline(raw).get("_control_number") or "")
+            qids = {ledger[key] for key in (
+                f"wikidata:marc:{cn}", f"wikidata:marc:QDraft_MS_{cn}",
+                f"wikidata:marc:marc:{cn}",
+            ) if ledger.get(key)}
+            if len(qids) == 1:
+                qids_by_cn[cn] = qids.pop()
+        live_entities = None
+        if args.audit_live_snapshot:
+            snapshot_text = await asyncio.to_thread(
+                Path(args.audit_live_snapshot).expanduser().read_text,
+            )
+            snapshot = json.loads(snapshot_text)
+            if not isinstance(snapshot, dict) or not isinstance(snapshot.get("entities"), dict):
+                raise SystemExit("The live snapshot must contain an entities object.")
+            live_entities = snapshot["entities"]
+        report = build_gila_audit_report(
+            marc_records, items, qids_by_cn=qids_by_cn, live_entities=live_entities,
+        )
+        latest_outcomes: dict[str, dict[str, object]] = {}
+        for job_id, result in jobs:
+            for outcome in (result or {}).get("outcomes", []):
+                local_id = str(outcome.get("local_id") or "")
+                if local_id and local_id not in latest_outcomes:
+                    latest_outcomes[local_id] = {
+                        "local_id": local_id, "job_id": str(job_id),
+                        "status": outcome.get("status"), "qid": outcome.get("qid"),
+                    }
+        report["run_id"] = str(run_id)
+        report["projection_source"] = "legacy"
+        report["generated_at"] = datetime.now(UTC).isoformat()
+        report["validation_error_items"] = sum(
+            any(issue.get("severity") == "error" for issue in item.get("validation_issues", []))
+            for item in items
+        )
+        report["upload_outcomes_basis"] = "latest_outcome_per_local_id_in_last_ten_succeeded_jobs"
+        report["upload_outcomes"] = list(latest_outcomes.values())
+        path = out_dir / "gila_builder_audit.json"
+        path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(json.dumps({"mode": report["mode"], "records": report["record_count"],
+                          "checked_qids": len(report["checked_qids"]),
+                          "case_counts": report["case_counts"],
+                          "validation_error_items": report["validation_error_items"],
+                          "report_path": str(path)}))
+        return 0
 
     # 2. baseline verdicts (export file preferred, else DB read-only)
     if args.baseline_export:
@@ -545,6 +608,10 @@ def main() -> None:
     p.add_argument("--channel", choices=sorted(CHANNELS), default="hmo")
     p.add_argument("--run-id", default=DEFAULT_RUN_ID)
     p.add_argument("--scope", choices=("non-passing", "all"), default="non-passing")
+    p.add_argument("--gila-audit", action="store_true",
+                   help="write a full-run source audit without an AI judge or live writes")
+    p.add_argument("--audit-live-snapshot", default=None,
+                   help="optional wbgetentities JSON for source-specific work repair proposals")
     p.add_argument("--baseline-export", default=None,
                    help="export JSON of the prior verify (for scope + before/after)")
     p.add_argument("--local-id", action="append", default=None, help="repeatable")

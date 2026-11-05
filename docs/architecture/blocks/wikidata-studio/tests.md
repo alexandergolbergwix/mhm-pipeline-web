@@ -260,4 +260,11 @@ Any new external-write path or reconcile change MUST extend
   attestation places, `P282 = Q8229` (`Latin script`) without false `ItalianScript`,
   and `581$a` bibliography (`P528`), `957$a` colophon folios (`P7416`), and `500$a`
   title-page inscriptions (`P1684` + `P3831 = Q1339862`).
-
+- W-296 extends that suite with unknown scribes, explicit rejection, audited
+  Cantarini reuse, separate descriptive sermons, source-scoped authors, physical
+  evidence, and report classifications.
+- `test_wikidata_canonical_enrichment.py` and `test_hmo_canonical_wikidata.py`
+  test full-merge author scope, role/folio identity, exact dates, Ktiv roles,
+  and rejection of stale codex claims.
+- `test_wikidata_upload_claim_complete_w191.py` tests the actual unknown-value
+  Wikibase snak and reference deduplication that preserves a distinct source.

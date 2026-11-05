@@ -5,6 +5,7 @@ from __future__ import annotations
 import converter.wikidata.item_builder  # noqa: F401  (import order)
 from app.pipeline.wikidata_canonical_enrichment import (
     coalesce_person_items_by_strong_identity,
+    dedupe_statements,
     merge_legacy_into_canonical,
     normalize_work_author_claims,
 )
@@ -25,6 +26,109 @@ def _ms(local_id: str, cn: str, *stmts: WikidataStatement) -> WikidataItem:
         labels={"he": "כותרת"},
         statements=list(stmts),
     )
+
+
+def test_canonical_merge_preserves_two_named_unknown_scribes() -> None:
+    statements = [WikidataStatement(
+        property_id="P11603", value=None, value_type="somevalue",
+        qualifiers=[{"property": "P1932", "value": name, "type": "string"}],
+    ) for name in ("אהרן בן יצחק", "משה בן יעקב")]
+    canonical = _ms("canonical-ms", "990001", statements[0])
+    legacy = _ms("marc:990001", "990001", *statements)
+    merged = merge_legacy_into_canonical([canonical], [legacy])
+    assert len([s for s in merged[0].statements if s.property_id == "P11603"]) == 2
+
+
+def test_canonical_merge_adds_the_digital_collection_role() -> None:
+    canonical = _ms("canonical-ms", "990001", WikidataStatement(
+        property_id="P361", value="Q118384267", value_type="item",
+    ))
+    legacy = _ms("marc:990001", "990001", WikidataStatement(
+        property_id="P361", value="Q118384267", value_type="item",
+        qualifiers=[{"property": "P3831", "value": "Q60474998", "type": "item"}],
+    ))
+    merged = merge_legacy_into_canonical([canonical], [legacy])
+    claims = [s for s in merged[0].statements if s.property_id == "P361"]
+    assert len(claims) == 1
+    assert claims[0].qualifiers == legacy.statements[0].qualifiers
+
+
+def test_statement_dedup_keeps_distinct_folios_but_ignores_qualifier_order() -> None:
+    first = WikidataStatement(
+        property_id="P1574", value="Q123", value_type="item",
+        qualifiers=[{"property": "P958", "value": "1א-2ב", "type": "string"},
+                    {"property": "P1932", "value": "דרושים", "type": "string"}],
+    )
+    duplicate = WikidataStatement(
+        property_id="P1574", value="Q123", value_type="item",
+        qualifiers=list(reversed(first.qualifiers)),
+    )
+    second = WikidataStatement(
+        property_id="P1574", value="Q123", value_type="item",
+        qualifiers=[{"property": "P958", "value": "10א-11ב", "type": "string"}],
+    )
+    assert len(dedupe_statements([first, duplicate, second])) == 2
+
+
+def test_canonical_merge_does_not_restore_a_section_genre_on_the_manuscript() -> None:
+    canonical = _ms("canonical-ms", "990001", WikidataStatement(
+        property_id="P921", value="Q60797", value_type="item",
+    ))
+    legacy = _ms("marc:990001", "990001")
+    legacy.work_candidate_evidence = [{
+        "title": "דרשה על פרשת ויגש", "accepted": True, "source_field": "500",
+        "scope": "contained_work", "genre_qid": "Q60797",
+    }]
+    merged = merge_legacy_into_canonical([canonical], [legacy])
+    assert not [s for s in merged[0].statements if s.property_id == "P921" and s.value == "Q60797"]
+
+
+def test_exact_marc_year_replaces_a_stale_canonical_circa_for_the_same_year() -> None:
+    canonical = _ms("canonical-ms", "990001", WikidataStatement(
+        property_id="P571", value="+1650-00-00T00:00:00Z", value_type="time",
+        qualifiers=[{"property": "P1480", "value": "Q5727902", "type": "item"}],
+    ))
+    legacy = _ms("marc:990001", "990001", WikidataStatement(
+        property_id="P571", value="+1650-00-00T00:00:00Z", value_type="time",
+        qualifiers=[{"property": "P1932", "value": 'ת"י', "type": "string"}],
+    ))
+    merged = merge_legacy_into_canonical([canonical], [legacy])
+    dates = [s for s in merged[0].statements if s.property_id == "P571"]
+    assert len(dates) == 1
+    assert not any(q.get("property") == "P1480" for q in dates[0].qualifiers)
+
+
+def test_statement_dedup_preserves_distinct_source_references() -> None:
+    first = WikidataStatement(
+        property_id="P217", value="Ms. 1", value_type="string",
+        references=[{"property": "P854", "value": "https://example.org/first", "type": "url"}],
+    )
+    second = WikidataStatement(
+        property_id="P217", value="Ms. 1", value_type="string",
+        references=[{"property": "P854", "value": "https://example.org/second", "type": "url"}],
+    )
+    combined = dedupe_statements([first, second])
+    assert len(combined) == 1
+    assert {r["value"] for r in combined[0].references} == {
+        "https://example.org/first", "https://example.org/second",
+    }
+
+
+def test_canonical_same_fact_merge_keeps_both_citations() -> None:
+    canonical = _ms("canonical-ms", "990001", WikidataStatement(
+        property_id="P31", value="Q87167", value_type="wikibase-item",
+        references=[{"property": "P854", "value": "https://example.org/hmo", "type": "url"}],
+    ))
+    legacy = _ms("marc:990001", "990001", WikidataStatement(
+        property_id="P31", value="Q87167", value_type="item",
+        references=[{"property": "P854", "value": "https://example.org/marc", "type": "url"}],
+    ))
+    merged = merge_legacy_into_canonical([canonical], [legacy])
+    classes = [s for s in merged[0].statements if s.property_id == "P31"]
+    assert len(classes) == 1
+    assert {r["value"] for r in classes[0].references} == {
+        "https://example.org/hmo", "https://example.org/marc",
+    }
 
 
 def _person(local_id: str, *, viaf: str = "", label: str = "Name") -> WikidataItem:

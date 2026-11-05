@@ -409,20 +409,6 @@ class ManuscriptMetadataMixin:
                         has_multi_leaf_extent = True
                 except (TypeError, ValueError):
                     pass
-            if not has_multi_leaf_extent:
-                raw_907i = str(record.get("907$i") or "").strip().strip('"')
-                raw_907n = str(record.get("907$n") or "").strip().strip('"')
-                try:
-                    if int(raw_907i) >= 4:
-                        has_multi_leaf_extent = True
-                except (TypeError, ValueError):
-                    pass
-                if not has_multi_leaf_extent and re.search(
-                    r"(?:leaf|folio|page|img)0*(?:[2-9]|\d{2,})",
-                    raw_907n,
-                    re.IGNORECASE,
-                ):
-                    has_multi_leaf_extent = True
         if has_multi_leaf_extent and Q_MANUSCRIPT_CODEX not in qids:
             qids.append(Q_MANUSCRIPT_CODEX)
         from converter.wikidata.marc_subject_resolve import instance_qids_from_genre_labels  # noqa: PLC0415

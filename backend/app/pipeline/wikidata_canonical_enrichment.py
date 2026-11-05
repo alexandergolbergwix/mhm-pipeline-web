@@ -7,9 +7,11 @@ provenance) while keeping HMO local_ids, bridges, and existing QIDs.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from app.pipeline.marc_verify_context import (
@@ -549,6 +551,53 @@ def _rewrite_local_reference_aliases(
     return rewritten
 
 
+def _merge_statement_references(retained: WikidataStatement, removed: WikidataStatement) -> None:
+    references = list(retained.references or [])
+    for reference in removed.references or []:
+        if reference not in references:
+            references.append(reference)
+    retained.references = references
+
+
+def _normalized_transcription(value: object) -> str:
+    text = str(value or "").strip().replace('""', '"')
+    while len(text) >= 2 and text.startswith('"') and (
+        text.endswith('"') or text.endswith('".')
+    ):
+        text = text[1:-2].strip() if text.endswith('".') else text[1:-1].strip()
+    return " ".join(text.split()).rstrip(" .")
+
+
+def _remove_redundant_combined_inscriptions(
+    canonical: list[WikidataStatement], legacy: list[WikidataStatement],
+) -> list[WikidataStatement]:
+    qualified = [s for s in legacy if s.property_id == "P1684" and s.qualifiers]
+    if not qualified:
+        return canonical
+    kept: list[WikidataStatement] = []
+    for statement in canonical:
+        if statement.property_id != "P1684" or statement.qualifiers:
+            kept.append(statement)
+            continue
+        raw_fragments = str(statement.value or "").split(" | ")
+        fragments = [_normalized_transcription(text) for text in raw_fragments]
+        covered: set[int] = set()
+        for source in qualified:
+            sequence = [_normalized_transcription(text)
+                        for text in str(source.value or "").split(" | ")]
+            for start in range(len(fragments) - len(sequence) + 1):
+                if fragments[start:start + len(sequence)] == sequence:
+                    covered.update(range(start, start + len(sequence)))
+                    _merge_statement_references(source, statement)
+        if not covered:
+            kept.append(statement)
+            continue
+        remaining = [text for index, text in enumerate(raw_fragments) if index not in covered]
+        if remaining:
+            kept.append(replace(statement, value=" | ".join(remaining)))
+    return kept
+
+
 def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
     out = WikidataItem(
         labels=dict(canonical.labels or {}),
@@ -589,6 +638,27 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
             if text and text not in bucket:
                 bucket.append(text)
 
+    exact_source_dates = {
+        (str(statement.value), statement.precision)
+        for statement in legacy.statements or []
+        if statement.property_id == "P571"
+        and not any(q.get("property") == "P1480" for q in statement.qualifiers or [])
+    }
+    if out.entity_type == "manuscript" and exact_source_dates:
+        out.statements = [
+            statement for statement in out.statements
+            if not (
+                statement.property_id == "P571"
+                and (str(statement.value), statement.precision) in exact_source_dates
+                and any(q.get("property") == "P1480" and q.get("value") == "Q5727902"
+                        for q in statement.qualifiers or [])
+            )
+        ]
+
+    if out.entity_type == "manuscript":
+        out.statements = _remove_redundant_combined_inscriptions(
+            out.statements, legacy.statements or [],
+        )
     seen = {_statement_key(stmt) for stmt in out.statements}
 
     def _norm_p1684(val: object) -> str:
@@ -603,16 +673,19 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
         pid = str(stmt.property_id or "")
         key = _statement_key(stmt)
         if (
-            pid == "P1684"
+            pid in {"P1684", "P361"}
             and getattr(stmt, "qualifiers", None)
         ):
-            norm_leg = _norm_p1684(stmt.value)
+            norm_leg = _norm_p1684(stmt.value) if pid == "P1684" else str(stmt.value)
             replaced_unqualified = False
             for idx, existing_stmt in enumerate(out.statements):
                 if (
-                    str(existing_stmt.property_id or "") == "P1684"
+                    str(existing_stmt.property_id or "") == pid
                     and not getattr(existing_stmt, "qualifiers", None)
-                    and _norm_p1684(existing_stmt.value) == norm_leg
+                    and (
+                        _norm_p1684(existing_stmt.value)
+                        if pid == "P1684" else str(existing_stmt.value)
+                    ) == norm_leg
                 ):
                     out.statements[idx] = stmt
                     seen.add(key)
@@ -621,6 +694,8 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
             if replaced_unqualified:
                 continue
         if key in seen:
+            retained = next(s for s in out.statements if _statement_key(s) == key)
+            _merge_statement_references(retained, stmt)
             continue
         if (
             pid in _CANONICAL_PREFERRED_PIDS
@@ -638,6 +713,18 @@ def _merge_pair(canonical: WikidataItem, legacy: WikidataItem) -> WikidataItem:
         out.statements.append(stmt)
         seen.add(key)
     out.statements = dedupe_statements(out.statements)
+    scoped_genres = {
+        str(evidence["genre_qid"])
+        for evidence in legacy.work_candidate_evidence or []
+        if evidence.get("accepted") is True
+        and evidence.get("scope") == "contained_work"
+        and evidence.get("genre_qid")
+    }
+    if out.entity_type == "manuscript" and scoped_genres:
+        out.statements = [
+            statement for statement in out.statements
+            if not (statement.property_id in {"P921", "P136"} and statement.value in scoped_genres)
+        ]
     _with_canonical_titles(out)
     _apply_printed_facsimile_typing(out, legacy)
     # Alias union can reintroduce 500-note work titles; re-apply W-176.
@@ -802,7 +889,7 @@ def normalize_work_author_claims(items: list[WikidataItem]) -> int:
 
 
 def dedupe_statements(statements: list[WikidataStatement]) -> list[WikidataStatement]:
-    """One statement per (property, value), keeping the best-sourced instance.
+    """Keep one best-sourced statement per qualified property/value.
 
     ``_statement_key`` includes ``value_type``, so the same fact emitted as
     ``string`` and ``external-id`` survived twice — every manuscript shipped
@@ -815,12 +902,13 @@ def dedupe_statements(statements: list[WikidataStatement]) -> list[WikidataState
     judge read the bare string twin as a removable bad claim (2026-10-04:
     role_ok=partial on every manuscript carrying both).
     """
-    best: dict[tuple[str, str], WikidataStatement] = {}
-    order: list[tuple[str, str]] = []
+    best: dict[tuple[str, str, tuple[str, ...]], WikidataStatement] = {}
+    order: list[tuple[str, str, tuple[str, ...]]] = []
     for stmt in statements or []:
         key = (
             str(stmt.property_id or ""),
             _dedupe_value(str(stmt.property_id or ""), stmt),
+            _qualifier_identity(stmt),
         )
         current = best.get(key)
         if current is None:
@@ -845,7 +933,10 @@ def dedupe_statements(statements: list[WikidataStatement]) -> list[WikidataState
                 len(current.qualifiers or []),
             )
         if rank > current_rank:
+            _merge_statement_references(stmt, current)
             best[key] = stmt
+        else:
+            _merge_statement_references(current, stmt)
     return [best[key] for key in order]
 
 
@@ -858,6 +949,8 @@ _QUANTITY_DEDUPE_PIDS = frozenset({"P2048", "P2049", "P1104"})
 
 
 def _dedupe_value(pid: str, stmt: WikidataStatement) -> str:
+    if stmt.value_type in {"somevalue", "novalue"}:
+        return stmt.value_type
     value = str(stmt.value if stmt.value is not None else "")
     if pid == "P2093":
         # MARC 100$a punctuation is transcription variance, not identity:
@@ -873,15 +966,30 @@ def _dedupe_value(pid: str, stmt: WikidataStatement) -> str:
     return value
 
 
-def _statement_key(stmt: WikidataStatement) -> tuple[str, str, str]:
-    """Merge-time key: (property, value_type, value) with P2093 normalization."""
+def _qualifier_identity(stmt: WikidataStatement) -> tuple[str, ...]:
+    fields = ("property", "value", "type", "language", "precision", "unit")
+    return tuple(sorted({
+        json.dumps(
+            {key: qualifier[key] for key in fields if key in qualifier},
+            sort_keys=True, ensure_ascii=False, default=str,
+        )
+        for qualifier in stmt.qualifiers or []
+    }))
+
+
+def _statement_key(stmt: WikidataStatement) -> tuple[str, str, str, tuple[str, ...]]:
+    """Compare the value and qualifier meaning, including named unknown values."""
     pid = str(stmt.property_id or "")
+    value_type = str(stmt.value_type or "")
+    if value_type in {"wikibase-item", "wikibase-entityid"}:
+        value_type = "item"
     return (
         pid,
-        str(stmt.value_type or ""),
+        value_type,
         _dedupe_value(pid, stmt)
         if pid == "P2093" or pid in _QUANTITY_DEDUPE_PIDS
         else str(stmt.value if stmt.value is not None else ""),
+        _qualifier_identity(stmt),
     )
 
 
