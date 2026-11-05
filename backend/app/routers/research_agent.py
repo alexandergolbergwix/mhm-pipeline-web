@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import asyncio
 import uuid
+from collections.abc import Awaitable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -710,6 +711,28 @@ def _prefilter_check(text: str, project_id: str):
     return JevPreFilter(api_key=api_key).check(text, project_id=project_id)
 
 
+async def _relay_call(awaitable: Awaitable[Any]) -> Any:
+    """Run one Redis relay op; map a dropped connection to a retryable 503.
+
+    The unhandled ConnectionError surfaced as "Agent stream failed (500):
+    Internal Server Error" (production incident 2026-11-05).
+    """
+    import redis.exceptions  # noqa: PLC0415
+
+    try:
+        return await awaitable
+    except (
+        redis.exceptions.ConnectionError,
+        redis.exceptions.TimeoutError,
+        ConnectionError,
+        TimeoutError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The agent event relay is temporarily unavailable. Send the question again.",
+        ) from exc
+
+
 @router.post("/agui-async")
 @limiter.limit("30/minute")
 async def start_async_agui(
@@ -745,7 +768,7 @@ async def start_async_agui(
     await _require_membership(claims.project_id, auth, db)
 
     run_id = str(body.runId or uuid.uuid4())
-    await async_run.register_run(claims.thread_id, run_id)
+    await _relay_call(async_run.register_run(claims.thread_id, run_id))
 
     # Strict AG-UI message shape: RunAgentInput validation (422) rejects
     # anything but {id, role, content-string} dicts. Coerce here so the
@@ -791,11 +814,11 @@ async def start_async_agui(
             prefilter_verdict_message,
         )
 
-        await async_run.append_events(claims.thread_id, run_id, [
+        await _relay_call(async_run.append_events(claims.thread_id, run_id, [
             {"type": "RUN_ERROR", "message": prefilter_verdict_message(verdict),
              "code": "gate_refused", "retryable": False},
             {"type": "RUN_FINISHED"},
-        ])
+        ]))
         return {
             "run_id": run_id,
             "stream_url": f"/api/research-agent/agui-stream?run_id={run_id}",
@@ -814,13 +837,13 @@ async def start_async_agui(
         web_base=_public_base_url(request),
     )
     if answer is not None:
-        await async_run.append_events(claims.thread_id, run_id, [
+        await _relay_call(async_run.append_events(claims.thread_id, run_id, [
             {"type": "RUN_STARTED"},
             {"type": "TEXT_MESSAGE_START", "role": "assistant"},
             {"type": "TEXT_MESSAGE_CONTENT", "delta": answer.text},
             {"type": "TEXT_MESSAGE_END"},
             {"type": "RUN_FINISHED"},
-        ])
+        ]))
         await journal_stage(
             db, run_id=run_id, project_id=str(claims.project_id),
             thread_id=str(claims.thread_id), stage="deterministic_answer",
@@ -915,10 +938,11 @@ async def agui_events(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid JSON body.") from exc
     body = AguiEventsRequest.model_validate(payload)
-    bound = await async_run.run_thread_id(body.run_id)
+    # A 503 here makes Modal's webhook retry (3 attempts) resend the batch.
+    bound = await _relay_call(async_run.run_thread_id(body.run_id))
     if bound is None or bound != str(claims.thread_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown run for this grant.")
-    stored = await async_run.append_events(claims.thread_id, body.run_id, body.events)
+    stored = await _relay_call(async_run.append_events(claims.thread_id, body.run_id, body.events))
     # P1 observability (W-274): every terminal event lands in the run journal
     # so a crashed remote run is diagnosable, not guessed at.
     from app.services.research_agent.journal import journal_stage  # noqa: PLC0415
@@ -987,7 +1011,7 @@ async def agui_stream(
     """SSE bridge over the run's Redis Stream, with heartbeats."""
     from app.services.research_agent import async_run  # noqa: PLC0415
 
-    bound = await async_run.run_thread_id(run_id)
+    bound = await _relay_call(async_run.run_thread_id(run_id))
     if bound is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown run.")
     thread = await db.get(ResearchAgentThread, uuid.UUID(bound))

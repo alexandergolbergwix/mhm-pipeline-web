@@ -53,9 +53,12 @@ kinds — the tables above reflect the current code.)
 `get_redis()` (`redis_client.py:15`) is a lazy module-level singleton: no
 `REDIS_URL` (env or settings) → returns `None` and every caller silently
 degrades to Postgres-only / memory-only. Heroku's self-signed `rediss://`
-cert is handled with `ssl_cert_reqs=None`. `close_redis()` runs in the
-FastAPI lifespan teardown (`app/main.py:62`). The slowapi rate limiter shares
-the same Redis via `RATELIMIT_STORAGE_URI`.
+cert is handled with `ssl_cert_reqs=None`. The shared pool sets
+`health_check_interval=30`, `socket_keepalive=True`, and a 2-attempt
+exponential-backoff `Retry`, so a connection the server dropped under
+memory pressure is refreshed instead of written to dead (Rule W-297).
+`close_redis()` runs in the FastAPI lifespan teardown (`app/main.py:62`).
+The slowapi rate limiter shares the same Redis via `RATELIMIT_STORAGE_URI`.
 
 ### Tier-2 scoped cache
 

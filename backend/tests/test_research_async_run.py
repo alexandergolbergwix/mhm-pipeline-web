@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
-
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 pytestmark = pytest.mark.asyncio
 
@@ -111,3 +111,91 @@ async def test_stream_without_terminal_event_reports_a_distinct_code():
         assert "stopped responding" not in str(errors[0].get("message"))
     finally:
         ar._MAX_IDLE_S = original_idle
+
+
+class _FlakyRedis:
+    """Fake shared client: the first `fail_times` SETs raise ConnectionError."""
+
+    def __init__(self, fail_times: int):
+        self.fail_times = fail_times
+        self.set_calls = 0
+
+    async def set(self, *args, **kwargs):
+        self.set_calls += 1
+        if self.set_calls <= self.fail_times:
+            raise RedisConnectionError("Connection lost")
+        return True
+
+
+async def test_register_run_retries_once_on_connection_loss(monkeypatch):
+    from app.services.research_agent import async_run as ar
+
+    fake = _FlakyRedis(fail_times=1)
+
+    async def _fake_get_redis():
+        return fake
+
+    monkeypatch.setattr(ar, "get_redis", _fake_get_redis)
+    await ar.register_run("thread-x", "run-retry")
+    assert fake.set_calls == 2
+
+
+async def test_register_run_raises_after_the_retry_fails(monkeypatch):
+    from app.services.research_agent import async_run as ar
+
+    fake = _FlakyRedis(fail_times=99)
+
+    async def _fake_get_redis():
+        return fake
+
+    monkeypatch.setattr(ar, "get_redis", _fake_get_redis)
+    with pytest.raises(RedisConnectionError):
+        await ar.register_run("thread-x", "run-dead")
+    assert fake.set_calls == 2
+
+
+async def test_async_start_maps_relay_outage_to_503(sample_run, monkeypatch):
+    """A dead relay connection is a retryable 503, never a bare 500."""
+    from app.services.research_agent import async_run as ar
+    from app.settings import get_settings
+
+    monkeypatch.setattr(
+        get_settings(), "research_agent_modal_url", "https://modal.invalid",
+        raising=False,
+    )
+
+    async def _dead(*args, **kwargs):
+        raise RedisConnectionError("Connection lost")
+
+    monkeypatch.setattr(ar, "register_run", _dead)
+    session = await _mint(sample_run)
+    resp = await sample_run["client"].post(
+        "/api/research-agent/agui-async",
+        json={
+            "threadId": session["thread_id"],
+            "messages": [{"id": "m1", "role": "user", "content": "hi"}],
+            "forwardedProps": {"tool_grant": session["tool_grant"]},
+        },
+    )
+    assert resp.status_code == 503
+    assert "temporarily unavailable" in resp.json()["detail"]
+
+
+async def test_webhook_maps_relay_outage_to_503(sample_run, monkeypatch):
+    """The webhook 503 lets Modal's retry resend the batch."""
+    from app.services.research_agent import async_run as ar
+
+    session = await _mint(sample_run)
+    run_id = "async-relay-outage"
+    await ar.register_run(uuid.UUID(session["thread_id"]), run_id)
+
+    async def _dead(*args, **kwargs):
+        raise RedisConnectionError("Connection lost")
+
+    monkeypatch.setattr(ar, "append_events", _dead)
+    resp = await sample_run["client"].post(
+        "/api/research-agent/agui-events",
+        headers={"Authorization": f"Bearer {session['tool_grant']}"},
+        json={"run_id": run_id, "events": [{"type": "RUN_FINISHED"}]},
+    )
+    assert resp.status_code == 503

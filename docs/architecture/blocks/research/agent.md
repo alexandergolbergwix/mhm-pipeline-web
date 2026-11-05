@@ -11,9 +11,11 @@ Analytics routers are unchanged; the agent wraps them.
 **Async runs (Rule R28).** When Modal is configured the planner runs
 detached: `POST /agui-async` dispatches Modal (202), Modal relays AG-UI
 events to the `agui-events` webhook, and the browser reads the Heroku
-SSE bridge (`agui-stream`, Redis-Stream backed, heartbeats). The local
-AG-UI stub keeps the legacy request-scoped stream. Map artifacts carry
-the manuscript's `cn`; the canvas preselects it in `ProvenanceMapPanel`.
+SSE bridge (`agui-stream`, Redis-Stream backed, heartbeats). A dropped
+Redis connection retries once and maps to a retryable `503` on all three
+endpoints (Rule R35) — never a bare `500`. The local AG-UI stub keeps the
+legacy request-scoped stream. Map artifacts carry the manuscript's `cn`;
+the canvas preselects it in `ProvenanceMapPanel`.
 
 Architecture name (code + docs, not a prompt-only policy):
 **Architecting Secure, Domain-Restricted Agentic Systems for Bibliographic

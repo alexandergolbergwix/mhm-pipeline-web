@@ -25,14 +25,25 @@ async def get_redis() -> Any:
     if not url:
         return None
     import redis.asyncio as aioredis  # noqa: PLC0415
+    from redis.backoff import ExponentialBackoff  # noqa: PLC0415
+    from redis.retry import Retry  # noqa: PLC0415
 
     # Heroku Redis uses a self-signed TLS cert on rediss:// URLs.
     # ssl_cert_reqs=None disables hostname verification for that cert
     # while keeping the transport encrypted.
+    #
+    # health_check_interval / socket_keepalive / retry: a pooled connection
+    # that the server dropped under dyno memory pressure was written to
+    # dead once and surfaced as an unhandled ConnectionError ("Connection
+    # lost", production incident 2026-11-05). The ping refreshes stale
+    # connections and the retry replays the one dropped command.
     _client = aioredis.from_url(
         url,
         decode_responses=False,
         ssl_cert_reqs=None,
+        socket_keepalive=True,
+        health_check_interval=30,
+        retry=Retry(ExponentialBackoff(cap=1.0, base=0.1), 2),
     )
     return _client
 

@@ -74,11 +74,40 @@ def _sweep_memory() -> None:
         _MEMORY.pop(key, None)
 
 
+def _redis_errors() -> tuple[type[BaseException], ...]:
+    import redis.exceptions  # noqa: PLC0415
+
+    # redis exception classes do NOT subclass the builtins; the asyncio
+    # transport can also raise the builtin forms directly.
+    return (
+        redis.exceptions.ConnectionError,
+        redis.exceptions.TimeoutError,
+        ConnectionError,
+        TimeoutError,
+    )
+
+
+async def _with_relay_retry(fn, /, *args, **kwargs):
+    """Run one Redis relay command; retry once when the connection dropped.
+
+    A dead pooled connection under dyno memory pressure turned a single
+    `redis.set` into an unhandled 500 (production incident 2026-11-05).
+    SET/GET are idempotent and the XADD batch is one MULTI/EXEC transaction,
+    so a replay after a lost write cannot duplicate a partial batch.
+    """
+    try:
+        return await fn(*args, **kwargs)
+    except _redis_errors() as exc:
+        logger.warning("redis relay op failed (%s); retrying once", exc)
+        await asyncio.sleep(0.2)
+        return await fn(*args, **kwargs)
+
+
 async def register_run(thread_id: uuid.UUID | str, run_id: str) -> None:
     """Bind run_id → thread for webhook authorization, with TTL."""
     redis = await get_redis()
     if redis is not None:
-        await redis.set(_run_key(run_id), str(thread_id), ex=_TTL_S)
+        await _with_relay_retry(redis.set, _run_key(run_id), str(thread_id), ex=_TTL_S)
         return
     _memory_run(run_id).thread = str(thread_id)
 
@@ -86,7 +115,7 @@ async def register_run(thread_id: uuid.UUID | str, run_id: str) -> None:
 async def run_thread_id(run_id: str) -> str | None:
     redis = await get_redis()
     if redis is not None:
-        value = await redis.get(_run_key(run_id))
+        value = await _with_relay_retry(redis.get, _run_key(run_id))
         return value.decode() if isinstance(value, bytes) else (str(value) if value else None)
     run = _MEMORY.get(run_id)
     return run.thread if run else None
@@ -99,14 +128,21 @@ async def append_events(thread_id: uuid.UUID | str, run_id: str, events: list[di
     redis = await get_redis()
     key = _stream_key(thread_id, run_id)
     if redis is not None:
-        pipe = redis.pipeline(transaction=True)
-        for event in events:
-            pipe.xadd(key, {"data": json.dumps(event, ensure_ascii=False)}, maxlen=_STREAM_MAXLEN)
         done = any(str(e.get("type")) in ("RUN_FINISHED", "RUN_ERROR") for e in events)
-        if done:
-            pipe.xadd(key, {"data": "__END__"}, maxlen=_STREAM_MAXLEN)
-        pipe.expire(key, _TTL_S)
-        await pipe.execute()
+
+        async def _execute() -> None:
+            # Built fresh per attempt: a failed pipeline.reset() clears the
+            # command stack, so replay must rebuild the batch.
+            pipe = redis.pipeline(transaction=True)
+            for event in events:
+                payload = {"data": json.dumps(event, ensure_ascii=False)}
+                pipe.xadd(key, payload, maxlen=_STREAM_MAXLEN)
+            if done:
+                pipe.xadd(key, {"data": "__END__"}, maxlen=_STREAM_MAXLEN)
+            pipe.expire(key, _TTL_S)
+            await pipe.execute()
+
+        await _with_relay_retry(_execute)
         return len(events)
     run = _memory_run(run_id)
     run.thread = str(thread_id)  # type: ignore[attr-defined]

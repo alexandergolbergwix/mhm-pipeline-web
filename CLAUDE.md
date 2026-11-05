@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-296)
+## Architectural rules (W-1…W-297)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -307,6 +307,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-229** — Modal AG-UI binds Starlette Request (no query-param 422) and calls `dispatch_request(request, agent=agent)`
 - **W-231** — Research AG-UI retries planner output (≥3) and hides pydantic-ai retry strings from the chat
 - **W-295** — Corpus refreshes pass both prompt gates; source counts follow upload ledgers and invalidate cached summaries after mapping changes
+- **W-297** — Research Assistant relay hardening: relay writes retry once on a dropped connection and map to a retryable 503 (never a bare 500) on `agui-async`/`agui-events`/`agui-stream`; the `agui-events` 503 lets Modal's webhook retry resend; the shared Redis client adds `health_check_interval`/`socket_keepalive`/command `Retry` (2026-11-05: `Agent stream failed (500)` under R14 memory pressure) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
 
 ### [frontend-ui.md](docs/architecture/rules/frontend-ui.md) — Frontend curator surfaces
 

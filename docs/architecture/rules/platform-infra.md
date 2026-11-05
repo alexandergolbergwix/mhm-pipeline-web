@@ -483,3 +483,30 @@ The canvas also showed no wiki entities after successful uploads.
    A job can report `succeeded` while individual items report `failed`.
 
 Details and the audited receipts: [research refresh and audit](../blocks/research/refresh-and-audit.md).
+
+### Rule W-297 — Research Assistant relay retries and a retryable 503 on relay outages (added 2026-11-05)
+
+The Research Assistant showed `Agent stream failed (500): Internal Server
+Error` for an ordinary question. The unhandled
+`redis.exceptions.ConnectionError` ("Connection lost") came from
+`register_run`'s `redis.set` while the web dyno repeatedly exceeded its
+memory quota (Heroku R14).
+
+1. `async_run._with_relay_retry` retries one relay command (`SET`, `GET`,
+   or the `XADD` batch) after a dropped connection. The batch is rebuilt
+   per attempt because a failed `pipeline.execute()` resets the command
+   stack; the batch is one MULTI/EXEC transaction, so a replay cannot
+   duplicate a partial write.
+2. `research_agent._relay_call` maps `redis.exceptions.ConnectionError` /
+   `TimeoutError` (and the builtin forms) to `503` with a "send the
+   question again" detail on `agui-async`, `agui-events`, and
+   `agui-stream`. A relay blip must never surface as a bare 500.
+3. The `agui-events` webhook 503 makes Modal's 3-attempt webhook retry
+   (Rule R28) resend the event batch instead of dropping the turn.
+4. The shared client (`redis_client.get_redis`) sets
+   `health_check_interval=30`, `socket_keepalive=True`, and a 2-attempt
+   exponential-backoff `Retry`, so a stale pooled connection is refreshed
+   instead of written to dead.
+
+The dyno memory overage (R14) that resets connections is a separate ops
+item. Block rule: research R35.
