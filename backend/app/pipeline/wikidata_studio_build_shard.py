@@ -347,6 +347,7 @@ async def _persist_build_result(
             it_dict["local_id"] = lid
             it_dict["approved"] = overrides_approved.get(lid)
         await _upsert_studio_cache(
+            db,
             run_id=plan.run_id,
             approved_only=plan.approved_only,
             source=plan.source,
