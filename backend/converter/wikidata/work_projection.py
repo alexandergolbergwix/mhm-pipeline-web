@@ -229,6 +229,13 @@ class WorkProjectionMixin:
                 ).strip()
                 if direct_qid and not re.fullmatch(r"Q\d+", direct_qid):
                     direct_qid = ""
+                if not direct_qid:
+                    from converter.wikidata.person_projection import audited_person_authority  # noqa: PLC0415
+                    audited = audited_person_authority(match_name)
+                    if audited:
+                        audited_qid = str(audited.get("wikidata_qid") or "").strip()
+                        if re.fullmatch(r"Q\d+", audited_qid):
+                            direct_qid = audited_qid
                 if direct_qid:
                     resolved_qid = direct_qid
                 else:

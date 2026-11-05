@@ -994,6 +994,11 @@ def _context_work_author_evidence(
             for name in explicit_names:
                 match = _find_work_author_match(name, record)
                 qid = normalize_wikidata_qid((match or {}).get("wikidata_qid"))
+                if not qid:
+                    from converter.wikidata.person_projection import audited_person_authority  # noqa: PLC0415
+                    audited = audited_person_authority(name)
+                    if audited:
+                        qid = normalize_wikidata_qid(audited.get("wikidata_qid"))
                 if qid:
                     explicit_qids.add(qid)
         return explicit_names, explicit_qids
