@@ -1017,6 +1017,7 @@ async def agui_stream(
     thread = await db.get(ResearchAgentThread, uuid.UUID(bound))
     if thread is None or thread.user_id != auth.user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown run.")
+    await db.close()
     last_id = request.query_params.get("last_id") or "0"
 
     async def event_stream():

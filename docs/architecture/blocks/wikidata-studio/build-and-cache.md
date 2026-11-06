@@ -51,7 +51,8 @@ Heroku claims the row; the claimed container orchestrates (Rule W-237):
   page by page (server-side cursors) — `compute_build_fingerprint_streamed`
   is byte-identical to the sequential fingerprint, so the cache contract
   holds; a fresh cache row finalises the job with no fan-out.
-- CN slices of 500 fan out via `run_wikidata_studio_build_shard.starmap`
+- CN slices default to 2,000 records and can be changed with
+  `MHM_WIKIDATA_BUILD_SHARD_SIZE`. They fan out via `run_wikidata_studio_build_shard.starmap`
   (`modal/modal_jobs.py`). Each shard loads its slice with one `IN` query
   per table, prewarms transliterations, and returns lossless native item
   payloads (`native_item_payload` — plain dataclasses, JSON-safe).

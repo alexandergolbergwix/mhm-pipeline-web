@@ -74,8 +74,9 @@ a 5xx.
 
 **DB hygiene.** `app/db.py` sets `idle_in_transaction_session_timeout=120000`
 as a server setting on every non-SQLite connection — a backstop that kills
-connections left "idle in transaction" by handlers hanging on non-DB work, so
-a handful of leaks can't starve the 5+10 connection pool. Rule W-40's real fix
+connections left "idle in transaction" by handlers hanging on non-DB work.
+Each process defaults to `pool_size=1` plus `max_overflow=2`, configurable
+with `DB_POOL_SIZE` and `DB_MAX_OVERFLOW` (Rule W-285). Rule W-40's real fix
 is behavioral: commit/rollback *before* any slow external call (see
 `hmo_item_reconcile.py`); the timeout is not a scheduling mechanism.
 

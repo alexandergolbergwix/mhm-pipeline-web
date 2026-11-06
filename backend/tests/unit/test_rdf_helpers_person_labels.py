@@ -26,7 +26,7 @@ def test_sanitize_monolingual_map_publishes_built_labels_verbatim() -> None:
     """The write path must not re-clean build labels. ``clean_marc_label``
     strips trailing ``'`` and ``.`` — so a built ``…אלחגאג'`` reached the
     wiki without the geresh and label_drift failed on the difference
-    forever (3 of the 11 stragglers on run 47e03437)."""
+    forever (Rule W-299; 3 of the 11 stragglers on run 47e03437)."""
     from converter.wikibase.label_sanitize import sanitize_monolingual_map
 
     out = sanitize_monolingual_map({

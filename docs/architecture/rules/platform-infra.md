@@ -504,9 +504,32 @@ memory quota (Heroku R14).
 3. The `agui-events` webhook 503 makes Modal's 3-attempt webhook retry
    (Rule R28) resend the event batch instead of dropping the turn.
 4. The shared client (`redis_client.get_redis`) sets
-   `health_check_interval=30`, `socket_keepalive=True`, and a 2-attempt
+   `health_check_interval=30`, `socket_keepalive=True`, and a two-retry
    exponential-backoff `Retry`, so a stale pooled connection is refreshed
    instead of written to dead.
 
-The dyno memory overage (R14) that resets connections is a separate ops
-item. Block rule: research R35.
+The logs also recorded dyno memory overage (R14), but do not establish
+whether it caused the connection loss. Block rule: research R35.
+
+### Rule W-298 — Release the research stream DB session and preserve report table cells (added 2026-11-05)
+
+Production recorded pool exhaustion and a Research Assistant SSE stream
+closed by Heroku with H15. The stream read its thread from Postgres but
+retained its request transaction during the response. The report canvas
+also showed raw pipe rows instead of a manuscript table.
+
+1. After stream authorization, close the request session before returning
+   `StreamingResponse`. The relay must not hold a Postgres connection while
+   it waits for events.
+2. Use `redis.asyncio.retry.Retry` with the async Redis client. The
+   synchronous retry class does not retry exceptions from awaited commands.
+3. Parse report tables with blank lines or missing trailing pipes. Preserve
+   the cells and default to table view. Treat unsafe integers and digit
+   strings with leading zeroes as text, not chart data.
+4. Allow split-view grid children to shrink so that the chat and canvas do
+   not force the page wider than the viewport.
+
+R14 and H12 also occurred during the incident. These changes reduce specific
+risks; they do not establish the cause of all timeouts or resolve dyno memory
+pressure. A retry of an XADD transaction can duplicate a complete batch when
+Redis commits it but the response is lost.

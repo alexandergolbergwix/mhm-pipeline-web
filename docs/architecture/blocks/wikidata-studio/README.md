@@ -24,10 +24,13 @@ bulk-deletion request (~5,948 items). Its whole write path is therefore
 **fail-closed**: reconcile-before-create with hard errors on lookup failure, a
 validator moat that blocks any ERROR-severity item, four modification guards
 inside the uploader, smart existence + own-or-accept modify (Rule W-99), and a
-production upload-target gate (default `dry_run`; curator may choose `test` or
-`live` — Rule W-103). Legacy Studio upload supports dry-run and test only.
-The sealed Publication path is the only path for a live wikidata.org write
-(Rule W-212).
+bulk upload-target gate (default `dry_run`; API clients may choose `test` or
+`live` — Rules W-103 / W-291). A live bulk job requires the curator's live
+Settings credential but does not require a sealed Publication Release, Receipt,
+or Execution. Publication is a separate sealed workflow (Rule W-212). The
+single-item push route accepts `test` but returns `410 Gone` for `live`.
+After a Publication prepare request returns 404, 405, or 410, the compatibility
+panel lists all three bulk targets but enables submission only for `dry_run`.
 
 ## Contents
 
@@ -39,7 +42,7 @@ The sealed Publication path is the only path for a live wikidata.org write
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R128) this block enforces.
+- [Rules](rules.md) — the invariants (R1–R151) this block enforces.
 - [Upload readiness](upload-readiness.md) — person identity, review prerequisites, and explicit deferred connections.
 - [Phase 1 projection quality](projection-quality.md) — evidence gates for labels, notes, subjects, genres, roles, and current institutions.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,

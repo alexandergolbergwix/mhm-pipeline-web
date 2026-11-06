@@ -548,11 +548,10 @@ RUNNING/QUEUED on screen after the click.
 Prod `DATABASE_URL` is a **shared** Heroku Postgres essential-1 instance:
 a hard 20-connection limit whose co-tenants (other apps, GUI clients)
 fluctuate between ~6 and ~18 connections within minutes. Every Modal
-shard container creates its own SQLAlchemy engine
-(`pool_size=5 + max_overflow=10`, connections opened lazily at first
-use), so a fan-out of N containers bursts N×(1-5) connections at
-container startup — on top of whatever the web dynos and co-tenants
-already hold.
+shard container creates its own SQLAlchemy engine. The old default was
+`pool_size=5 + max_overflow=10`. The current default is `pool_size=1` plus
+`max_overflow=2` per process (Rule W-285), with connections opened lazily.
+Shard connections add to those held by web dynos and co-tenants.
 
 The 2026-09-20 rebuild of run 3494ebf5 hit this three times in a row:
 `rdf_build` (1000 records/shard → 7 containers) failed three attempts
@@ -562,8 +561,9 @@ failed once, all with `too many connections for role "u8g61pe77ojmd0"`
 
 Therefore: the shard sizes in `modal/modal_jobs.py` are **env-tunable**
 (`MHM_RDF_BUILD_SHARD_SIZE`, `MHM_RULE_VERIFY_SHARD_SIZE`, read per
-container) with defaults 4000 records (2 containers) and 6000 items
-(4 containers) so peak shard pools + web dynos stay under the budget.
+container). The current defaults are 9500 records and 9500 items;
+the number of containers depends on the scope. Size the fan-out for the
+shared connection budget, including the orchestrator and web dynos.
 Bigger shards are safe: shard functions run with 4 GB memory and the
 18.5k-item corpus already fits a single unsharded container
 (`hmo_item_build` is not sharded and succeeded in 510 s). Any default

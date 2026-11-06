@@ -54,9 +54,10 @@ then stamps Studio-cache / probe-adopted `existing_qid`s
 UPDATEs do not fall back to SPARQL CREATE. Before each write the job emits
 `item_outcome.status=processing` (and `processing_local_id`) so the review
 table shows a loading pill on the row under work; terminal outcomes replace
-it without a full reload (Rule W-110). It constructs **one**
-`WikidataUploader`, calls `ensure_authenticated()` once, and reuses it for
-every item (Rule W-179); auth/session failures (`permissiondenied`, logged-out,
+it without a full reload (Rule W-110). The job authenticates a shared
+`WikidataUploader` before writes and may authenticate additional per-slot
+uploaders for concurrent work; Modal shards also authenticate their slots
+(Rules W-179 / W-292). Auth/session failures (`permissiondenied`, logged-out,
 global block — Rule W-185) abort the remainder. Writes use
 WikibaseIntegrator's `is_bot` kwarg (Rule W-180) with **default false**
 unless `WIKIDATA_MARK_AS_BOT` / `mark_as_bot=True` (Rule W-181) — accounts
@@ -96,9 +97,13 @@ on our work. Never UPDATE Savoy Q209579 / Sultan / Kostlitz / Tikkun
 Q2740944 / Shor Q6580025. Live prepare (Rule W-196): P1476/P1680/P1684
 coerce to monolingualtext; P2048/P2049 above 1000 mm omit; a unique
 allowlisted title+P31 match skips CREATE/UPDATE and stores `link_qid` so
-pass 2 can P1574 the live work. The curator picks `upload_target` in the UI
-(`dry_run` default | `test`). The former direct `live` route returns `410 Gone`.
-The sealed Publication workflow owns live writes and credential resolution
+pass 2 can P1574 the live work. The bulk job and `POST /upload` accept
+`dry_run` (default), `test`, and `live` (Rule W-291). Job preparation unwraps
+the target-specific Settings credential; a live job without one returns `400`.
+The single-item push route returns `410 Gone` for `live` and supports `test`.
+The compatibility panel lists all three targets, but its submit button is
+enabled only for `dry_run`; its receipt message is not a bulk API gate. The
+separate Publication workflow uses its own Release and credential contract
 (Rule W-212). All four desktop Rule-38
 modification guards stay intact (`_is_our_item`, `_assert_modifiable` in
 `_build_wbi_item`, `_would_create_identity_conflict` per statement, pre-write

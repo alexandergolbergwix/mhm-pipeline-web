@@ -90,10 +90,9 @@ def _redis_errors() -> tuple[type[BaseException], ...]:
 async def _with_relay_retry(fn, /, *args, **kwargs):
     """Run one Redis relay command; retry once when the connection dropped.
 
-    A dead pooled connection under dyno memory pressure turned a single
-    `redis.set` into an unhandled 500 (production incident 2026-11-05).
-    SET/GET are idempotent and the XADD batch is one MULTI/EXEC transaction,
-    so a replay after a lost write cannot duplicate a partial batch.
+    A lost connection turned a single `redis.set` into an unhandled 500
+    (production incident 2026-11-05). A retried XADD transaction can
+    duplicate a complete batch if Redis committed it before the reply was lost.
     """
     try:
         return await fn(*args, **kwargs)

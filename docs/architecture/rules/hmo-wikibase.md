@@ -1173,7 +1173,7 @@ Tests: `backend/tests/unit/test_marc_script_and_colophon.py`
 
 ---
 
-### Rule W-287 — The write path publishes build labels verbatim (added 2026-10-24)
+### Rule W-299 — The write path publishes build labels verbatim (added 2026-10-24)
 
 Two transforms silently rewrote labels between the build and the wiki, and
 `hmo.live.label_drift` failed on the difference forever (11 stragglers on

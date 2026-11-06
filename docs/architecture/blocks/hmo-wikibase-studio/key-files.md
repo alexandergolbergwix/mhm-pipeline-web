@@ -44,6 +44,7 @@
 | `backend/tests/unit/test_hmo_export_quality.py` | Authority evidence and global duplicate-QID withholding regressions |
 | `backend/app/pipeline/hmo_export_quality_gate.py` | `assert_export_quality` — hard block: raises before caching on any export quality issue |
 | `backend/scripts/hmo_item_verify_fixup_loop.py` | Qubrid/Kimi fixup loop: eval → diagnose → (rebuild) → re-eval per entity; `--persist-verdicts` |
+| `backend/scripts/rule_verify_local.py` | Local deterministic rule verification of merged HMO items; reads `DATABASE_URL`, disables API rules, and writes failure-ID lists under `/tmp` |
 | `backend/scripts/rebuild_run_rdf_and_items.py` | Controlled production rebuild with explicit `--upload` update/read-back and canonical persistence |
 | `backend/scripts/backfill_hmo_canonical_entities.py` | Snapshot audit/backfill for persisted live read-backs |
 | `backend/scripts/run_hmo_production_e2e.py` | Read-only production E2E audit for live read-back, exact Studio/QuickStatements diffs, canonical RDF, and false-positive rejection |

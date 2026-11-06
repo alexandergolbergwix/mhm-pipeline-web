@@ -55,7 +55,7 @@
 | `backend/app/models/wikidata_studio_item_row.py` | Per-item review read-model row per `(run_id, approved_only, source)` — indexed columns + full payload JSONB |
 | `backend/app/migrations/versions/0047_wikidata_item_rows.py` | Creates `wikidata_studio_item_rows` |
 | `backend/app/pipeline/wikidata_upload.py` | `resolve_upload_mode` / `upload_target`, `_prepare_for_upload`, person identity gate (W-190), work skip+`link_qid` (W-196), clash-cleared identifierless skip + uncertain-duplicate confirm + own-only pass 2 (W-195), `UploadOutcome` |
-| `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` — Rule-38 guards + `allow_live` / moratorium; `is_bot` via `mark_as_bot` (default false, W-181); test-wiki remap; leftover snaks refuse the write; `partition_unresolved_local` / session `created_qids` (W-191 / W-192); quantity/time exists-match (W-193); adopt-on-conflict + datatype-keyed maps + MHM stub reuse + holder/live gloss stubs + item-write adopt (W-182 / W-183 / W-186 / W-187 / W-189) |
+| `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` — Rule-38 guards + `allow_live` / moratorium; `is_bot` via `mark_as_bot` (default false, W-181); test-wiki remap; leftover snaks refuse the write; `partition_unresolved_local` / session `created_qids` (W-191 / W-192); quantity/time exists-match (W-193); adopt-on-conflict + datatype-keyed maps + MHM stub reuse + holder/live gloss stubs + item-write adopt (W-182 / W-183 / W-186 / W-187 / W-189); existing owned labels survive label/description conflicts (R152) |
 | `backend/converter/wikidata/test_wiki_compat.py` | Remap live P/Q to test entities by label+datatype; `(live_pid, value_type)` map keys; conflict-id parse; holder/live gloss; leftover list for W-186 refuse (W-189) |
 | `backend/app/routers/wikidata_studio.py` (`_build_native_items`, `studio_dict_to_native_item`) | Upload natives from Studio cache (W-181); cache-miss rebuild fallback |
 | `backend/app/pipeline/wikidata_existence.py` | Action API `wbgetentities` alive check + labels + ownership classify + QID-bound foreign accept |
@@ -91,14 +91,14 @@
 | `backend/app/pipeline/studio_item_bulk_approve_job.py` | Background worker for Studio bulk approve |
 | `frontend/src/components/wikidata/WikidataItemTable.tsx` | HMO-parity review table with a labelled search field, filters, badges, pagination, and direct record editing |
 | `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Per-item drawer with labelled multilingual overrides, one-row Hebrew aliases, compare, reconcile, verify/autofix, and push |
-| `frontend/src/components/wikidata/WikidataUploadPanel.tsx` | Compatibility upload hub: dry-run/test radios only, pre/post AI verify; opens upload progress modal on start; inline two-step bars (same `WikidataUploadSteps` as test/live modal) |
+| `frontend/src/components/wikidata/WikidataUploadPanel.tsx` | Compatibility upload hub: lists `dry_run`, `test`, and `live`, but enables submission only for `dry_run`; pre/post AI verify controls and upload progress (W-291) |
 | `frontend/src/components/wikidata/WikidataUploadProgressModal.tsx` | Upload progress modal (tray View / Rule W-141): two-step bars + Now/ETA (W-192), target-aware title + sticky badge, counts strip, per-item table, cancel |
 | `frontend/src/utils/wikidataUploadOutcomes.tsx` | Shared upload outcome tally/table helpers (panel summary + progress modal) |
 | `frontend/src/components/shared/UploadOutcomeBadge.tsx` | Shared upload-outcome pill (HMO + Wikidata) |
 | `frontend/src/components/wikidata/` | Also: `ItemValidatorBadge`, `ItemApprovalBadge`, `WikidataComparePanel`, `WikidataVerificationModal`, data-status + AI verdict badges |
 | `frontend/src/api/wikidataStudio.ts` | Typed API client; `STUDIO_MAX_PAGE_SIZE` (500); `fetchAllStudioItems` walks opaque keyset cursors over `GET /wikidata-studio/items/page` (per-item rows read model) |
 | `frontend/src/api/publication.ts` | Typed client for Release prepare, commands, cursor reads, and audit |
-| `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | The only default target selector for test/live Release preparation, plus readable result actions, direct record editing, and a 50-row Publication entity page; enables the compatibility panel only after 404/405/410 |
+| `frontend/src/components/wikidata/WikidataPublicationPanel.tsx` | Default test/live Release target selector (test by default; live requires canonical source), result actions, direct record editing, and a 50-row Publication entity page; enables the compatibility panel after a prepare request returns 404/405/410 |
 | `frontend/src/components/wikidata/WikidataPublicationControls.tsx` | Hard UI gates for Review, pre-publication checks, Publish, Resume, and Cancel, with included and omitted result counts |
 | `frontend/src/routes/WikidataPublicationAudit.tsx` | Cursor audit route for immutable Publication evidence |
 | `frontend/src/utils/wikidataItemDataStatus.ts` | `new` / `will_update` / `updated` posture helper |

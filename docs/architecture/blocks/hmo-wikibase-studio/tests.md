@@ -68,6 +68,10 @@
   genuinely new one stays `would_create`).
 - `backend/tests/unit/test_hmo_item_shacl_gate.py` — blocking severity filter,
   `und` label sanitization.
+- `backend/tests/unit/test_hmo_item_upload_datatypes.py` — live datatype
+  coercion for quantity and boolean claims on string properties, unchanged
+  matching or unknown datatypes, source immutability, and mocked property
+  datatype fetches in batches of 50.
 - `backend/tests/test_hmo_studio_items_push_router.py` — single-item
   `POST .../items/{local_id}/push`: create, update-existing-qid, 404 unknown
   id, 409 no build, 503 Wikibase not configured.
@@ -197,4 +201,3 @@
   `test_prime_fetch_caches_is_global_not_per_user` (`user_id=None`),
   `test_prime_fetch_caches_noops_without_endpoint`.
 - `backend/tests/unit/test_marc_script_and_colophon.py` — Rule W-284 / R70: a blank statement value (empty string, empty `text` in a monolingualtext, empty mapping, `None`) is dropped without becoming a skipped statement, while a genuinely unshapeable value is still recorded as unresolved.
-

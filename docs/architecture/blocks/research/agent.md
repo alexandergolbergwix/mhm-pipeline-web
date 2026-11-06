@@ -17,6 +17,10 @@ endpoints (Rule R35) — never a bare `500`. The local AG-UI stub keeps the
 legacy request-scoped stream. Map artifacts carry the manuscript's `cn`;
 the canvas preselects it in `ProvenanceMapPanel`.
 
+The SSE bridge closes its DB session after authorization and before it reads
+events (R36). The canvas accepts report tables with missing trailing pipes
+and blank lines. It uses table view by default (W-298).
+
 Architecture name (code + docs, not a prompt-only policy):
 **Architecting Secure, Domain-Restricted Agentic Systems for Bibliographic
 and Semantic Web Research**.

@@ -4,9 +4,10 @@
 
 ## Purpose
 
-The Publication service is the only path for a production write to
-`www.wikidata.org`. It turns a source snapshot into an immutable Release.
-It then requires Review, Dry-run, and Publish in that order.
+The Publication service can write to `www.wikidata.org`. It turns a source
+snapshot into an immutable Release. It then requires Review, Dry-run, and
+Publish in that order. The separate bulk upload API also accepts `live` and
+does not require these Publication gates (W-291).
 
 ## Lifecycle
 
@@ -35,10 +36,12 @@ An uncertain remote result remains `outcome_unknown` until recovery proves it.
 - Profile `1-nodes` explicitly defers complete statements whose targets exist in the source.
   The Release retains those statements for review. A later Release must add the connections.
   See [upload readiness](upload-readiness.md).
-- The former Studio `live` upload and single-item push routes return `410 Gone`.
+- The single-item `live` push route returns `410 Gone`. The bulk `live` upload
+  route and job accept the target and require the live Settings credential.
 - The Publication panel is the only default target selector. The compatibility
   upload panel appears only after the Publication API returns `404`, `405`, or
-  `410`.
+  `410` on prepare. It lists `live` and `test`, but enables submission only
+  for `dry_run`. This UI restriction is not a bulk API gate.
 
 The PostgreSQL source uses `COLLATE "C"` for canonical key order (W-216).
 Locale-sensitive order must not reach the release digest accumulator.

@@ -53,12 +53,14 @@ export function formatMetricNumber(value: number | string | null | undefined, un
 }
 
 export function parseNumericCell(cell: string | number | null | undefined): number | null {
-  if (typeof cell === "number") return Number.isFinite(cell) ? cell : null;
+  if (typeof cell === "number") {
+    return Number.isFinite(cell) && (!Number.isInteger(cell) || Number.isSafeInteger(cell)) ? cell : null;
+  }
   if (typeof cell !== "string") return null;
   const cleaned = cell.trim().replace(/,/g, "");
-  if (!cleaned || /^q\d+$/i.test(cleaned)) return null;
+  if (!cleaned || /^q\d+$/i.test(cleaned) || /^[+-]?0\d+/.test(cleaned)) return null;
   const num = Number(cleaned);
-  return Number.isFinite(num) ? num : null;
+  return Number.isFinite(num) && (!Number.isInteger(num) || Number.isSafeInteger(num)) ? num : null;
 }
 
 function MiniSparkline({values, color = "#77cce5"}: {values: number[]; color?: string}) {

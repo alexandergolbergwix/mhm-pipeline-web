@@ -61,7 +61,7 @@
 - `backend/tests/unit/test_property_mapping_hmo_links.py` / `test_item_builder_hmo_links.py` / `test_hmo_wikidata_pq_mapper.py` — browseable Item:Q only (W-122).
 - `backend/tests/unit/test_wikidata_upload_guards.py` (~20+) — reconcile-before-create per type, fail-closed outage, validator hard gate, blocked-never-written, audit trail, ledger/adopt, dry-run truthfulness, foreign skip / accept-allow.
 - `backend/tests/unit/test_wikidata_upload_qid_hydrate.py` — upload natives receive Studio-cache `existing_qid` (W-177 / R80).
-- `backend/tests/unit/test_wikidata_secret_keys.py` — live vs `wikidata_test` Settings key routing (W-178 / R81).
+- `backend/tests/unit/test_wikidata_secret_keys.py` — live vs `wikidata_test` Settings key routing and missing live credential rejection during bulk job preparation (W-178 / W-291 / R81 / R147).
 - `backend/tests/unit/test_wikidata_auth_token.py` — bot-password normalize/validate (two-line paste).
 - `backend/tests/unit/test_wikidata_upload_login_once.py` — shared uploader + auth abort (W-179 / R82).
 - `backend/tests/unit/test_wikidata_upload_is_bot.py` — `is_bot` kwarg (not `bot=`), default false, no retry on bot-right / permissiondenied; write-rights preflight (W-180 / W-181).
@@ -112,7 +112,7 @@ CREATE (Rule W-114 / R41); curator-approved related works stamp evidence.
 - `frontend/e2e/wikidata-item-table.spec.ts` — review table columns, data status, search, approval PATCH, upload-outcome filter (incl. skip vs create), last-upload remap/skip popovers, real filter counts, Approve all visible (`wikidata_item_bulk_approve` job).
 - `backend/tests/test_studio_item_bulk_approve.py` — bulk-approve params + worker for HMO/Wikidata override rows.
 - `frontend/e2e/wikidata-item-drawer.spec.ts` — drawer apply-fix, push, reconcile API shapes.
-- `frontend/e2e/wikidata-upload-panel.spec.ts` — compatibility-only dry-run/test radios, test full-claim remap hint (W-186), `upload_target=test` job params, pill, pre-verify fail confirm gate, live **processing…** pill while a historic row is under write, and live two-step progress UI (modal + job tray `WikidataUploadSteps`).
+- `frontend/e2e/wikidata-upload-panel.spec.ts` — compatibility dry-run default, test remap hint and disabled test submission, pre-verify fail confirm gate, processing row pill, and mocked live two-step progress UI (W-186 / W-291). Its assertion that the live radio is absent is stale: the panel lists all three targets and disables submission for test and live.
 - `frontend/tests/unit/runJobsHref.spec.ts` — modal job kinds append `?job=` (verify + upload, Rule W-141).
 - `frontend/tests/unit/wikidataUploadOutcomes.spec.ts` — upload outcome tally + terminal row selection for the progress modal.
 - `backend/tests/test_run_job_params_wikidata_verify.py` — enqueue skips scope
@@ -163,9 +163,10 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/test_publication_router.py` checks automatic-resolution dry-run progress against the retained Release count, and
   `backend/tests/test_wikidata_publication_execution_job.py` — queued prepare
   and execution jobs, access checks, no HTTP write, and secret-free job data.
-- `frontend/e2e/wikidata-publication.spec.ts` — one default Publication target
-  selector, no concurrent legacy controls, Review → Dry-run → Publish, and
-  bounded audit cursor flow.
+- `frontend/e2e/wikidata-publication.spec.ts` — Publication target selection,
+  no concurrent compatibility controls, Review → Dry-run → Publish, and
+  bounded audit cursor flow. Publication defaults to test; live requires the
+  canonical source.
 
 
 - `backend/tests/test_wikidata_items_export_import.py` — diagnostic CSV columns include authority evidence and local-reference target JSON.
@@ -268,3 +269,6 @@ Any new external-write path or reconcile change MUST extend
   and rejection of stale codex claims.
 - `test_wikidata_upload_claim_complete_w191.py` tests the actual unknown-value
   Wikibase snak and reference deduplication that preserves a distinct source.
+- `test_wikidata_upload_claim_complete_w191.py` also pins retry behavior for
+  owned/foreign label collisions, removal of an equal description, and the
+  unidentifiable create-conflict response.

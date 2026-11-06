@@ -160,8 +160,10 @@ Every live write is attributed to the clicking curator in the
 
 ### 2.1.2 — Wikidata Publication worker tokens
 
-The sealed Publication workflow is the only path for a live Wikidata write.
-Set a distinct target-bound bot token before a curator starts a Publication.
+The sealed Publication workflow requires a distinct target-bound bot token.
+The separate bulk live upload API uses the curator's session-released Settings
+credential (Rule W-291); the single-item direct live push remains unavailable.
+Set the Publication bot token before a curator starts a Publication.
 Do not put either token in a user Settings record or a job payload.
 
 ```bash

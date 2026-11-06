@@ -12,8 +12,9 @@
    *Why:* keeps the dyno slug small and the trust boundary explicit; Modal deploys independently.
 5. **R5 — In `modal_app.py`, `_bake_weights` MUST run before any `add_local_dir` layer.**
    *Why:* Modal rejects misordered chains and a code edit would otherwise invalidate the 3 GB weight layer.
-6. **R6 — A live wikidata.org write MUST use the sealed Publication path and `WIKIDATA_PUBLICATION_LIVE_TOKEN`.**
-   Legacy upload routes cannot write live. An absent target-bound token MUST fail closed.
+6. **R6 — Publication live writes require `WIKIDATA_PUBLICATION_LIVE_TOKEN`.**
+   The bulk live upload API separately uses the curator's session-released Settings
+   credential (W-291); single-item direct live push remains unavailable.
    *Why:* the Publication Release binds the reviewed corpus, Dry-run Receipt, and write recovery evidence (Rule W-212).
 7. **R7 — Job state transitions to `running` MUST go through `_try_claim_job`'s atomic UPDATE; NEVER flip a `run_jobs` row manually (Rule W-38).**
    *Why:* row ownership (`claimed_by`) is the only thing making the runner multi-dyno safe without a broker.

@@ -499,8 +499,8 @@ def _run_wikibase_label_drift(entity: dict[str, Any], ctx: RuleContext) -> RuleR
         live_raw = str((cell.get("value") if isinstance(cell, dict) else cell) or "")
         # Wikibase stores NFC (MediaWiki normalizes on save): a decomposed
         # spelling of the same text is not drift, and trailing whitespace is
-        # noise. Compare the normalized forms (7 items on run 47e03437 were
-        # pure normalization artifacts).
+        # noise. Compare the normalized forms (Rule W-299; 7 items on run
+        # 47e03437 were pure normalization artifacts).
         built = unicodedata.normalize("NFC", str(built_raw)).rstrip()
         live = unicodedata.normalize("NFC", live_raw).rstrip()
         if not live or live == built:
@@ -509,7 +509,7 @@ def _run_wikibase_label_drift(entity: dict[str, Any], ctx: RuleContext) -> RuleR
         # " — <control number>" (hmo_item_shacl_gate.compute_disambiguated_labels).
         # That suffix is the pipeline's own marker, not divergence — a live
         # label that extends the built one with it passes; a changed base
-        # label still drifts (Rule W-286).
+        # label still drifts (HMO Studio R72).
         if live.startswith(f"{built} — "):
             tolerated += 1
             continue

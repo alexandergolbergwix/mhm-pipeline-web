@@ -3,6 +3,7 @@ import {expect, it} from "vitest";
 
 import {ResearchChat} from "@/components/research/ResearchChat";
 import {ResearchMarkdown, parseMarkdownBlocks} from "@/components/research/ResearchMarkdown";
+import {parseNumericCell} from "@/components/research/ResearchCharts";
 
 it("shows bouncing dots while busy with no stream text", () => {
   render(
@@ -56,4 +57,31 @@ it("parses collapsed inline EDA markdown into headings, tables, QID links, and s
     "href",
     "https://www.wikidata.org/wiki/Q191825",
   );
+});
+
+it("renders manuscript rows with blank lines and missing trailing pipes as a table", () => {
+  const report = [
+    "Source: research_manuscripts",
+    "",
+    "| Control number | Title | Production year | |---|---|---|",
+    "",
+    "| 990000825080205171 | ספר המבחר | 1501",
+    "",
+    "| 990000592310205171 | גלא עמיקתא | 1600",
+    "",
+    "Total manuscripts in corpus: 897.",
+  ].join("\n");
+
+  render(<ResearchMarkdown text={report} variant="canvas" />);
+  expect(screen.getByRole("table")).toBeVisible();
+  expect(screen.getByText("990000825080205171")).toBeVisible();
+  expect(screen.getByText("ספר המבחר")).toBeVisible();
+  expect(screen.getByText("גלא עמיקתא")).toBeVisible();
+  expect(screen.getByText("Total manuscripts in corpus: 897.")).toBeVisible();
+});
+
+it("does not treat control numbers as numeric metrics", () => {
+  expect(parseNumericCell("990000825080205171")).toBeNull();
+  expect(parseNumericCell("00123")).toBeNull();
+  expect(parseNumericCell("1501")).toBe(1501);
 });

@@ -1096,7 +1096,7 @@ async def test_prime_fetch_caches_noops_without_endpoint() -> None:
 def test_label_drift_tolerates_the_upload_disambiguation_suffix() -> None:
     """The upload disambiguates colliding (label, description) pairs with
     " — <control number>" — that suffix is the pipeline's own marker, not
-    divergence (Rule W-286). A live label extending the built one with it
+    divergence (HMO Studio R72). A live label extending the built one with it
     passes; a changed base label (e.g. a renamed person heading) still
     drifts."""
     def fetcher(call, arg=None):  # type: ignore[no-untyped-def]
@@ -1136,7 +1136,7 @@ def test_label_drift_tolerates_the_upload_disambiguation_suffix() -> None:
 def test_label_drift_ignores_unicode_normalization_and_trailing_space() -> None:
     """Wikibase stores NFC (MediaWiki normalizes on save) — a decomposed
     spelling of the same text is not drift, and trailing whitespace is
-    noise (7 of the 11 stragglers on run 47e03437)."""
+    noise (Rule W-299; 7 of the 11 stragglers on run 47e03437)."""
     nfd_u = "Fu\u0308rth (Bavaria, Germany)"  # u + combining diaeresis
     nfc_u = "Fürth (Bavaria, Germany)"
 

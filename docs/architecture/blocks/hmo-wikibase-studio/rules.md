@@ -472,7 +472,7 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
 
 
 72. **R72 — The live-label drift check must tolerate the pipeline's own
-    disambiguation suffix (Rule W-286).** The upload suffixes colliding
+    disambiguation suffix.** The upload suffixes colliding
     `(label, description)` pairs with `" — <control number>"`; the wiki
     legitimately holds that label while the build stores the clean one. A
     live label that *extends* the built one with the suffix passes
@@ -481,3 +481,8 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
     drifts and still fails. *Why:* the first API pass that ever completed
     flagged 2804 items as drift; 1579 were the pipeline's own suffixes and
     1179 were a real pending rename the rule must keep catching.
+
+**Build labels are the write-path source of truth (Rule W-299).** The write
+path preserves built labels apart from whitespace; the drift check compares
+NFC-normalized forms with trailing whitespace removed. Downstream label
+cleaning must not remove built punctuation.

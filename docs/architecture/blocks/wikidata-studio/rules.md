@@ -19,15 +19,19 @@
 5. **R5 — `validate_item` is a hard gate in the write path**, not just a build
    badge. Any ERROR-severity issue blocks create AND update, regardless of
    curator approval. *Why:* the moat closest to the write is the one that must never miss.
-6. **R6 — Legacy Studio uploads support `dry_run` and `test` only.**
-   The direct live route and single-item live push return `410 Gone`.
-   A live wikidata.org write requires the sealed Publication workflow (R114).
-   *Why:* a mutable Studio cache cannot prove the reviewed corpus or recover
-   an uncertain remote write.
-7. **R7 — Never modify items we didn't create.** The uploader's four Rule-38
-   guards (`_is_our_item` + three `_assert_modifiable`/conflict checks) MUST
-   stay intact in `wikidata_upload.py`; `uploader.py` stays byte-identical to
-   desktop. *Why:* community items were mass-damaged once; UPDATE semantics are gated on first-revision authorship.
+6. **R6 — Bulk and single-item upload targets have different policies (W-291).**
+   The bulk `wikidata_upload` job and `POST .../upload` accept `dry_run`
+   (default), `test`, and `live`. A live job requires the curator's live
+   Settings credential. The single-item push route accepts `test`, but returns
+   `410 Gone` for `live`. The compatibility panel lists all three targets,
+   but currently enables submission only for `dry_run`.
+   *Why:* the bulk API is not subject to the single-item retirement guard.
+7. **R7 — Guard updates to existing items (Rules W-99 / W-270).** The uploader
+   checks ownership and modification conflicts. Live updates may also use a
+   QID-bound curator accept or an exact manuscript P3959 match; these are not
+   first-revision authorship checks. Test uploads do not use those live
+   exceptions. *Why:* community items were mass-damaged once; do not describe
+   the exceptions as a guarantee that only creator-owned items can change.
 8. **R8 — Every P/Q constant in `property_mapping.py` MUST be verified against
    the live Wikidata page before landing**; wrong constants removed get a
    `_KNOWN_BAD_*` entry + unit test. *Why:* Q179808 (Palme d'Or as "palimpsest") and P7416-as-count shipped silently from memory-derived constants.
@@ -860,13 +864,14 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     table. The judge MUST retry empty or malformed provider responses before it
     exposes an `abstain` provider-error row. *Why:* the live modal showed blank
     metadata and transient provider failures as incomplete verdict rows.
-114. **R114 — A production Wikidata write MUST use a sealed Publication Release (Rule W-212).**
-    The flow is Release → Approval Set → Plan → Dry-run Receipt → queued
-    Execution. Each transition binds the previous digest. The execution worker
-    records a Write Intent before every remote call and a Receipt after it.
-    The legacy live upload and single-item push routes MUST return `410 Gone`.
-    *Why:* a mutable Studio cache and a direct write route cannot prove the
-    reviewed content or safely recover an uncertain remote result.
+114. **R114 — Publication writes use a sealed Release (Rule W-212, qualified by W-291).**
+    The Publication flow is Release → Approval Set → Plan → Dry-run Receipt →
+    queued Execution. Its worker records a Write Intent before a remote call
+    and a Receipt after the result. The bulk `live` upload is a separate API
+    path; it does not require this Release flow. The single-item `live` push
+    still returns `410 Gone`. *Why:* the Publication records bind review to a
+    snapshot and support recovery of uncertain results; bulk upload does not
+    provide the same Publication contract.
 115. **R115 — Same-person canonical drafts MUST coalesce before export (Rule W-213).**
     Person drafts that share a strong authority ID merge before item validation.
     The merge unions records, claims, and authority evidence. It rewrites every
@@ -1090,21 +1095,19 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 - **R146 — Reconciliation is batched and step-1 is sharded (Rule W-290).**
   The upload pre-warms the reconciler cache (one `VALUES` SPARQL per 40
   identifiers, works included), shares one reconciler per process, and fans
-  step-1 writes out to parallel Modal shards (default 250 items/shard) whose
-  merged state feeds the serial step-2 + finish; the drawer accept map
+  step-1 writes out to Modal shards (default 80 items/shard, configurable via
+  `MHM_WIKIDATA_UPLOAD_SHARD_SIZE`) whose merged state feeds the step-2
+  finisher; the drawer accept map
   (`accept_by_local_id`) reaches `upload_items`. *Why:* run 47e03437's
   dry-run projected 15 h at 1.3 items/min on per-item SPARQL in one process.
 
-- **R147 — The direct live upload is restored (session-released Settings
-  credential).** `WikidataUploadPanel` again offers the `live` target and the
-  410 retirement guards are removed (`run_job_params`, the upload route).
-  The stored zero-knowledge credential releases when the curator's session
-  creates the job — the same mechanism as the 2026-10-17 live upload. The
-  versioned Publication Release remains the audited path but cannot yet ship
-  a release whose connections defer (its own `deferred_local_reference…`
-  findings block review), so the two-pass upload job is the working executor
-  for connection-bearing corpora. *Why:* the Sep-5 retirement removed the
-  only path that could write this corpus live (run 47e03437).
+- **R147 — The bulk live upload API is restored (Rule W-291).** The upload
+  route and job parameters accept `live` and require the curator's Settings
+  credential. The single-item live push remains retired. The compatibility
+  panel lists `live`, but disables submission for both `test` and `live`.
+  Publication remains a separate, sealed workflow; bulk upload does not
+  require its Release, Receipt, or Execution. *Why:* the former retirement
+  blocked the two-pass bulk path for run 47e03437.
 
 - **R148 — Sharded upload ownership, P2888 work identity, ledger persistence
   on reconciled skips, and new/verified scope filters (Rule W-292).**
@@ -1172,3 +1175,10 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   Keep `corrected_qids` empty until a separate write and live read-back establish correction.
   *Why:* successful jobs and selected-field checks previously overstated completion.
   Details: [Gila audit completion](gila-audit-completion.md).
+- **R152 — An owned label/description collision preserves the current language label.**
+  On an owned manuscript, retry the write with its original label for the
+  conflicting language and retain the proposed title as an alias. WBI must use
+  `LanguageValues.set(lang, None)` to remove a conflicting description; an empty
+  string does not remove it. Do not invent a suffix for live labels. A foreign
+  or unidentified target is not retried. *Why:* ten project manuscripts failed
+  because their Hebrew title and description duplicated a sibling item's pair.

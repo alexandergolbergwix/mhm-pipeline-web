@@ -89,7 +89,7 @@ added the columns (also on `wikidata_item_overrides` for phase 3).
   tray must never show a bare "running" during the load, R37), then
   loads the scope with a `cancel_watcher` and fans out
   `run_rule_verify_shard` via `.starmap()` over env-tunable shards
-  (`MHM_RULE_VERIFY_SHARD_SIZE`, default 6 000 items — parallel
+   (`MHM_RULE_VERIFY_SHARD_SIZE`, default 9 500 items — parallel
   containers, cpu 1 / 4 GB each). Shard results are collected
   on a thread — the Modal starmap iterator is synchronous and must never
   block the heartbeat loop (W-244); the consumer polls the cancel flag
@@ -209,4 +209,3 @@ loop and seeds the fetcher:
 - **Empty endpoint is loud.** `wikibase_cloud_base_url` missing logs at
   WARNING and priming returns empty warm maps instead of issuing a
   host-less `/w/api.php` request.
-

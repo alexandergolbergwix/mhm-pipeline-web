@@ -367,7 +367,7 @@ export default function ResearchAssistant() {
           }`}
         >
           {layoutMode !== "canvas" ? (
-            <div className={layoutMode === "split" ? "lg:col-span-5 h-full min-h-0" : "h-full min-h-0 max-w-4xl mx-auto w-full"}>
+            <div className={layoutMode === "split" ? "lg:col-span-5 h-full min-h-0 min-w-0" : "h-full min-h-0 min-w-0 max-w-4xl mx-auto w-full"}>
               <ResearchChat
                 messages={ui.messages}
                 streamingText={ui.streamingText}
@@ -383,7 +383,7 @@ export default function ResearchAssistant() {
           ) : null}
 
           {layoutMode !== "chat" ? (
-            <div className={layoutMode === "split" ? "lg:col-span-7 h-full min-h-0" : "h-full min-h-0"}>
+            <div className={layoutMode === "split" ? "lg:col-span-7 h-full min-h-0 min-w-0" : "h-full min-h-0 min-w-0"}>
               {threadId && projectId ? (
                 <ResearchCanvas
                   projectId={projectId}

@@ -134,6 +134,30 @@ HMO item links must use `https://mhm-hmo.wikibase.cloud/wiki/Item:<local QID>`.
 The `w3id.org/mhm/ontology#…` source URI is provenance metadata and must not be
 rendered as the live entity link.
 
+### Skill: run local rule verification
+
+Use `backend/scripts/rule_verify_local.py` to check merged HMO items locally.
+Set `DATABASE_URL` to the intended Postgres database. The script reads the
+database and does not persist verdicts or write to Wikibase, but it does not
+enforce a read-only database connection. Use read-only credentials when possible.
+
+From the repository root, select the run explicitly:
+
+```bash
+backend/.venv/bin/python backend/scripts/rule_verify_local.py --run <run-uuid> --limit 100
+```
+
+Omit `--limit` to check the full scope. Use `--ids-file <path>` to select
+local IDs, one per line. An empty ID file does not filter the scope. The script
+loads the full merged item list before it applies either filter. If `--run` is
+omitted, it uses `47e03437-09f2-4d6b-aea7-89fe79d76198`.
+
+The script disables API rules; they report errors rather than live results.
+Despite its header, the script does not accept `--api`. It prints fail/error
+counts and overwrites `/tmp/fails_<rule_id>.txt` for each rule with failures;
+periods in rule IDs become underscores. These files contain local IDs, so
+protect them as operational data.
+
 ### Skill: inspect persisted authority enrichment
 
 Open an item drawer and inspect **Authority enrichment**. It lists only

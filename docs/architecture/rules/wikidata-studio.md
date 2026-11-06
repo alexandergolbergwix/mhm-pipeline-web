@@ -392,15 +392,16 @@ still forbid P50. Ontology `owl:equivalentProperty` lines match the
 runtime map. Tests: `test_hmo_wikidata_pq_mapper.py`,
 `test_hmo_canonical_wikidata.py`.
 
-### Rule W-103 — Legacy Wikidata upload target is curator-chosen; default dry-run (added 2026-07-25; live superseded by W-212)
+### Rule W-103 — Bulk Wikidata upload target is curator-chosen; default dry-run (added 2026-07-25; updated by W-291)
 
 The production moratorium is no longer only an env flag. Wikidata Studio
 exposes legacy **upload targets** (job param `upload_target`):
 
 1. **`dry_run`** (default) — moratorium active; reconcile + validator preview only.
 2. **`test`** — write to `test.wikidata.org` (bypasses production moratorium).
-3. **`live`** — retired. The direct route and single-item push return `410 Gone`.
-   The sealed Publication workflow now owns live writes (W-212).
+3. **`live`** — the bulk route and job accept live writes with the curator's
+   live Settings credential (W-291). The separate single-item live push returns
+   `410 Gone`.
 
 Env `MORATORIUM_LIFTED` / `WIKIDATA_TEST_MODE` remain as legacy overrides when
 callers only pass `dry_run=false`. Single-item push accepts `test` only.
@@ -2646,7 +2647,7 @@ recover a supported author when one existed.
 Regression: `backend/tests/unit/test_hmo_canonical_wikidata.py` and
 `backend/tests/unit/test_wikidata_studio_works.py`.
 
-### Rule W-212 — A production Wikidata write MUST use a sealed Publication Release (added 2026-09-05)
+### Rule W-212 — Publication writes use a sealed Release (added 2026-09-05; bulk exclusivity superseded by W-291)
 
 The Studio cache is a mutable projection. A direct upload could write a
 different corpus from the one a curator reviewed. It also had no durable
@@ -2654,15 +2655,17 @@ record of a request that reached Wikidata but lost its response.
 
 **Invariants:**
 
-1. A production write MUST start from an immutable Release with a canonical digest.
+1. A Publication write MUST start from an immutable Release with a canonical digest.
 2. Review, Plan, and Dry-run Receipt MUST bind that Release digest.
 3. The HTTP publish command MUST create queued work and MUST NOT write remotely.
 4. The worker MUST commit a Write Intent before each remote request.
 5. The worker MUST store a Receipt after the remote result.
 6. An uncertain result MUST remain blocked from blind retry until recovery proves it.
 7. Cursor reads MUST remain bounded to 500 entities or fewer.
-8. A Release with a local entity reference MUST block until a two-phase edge executor exists.
-9. The legacy live upload and single-item push routes MUST return `410 Gone`.
+8. Profile `1` blocks unresolved local references; profile `1-nodes` defers
+   eligible in-source statements for a later Release (W-214).
+9. The single-item live push returns `410 Gone`. The bulk live upload route and
+   job accept `live` without the Publication Release gates (W-291).
 
 Regression: `backend/tests/unit/test_publication_module.py`,
 `backend/tests/test_publication_repository.py`,
@@ -3183,15 +3186,41 @@ and `work:{lang}:{title}:{author}`) with one `VALUES` SPARQL per 40
 identifiers before the loop, and `_make_reconciler` is a process singleton
 so the warm cache survives the per-item calls. Per-item lookups become cache
 hits. **Step-1 also fans out to parallel Modal shards**
-(`MHM_WIKIDATA_UPLOAD_SHARD_SIZE`, default 250 items): each shard rebuilds
+(`MHM_WIKIDATA_UPLOAD_SHARD_SIZE`, default 80 items): each shard rebuilds
 its slice, pre-warms the reconciler, and returns outcomes + created QIDs +
 locals for the merge; the claimed container hands the merged step-1 state to
-the serial finisher (`_step1_state`) for step-2 links and the terminal state.
+the finisher (`_step1_state`) for step-2 links and the terminal state. Scopes
+at or below the shard size use the unsharded job. The default wave size is five
+shards (`MHM_WIKIDATA_UPLOAD_SHARD_WAVES`).
 The curator's drawer accept reaches the upload too — the job now passes
 `accept_by_local_id` built from `accept_foreign_modify`/`accepted_foreign_qid`
 overrides (it never did before: a foreign UPDATE could not be authorised).
 Tests:
 `backend/tests/unit/test_wikidata_reconciler_prewarm.py`.
+
+## Rule W-291 — Bulk live upload is available separately from Publication (added 2026-10-31)
+
+The earlier retirement of direct live uploads blocked the two-pass bulk path
+for run 47e03437. The bulk `POST /wikidata-studio/upload` route and the
+`wikidata_upload` job now accept `live`, as well as `test` and `dry_run`.
+The default is `dry_run`. Job preparation unwraps the curator's target-specific
+Settings credential and rejects a live job without it. An explicit `live`
+target enables live mode without the legacy `MORATORIUM_LIFTED` environment
+gate. The route queues the job; it does not write in the request.
+
+The bulk path does not require a sealed Publication Release, approval set,
+dry-run Receipt, or Publication Execution. Its two-pass job handles item
+writes and deferred local links; those Publication guarantees must not be
+attributed to it. The separate `POST /wikidata-studio/items/{local_id}/push`
+route still returns `410 Gone` for `live` and permits `test`.
+
+The compatibility panel lists all three targets after Publication is reported
+unavailable on prepare, but currently disables its submit button for `test`
+and `live`. This restriction does not block API clients from queuing bulk
+live jobs. See `backend/app/routers/wikidata_studio.py`,
+`backend/app/pipeline/run_job_params.py`, `backend/app/pipeline/wikidata_upload.py`,
+and `frontend/src/components/wikidata/WikidataUploadPanel.tsx`. Regression:
+`backend/tests/unit/test_wikidata_secret_keys.py::test_prepare_job_params_accepts_live_upload`.
 
 ## Rule W-292 — Sharded upload ownership, P2888 work identity, ledger persistence, and new/verified scope gates (added 2026-10-31)
 

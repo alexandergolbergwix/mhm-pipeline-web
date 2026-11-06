@@ -54,9 +54,10 @@ kinds — the tables above reflect the current code.)
 `REDIS_URL` (env or settings) → returns `None` and every caller silently
 degrades to Postgres-only / memory-only. Heroku's self-signed `rediss://`
 cert is handled with `ssl_cert_reqs=None`. The shared pool sets
-`health_check_interval=30`, `socket_keepalive=True`, and a 2-attempt
+`health_check_interval=30`, `socket_keepalive=True`, and a two-retry
 exponential-backoff `Retry`, so a connection the server dropped under
-memory pressure is refreshed instead of written to dead (Rule W-297).
+load can be checked and retried (Rule W-297). The shared async client uses
+`redis.asyncio.retry.Retry`, not the synchronous class (Rule W-298).
 `close_redis()` runs in the FastAPI lifespan teardown (`app/main.py:62`).
 The slowapi rate limiter shares the same Redis via `RATELIMIT_STORAGE_URI`.
 

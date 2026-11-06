@@ -36,7 +36,7 @@ export function normalizeMarkdownText(raw: string): string {
   text = text.replace(/\|\s*\|\s*(?=[^\n|]+\|)/g, "|\n| ");
 
   // Ensure a pipe table that starts inline after a heading or sentence starts on its own line
-  text = text.replace(/([^\n|])\s+(\|[^\n|]+\|[^\n|]+\|)/g, "$1\n\n$2");
+  text = text.replace(/^([^|\n]*\S)[ \t]+(\|[^\n|]+\|[^\n|]+\|)/gm, "$1\n\n$2");
 
   // Ensure trailing bullet list items after a pipe table start on a new line
   text = text.replace(/\|\s+(-\s+)/g, "|\n\n$1");
@@ -55,12 +55,13 @@ interface ParsedTable {
 function parseTableLines(lines: string[]): ParsedTable | null {
   const cleaned = lines
     .map((l) => l.trim())
-    .filter((l) => l.startsWith("|") && l.endsWith("|"));
+    .filter((l) => l.startsWith("|") && l.includes("|", 1));
   if (cleaned.length < 2) return null;
 
   const splitRow = (line: string): string[] =>
     line
-      .slice(1, -1)
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
       .split("|")
       .map((cell) => cell.trim());
 
@@ -84,8 +85,10 @@ function parseTableLines(lines: string[]): ParsedTable | null {
           rows.push(slice);
         }
       }
-    } else {
+    } else if (cells.length <= headers.length) {
       rows.push(headers.map((_, colIdx) => cells[colIdx] ?? ""));
+    } else {
+      return null;
     }
   }
   if (!rows.length) return null;
@@ -158,9 +161,22 @@ export function parseMarkdownBlocks(raw: string): MdBlock[] {
 
     if (trimmed.startsWith("|") && trimmed.includes("|", 1)) {
       const tableLines: string[] = [];
-      while (i < lines.length && lines[i].trim().startsWith("|")) {
-        tableLines.push(lines[i]);
-        i += 1;
+      while (i < lines.length) {
+        const row = lines[i].trim();
+        if (row.startsWith("|") && row.includes("|", 1)) {
+          tableLines.push(lines[i]);
+          i += 1;
+          continue;
+        }
+        if (!row || row === "|") {
+          let next = i + 1;
+          while (next < lines.length && (!lines[next].trim() || lines[next].trim() === "|")) next += 1;
+          if (next < lines.length && lines[next].trim().startsWith("|") && lines[next].trim().includes("|", 1)) {
+            i = next;
+            continue;
+          }
+        }
+        break;
       }
       const parsed = parseTableLines(tableLines);
       if (parsed) {
@@ -509,12 +525,6 @@ export function ResearchMarkdown({
           );
         }
         if (block.kind === "table") {
-          const hasNumeric = block.table.rows.some((r) =>
-            r.slice(1).some((cell) => {
-              const cleaned = cell.trim().replace(/,/g, "");
-              return cleaned !== "" && !/^q\d+$/i.test(cleaned) && Number.isFinite(Number(cleaned));
-            }),
-          );
           return (
             <div
               key={idx}
@@ -523,7 +533,7 @@ export function ResearchMarkdown({
               <SignalDataTable
                 columns={block.table.headers}
                 rows={block.table.rows}
-                defaultMode={hasNumeric && block.table.rows.length >= 4 && variant === "canvas" ? "bars" : "table"}
+                defaultMode="table"
               />
             </div>
           );

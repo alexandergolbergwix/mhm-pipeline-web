@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-297)
+## Architectural rules (W-1…W-299)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -177,7 +177,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-209** — Work author strings MUST use structured source evidence
 - **W-210** — Live verdict rows MUST preserve metadata and retry invalid judge output
 - **W-211** — Public AI verdicts MUST use a closed outcome set; provider errors use abstain
-- **W-212** — A production Wikidata write MUST use a sealed Publication Release
+- **W-212** — Publication writes use a sealed Release; bulk live upload is separately available under W-291
 - **W-213** — Same-person canonical drafts MUST coalesce before export
 - **W-214** — Person given names and explicit deferred connections govern upload readiness
 - **W-215** — The modern review table must load all API pages before it derives filter counts and action scopes
@@ -246,7 +246,7 @@ alone; the one-line summaries are pointers, not the invariant.
  - **W-250** — JSONB containment binds carry the Python object, never `json.dumps` output: asyncpg JSON-encodes JSONB bind values itself, so a pre-dumped string double-encodes into a jsonb scalar that matches nothing (rule-verify drill-down `results @>` filter and the review-table External authority column filters both matched 0 rows while the Python-side summary still counted the fails) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
  - **W-251** — Rule-verify value shapes must mirror the builder/exporter output in the same change: the `time` shape unwraps the Wikibase `{time, precision}` dict and accepts the `+` sign, the `quantity` shape accepts a falsy `0.0` amount (never `amount or ""`), and API-backed probes pass every required kwarg (`_fetch_json(..., timeout=...)`). Shape drift or a missed kwarg reads as mass error/fail: run 3494ebf5 logged 2216 `label_candidates` errors + 318 datatype fails from two rule bugs. The same run also fixed the builder side: EN comments/descriptions never embed Hebrew script (`_split_scripts` moves Hebrew to the `he` comment) and object-property flags (`has_vocalization`/`has_cantillation`) emit typed vocabulary individuals instead of boolean literals (which skipped 26 statements) — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
  - **W-252** — The in-run duplicate rule keys on the item's OWN record CN (the control number present in its source URI), never on `control_numbers[0]`: W-48 propagation gives shared hubs (text traditions, subject headers, corpus-wide works) the CN set of every linked manuscript, so the first entry is corpus-wide — every 'תכלאל' expression across 96 manuscripts and every same-title/different-author work pair read as one duplicate group (536 fails on the run 3494ebf5 re-measure). Items with no own-CN (corpus-shared nodes) are not same-record comparable: the rule marks them `not_relevant` — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
- - **W-253** — Modal shard fan-out must fit the shared Postgres connection budget: prod `DATABASE_URL` is a shared essential-1 instance (hard 20-connection limit, co-tenants fluctuate 6→18 within minutes), every shard container holds its own SQLAlchemy pool, and oversized fan-outs burst-past the budget (`rdf_build` ×3 + `hmo_rule_verify` ×1 failed with `too many connections` on the run 3494ebf5 rebuild). Shard sizes are env-tunable (`MHM_RDF_BUILD_SHARD_SIZE`, `MHM_RULE_VERIFY_SHARD_SIZE`) with defaults 4000 records / 6000 items; retry on saturation instead of raising concurrency — see [jobs-and-progress.md](docs/architecture/rules/jobs-and-progress.md)
+ - **W-253** — Modal shard fan-out must fit the shared Postgres connection budget: prod `DATABASE_URL` is a shared essential-1 instance (hard 20-connection limit, co-tenants fluctuate 6→18 within minutes), every shard container holds its own SQLAlchemy pool, and oversized fan-outs burst-past the budget (`rdf_build` ×3 + `hmo_rule_verify` ×1 failed with `too many connections` on the run 3494ebf5 rebuild). Shard sizes are env-tunable (`MHM_RDF_BUILD_SHARD_SIZE`, `MHM_RULE_VERIFY_SHARD_SIZE`) with defaults 9500 records / 9500 items; retry on saturation instead of raising concurrency — see [jobs-and-progress.md](docs/architecture/rules/jobs-and-progress.md)
  - **W-254** — Modal executor liveness has its own heartbeat column: `run_jobs.executor_heartbeat_at` (migration 0048) is set/bumped ONLY by the Modal executor; the web poller heartbeats `updated_at` for `modal-%` rows while polling, so every staleness/liveness check for a `modal-executor:*` claim must read `COALESCE(executor_heartbeat_at, updated_at)` (preemption-restart lease acquisition, dispatch lease, `container_alive`). Reading `updated_at` alone made a preempted container's claim look fresh forever — 2026-09-21, run 3494ebf5: the preemption restart exited "lease not acquired", the poller's wait could never expire, and the row ran as a zombie with zero containers until a manual SQL force-cancel — see [jobs-and-progress.md](docs/architecture/rules/jobs-and-progress.md)
  - **W-255** — A protective budget cap or a rate-limited probe abstains as `not_relevant`, never `error`: budget-exhausted `label_candidates`/`qids_alive` and a 429/network probe exception did not execute, so they cannot be execution failures — `error` stays for the API-disabled gate, a partially-executed check, or a mid-check lookup failure. Run 3494ebf5 logged 17,450 `label_candidates` errors (17,252 budget + 198 HTTP 429) while every deterministic rule sat at 0 fails / 0 errors; only 19 genuine label collisions failed — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
  - **W-256** — Rule-verify Wikidata probes run once, in a single container: sharded `hmo_rule_verify` shards run CPU rules only; after they merge, one dedicated `run_rule_verify_api_pass` container (6 h timeout) owns the whole scope's probe budget (`RULE_VERIFY_API_PASS_PROBE_MAX` default 30 000, `RULE_VERIFY_API_PASS_QID_MAX` default 60 000) and the single throttle domain (W-139), then merges its results into the shard verdicts (API-rule entries replaced, rollups recomputed; summary is per-rule tallies only). Dispatch failure degrades to an inline pass in the orchestrator (W-15), never to skipping probes. Per-shard fetchers split the 300-probe budget four ways (≤1 200 probes for ~12.8k eligible items ≈ 95 % unprobed) and stacked four request rates into 132 HTTP 429s (run 45513a45) — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
@@ -308,6 +308,8 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-231** — Research AG-UI retries planner output (≥3) and hides pydantic-ai retry strings from the chat
 - **W-295** — Corpus refreshes pass both prompt gates; source counts follow upload ledgers and invalidate cached summaries after mapping changes
 - **W-297** — Research Assistant relay hardening: relay writes retry once on a dropped connection and map to a retryable 503 (never a bare 500) on `agui-async`/`agui-events`/`agui-stream`; the `agui-events` 503 lets Modal's webhook retry resend; the shared Redis client adds `health_check_interval`/`socket_keepalive`/command `Retry` (2026-11-05: `Agent stream failed (500)` under R14 memory pressure) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
+- **W-298** — Research SSE releases its DB session before the stream; the async Redis client uses async retry; report tables preserve cells and split panels shrink (2026-11-05) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
+- **W-299** — HMO Wikibase writes publish build labels verbatim and compare labels in NFC — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md)
 
 ### [frontend-ui.md](docs/architecture/rules/frontend-ui.md) — Frontend curator surfaces
 
@@ -413,8 +415,8 @@ cd backend && DATABASE_URL=... MAZAL_DB_PATH=.../mazal_index.db \
 - Run the eval-agent orchestrator (planner) as a user-facing surface.
   The planner is internal research tooling; only the per-candidate
   `ai-verify` modal is exposed.
-- Direct live Wikidata writes — the legacy routes return `410 Gone`.
-  Production writes use a sealed Publication Release (Rule W-212).
+- Single-item direct live Wikidata push — that route returns `410 Gone`.
+  The bulk live upload API is separate from the sealed Publication path (W-291).
 - Auto-approve AI verdicts (curator always confirms; verdicts surface
   as a `✨ AI says pass` pill).
 

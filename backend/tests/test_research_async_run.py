@@ -78,6 +78,37 @@ async def test_stream_unknown_run_is_404(sample_run, db_session):
     assert resp.status_code == 404
 
 
+async def test_stream_releases_database_session_before_reading_events(
+    sample_run, _app_factory, _sessionmaker, monkeypatch,
+):
+    from app.db import get_session
+    from app.services.research_agent import async_run
+
+    session = await _mint(sample_run)
+    run_id = "stream-session-release"
+    await async_run.register_run(session["thread_id"], run_id)
+    observed_transactions = []
+
+    async def session_override():
+        async with _sessionmaker() as db:
+            async def iter_events(*args, **kwargs):
+                observed_transactions.append(db.in_transaction())
+                yield {"type": "RUN_FINISHED"}
+
+            monkeypatch.setattr(async_run, "iter_stream", iter_events)
+            yield db
+
+    _app_factory.dependency_overrides[get_session] = session_override
+    try:
+        response = await sample_run["client"].get(
+            f"/api/research-agent/agui-stream?run_id={run_id}"
+        )
+        assert response.status_code == 200
+        assert observed_transactions == [False]
+    finally:
+        _app_factory.dependency_overrides.pop(get_session, None)
+
+
 async def test_async_start_needs_modal(sample_run):
     """Without RESEARCH_AGENT_MODAL_URL the async start fails closed."""
     session = await _mint(sample_run)
@@ -125,6 +156,30 @@ class _FlakyRedis:
         if self.set_calls <= self.fail_times:
             raise RedisConnectionError("Connection lost")
         return True
+
+
+async def test_shared_redis_client_retries_async_connection_errors(monkeypatch):
+    from app.cache import redis_client
+
+    monkeypatch.setenv("REDIS_URL", "rediss://localhost:6379")
+    monkeypatch.setattr(redis_client, "_client", None)
+    client = await redis_client.get_redis()
+    retry = client.connection_pool.connection_kwargs["retry"]
+    calls = 0
+
+    async def operation():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RedisConnectionError("Connection lost")
+        return "ok"
+
+    async def disconnect(_error):
+        pass
+
+    assert await retry.call_with_retry(operation, disconnect) == "ok"
+    assert calls == 2
+    await redis_client.close_redis()
 
 
 async def test_register_run_retries_once_on_connection_loss(monkeypatch):
