@@ -14,6 +14,9 @@ approved authority matches, Wikidata Studio items, and the project Wikibase.
 
 Rules:
 - Prefer tools over guesswork. Cite control numbers, QIDs, and URIs from tool results.
+- Answer the latest request first. For a request for examples, use the
+  relevant records and give the requested number when available. Do not
+  audit unrelated counts or resume an earlier investigation unless asked.
 - Evidence on EVERY statement: each factual claim or number carries its
   source as a markdown link — a QID (https://www.wikidata.org/wiki/Q…), a
   control-number record, a graph URI, an artifact key, or the publication

@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass, field
+from urllib.parse import quote
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,7 @@ from app.models.publication import (
     PublicationExecutionAction,
 )
 from app.models.run import Run as RunRow
+from app.models.run import RunRecord
 
 _WIKIDATA_COUNT = re.compile(
     r"how many (entities|items|records)?.{0,40}"
@@ -29,6 +31,18 @@ _WIKIDATA_COUNT = re.compile(
 )
 _MS_COUNT = re.compile(r"how many manuscripts", re.I)
 _STATUS = re.compile(r"(what|which) (was|were|is|are) (added|uploaded|published) to wikidata", re.I)
+_MANUSCRIPT_EXAMPLES = re.compile(
+    r"^(?:(?:please\s+)?(?:give|show)(?:\s+me)?\s+|(?:please\s+)?list\s+)?"
+    r"(?P<count>\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten)\s+"
+    r"(?:(?:examples?|expales?|exaples?)\s+(?:of\s+)?)?"
+    r"(?:the\s+)?manuscripts?(?:,?\s+please)?[.!?]*$",
+    re.I,
+)
+_EXAMPLE_WORD = re.compile(r"\b(?:examples?|expales?|exaples?)\b", re.I)
+_EXAMPLE_NUMBERS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
 
 
 @dataclass(frozen=True)
@@ -106,11 +120,53 @@ async def deterministic_answer(
     db: AsyncSession,
     *,
     project_id: str,
+    run_id: str | None = None,
     web_base: str = "https://mhm-pipeline.org",
 ) -> DeterministicAnswer | None:
     """Answer a fact question from the DB with citations, or None."""
     text = (question or "").strip()
     if not text:
+        return None
+    example_match = _MANUSCRIPT_EXAMPLES.fullmatch(text)
+    if example_match and run_id:
+        count_text = example_match.group("count").lower()
+        count = int(count_text) if count_text.isdigit() else _EXAMPLE_NUMBERS[count_text]
+        if not 1 <= count <= 50:
+            return None
+        run = await db.get(RunRow, uuid.UUID(str(run_id)))
+        if run is None or str(run.project_id) != str(project_id):
+            return None
+        rows = (
+            await db.execute(
+                select(RunRecord.control_number, RunRecord.marc)
+                .where(RunRecord.run_id == run.id)
+                .order_by(RunRecord.control_number.asc())
+                .limit(count)
+            )
+        ).all()
+        from app.pipeline.marc_ingest import prepare_record_for_pipeline  # noqa: PLC0415
+        from app.services.research_agent.sanitize import quarantine_text  # noqa: PLC0415
+
+        evidence: list[dict[str, str]] = []
+        lines: list[str] = []
+        for control_number, marc in rows:
+            prepared = prepare_record_for_pipeline(dict(marc or {}))
+            title = str(prepared.get("title") or "").strip() or "Title not recorded"
+            title = " ".join(quarantine_text(title, max_chars=200)["value"].split())
+            url = (
+                f"{web_base.rstrip('/')}/api/runs/{run.id}/records/"
+                f"{quote(str(control_number), safe='')}"
+            )
+            evidence.append({"label": f"MARC {control_number}", "url": url})
+            lines.append(f"- {title} ([MARC {control_number}]({url}))")
+        body = (
+            f"Here are {len(rows)} manuscript catalogue records from this run, "
+            f"ordered by control number (requested {count})."
+        )
+        if lines:
+            body += "\n\n" + "\n".join(lines)
+        return DeterministicAnswer(text=body, kind="manuscript_examples", evidence=evidence)
+    if _EXAMPLE_WORD.search(text):
         return None
     if _WIKIDATA_COUNT.search(text) or _STATUS.search(text):
         stats = await _wikidata_stats(db, project_id=project_id)

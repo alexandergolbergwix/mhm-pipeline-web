@@ -123,6 +123,58 @@ async def test_async_start_needs_modal(sample_run):
     assert resp.status_code == 503
 
 
+async def test_examples_answer_without_dispatching_the_planner(sample_run, db_session, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.models.run import RunRecord
+    from app.routers import research_agent
+    from app.settings import get_settings
+
+    for number in range(10):
+        db_session.add(RunRecord(
+            run_id=sample_run["run_id"],
+            control_number=f"000{number:02}",
+            marc={"title": f"Manuscript {number}"},
+        ))
+    await db_session.commit()
+    session = await _mint(sample_run)
+    monkeypatch.setattr(get_settings(), "research_agent_modal_url", "https://modal.invalid")
+    monkeypatch.setattr(
+        research_agent, "_prefilter_check",
+        lambda *_args: SimpleNamespace(allowed=True, source="test", reason=""),
+    )
+
+    response = await sample_run["client"].post(
+        "/api/research-agent/agui-async",
+        json={
+            "threadId": session["thread_id"],
+            "messages": [
+                {"role": "user", "content": "update the data"},
+                {"role": "assistant", "content": "I will inspect the uploads."},
+                {"role": "user", "content": "give me 10 expale manuscripts"},
+            ],
+            "forwardedProps": {"tool_grant": session["tool_grant"]},
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["answer_kind"] == "manuscript_examples"
+    stream = await sample_run["client"].get(response.json()["stream_url"])
+    assert stream.status_code == 200
+    assert "Manuscript 0" in stream.text
+    assert "Manuscript 9" in stream.text
+    assert "RUN_FINISHED" in stream.text
+    thread = await sample_run["client"].get(
+        f"/api/research-agent/threads/{session['thread_id']}"
+    )
+    assert thread.status_code == 200
+    note = next(
+        artifact for artifact in thread.json()["artifacts"]
+        if artifact["artifact_key"] == "answer-note"
+    )
+    assert "Manuscript 0" in note["content"]["text"]
+    assert "Manuscript 9" in note["content"]["text"]
+
+
 @pytest.mark.asyncio
 async def test_stream_without_terminal_event_reports_a_distinct_code():
     """P0/P1 (W-274): silence surfaces as `stream_ended` with a retryable

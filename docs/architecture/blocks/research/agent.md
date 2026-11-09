@@ -21,6 +21,11 @@ The SSE bridge closes its DB session after authorization and before it reads
 events (R36). The canvas accepts report tables with missing trailing pipes
 and blank lines. It uses table view by default (W-298).
 
+After the prompt gate, a simple request for 1–50 manuscript examples uses
+the granted run's MARC records in control-number order. The answer links each
+record and does not dispatch the planner. Filtered requests remain with the
+planner (R37, W-301).
+
 Architecture name (code + docs, not a prompt-only policy):
 **Architecting Secure, Domain-Restricted Agentic Systems for Bibliographic
 and Semantic Web Research**.

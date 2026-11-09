@@ -834,6 +834,7 @@ async def start_async_agui(
 
     answer = await deterministic_answer(
         question, db, project_id=str(claims.project_id),
+        run_id=str(claims.run_id) if claims.run_id else None,
         web_base=_public_base_url(request),
     )
     if answer is not None:
@@ -851,10 +852,6 @@ async def start_async_agui(
         )
         # The canvas holds lasting ANSWERS (2026-10-17: it showed a search
         # log instead). Place the deterministic answer as a markdown note.
-        from app.services.research_agent.artifacts import (  # noqa: PLC0415
-            upsert_artifact,
-        )
-
         thread = await db.get(ResearchAgentThread, claims.thread_id)
         if thread is not None:
             await upsert_artifact(
