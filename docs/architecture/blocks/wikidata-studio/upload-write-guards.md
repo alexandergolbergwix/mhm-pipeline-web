@@ -2,16 +2,19 @@
 
 > Up: [Wikidata Studio](README.md) | Rules W-302, W-303
 
-## Studio source recheck before each write
+## Studio source recheck once per write batch
 
 The bulk upload job (`backend/app/pipeline/wikidata_upload_job.py`) reads the
 Studio cache fingerprint and summary when the job starts. It compares them with
-the current cache before each live write.
+the current cache before the first live write of each batch.
 
-- The job calls `_assert_source_current` before each live item write, in both
-  upload passes.
-- The sharded path calls `_assert_studio_source_unchanged` before each
-  `upload_items` call.
+- `_BatchFreshnessGate` runs the check when the write count is a multiple of
+  `WRITE_FRESHNESS_BATCH_SIZE` (50). One check covers up to 50 writes.
+- A failed check blocks the write. The next write checks again, because the
+  count does not advance after a failure.
+- The job uses one gate in each upload pass, and the sharded path uses its own gate.
+- A source change during a batch is detected at the next batch boundary, not
+  before each write. A full check takes about 74 seconds on production data.
 - A dry run skips the check, because a dry run writes nothing.
 
 If the cache row is missing, or the fingerprint or summary changed, the job raises

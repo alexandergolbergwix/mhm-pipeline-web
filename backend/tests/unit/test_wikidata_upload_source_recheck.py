@@ -80,6 +80,7 @@ async def test_job_rechecks_studio_source_before_each_write(
     sample_run, db_session, monkeypatch,
     changed_from_check, expected_writes, expected_status,
 ) -> None:
+    monkeypatch.setattr(upload_job, "WRITE_FRESHNESS_BATCH_SIZE", 1)
     items = [
         WikidataItem(local_id=f"item-{n}", entity_type="other", labels={"en": f"Item {n}"}, statements=[])
         for n in (1, 2)

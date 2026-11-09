@@ -8,6 +8,7 @@ import re
 import time
 import uuid
 from collections import Counter
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import replace
 from types import MappingProxyType, SimpleNamespace
@@ -465,6 +466,29 @@ async def _assert_studio_source_unchanged(
         raise StudioSourceChangedError(run_id)
 
 
+WRITE_FRESHNESS_BATCH_SIZE = 50
+
+
+class _BatchFreshnessGate:
+    """Run the Studio freshness check before the first write of each batch.
+
+    The check runs only when the write count reaches a multiple of the batch
+    size. A failed check raises before the write, and the next write checks
+    again because the count did not advance.
+    """
+
+    def __init__(self, check: Callable[[], Awaitable[None]]) -> None:
+        self._check = check
+        self._writes = 0
+        self._lock = asyncio.Lock()
+
+    async def before_write(self) -> None:
+        async with self._lock:
+            if self._writes % WRITE_FRESHNESS_BATCH_SIZE == 0:
+                await self._check()
+            self._writes += 1
+
+
 async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
     async with session_scope() as db:
         job = await db.get(RunJob, job_id)
@@ -590,6 +614,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
             fingerprint=expected_fingerprint, summary=expected_summary,
         )
 
+    write_gate = _BatchFreshnessGate(_assert_source_current)
     native = sort_items_for_upload(list(native))
     owner_targets = _owner_targets(all_native, ledger, run_record_ids) if owner_only else None
     native_by_id = {wikidata_studio.local_id_for_item(it): it for it in native}
@@ -1106,7 +1131,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     if stopping.is_set():
                         return []
                     if not mode.dry_run:
-                        await _assert_source_current()
+                        await write_gate.before_write()
                     if mode.is_test:
                         key = ledger_key_for_item(original, "wikidata-test")
                         item_ledger = (
@@ -1581,7 +1606,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     if stopping.is_set():
                         return []
                     if not mode.dry_run:
-                        await _assert_source_current()
+                        await write_gate.before_write()
                     res = await wikidata_upload.upload_items(
                         [payload], token=token or "", mode=mode,
                         audit_ctx=None, db=None, ledger=ledger,
@@ -1775,6 +1800,14 @@ async def run_wikidata_upload_shard(
                     raise StudioSourceChangedError(run_id)
                 expected_fingerprint = studio_cache.input_fingerprint
                 expected_summary = dict(studio_cache.summary or {})
+
+                async def _assert_shard_source_current() -> None:
+                    await _assert_studio_source_unchanged(
+                        run_id, source=source, approved_only=approved_only,
+                        fingerprint=expected_fingerprint, summary=expected_summary,
+                    )
+
+                shard_write_gate = _BatchFreshnessGate(_assert_shard_source_current)
                 override_rows = (
                     await db.execute(
                         select(WikidataItemOverride).where(
@@ -1929,10 +1962,7 @@ async def run_wikidata_upload_shard(
                 else:
                     item_ledger = ledger
                 if not mode.dry_run:
-                    await _assert_studio_source_unchanged(
-                        run_id, source=source, approved_only=approved_only,
-                        fingerprint=expected_fingerprint, summary=expected_summary,
-                    )
+                    await shard_write_gate.before_write()
                 results = await wikidata_upload.upload_items(
                     [write_item], token=token or "", mode=mode,
                     audit_ctx=None, db=None, ledger=item_ledger,
