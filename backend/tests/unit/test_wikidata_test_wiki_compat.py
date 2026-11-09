@@ -940,7 +940,7 @@ def test_warm_test_maps_for_items_fills_session_maps(monkeypatch) -> None:
     monkeypatch.setattr(up, "_login", SimpleNamespace())
     called: list[str] = []
 
-    def _ensure(item: WikidataItem):
+    def _ensure(item: WikidataItem, **_kwargs: object):
         called.append(item.local_id)
         return WikiTestAdaptStats()
 

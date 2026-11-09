@@ -410,6 +410,12 @@ def sort_items_for_upload(items: list[Any]) -> list[Any]:
     )
 
 
+def _is_plain_live_qid(value: object) -> bool:
+    """Return True for a bare Q-id that is not a session-mapped test QID."""
+    return (isinstance(value, str) and not isinstance(value, MappedTestQid)
+            and re.fullmatch(r"Q[1-9][0-9]*", value) is not None)
+
+
 def _statement_reference_snaks(stmt: WikidataStatement) -> Iterable[object]:
     yield from stmt.references or []
     if isinstance(stmt.reference_blocks, list):
@@ -706,7 +712,9 @@ class WikidataUploader:
         self._verified_test_targets[local_id] = qid
         return qid
 
-    def _test_local_target_issues(self, item: WikidataItem, *, require_mapped: bool = False) -> list[str]:
+    def _test_local_target_issues(
+        self, item: WikidataItem, *, require_mapped: bool = False, allow_unmapped_live: bool = False,
+    ) -> list[str]:
         from converter.wikidata.test_wiki_compat import explicit_live_item_qid, item_target_qid  # noqa: PLC0415
 
         issues: list[str] = []
@@ -719,6 +727,8 @@ class WikidataUploader:
                     and isinstance(value.get("id"), str)
                     and re.fullmatch(r"Q[1-9][0-9]*", value["id"]) is not None
                 )
+                if allow_unmapped_live and _is_plain_live_qid(value):
+                    known_live = True
                 if require_mapped:
                     known_live = False
                 known_mapped = (isinstance(value, MappedTestQid) and str(value) in self._test_qid_map.values()
@@ -756,6 +766,8 @@ class WikidataUploader:
                     namespace == "wikidata" and isinstance(value, str)
                     and re.fullmatch(r"Q[1-9][0-9]*", value) is not None
                 )
+                if allow_unmapped_live and _is_plain_live_qid(value):
+                    known_live = True
                 if require_mapped:
                     known_live = False
                 known_mapped = (isinstance(value, MappedTestQid) and str(value) in self._test_qid_map.values()
@@ -3073,7 +3085,7 @@ class WikidataUploader:
                 return
             self._try_map_property_from_search(live_pid, value_type, alt, stats)
 
-    def _ensure_test_maps_for_item(self, item: WikidataItem) -> object:
+    def _ensure_test_maps_for_item(self, item: WikidataItem, *, allow_unmapped_live: bool = False) -> object:
         """Resolve live P/Q ids to test wiki ids (search, then stub CREATE)."""
         from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
             WikiTestAdaptStats,
@@ -3087,7 +3099,7 @@ class WikidataUploader:
 
         for stmt in item.statements:
             _validate_native_statement(stmt, is_test=self._is_test, allow_local=True)
-        issues = self._test_local_target_issues(item) + reference_write_issues_for_test_wiki(
+        issues = self._test_local_target_issues(item, allow_unmapped_live=allow_unmapped_live) + reference_write_issues_for_test_wiki(
             item, verified_targets=self._verified_test_targets,
         )
         if issues:
@@ -3165,7 +3177,7 @@ class WikidataUploader:
             try:
                 for stmt in item.statements:
                     _validate_native_statement(stmt, is_test=self._is_test, allow_local=True)
-                issues = self._test_local_target_issues(item) + reference_write_issues_for_test_wiki(
+                issues = self._test_local_target_issues(item, allow_unmapped_live=True) + reference_write_issues_for_test_wiki(
                     item, verified_targets=self._verified_test_targets,
                 )
             except ClaimBuildError as exc:
@@ -3190,7 +3202,37 @@ class WikidataUploader:
         if pending:
             self._live_qid_labels.update(self._fetch_live_english_labels(pending))
         for item in safe_items:
-            self._ensure_test_maps_for_item(item)
+            self._ensure_test_maps_for_item(item, allow_unmapped_live=True)
+
+    def _bind_prewarmed_qid(self, value_type: object, value: object) -> MappedTestQid | None:
+        """Return the test QID for a plain live item value the prewarm mapped."""
+        if _normalize_wbi_value_type(value_type) != "item" or not _is_plain_live_qid(value):
+            return None
+        test_qid = self._test_qid_map.get(str(value))
+        return MappedTestQid(test_qid) if test_qid else None
+
+    def _bind_prewarmed_qualifier(self, qual: object) -> object:
+        """Bind a qualifier item value the prewarm already mapped (test wiki only)."""
+        if not isinstance(qual, dict) or qual.get("value_namespace") not in (None, "wikidata"):
+            return qual
+        value_type = qual.get("value_type") or qual.get("type") or qual.get("datatype") or "string"
+        bound = self._bind_prewarmed_qid(value_type, qual.get("value"))
+        if bound is None:
+            return qual
+        return {**qual, "value": bound, "value_namespace": "mapped-test"}
+
+    def _bind_prewarmed_statement_qids(self, item: WikidataItem) -> WikidataItem:
+        """Mark plain live item values that the prewarm already mapped (test wiki only)."""
+
+        def bind(stmt: WikidataStatement) -> WikidataStatement:
+            value = self._bind_prewarmed_qid(stmt.value_type, stmt.value) or stmt.value
+            return replace(
+                stmt,
+                value=value,
+                qualifiers=[self._bind_prewarmed_qualifier(qual) for qual in stmt.qualifiers or []],
+            )
+
+        return replace(item, statements=[bind(stmt) for stmt in item.statements])
 
     def _adapt_item_for_test_wiki(
         self, item: WikidataItem,
@@ -3208,6 +3250,7 @@ class WikidataUploader:
             rewrite_item_with_maps,
         )
 
+        item = self._bind_prewarmed_statement_qids(item)
         reference_issues = self._test_local_target_issues(item) + reference_write_issues_for_test_wiki(
             item, verified_targets=self._verified_test_targets,
         )
