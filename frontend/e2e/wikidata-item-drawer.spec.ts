@@ -16,6 +16,44 @@ async function gotoModernStudio(page: import("@playwright/test").Page) {
 }
 
 test.describe("Wikidata item detail drawer", () => {
+  test("foreign acceptance is bound to the displayed QID", async ({page}) => {
+    const cases = [
+      {name: "Matching", accepted: "Q111", enabled: true, checked: true},
+      {name: "Stale", accepted: "Q222", enabled: true, checked: false},
+      {name: "Missing", accepted: null, enabled: true, checked: false},
+      {name: "Disabled", accepted: "Q111", enabled: false, checked: false},
+    ];
+    const items = cases.map(({name, accepted, enabled}) => ({
+      ...makeStudioItem({local_id: `manuscript::${name}`, labels: {en: name}, existing_qid: "Q111"}),
+      accept_foreign_modify: enabled,
+      accepted_foreign_qid: accepted,
+    }));
+    await page.route("**/api/**", (route) => route.abort());
+    await installStudioMocks(page, makeBuildResponse({items, total: items.length}));
+
+    let patch: unknown = null;
+    await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, (route) => {
+      if (route.request().method() !== "PATCH") return route.fallback();
+      patch = route.request().postDataJSON();
+      Object.assign(items[1], patch);
+      return route.fulfill({status: 200, contentType: "application/json", body: "{}"});
+    });
+
+    await gotoModernStudio(page);
+    for (const scenario of cases) {
+      await page.getByTestId(`wikidata-item-row-manuscript::${scenario.name}`).getByRole("button", {name: "Open"}).click();
+      const checkbox = page.getByTestId("wikidata-accept-foreign-modify");
+      await expect(page.getByText("Fetching statements and evidence…")).toBeHidden();
+      await expect(checkbox).toHaveJSProperty("checked", scenario.checked);
+      if (scenario.name === "Stale") {
+        await checkbox.check();
+        await expect.poll(() => patch).toEqual({accept_foreign_modify: true, accepted_foreign_qid: "Q111"});
+        await expect(checkbox).toBeChecked();
+      }
+      await page.getByTestId("wikidata-item-detail-drawer").getByRole("button", {name: "Close"}).click();
+    }
+  });
+
   test("drawer push and apply-fix buttons capture API calls", async ({page}) => {
     const item = makeStudioItem({
       local_id: "manuscript::Push Me",
