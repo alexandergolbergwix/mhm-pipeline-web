@@ -91,7 +91,8 @@ export function JobTray() {
         const subProcessed = Number(job.progress?.sub_processed ?? 0);
         const subPct =
           subTotal > 0 ? Math.min(100, Math.round((subProcessed / subTotal) * 100)) : 0;
-        const label = JOB_KIND_LABELS[job.kind] ?? job.kind;
+        const ownerPreview = job.kind === "wikidata_upload" && job.params.owner_only === true && job.params.dry_run === true;
+        const label = ownerPreview ? "Wikidata owner-only preview" : JOB_KIND_LABELS[job.kind] ?? job.kind;
         // The cancel flag is stamped the moment the curator clicks Cancel —
         // finalization itself is cooperative (the runner stops at its next
         // safe boundary), so show the in-between state instead of leaving
@@ -143,7 +144,7 @@ export function JobTray() {
                       ) : null}
                     </>
                   ) : (
-                    progressLabel(job)
+                    ownerPreview ? `${processed} / ${total} steps` : progressLabel(job)
                   )}
                   {trayEtaSuffix(job)}
                 </p>
@@ -153,7 +154,7 @@ export function JobTray() {
               </GlassPill>
             </div>
             {job.kind === "wikidata_upload" ? (
-              <WikidataUploadSteps progress={job.progress ?? {}} />
+              <WikidataUploadSteps progress={job.progress ?? {}} preview={ownerPreview} />
             ) : (
               <>
                 {steps && <JobStepsStrip steps={steps} />}

@@ -120,14 +120,12 @@ export async function waitForStudioBuild(
     await waitForRunJob(runId, active.id, {onUpdate: opts?.onUpdate});
     return;
   }
-  if (params.forceRebuild) {
-    const job = await ensureRunJob(runId, "wikidata_studio_build", {
-      approved_only: params.approvedOnly,
-      force_rebuild: true,
-      source: params.source || "legacy",
-    });
-    await waitForRunJob(runId, job.id, {onUpdate: opts?.onUpdate});
-  }
+  const job = await ensureRunJob(runId, "wikidata_studio_build", {
+    approved_only: params.approvedOnly,
+    force_rebuild: params.forceRebuild,
+    source: params.source || "legacy",
+  });
+  await waitForRunJob(runId, job.id, {onUpdate: opts?.onUpdate});
 }
 
 export async function loadStudioBuild(

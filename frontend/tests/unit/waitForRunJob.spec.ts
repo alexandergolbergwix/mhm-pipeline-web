@@ -163,6 +163,26 @@ describe("studioBuildJobIdFromConflict", () => {
 });
 
 describe("waitForStudioBuild", () => {
+  it("starts an explicit first build without forcing the cache", async () => {
+    const succeeded: RunJobSnapshot = {
+      id: "j1", project_id: "p1", run_id: "r1", kind: "wikidata_studio_build",
+      status: "succeeded", progress: {}, params: {}, result: {}, error: null,
+      created_by: null, started_at: null, finished_at: null, cancel_requested_at: null,
+      created_at: null, updated_at: null,
+    };
+    const list = vi.spyOn(RunJobs, "listForRun").mockResolvedValue({jobs: []});
+    const start = vi.spyOn(RunJobs, "start").mockResolvedValue(succeeded);
+    const get = vi.spyOn(RunJobs, "get").mockResolvedValue(succeeded);
+    try {
+      await waitForStudioBuild("r1", {approvedOnly: true, forceRebuild: false, source: "canonical"});
+      expect(start).toHaveBeenCalledWith("r1", "wikidata_studio_build", {
+        approved_only: true, force_rebuild: false, source: "canonical",
+      });
+    } finally {
+      list.mockRestore(); start.mockRestore(); get.mockRestore();
+    }
+  });
+
   it("attaches to an active build job and streams progress via onUpdate", async () => {
     const running = {
       id: "j1", project_id: "p1", run_id: "r1", kind: "wikidata_studio_build",

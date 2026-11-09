@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useRef, useState} from "react";
 
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
-import {isJobActive, selectActiveJob, useRunJobs} from "@/stores/runJobs";
+import {isJobActive, useRunJobs} from "@/stores/runJobs";
 import {jobFingerprint, useLatestRef} from "@/utils/renderStable";
 
 interface UseRunJobAttachmentResult {
@@ -16,7 +16,9 @@ export function useRunJobAttachment(
   runId: string | undefined,
   kind: string,
   sync: (job: RunJobSnapshot) => void,
+  options: {acceptJob?: (job: RunJobSnapshot) => boolean; autoAttach?: boolean; includeResult?: boolean} = {},
 ): UseRunJobAttachmentResult {
+  const {acceptJob, autoAttach = true, includeResult = false} = options;
   const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
   const ensureJobPolling = useRunJobs((s) => s.ensurePolling);
   const cancelJob = useRunJobs((s) => s.cancelJob);
@@ -31,36 +33,40 @@ export function useRunJobAttachment(
     if (!runId) return null;
     if (trackedJobId) {
       const tracked = jobsRecord[trackedJobId];
-      if (tracked && tracked.run_id === runId && tracked.kind === kind) {
+      if (tracked && tracked.run_id === runId && tracked.kind === kind && (!acceptJob || acceptJob(tracked))) {
         return tracked;
       }
     }
-    return selectActiveJob(jobsRecord, runId, kind);
-  }, [jobsRecord, runId, kind, trackedJobId]);
+    if (!autoAttach) return null;
+    return Object.values(jobsRecord).find((j) => j.run_id === runId && j.kind === kind
+      && isJobActive(j.status) && (!acceptJob || acceptJob(j))) ?? null;
+  }, [jobsRecord, runId, kind, trackedJobId, acceptJob, autoAttach]);
 
-  const storeJobKey = storeJob ? jobFingerprint(storeJob) : null;
+  const fingerprint = (job: RunJobSnapshot) => jobFingerprint(job) + (includeResult ? `:${JSON.stringify(job.result)}` : "");
+  const storeJobKey = storeJob ? fingerprint(storeJob) : null;
 
   const applySync = (job: RunJobSnapshot, force = false) => {
-    const fp = jobFingerprint(job);
+    const fp = fingerprint(job);
     if (!force && fp === lastFingerprintRef.current) return;
     lastFingerprintRef.current = fp;
     syncRef.current(job);
   };
 
   useEffect(() => {
-    if (!runId) return;
+    if (!runId || !autoAttach) return;
     let cancelled = false;
     void RunJobs.listForRun(runId, true).then(({jobs}) => {
       if (cancelled) return;
-      const active = jobs.find((j) => j.kind === kind);
+      const active = jobs.find((j) => j.run_id === runId && j.kind === kind
+        && isJobActive(j.status) && (!acceptJob || acceptJob(j)));
       if (active) {
         setTrackedJobId(active.id);
         applySync(active, true);
         ensureJobPolling();
       }
-    });
+    }).catch((error: unknown) => console.warn("Could not load active jobs", error));
     return () => { cancelled = true; };
-  }, [runId, kind, ensureJobPolling]);
+  }, [runId, kind, ensureJobPolling, autoAttach, acceptJob]);
 
   useEffect(() => {
     if (!storeJob || !storeJobKey) return;
@@ -76,6 +82,10 @@ export function useRunJobAttachment(
       try {
         const job = await RunJobs.get(rid, jid);
         if (cancelled) return;
+        if (job.run_id !== rid || job.id !== jid || job.kind !== kind || (acceptJob && !acceptJob(job))) {
+          setTrackedJobId(null);
+          return;
+        }
         // Keep terminal snapshots in the store so sibling panels (e.g. the
         // items table) can react via the same jobs map before we drop the id.
         useRunJobs.getState().upsertJob(job);
@@ -93,7 +103,7 @@ export function useRunJobAttachment(
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [runId, trackedJobId]);
+  }, [runId, trackedJobId, kind, acceptJob, includeResult]);
 
   const activeJob = storeJob ?? null;
   return {activeJob, trackedJobId, setTrackedJobId, ensureJobPolling, cancelJob};

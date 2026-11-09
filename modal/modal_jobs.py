@@ -723,7 +723,7 @@ async def _run_wikidata_upload_sharded(job_id: str) -> None:
     run_id, ids, params = await load_wikidata_upload_item_ids(_uuid.UUID(job_id))
     upload_target = str(params.get("upload_target") or "dry_run")
     total = len(ids)
-    if total <= _UPLOAD_SHARD_SIZE:
+    if params.get("owner_only") is True or total <= _UPLOAD_SHARD_SIZE:
         await run_wikidata_upload_job(_uuid.UUID(job_id))
         return
     await update_job_progress(_uuid.UUID(job_id), _shard_progress(
