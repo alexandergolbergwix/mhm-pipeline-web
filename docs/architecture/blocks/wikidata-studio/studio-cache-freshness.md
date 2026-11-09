@@ -62,5 +62,5 @@ returns 409 when the cache is not current, so a rebuild is needed before upload.
 ## Time budget
 
 - HTTP routes check freshness inline with a 25-second budget (`_STUDIO_FRESHNESS_TIMEOUT_SECONDS`). Heroku closes requests after 30 seconds.
-- Background upload jobs use `STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS` (120 seconds). A full-corpus fingerprint took about 40 seconds on run `47e03437` (897 records, 4,439 matches).
+- Background upload jobs use `STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS` (300 seconds). The full check took 73.6 seconds on a Heroku dyno for run `47e03437`. The fingerprint alone takes under 1 second. The item digest and canonical fingerprint take most of the time.
 - A timeout still fails closed with HTTP 409 and no write.

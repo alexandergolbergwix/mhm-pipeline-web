@@ -123,9 +123,9 @@ router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
 
 _CANONICAL_LOAD_BATCH = 500
 _STUDIO_FRESHNESS_TIMEOUT_SECONDS = 25.0
-# Background upload jobs have no HTTP limit. A full-corpus fingerprint takes
-# about 40 seconds on production data, so the job path gets a larger budget.
-STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS = 120.0
+# Background upload jobs have no HTTP limit. The full freshness check took
+# 73.6 seconds on a Heroku dyno for run 47e03437, so the job path gets 300 seconds.
+STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS = 300.0
 
 
 def _without_statement_cap(driver: object) -> None:

@@ -31,7 +31,7 @@ async def test_freshness_check_returns_result_within_budget(monkeypatch):
     assert result is True
 
 
-def test_job_budget_covers_measured_full_corpus_fingerprint():
-    # Measured 40.0 s on run 47e03437 (897 records, 4439 matches).
-    assert wikidata_studio.STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS >= 120.0
+def test_job_budget_covers_measured_full_check():
+    # The full check took 73.6 s on a Heroku dyno for run 47e03437.
+    assert wikidata_studio.STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS >= 300.0
     assert wikidata_studio._STUDIO_FRESHNESS_TIMEOUT_SECONDS == 25.0
