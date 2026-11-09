@@ -19,9 +19,10 @@ The interface never treats approval as publication readiness.
 5. Inspect its receipt before the separate publication action.
 
 No item-by-item human approval is required in automatic mode.
-The default blocked-only mode retains each current safe Plan action.
-It assesses only the blocked actions with two independent AI checks.
-The policy approves only the retained subset and records `policy:reference-first-v3` as the actor.
+The Studio requests `blocked` mode. It retains checked CREATE and reuse actions.
+Other actions enter the assessment flow, including non-blocked owned UPDATEs.
+A blocked-item sweep can defer an action before the two AI checks.
+The policy approves only the retained subset and records `policy:reference-first-v4` as the actor.
 It never supplies foreign-QID consent or performs a Wikidata write.
 Deferred items remain in the source corpus and report, outside the approved subset.
 If every item is deferred, the job reports that no subset is ready.
@@ -30,9 +31,12 @@ If every item is deferred, the job reports that no subset is ready.
 
 The existing AI endpoint accepts `automatic: true` and optional `verification_model`.
 The existing verify job slot runs `wikidata_publication_auto_job.py` for this mode.
-The default job covers blocked actions only, with a limit of 500 entities.
-It retains creates and owned-item updates from the current deterministic Plan.
-Legacy full-Plan mode remains available for a compatible retry.
+The API defaults `automatic_scope` to `full` when a caller omits it.
+In `full` mode, actions enter assessment instead of automatic retention.
+In `blocked` mode, checked CREATE and reuse actions are retained without AI.
+Other actions enter the assessment flow; a sweep may defer blocked items first.
+The worker accepts at most 2,000 Plan actions. In `blocked` mode, its
+initial progress total counts blocked actions, not all actions assessed.
 It assesses at most three items at once, with a separate database session for each item.
 Each item retains its two sequential independent checks.
 The coordinator saves completed results immediately, even when an earlier item takes longer.
@@ -80,6 +84,8 @@ It resolves references to reused QIDs in statement values, qualifiers, and refer
 It defers statements that need unresolved or newly created targets.
 It excludes deferred entities from the Release; their report and source records remain available.
 Retained records preserve original and deferred statements for inspection.
+For work items, automatic documents must retain the original `records` and
+`work_candidate_evidence` exactly; the projector also refuses a type change.
 The new Release uses a job-bound idempotency key for restart recovery.
 
 The worker approves the subset as an explicit policy decision and creates a fresh dry-run.

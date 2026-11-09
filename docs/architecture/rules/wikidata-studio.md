@@ -2351,13 +2351,13 @@ Upload prepare already cleared foreign clashes; the judge read the raw cache.
 Tests: `backend/tests/unit/test_wikidata_live_native_hygiene.py`,
 `backend/tests/unit/test_wikidata_person_identity_w190.py`.
 
-### Rule W-195 — Clash-cleared identifierless persons MUST skip live writes; uncertain duplicates confirm fail-closed; pass 2 UPDATE is own-only (added 2026-08-24)
+### Rule W-195 — Clash-cleared identifierless persons MUST skip live writes; uncertain duplicates confirm fail-closed (added 2026-08-24)
 
 Live-ready judging of test job `28bfd2be` on run `48ba6c13` still treated
 identifierless W-190 clash-cleared persons (Savoy Q209579, Sultan, Kostlitz,
 Shor Q6580025) as CREATE-ready, and pass 2 could MERGE onto foreign live
 QIDs. A heading clash is not a CREATE license. Uncertain label+author
-matches must not UPDATE community items. Test.wikidata.org Q/P must never
+   matches must not UPDATE community items without consent. Test.wikidata.org Q/P must never
 be copied live.
 
 **Invariants:**
@@ -2372,10 +2372,11 @@ be copied live.
    reaches the LLM. `same_item` without a shared trusted identifier,
    `unsure`, and HTTP failure all skip.
 3. `different_item` clears the QID then applies the same unpublishable
-   skip. Identifier-certain **own** matches UPDATE; **foreign** stays skip
-   (never pass 2).
+    skip. Identifier-certain **own** matches UPDATE; **foreign** needs exact
+    QID-bound curator approval (W-302).
 4. Pass 1 still omits unresolved `__LOCAL:` (W-192). Pass 2 MERGE UPDATE
-   only onto QIDs we created or own (`pass2_may_update_source`). Leftover
+    only onto the first-pass QID when created, owned, or explicitly approved
+    as foreign for that same QID (W-302). Leftover
    P50 to a skipped person becomes P2093 on **our** work.
 5. Live-ready audit/judge: identifierless persons are `skip_for_live` and
    drop out of the written denominator. Identifierless CREATE remains a
@@ -2910,28 +2911,17 @@ blocked item had an executed resolution path.
 
 **Invariants:**
 
-1. **P3959 identity is an ownership channel for manuscripts only.**
-   `WikidataUploader._is_our_item(qid, *, our_p3959=…)` accepts the item when
-   the live target carries the record's exact P3959 (NNL control number,
-   minted by our catalog feed). `_assert_modifiable` forwards the value;
-   `upload_item`, `_build_wbi_item`, and the publication gateway
-   `_write_once_sync` pass it only for `entity_type == "manuscript"`. Guards:
-   never on test.wikidata.org (P-numbers are remapped there), never when the
-   remote item lacks P3959 (absence is not identity), no prefix or fuzzy
-   compare. Persons and works keep the strict creator check (community
-   safety). The publication `_reconcile_sync` ownership split uses the same
-   channel, so a P3959-equal manuscript observes `present_owned` and plans
-   `update (present_owned)`.
+1. **P3959 is identity evidence, not an ownership channel.** W-302 supersedes
+   the former manuscript override. An exact match does not authorize an edit
+   or turn a foreign-created item into `present_owned`.
 2. **Plan actions carry the reconcile method.**
    `TargetObservation.method` / `PlanActionRecord.reconcile_method`
    (migration `0051_plan_reconcile_method`, NULL = legacy) round-trip the
    reconcile outcome method so F3 can distinguish strong catalog-ID equality
    from a label match. The plan digest includes the method.
 3. **Unexecuted blocks are swept deterministically before assessment.**
-   `route_blocked_target` (`automatic_policy.py`): exact P3959 identity
-   (manuscript) → `update_existing` with `existing_qid` stamped on the entity
-   document; a shared strong identifier (P214/P8189/P244/P227/P213/P268;
-   P3959 on works) → the AI dual judge (unchanged); nothing verifiable
+   `route_blocked_target` (`automatic_policy.py`): a shared strong identifier
+   (P214/P8189/P244/P227/P213/P268/P3959) → the AI dual judge; nothing verifiable
    shared → defer with "A live-wiki item exists but shares no verifiable
    identifier; curator review required." The sweep never accepts a community
    item implicitly; reuse still requires the dual-judge same-entity verdict.
@@ -2961,8 +2951,8 @@ infrastructure holes, three guards:
    "running" (claimable rows sat unclaimed behind stale leases). Every
    boundary call in `_SafeWikidataGatewaySession` now runs under
    `asyncio.wait_for` (write 600 s, reconcile 300 s, fetch/read-back
-   120 s); a breach is `pre_send_retryable` / `outcome_unknown` — a state
-   the durable claim queue retries.
+   120 s). A pre-send failure can be retried; a write timeout is
+   `outcome_unknown` and requires recovery, not a blind retry (W-302).
 2. **Dead-connection retries.** Heroku Postgres drops held connections
    after long network stretches and the next commit raises
    `cannot call Transaction.rollback(): the underlying connection is
@@ -2976,22 +2966,17 @@ infrastructure holes, three guards:
    `run` endpoint answers 503 naming them; a 401 dispatch logs the exact
    remediation.
 
-### Rule W-272 — Stale `absent` plans adopt their own items, never duplicate (added 2026-10-17)
+### Rule W-272 — Stale `absent` plans must not create duplicates (added 2026-10-17; amended by W-302)
 
 The run+target observation cache reuses `absent` across releases "by design
 (content-independent)". After a write pass creates items, the next dry-run
 still planned `create` for them (1,038 rows) and only the write preflight
 caught the collision. Two guards close the class:
 
-1. **`absent` expires on execution.** `previous_plan_observations` drops
-   `absent` rows once the source plan has an execution: the writes create
-   the very items the cache would deny.
-2. **Adopt on identity.** The CREATE preflight that finds a
-   `present_owned` target (exact P3959 catalog identity or our creator —
-   Rule W-270/W-272 channel) converts the mutation to an owned UPDATE with
-   `baserevid` instead of blocking beside it; `_assert_modifiable`
-   re-verifies ownership at write time. A `present_foreign` target stays
-   blocked (the consent gate is unchanged).
+1. A new Plan rechecks `absent` and owned observations instead of reusing them.
+2. A final CREATE preflight that finds any existing target blocks the action.
+   It requires a fresh Plan, even when the authenticated user created the item.
+   It never converts the sealed CREATE into an UPDATE (W-302).
 
 ---
 
@@ -3230,9 +3215,9 @@ six upload-path gaps surfaced:
    `ensure_authenticated()`, and `_get_authenticated_user()` made an
    unauthenticated `userinfo` call for bot passwords, marking 50 of our own
    `Q141...` person items as `foreign` (and `classify_ownership_with_uploader`
-   did not forward `our_p3959` on manuscripts). Shards now authenticate slot
-   uploaders once, `_get_authenticated_user()` reads the logged-in WBI
-   session, and `classify_ownership_with_uploader` passes `our_p3959`.
+   previously also lacked a manuscript identity shortcut). Shards now
+   authenticate slot uploaders once and `_get_authenticated_user()` reads
+   the logged-in WBI session. W-302 removes the P3959 ownership shortcut.
 2. **P2888 work identity:** 72 works skipped with `same_item without shared
    identifier` even though 101 of the 133 skipped QIDs were our own `Q141...`
    items carrying the exact same `P2888` HMO Wikibase Item URI. Works now
@@ -3307,5 +3292,210 @@ the canonical merge and upload compiler.
    revision/claim-scoped work review proposals. The report performs no repair
    and leaves `corrected_qids` empty.
 
-Schemas: `source-aware-works-v13` and `hmo-wikidata-v16`.
+W-296 used `source-aware-works-v13` and `hmo-wikidata-v16`. W-300 advances
+them to `source-aware-works-v14` and `hmo-wikidata-v17`.
 Details: [Gila audit completion](../blocks/wikidata-studio/gila-audit-completion.md).
+
+## Rule W-300 — Colophon field labels are stripped before the apparatus filter; the record-author fallback is limited to the main or sole content work (added 2026-11-05)
+
+The Gila-audit code review found colophon facts lost at ingest and
+same-title works merged in the studio build.
+
+1. **Strip the `קולופון:` field label from every labeled colophon piece
+   (`957$a`/`590$a`/`500$a`) before the W-72 apparatus filter.** The label
+   is catalog apparatus; the text after it is the colophon content.
+   Dropping the labeled piece whole lost `colophon_year` /
+   `colophon_hebrew_year` / `colophon_scribe` for colophon-only records
+   (`500$a: "קולופון: נכתב בשנת 1871"` produced no production year and no
+   Hebrew year). True apparatus (`רשומה זמנית`, third-person
+   `קולופון המחבר…` prose, cross-references) is still rejected and dropped.
+2. **The record-author fallback for content works covers the main 245 work
+   or the record's sole content work.** A secondary 500/740/contents-NER
+   work keeps its own responsibility evidence (W-296: the Etz Chayim
+   selection must not inherit Bagi). When the record projects no 100/245
+   main work and the contents-NER work is its only content work, the
+   record author attributes it. Without this, same-title works from
+   records with different record authors merged into one item and lost
+   their per-record association (Rule W-294 point 3).
+3. P1684 transcription fragments merge with `" | "` as the separator
+   (2e7c391c stripped P1684 newlines); the canonical redundancy check
+   splits on the same separator.
+
+Tests: `backend/tests/unit/test_marc_date_sources.py`,
+`test_hebrew_gregorian_calendar.py`, `test_authority_supervisor_examples.py`,
+`test_hmo_native_claims.py`, `test_wikidata_studio_works.py`,
+`test_gila_prebor_9_points_audit.py`.
+
+Schemas: `source-aware-works-v14` and `hmo-wikidata-v17`.
+
+## Rule W-302 — Identity is not permission; writes bind the authorized target
+
+The curator decision supersedes the P3959 ownership exception in W-270 and the
+automatic CREATE-to-UPDATE conversion in W-272. A catalog identifier can
+identify an item, but it cannot establish who created it or authorize an edit.
+
+1. A live foreign item requires an explicit curator approval for its exact QID.
+   The bulk upload override stores `accept_foreign_modify` and
+   `accepted_foreign_qid`. Before a live foreign write, bulk upload rechecks
+   the persisted run/local-item/QID approval and the prepared target. A missing
+   approval or database failure blocks. Creator ownership remains separate from foreign approval;
+   test-wiki uploads do not accept foreign modifications.
+2. Publication consent binds the entity key, QID, remote revision, and sealed
+   entity digest. A new Approval Set invalidates the current Plan; publish,
+   resume, and execution check the current Plan and Approval Set. The gateway
+   rechecks the revision and scopes foreign approval to the mutation. After
+   remote preflight it checks that the Execution is running and that the
+   Execution, Plan, and Approval Set are current before the gateway write.
+   Neither this check nor the bulk approval recheck is atomic with the remote
+   Wikidata write. A later revocation or cancellation can race the write.
+3. Publication rechecks absence before CREATE. If any existing target is
+   found, the action blocks and requires a fresh Plan. This also applies to
+   a creator-owned target and a test-wiki CREATE label conflict. A write
+   timeout is `outcome_unknown`, not proof that no write occurred.
+4. Bulk upload pass 2 requires the same target QID as the authorized pass-1
+   outcome. A foreign update also requires the recorded and current approval
+   for that QID. A dry-run can use its `dry:<local_id>` placeholder.
+5. In bulk upload, when a live work candidate has a target QID, its P31 check and applicable
+   author/source identity checks must complete and agree. Otherwise adoption,
+   update, and duplicate-avoiding creation block. A confirmed
+   allowlisted work can still follow the existing link-only policy.
+   A source-scoped work without a conclusive duplicate check cannot be created
+   on live Wikidata. Publication checks sealed work author/source identity and
+   requires verified written-work P31 values. Test Publication blocks generic
+   reconciliation until a test-specific identity check is available.
+6. Ingest retains repeated work titles with distinct source folio ranges,
+   including on repeated preparation. This does not prove end-to-end folio
+   preservation: `content_projection.py` uses title-only `seen_works` to
+   suppress later claims, so a second P1574 folio qualifier can still be lost.
+   Qualifier-aware canonical dedup tests do not close that earlier gap.
+7. The public run-job API rejects underscore-prefixed parameters. The trusted
+   Modal worker, not a client, supplies `_step1_state` for deferred links.
+
+Key code: `wikidata_upload.py`, `wikidata_upload_job.py`, `uploader.py`,
+`wikidata_gateway.py`, `publication/core.py`, `marc_ingest.py`, and
+`content_projection.py`. Tests: `test_wikidata_uploader_ownership_policy.py`,
+`test_wikidata_upload_guards.py`, `test_wikidata_upload_job_progress.py`,
+`test_wikidata_publication_gateway.py`, `test_publication_module.py`,
+`test_publication_router.py`, `test_wikidata_studio_works.py`, and
+`frontend/e2e/wikidata-item-drawer.spec.ts`. The folio test covers ingest,
+not the final projected claims.
+
+## Rule W-303 — Owner-only updates bind exact run and ledger evidence
+
+The owner-only path is a restricted bulk upload, not a Publication Release.
+An identity match or foreign approval cannot substitute for creator ownership
+(W-302). The path must not turn incomplete evidence into a write.
+
+1. `owner_only` is a boolean `wikidata_upload` job parameter. The upload alias
+   accepts the query value `true` or `false`. Only `dry_run` and `live` are
+   supported. Both require the curator's saved live Wikidata credential and a
+   verified live login. Owner-only accepts bot passwords or JWT credentials.
+   If supplied, `source` must be exactly `canonical` or `legacy`; the job API
+   rejects other values before credential lookup and the worker revalidates it.
+2. The job reads the live global ledger without writing it. It selects only a
+   manuscript whose unique local ID is `QDraft_MS_<control number>` or
+   `marc:<control number>`, with at least five digits. Its canonical `records`
+   set must contain exactly that control number, and the selected run must
+   contain it. The native record list must have exactly one string which
+   matches the control number after stripping whitespace and surrounding quotes.
+   The native item must have exactly one `P3959` with type `external-id`, rank
+   `normal` or `preferred`, and value equal to that control number. Strict
+   conversion and override checks prevent invalid ranks from defaulting to
+   `normal`. The target must come from the exact
+   `wikidata:marc:<local_id>` mapping. An override alone, a missing or invalid
+   mapping, a conflicting built QID, duplicate local IDs, or a non-unique QID
+   cannot authorize a target. A ledger read failure stops the job.
+3. Works and persons cannot become owner-only targets. Any `__LOCAL:` value
+   in a statement, qualifier, or reference blocks the whole item, even if its
+   target could be resolved. The job does not partition those claims for a
+   later pass. `P1574=Q234460` also blocks because generic text may hide
+   unresolved source evidence. Foreign consent never grants access in this mode.
+4. The authenticated session is pinned to the live Wikidata API without
+   redirects. The target check requires the exact non-redirect item, a current
+   positive revision, and a visible first-revision author equal to the
+   authenticated account. The remote item must have exactly one `P3959` with
+   rank `normal` or `preferred`, a value snak, `external-id` datatype, and
+   string value equal to the source control number. Missing, multiple, malformed,
+   deprecated, changed, or mismatched local or remote values or ranks block.
+   Preview builds the proposed entity and rechecks the remote target after
+   preparation. Before a live write, the uploader rechecks local and remote
+   identity and creator, compares the fetched entity revision, and sends
+   `baserevid`. Normal quality, validation, ownership, and write guards apply.
+5. The job is asynchronous at the API boundary but processes items serially
+   in one uploader session. Modal bypasses upload shards for this mode; the
+   shard worker rejects it. Live outcomes can update audit and upload status,
+   but neither live nor dry-run writes ledger mappings. The dry-run stores job
+   results but makes no Wikidata writes or upload-status changes. Live item
+   audit persistence is strict. On failure, the job preserves the item outcome,
+   marks `audit_status=failed`, sets `aborted_audit`, fails, and stops before
+   the next item. The remote write may already have succeeded; verify Wikidata
+   before retrying. Audit failure cannot roll back a remote write. A worker
+   exit after a remote write but before audit or job persistence can leave no
+   audit row or saved outcome; absence is not evidence that no write occurred.
+6. `would_update` means eligible to attempt an update at preview time, not a
+   guarantee, approval, Publication receipt, or authorization for a later
+   write. The preview does not prove all live write conditions will succeed.
+   It uses the chosen source and approval filters, not review-table filters.
+7. Owner-only claim construction skips cleanup of properties absent from the
+   source and does not use `REPLACE_ALL`. With built `P31`, it blocks a
+   proposed property if any remote claim is unmatched by the built claims.
+   It preserves matching claim ranks and existing references, appends distinct
+   references and new claims, and blocks rank, snak, qualifier, and ambiguous
+   match conflicts. It blocks conflicting existing labels and descriptions
+   rather than replacing or removing them; missing metadata and aliases can
+   be added. Invalid qualifier or reference snaks block. Preview uses the same
+   construction guard. For an existing item, `new_claims` counts entries in
+   `added_properties`, including reference and metadata changes; it is not a
+   distinct new-claim count. This does not establish complete source evidence.
+   The job uses a local snapshot and
+   overrides loaded before the item loop, without an atomic freshness check;
+   remote `baserevid` does not protect against later local changes. See
+   [owner-only claim safety](../blocks/wikidata-studio/owner-only-claim-safety.md).
+
+Code: `run_job_params.py`, `wikidata_upload_job.py`, `wikidata_upload.py`,
+`wikidata_qid_ledger.py`, `uploader.py`, and `modal/modal_jobs.py`. Tests:
+`backend/tests/unit/test_wikidata_owner_only.py`,
+`backend/tests/unit/test_wikidata_owner_preprocessing.py`,
+`backend/tests/unit/test_wikidata_owner_metadata.py`, and
+`frontend/e2e/wikidata-owner-preview.spec.ts` (mocked UI results only).
+
+## Rule W-304 — Preserve source reference blocks; never invent old boundaries
+
+The Gila audit found that flat `references` could combine snaks from distinct
+sources into one Wikibase reference. A flat multi-snak list does not record
+which snaks belonged together. The local reference-block migration addresses
+that risk; it does not prove that historical live claims have been corrected.
+
+1. Native statements carry `reference_blocks` and a flat compatibility view.
+   Both views must agree semantically. Compatible claim merges retain complete
+   distinct blocks, while equivalent blocks deduplicate. Claim rank and
+   qualifiers still constrain which evidence can merge.
+2. NLI, NLI authority, and VIAF source constructors return an unchanged
+   `FreshSourceReference` marker. It creates one new block only for a statement
+   without reference evidence. A plain list or JSON round-trip cannot create
+   that marker. Fresh item snaks retain the explicit live Wikidata namespace.
+3. Cache validation marks old flat multi-snak data stale. Merge, upload
+   preparation, and Publication validation reject unproven grouping; rebuild
+   from source rather than infer blocks. Zero or one flat snak can pass this
+   grouping check. Invalid or inconsistent reference views also fail. The
+   lower-level `_build_claim` does not replace the upstream grouping gate.
+4. Shards, cache, overrides, section exports, Publication, and deferred writes
+   must preserve the two views. A local target in a reference defers the whole
+   statement in the general two-pass upload; owner-only blocks it. Publication
+   profile `1-nodes` retains deferred statements for a later Release.
+   QuickStatements marks omitted ambiguous or unresolved-reference statements.
+5. Test wiki requires namespace evidence and verified target remapping; bare
+   QIDs and unsupported explicit reference calendars fail closed. The test
+   audit marks referenced items `test_reference_blocks_unverified`, not
+   live-ready on that evidence alone. The frontend flat view does not show
+   source block boundaries. A test write or an export is not a live receipt.
+
+The current build schema is `source-aware-works-v19`; the canonical salt is
+`hmo-wikidata-v21`. Code and limitations: [reference blocks](../blocks/wikidata-studio/reference-blocks.md).
+Regression suites include `test_wikidata_reference_blocks.py`,
+`test_wikidata_shard_reference_merge.py`, `test_wikidata_reference_block_transport.py`,
+`test_wikidata_fresh_source_blocks.py`, `test_wikidata_reference_marker_safety.py`,
+`test_wikidata_fresh_source_test_wiki.py`, `test_wikidata_reference_time_contract.py`,
+`test_wikidata_uploader_reference_blocks.py`, and
+`test_wikidata_section_reference_overrides.py`. These local tests do not prove
+a deployment, live write, or full historical repair.

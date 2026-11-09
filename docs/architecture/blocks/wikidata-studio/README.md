@@ -42,7 +42,13 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R151) this block enforces.
+- [Rules](rules.md) — the invariants (R1–R157) and known gaps.
+- [Reference blocks](reference-blocks.md) — source grouping, old-data gates, deferred links, test wiki, and export limits (W-304).
+- [Studio cache freshness](studio-cache-freshness.md) — build fingerprint, override application, and the Rebuild required badge.
+- [Upload write guards](upload-write-guards.md) — Studio source recheck before each bulk write, and the owned-item rule.
+- [Test-ledger local targets](test-ledger-local-targets.md) — sealed test QIDs and `publication_local_targets` registered before build.
+- [Owner-only upload](owner-only-upload.md) — exact manuscript targets, live credential, preview, and limits (W-303).
+- [Owner-only claim safety](owner-only-claim-safety.md) — replacement guards and snapshot/audit limits (W-303).
 - [Upload readiness](upload-readiness.md) — person identity, review prerequisites, and explicit deferred connections.
 - [Phase 1 projection quality](projection-quality.md) — evidence gates for labels, notes, subjects, genres, roles, and current institutions.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,
@@ -52,6 +58,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   interpretation, and safe remediation order.
 - [Gila audit completion](gila-audit-completion.md) — source-qualified claims,
   the accepted model, and the full-run review report (W-296).
+- [Gila audit risks](gila-audit-risks.md) — open work-identity, folio, and historical reference-data gaps.
 - [Tests](tests.md) — the test suites pinning this block.
 
 ## Related blocks
@@ -73,4 +80,4 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 
 - [Automatic resolution](automatic-resolution.md) — source checks, reuse, subset, and honest deferral.
 
-- [Foreign-block resolution](foreign-block-resolution.md) — P3959 ownership override, reconcile-method stamping, the blocked-item sweep, and the accept drawer (W-270).
+- [Foreign-block resolution](foreign-block-resolution.md) — identity evidence, reconcile-method stamping, the blocked-item sweep, and the accept drawer (W-270/W-302).

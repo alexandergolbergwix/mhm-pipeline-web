@@ -6,12 +6,27 @@
   build contracts: `shard_slices` chunking, streamed fingerprint ==
   sequential fingerprint (and flips on approval change), lossless
   `native_item_payload` JSON round-trip, and `merge_shard_items`
-  person/work dedup (first-wins, `records` union, works→persons→manuscripts
+  person/work dedup (`records` union, works→persons→manuscripts
   order).
+
+- W-304: `backend/tests/unit/test_wikidata_reference_blocks.py`,
+  `test_wikidata_shard_reference_merge.py`, and
+  `test_wikidata_reference_block_transport.py` cover block identity, merges,
+  serialization, overrides, deferred targets, and refusal of ambiguous data.
+- W-304: `test_wikidata_fresh_source_blocks.py`,
+  `test_wikidata_reference_marker_safety.py`,
+  `test_wikidata_fresh_source_test_wiki.py`, and
+  `test_wikidata_reference_time_contract.py` cover fresh markers, namespace
+  proof, source time, and test-wiki restrictions.
+- W-304: `test_wikidata_uploader_reference_blocks.py`,
+  `backend/tests/test_wikidata_section_reference_overrides.py`, and
+  `backend/tests/test_wikidata_section_built_cache.py` cover claim construction
+  and section exports. The test-wiki audit is conservative for written items
+  with references. Mocked or local tests do not prove live write completion.
 
 - `backend/tests/unit/test_wikidata_export36_w176.py` — Rule W-176:
   under designation labels only the 245/P1476 title remains as an alias.
-- `backend/tests/unit/test_publication_automatic_policy.py` — blocked-only automatic resolution retains only checked creates, owned updates, and reused items; it sends foreign updates to AI review (R130).
+- `backend/tests/unit/test_publication_automatic_policy.py` — blocked-only automatic resolution retains checked creates and reuse actions, but not owned or foreign updates without assessment (R130/W-302).
 - `backend/tests/unit/test_wikidata_verdict_cache.py` — sticky-full sanitise
   across schema bumps, gloss-agnostic cache keys, fixture keeps value_label
   (Rule W-175).
@@ -225,15 +240,20 @@ Any new external-write path or reconcile change MUST extend
 - `backend/tests/test_publication_router.py` checks entity pages after approval and rejection, consent through the worker, and QID/revision/digest mismatches.
 - `frontend/e2e/wikidata-publication.spec.ts` checks explicit consent, the QID link, the submitted command, and selection reset.
 
-- `backend/tests/unit/test_wikidata_upload_guards.py` — the P3959 identity channel: equal accepts a foreign-created manuscript, absent/differing refuses, test wiki stays strict, persons/works keep the creator check (W-270).
-- `backend/tests/unit/test_wikidata_publication_gateway.py` — `write_once` re-accepts a creator refusal on verified P3959 equality and refuses without it; `_reconcile_sync` marks P3959-equal manuscripts `present_owned` (W-270).
+- `backend/tests/unit/test_wikidata_uploader_ownership_policy.py` — P3959 does not grant ownership; exact-QID approval, target checks, creator-owned updates, and test-wiki refusal (W-302).
+- `backend/tests/unit/test_wikidata_owner_only.py` — exact run and ledger binding, invalid source, local and remote `P3959` values and ranks, rechecks, audit failure after an outcome, excluded entities and local references, credential and endpoint checks, revision binding, serial scope, and no ledger writes (W-303).
+- `backend/tests/unit/test_wikidata_owner_preprocessing.py` — cached unresolved links, preservation of remote claims for absent source properties, blocked partial replacements in preview and live preparation, explicit additions, generic text blocks, and the general upload comparison (W-303). It uses mocked remote writes; it does not prove local snapshot freshness or worker crash recovery.
+- `backend/tests/unit/test_wikidata_owner_metadata.py` — real WikibaseIntegrator claim objects and mocked writes: description preservation, rank and qualifier conflicts, reference retention and additions, ambiguous claims, snak types, alias-only writes, invalid references and ranks, and preview parity (W-303). It does not test live Wikidata, crash recovery, or local snapshot freshness.
+- `frontend/e2e/wikidata-owner-preview.spec.ts` — mocked preview request, result display, upload-status isolation, and missing-credential error; synthetic results do not prove backend eligibility (W-303).
+- `backend/tests/unit/test_wikidata_upload_guards.py` — foreign QID approval, pass-2 target and approval binding, and fail-closed work P31/author checks (W-302).
+- `backend/tests/unit/test_wikidata_publication_gateway.py` — a P3959-equal foreign-created manuscript stays foreign (W-302).
 - `backend/tests/unit/test_publication_module.py` — `reconcile_method` stamps plan actions and round-trips the observation reuse cache (W-270).
-- `backend/tests/unit/test_publication_automatic_policy.py` — `shared_p3959` exact equality and `route_blocked_target` never accepts a community item implicitly (W-270).
-- `backend/tests/test_publication_router.py` — the blocked sweep: P3959-equal manuscript becomes `update_existing` with a stamped `existing_qid`, a label-only person defers with the reason, a shared-identifier person reaches the dual judge; blocked payloads carry `our_statements`/`entity_label` and `accepted_foreign_update_count` splits the outcome classes (W-270).
+- `backend/tests/unit/test_publication_automatic_policy.py` — shared identifiers route to identity review, not implicit foreign updates (W-302).
+- `backend/tests/test_publication_router.py` — the blocked sweep routes shared identifiers to the dual judge and defers label-only matches; blocked payloads include the claims diff and summary counts (W-270/W-302).
 - `frontend/tests/unit/wikidataPublicationControls.spec.tsx` — the accept drawer affordance for every blocked entity, the reuse/accept/defer actions, and the summary outcome line (W-270).
 
-- `backend/tests/unit/test_publication_execution_retries.py` — workers re-run on dead DB connections, `absent` observations expire once the plan executes (W-271 / W-272).
-- `backend/tests/unit/test_wikidata_publication_gateway.py` — hung writes/reads become retryable under the time budgets; a CREATE preflight adopts a `present_owned` target as an owned UPDATE and still blocks a foreign one (W-271 / W-272).
+- `backend/tests/unit/test_publication_execution_retries.py` — workers re-run on dead DB connections and do not reuse executed `absent` observations (W-271 / W-272).
+- `backend/tests/unit/test_wikidata_publication_gateway.py` — bounded calls, uncertain write outcomes, and CREATE preflight blocks for owned and foreign targets until a fresh Plan (W-271/W-272/W-302).
 - `backend/tests/unit/test_modal_job_client.py` — a 401 dispatch names the `MODAL_JOBS_TOKEN` remediation (W-271).
 
 - `backend/tests/unit/test_marc_wikidata_coverage.py` — the WP9 coverage harness (W-275): every field has a deliberate fate, `710` → `P195` never `P50`, `035` shares the `001` identity channel, RDA `336-338` are out-of-model, `880` projects as its linked tag, and coverage cannot regress below the in-repo baseline fixture. Also pins W-277: the `P1574` work join resolves through the `__LOCAL:` prefix, and no property share exceeds 100%. Fixtures live in `backend/tests/unit/fixtures/marc_coverage_{corpus.tsv,claims.json,baseline.json}`.
@@ -272,3 +292,6 @@ Any new external-write path or reconcile change MUST extend
 - `test_wikidata_upload_claim_complete_w191.py` also pins retry behavior for
   owned/foreign label collisions, removal of an equal description, and the
   unidentifiable create-conflict response.
+- `backend/tests/unit/test_wikidata_studio_works.py::test_repeated_work_folios_survive_ingest` covers 505, 500, mixed sources, and repeated preparation. It does not test final P1574 claims; title-only projection can still lose a second folio (W-302).
+- `backend/tests/unit/test_wikidata_upload_job_progress.py` checks the actual pass-2 target. `frontend/e2e/wikidata-item-drawer.spec.ts` checks QID-bound approval display and the successful save payload (W-302); it does not test a failed save.
+- `backend/tests/unit/test_publication_module.py::test_rejection_during_preflight_blocks_the_write` covers CREATE and UPDATE rejection during remote preflight. `test_wikidata_upload_guards.py::test_live_foreign_write_rechecks_persisted_approval_after_prepare` covers revoked, changed, missing, and unavailable approval. `test_wikidata_upload_job_progress.py` covers revocation before the database check in regular and sharded paths. These tests do not prove atomicity between a local approval change and a Wikidata write.

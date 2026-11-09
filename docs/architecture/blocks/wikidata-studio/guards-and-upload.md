@@ -24,7 +24,8 @@ live upload, so the dry-run preview is truthful. Per entity type
 
 `reconciler._query` raises `ReconciliationUnavailableError` on any
 network/429/5xx (`reconciler.py:147`) — never returns `[]` for an outage. The
-item is then `blocked`, never created. After reconcile, `validate_item` runs;
+item is then `blocked`, never created. Live source-scoped work CREATE also
+blocks when no conclusive duplicate check exists (W-302). After reconcile, `validate_item` runs;
 any ERROR blocks the write regardless of create-vs-update or approval state.
 Then (live + dry-run with `enforce_ownership`) `wikidata_existence` confirms
 the QID via batched Action API `wbgetentities` (50 ids, throttled 429 backoff;
@@ -40,10 +41,28 @@ always re-runs inside `upload_items`. Contract: `docs/wikidata-data-access.md`
 
 ### Upload job, moratorium, QS download
 
+The `owner_only` variant has a stricter, serial manuscript-only contract. It
+blocks all local references rather than deferring them. See
+[owner-only upload](owner-only-upload.md) (W-303). The general two-pass
+description below does not apply to those blocked references.
+
+Reference blocks, ambiguous legacy lists, test-wiki namespaces, and
+QuickStatements omissions have separate fail-closed limits (W-304). See
+[reference blocks](reference-blocks.md). A reference local target defers the
+whole statement, not just the snak.
+
 `POST /upload` (or the `wikidata_upload` run-job) is a **two-pass** write
 (Rule W-192). Pass 1 `partition_unresolved_local` creates/updates each item
 without dangling `__LOCAL:` connections. Pass 2 MERGE-UPDATEs those edges
 once both QIDs exist (`link_outcomes`; unresolved targets stay visible).
+Pass 2 checks the actual source QID against the authorized pass-1 outcome.
+For a foreign source, the outcome and current curator approval must both name
+that QID (W-302). A dry-run can use its `dry:<local_id>` placeholder.
+Before a live foreign write, `upload_items` rechecks the persisted approval
+for the run, local item, and exact QID in a separate database session. A missing
+run, missing or changed approval, or database error blocks the write. This
+check applies to both passes, including shard writes. It is not atomic with
+the external Wikidata write: revocation after the check can still race a write.
 Progress is `Step N of 2` with nested item/link counters, `steps[]` for the
 modal, and `eta_seconds` after three samples. Cancel skips remaining pass-1
 items and does not run pass 2.
@@ -91,13 +110,16 @@ loads per-item foreign accepts from `WikidataItemOverride`, and calls
 heading clash, identity PIDs are stripped and the QID cleared; an
 identifierless person is **skipped**, not CREATE. Uncertain remaining QIDs
 (no identity PID, method not identifier) are confirmed with DeepSeek
-fail-closed; heading clash never reaches the LLM. Pass 2 MERGE UPDATE only
-onto QIDs we created or own; leftover P50 to a skipped person becomes P2093
+fail-closed; heading clash never reaches the LLM. Pass 2 MERGE UPDATE uses
+the first-pass target, with exact-QID approval for foreign items; leftover P50 to a skipped person becomes P2093
 on our work. Never UPDATE Savoy Q209579 / Sultan / Kostlitz / Tikkun
 Q2740944 / Shor Q6580025. Live prepare (Rule W-196): P1476/P1680/P1684
 coerce to monolingualtext; P2048/P2049 above 1000 mm omit; a unique
 allowlisted title+P31 match skips CREATE/UPDATE and stores `link_qid` so
-pass 2 can P1574 the live work. The bulk job and `POST /upload` accept
+pass 2 can P1574 the live work. For a live work with a candidate QID,
+unavailable or incomplete P31 data blocks adoption, UPDATE, and CREATE. When author or source
+identity evidence applies, missing, invalid, or conflicting remote metadata
+also blocks (W-302). The bulk job and `POST /upload` accept
 `dry_run` (default), `test`, and `live` (Rule W-291). Job preparation unwraps
 the target-specific Settings credential; a live job without one returns `400`.
 The single-item push route returns `410 Gone` for `live` and supports `test`.

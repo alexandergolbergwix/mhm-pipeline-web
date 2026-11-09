@@ -6,7 +6,9 @@
 |---|---|
 | `backend/app/pipeline/wikidata_studio.py` | Glue: DB rows → desktop builder input; fingerprint; override application; item serialisation + label enrichment; `local_id_for_item` |
 | `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); approved author recovery for canonical works (W-201); safe single-representation work author normalization (W-204); role-specific work-author sanitation with approved NER context (W-206 / W-209); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188); coalesce same-identity persons before export (W-213) |
-| `backend/converter/wikidata/property_mapping.py` | `resolve_hmo_bridge_url` / `is_browseable_hmo_wikibase_url` — fail-closed HMO Wikibase link helpers (W-122); known-work / Esther aliases (W-171); `format_wikidata_time` ±YYYY padding (W-193) |
+| `backend/converter/wikidata/property_mapping.py` | HMO link helpers (W-122), known-work aliases, time formatting, and `FreshSourceReference` constructors with live namespace evidence (W-304) |
+| `backend/converter/wikidata/item_models.py` | Native statements, explicit source reference blocks, semantic snak identity, and block merge validation (W-304) |
+| `backend/converter/wikidata/quickstatements.py` | Reference validation and QuickStatements block serialization; comments identify omitted unsafe statements (W-304) |
 | `backend/converter/wikidata/catalog_notes.py` | Shared filter for NLI workflow + scholarly catalog notes that must never become P1684 / P1922 (W-72 / W-122 / W-171 / W-172) |
 | `backend/converter/wikidata/isbd_title.py` | ISBD `245` title/subtitle split (Rule W-171) |
 | `backend/converter/wikidata/work_link_specificity.py` | P1574 specificity ladder — megillah vs Bible/Tanakh; RELATED_WORKS alias must not defeat piyyut block (W-171 / W-173) |
@@ -46,21 +48,21 @@
 | `backend/converter/wikidata/marc_field_map.py` | The MARC field → Wikidata target table (W-275): one deliberate fate per field — `map` / `evidence` / `out_of_model` — plus per-field and per-property coverage targets; source of the WP8 ledger |
 | `backend/scripts/marc_wikidata_coverage.py` | Coverage harness (W-275): parses a MARC TSV, joins claims by P3959 (`--projected` / `--claims` / `--live`), prints the per-field table against the targets, exits non-zero on regression or `--fail-below-target` |
 | `backend/app/pipeline/marc_ingest.py` | MARC ingest/normalisation — `035$a` falls back into the P3959 identity channel when `001` is absent (W-276); MARC 880 resolves as its linked tag (W-276) |
-| `backend/scripts/audit_test_wikidata_upload.py` | Per-entity test.wikidata.org write vs Studio native live-readiness (validator ERROR, claim count, live URI leak, W-190 identity clash); identifierless persons `skip_for_live` (W-195) |
+| `backend/scripts/audit_test_wikidata_upload.py` | Test upload live-readiness audit; reference blocks remain unverified for live readiness (W-304); identifierless persons `skip_for_live` (W-195) |
 | `backend/scripts/judge_test_wikidata_live_ready.py` | LLM live-readiness judge: deterministic audit + eval-agent `wikidata_test_live_ready` on natives (never copy test Q/P); `skip_for_live` excluded from written denominator (W-195) |
 | `backend/app/pipeline/wikidata_studio_build_job.py` | Background build job (`wikidata_studio_build` kind) — `reconcile=False`, threadpool canonical build (W-119); catches `JobCancelledError` and finalizes `cancelled` at phase/record boundaries (W-236), never overrides a mid-mining cancel with `succeeded` |
 | `backend/app/pipeline/wikidata_studio_batches.py` | Sharded-build loaders: CN keyset listing, streamed byte-identical fingerprint, per-slice `IN`-query inputs, `shard_slices` chunking |
-| `backend/app/pipeline/wikidata_studio_build_shard.py` | Modal shard runner (lossless native item payloads) + merge (`local_id` dedup, first-wins, `records` union) + orchestrator tail (finish → gate → cache upsert → rows write); plan load + mining tail take `should_cancel` (W-236) |
+| `backend/app/pipeline/wikidata_studio_build_shard.py` | Modal shard runner, native payload transport, conflict-checked evidence merge, and orchestrator tail (W-236 / W-304) |
 | `backend/app/pipeline/wikidata_item_row_views.py` | `wikidata_studio_item_rows` views: build-time replace, lazy backfill from the cache blob, SQL keyset `page_wikidata_items`, streamed row iterator for exports (W-247 pattern) |
 | `backend/app/models/wikidata_studio_item_row.py` | Per-item review read-model row per `(run_id, approved_only, source)` — indexed columns + full payload JSONB |
 | `backend/app/migrations/versions/0047_wikidata_item_rows.py` | Creates `wikidata_studio_item_rows` |
-| `backend/app/pipeline/wikidata_upload.py` | `resolve_upload_mode` / `upload_target`, `_prepare_for_upload`, person identity gate (W-190), work skip+`link_qid` (W-196), clash-cleared identifierless skip + uncertain-duplicate confirm + own-only pass 2 (W-195), `UploadOutcome` |
+| `backend/app/pipeline/wikidata_upload.py` | `resolve_upload_mode` / `upload_target`, `_prepare_for_upload`, person identity gate (W-190), work skip+`link_qid` (W-196), fail-closed work identity and QID-bound pass 2 (W-302), `UploadOutcome` |
 | `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` — Rule-38 guards + `allow_live` / moratorium; `is_bot` via `mark_as_bot` (default false, W-181); test-wiki remap; leftover snaks refuse the write; `partition_unresolved_local` / session `created_qids` (W-191 / W-192); quantity/time exists-match (W-193); adopt-on-conflict + datatype-keyed maps + MHM stub reuse + holder/live gloss stubs + item-write adopt (W-182 / W-183 / W-186 / W-187 / W-189); existing owned labels survive label/description conflicts (R152) |
 | `backend/converter/wikidata/test_wiki_compat.py` | Remap live P/Q to test entities by label+datatype; `(live_pid, value_type)` map keys; conflict-id parse; holder/live gloss; leftover list for W-186 refuse (W-189) |
 | `backend/app/routers/wikidata_studio.py` (`_build_native_items`, `studio_dict_to_native_item`) | Upload natives from Studio cache (W-181); cache-miss rebuild fallback |
 | `backend/app/pipeline/wikidata_existence.py` | Action API `wbgetentities` alive check + labels + ownership classify + QID-bound foreign accept |
 | `docs/wikidata-data-access.md` | Wikidata:Data_access API map + MHM write-policy matrix (Rule W-99) |
-| `backend/app/pipeline/wikidata_upload_job.py` | Two-pass upload job: partition `__LOCAL:`, write items, MERGE connections on created/own QIDs only; leftover P50→P2093 (W-191 / W-192 / W-195) |
+| `backend/app/pipeline/wikidata_upload_job.py` | Two-pass upload job; owner-only binds exact ledger targets to selected-run manuscripts and runs serially without partitioning local references (W-303) |
 | `backend/app/pipeline/wikidata_actions.py` | Prefab AI-agent actions (`audit_wikidata_item`, `autofix_from_wikidata`) for the eval-agent verify modal |
 | `backend/app/pipeline/wikidata_autofix_apply.py` | Merge high-confidence AI fixes into override PATCH fragments |
 | `backend/app/pipeline/wikidata_entity_compare.py` | Fetch live Wikidata entity + build Studio-vs-live diff rows |
@@ -92,6 +94,7 @@
 | `frontend/src/components/wikidata/WikidataItemTable.tsx` | HMO-parity review table with a labelled search field, filters, badges, pagination, and direct record editing |
 | `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Per-item drawer with labelled multilingual overrides, one-row Hebrew aliases, compare, reconcile, verify/autofix, and push |
 | `frontend/src/components/wikidata/WikidataUploadPanel.tsx` | Compatibility upload hub: lists `dry_run`, `test`, and `live`, but enables submission only for `dry_run`; pre/post AI verify controls and upload progress (W-291) |
+| `frontend/src/components/wikidata/WikidataOwnerPreview.tsx` | Owner-only dry-run controls, job attachment, item and deferred-connection outcomes (W-303) |
 | `frontend/src/components/wikidata/WikidataUploadProgressModal.tsx` | Upload progress modal (tray View / Rule W-141): two-step bars + Now/ETA (W-192), target-aware title + sticky badge, counts strip, per-item table, cancel |
 | `frontend/src/utils/wikidataUploadOutcomes.tsx` | Shared upload outcome tally/table helpers (panel summary + progress modal) |
 | `frontend/src/components/shared/UploadOutcomeBadge.tsx` | Shared upload-outcome pill (HMO + Wikidata) |

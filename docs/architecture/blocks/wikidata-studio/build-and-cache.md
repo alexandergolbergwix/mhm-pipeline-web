@@ -30,17 +30,27 @@ item instead of the static slug), then computes
   the 409 detail is never shown as an error while the build runs (HMO-parity,
   frontend R15/W-106).
 
-The build schema is part of the fingerprint. Schema `source-aware-works-v13`
-(Rule W-294's MARC 942 shelfmark labels, manuscript codex P31, homonymous work separation, Ktiv P361, and 500/740/581/957/title-page projection) also treats a cached
+The build schema is part of the fingerprint. The current schema is
+`source-aware-works-v19`. It retains Rule W-294's MARC 942 shelfmark labels,
+manuscript codex P31, homonymous work separation, Ktiv P361, and
+500/740/581/957/title-page projection. The cache check also treats a cached
 person carrying an ERROR-level `NO_IDENTIFIER` issue as
 stale (`wikidata_studio.py:50`). The current builder either emits an external
 identifier or omits the person, so this shape can only come from an older
 cache. GET marks that cache `cache_stale=true`; the curator must force-rebuild
 before reviewing or uploading it.
 
-Schema v13 adds source-scoped authors, named unknown scribes, qualified claim
-identity, and physical-form evidence (W-296). The canonical salt is
+Schema v13 added source-scoped authors, named unknown scribes, qualified claim
+identity, and physical-form evidence (W-296). Its canonical salt was
 `hmo-wikidata-v16`. See [Gila audit completion](gila-audit-completion.md).
+
+Schema v14 (Rule W-300) strips colophon field labels (957/590/500) at ingest
+and limits the record-author fallback to the main 245 work or the record's
+sole content work. Schema v15 retains distinct source folios at ingest (W-302).
+The current canonical salt is `hmo-wikidata-v21`; projection can still lose a
+repeated title's second folio. W-304 covers explicit source blocks and fresh
+reference namespace markers. Old flat multi-snak reference data is stale and
+must be rebuilt from source; see [reference blocks](reference-blocks.md).
 
 ### Sharded build on Modal (batch-build parity with rdf_build)
 
@@ -56,9 +66,9 @@ Heroku claims the row; the claimed container orchestrates (Rule W-237):
   (`modal/modal_jobs.py`). Each shard loads its slice with one `IN` query
   per table, prewarms transliterations, and returns lossless native item
   payloads (`native_item_payload` — plain dataclasses, JSON-safe).
-- The orchestrator merges shards (`merge_shard_items`): persons/works dedupe
-  by the builder's own `local_id` key, first shard wins (input order is CN
-  order), `records` union; manuscripts never dedupe. Then the corpus-wide
+- The orchestrator merges shards (`merge_shard_items`): persons/works match
+  by the builder's own `local_id` key; compatible evidence and reference blocks
+  merge, while identity conflicts fail closed. Manuscripts never dedupe. Then the corpus-wide
   finish pipeline (`finish_native_items`: local refs, hygiene, validate, QS),
   the export quality gate, the same cache-row upsert, and the item-rows
   write run once over the merged corpus.
@@ -173,8 +183,9 @@ also runs the legacy MARC/authority builder (`build_items_for_run`,
 `wikidata_canonical_enrichment.merge_legacy_into_canonical`. Canonical
 `local_id`, P2888/P973 bridges, and `existing_qid` win; research claims
 (P571/P1071/P407/P1574/P217/P195/…, person dates/VIAF/Mazal, work P50)
-are unioned. Build fingerprint salt `hmo-wikidata-v13` includes the MARC/
-authority enrichment fingerprint so either input invalidates the cache.
+are unioned. The build fingerprint includes the MARC/authority enrichment
+fingerprint so either input invalidates the cache. The current canonical salt
+is `hmo-wikidata-v21`.
 Summary flag: `legacy_enriched`; `projection_source` becomes
 `hmo_wikibase+marc` when enrichment applied.
 
@@ -291,7 +302,7 @@ fail-closed.
 
 ### Modular builder boundary
 
-`item_builder.py` preserves the public `WikidataItemBuilder` API and owns only shared state, orchestration, reconciliation, and compatibility exports. Projection behavior is split by entity concern: manuscript core, manuscript metadata, contents/subjects, person linking, person construction, and work construction. The extracted mixins call the same helpers and emit the same `WikidataItem`/`WikidataStatement` models, so the cache, validator, QuickStatements exporter, uploader, and web serialization contract remain unchanged.
+`item_builder.py` preserves the public `WikidataItemBuilder` API and owns only shared state, orchestration, reconciliation, and compatibility exports. Projection behavior is split by entity concern: manuscript core, manuscript metadata, contents/subjects, person linking, person construction, and work construction. The extracted mixins emit `WikidataItem`/`WikidataStatement` models. Rule W-304 adds `reference_blocks` to the serialization and write contract.
 ### Export contracts and work identity
 
 The legacy section export (`/wikidata-studio/export`) serves the canonical

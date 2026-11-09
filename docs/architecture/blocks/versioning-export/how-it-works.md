@@ -80,6 +80,14 @@ wikidata-studio (json|csv|ttl). The Studio export reuses
 `compute_build_fingerprint` against `WikidataStudioCache` so a fresh cache hit
 exports without rebuilding.
 
+For Wikidata section CSV, `statements_json` retains built statement overrides and
+their `reference_blocks`. An inconsistent cached view receives the
+`REFERENCE_PROVENANCE_UNVERIFIED` finding; export does not repair or authorize
+it. See [reference blocks](../wikidata-studio/reference-blocks.md) (W-304).
+
+The Wikibase and Wikidata Studio TTL exports use `items_to_rdf_graph`. An
+unrepresentable item returns 422 before streaming. See [TTL statement export](ttl-statement-export.md).
+
 ### Import
 
 Section-level import (`section_import.py`): one POST per section

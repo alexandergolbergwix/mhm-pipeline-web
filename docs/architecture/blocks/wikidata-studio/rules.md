@@ -26,12 +26,11 @@
    `410 Gone` for `live`. The compatibility panel lists all three targets,
    but currently enables submission only for `dry_run`.
    *Why:* the bulk API is not subject to the single-item retirement guard.
-7. **R7 — Guard updates to existing items (Rules W-99 / W-270).** The uploader
-   checks ownership and modification conflicts. Live updates may also use a
-   QID-bound curator accept or an exact manuscript P3959 match; these are not
-   first-revision authorship checks. Test uploads do not use those live
-   exceptions. *Why:* community items were mass-damaged once; do not describe
-   the exceptions as a guarantee that only creator-owned items can change.
+7. **R7 — Guard updates to existing items (W-99 / W-302).** The uploader
+   checks creator ownership and modification conflicts. A live foreign update
+   needs a curator accept for the exact QID. P3959 is identity evidence only.
+   Test uploads do not accept foreign updates. *Why:* community items were
+   mass-damaged once; identity does not grant permission to modify them.
 8. **R8 — Every P/Q constant in `property_mapping.py` MUST be verified against
    the live Wikidata page before landing**; wrong constants removed get a
    `_KNOWN_BAD_*` entry + unit test. *Why:* Q179808 (Palme d'Or as "palimpsest") and P7416-as-count shipped silently from memory-derived constants.
@@ -734,11 +733,12 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
     `test_wikidata_live_native_hygiene.py`.
     *Why:* cache still stamped Savoy/Sultan/Kostlitz/Tikkun/Shor live QIDs;
     Kimi scored in-batch `__LOCAL:` as not live-ready.*
-97. **R97 — Clash-cleared identifierless persons skip live writes; uncertain duplicates confirm fail-closed; pass 2 UPDATE is own-only (Rule W-195).**
+97. **R97 — Clash-cleared identifierless persons skip live writes; uncertain duplicates confirm fail-closed (W-195/W-302).**
     After a W-190 strip, identifierless persons are `skipped` (W-154 / W-185),
     not CREATE. DeepSeek confirms only non-identifier matches that survived
     identity gates; clash never reaches the LLM; unsure / fail / `same_item`
-    without a shared id skip. Pass 2 MERGE UPDATE only created/own QIDs;
+    without a shared id skip. Pass 2 binds the first-pass QID and accepts
+    foreign updates only with matching approval;
     leftover P50 to a skipped person becomes P2093 on our work. Live-ready
     `skip_for_live` drops them from the written denominator. Never copy test
     Q/P; never UPDATE Savoy Q209579 / Sultan / Kostlitz / Tikkun Q2740944 /
@@ -927,10 +927,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    Resume action. Recovery never creates a new write intent automatically.
    *Why:* a missing production column stopped the worker before its first item,
    while the UI reported `running` forever (W-227).
-130. **R130 — Automatic resolution must assess blocked actions first.**
-   The job retains a current deterministic create, owned update, or reuse action.
-   It never retains a foreign update without consent.
-   It assesses only blocked actions with two independent AI checks.
+130. **R130 — Automatic resolution separates checked actions from assessment.**
+   In `blocked` mode, the job retains checked CREATE and reuse actions. An
+   owned update is not retained automatically; it goes to assessment (W-302).
+   Other non-retained actions also enter the assessment flow. A blocked-item
+   sweep can defer an action before the two independent AI checks. The policy
+   never supplies foreign update consent. The Studio requests `blocked` mode;
+   the API defaults to `full` when the caller omits the scope.
    *Why:* an AI review of every already-safe item delayed a small blocked-item decision.
 
 131. **R131 — A studio GET on a cache miss enqueues and answers 409 without fingerprint work.**
@@ -984,19 +987,15 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
    A work whose title matches the record title keeps the record author as
    P2093. *Why:* run 3494ebf5 job `89a2decf` failed with 317 gate findings.
 
-135. **R135 — The P3959 catalog identity is an accepted ownership channel for
-    manuscripts only (W-270).** An existing item whose P3959 exactly equals the
-    record's NNL control number is project-owned data regardless of creator;
-    `_assert_modifiable` forwards `our_p3959` and the publication gateway
-    re-accepts a creator refusal only on verified equality. Never on
-    test.wikidata.org, never when the remote item lacks P3959, no fuzzy
-    compare; persons/works keep the strict creator check.
+135. **R135 — P3959 identifies an item but does not establish ownership
+    (W-270, superseded by W-302).** Foreign-created manuscripts need the
+    same exact-QID curator approval as other foreign items.
     *Why:* 16 project manuscripts (created by a former project member) were
     planned as `block (present_foreign)` in release f0992dbf.
 136. **R136 — A blocked item with no resolution path is swept
     deterministically (W-270).** Before assessment the automatic job routes
-    blocked entities without `existing_qid`: P3959 identity stamps
-    `update_existing`, a shared strong identifier goes to the AI dual judge,
+    blocked entities without `existing_qid`: a shared strong identifier,
+    including P3959, goes to the AI dual judge,
     and a label-only match defers out of the Release with a reason. The sweep
     never accepts a community item implicitly. Plan actions carry
     `reconcile_method` (migration `0051`) and blocked payloads carry
@@ -1006,18 +1005,17 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 
 137. **R137 — A publication worker must survive its own infrastructure
     (W-271).** Every gateway boundary call runs under a time budget (write
-    600 s, reconcile 300 s, fetch/read-back 120 s) so a hung Wikidata call
-    becomes a retryable outcome, never a silent stall; execution workers
+    600 s, reconcile 300 s, fetch/read-back 120 s). A write timeout becomes
+    `outcome_unknown`, not an automatic retry; execution workers
     re-run on a fresh session when the database connection dies (bounded
     attempts); the Modal `mhm-jobs` app exposes `GET /healthz` naming
     missing secret keys and a 401 dispatch logs the `MODAL_JOBS_TOKEN`
     remediation. *Why:* the 2026-10-17 passes wedged five times on hung
     writes and dead connections, and two secret rebuilds killed dispatch.
-138. **R138 — Stale `absent` plans adopt their own items, never duplicate
-    (W-272).** An `absent` observation expires once its plan executes, and a
-    CREATE preflight that finds a `present_owned` target (exact P3959
-    identity or our creator) converts to an owned UPDATE instead of blocking
-    beside it. *Why:* the cache planned 1,038 creates beside items the pass
+138. **R138 — Stale `absent` plans must not create duplicates
+    (W-272/W-302).** A new Plan rechecks absence and ownership. A CREATE
+    preflight that finds any existing target blocks and requires a fresh Plan;
+    it never converts the action to UPDATE. *Why:* the cache planned 1,038 creates beside items the pass
     itself had created the day before (2026-10-17).
 139. **R139 — Every MARC field has a deliberate Wikidata fate, recorded and
     measured (W-275).** `converter/wikidata/marc_field_map.py` is the one
@@ -1070,9 +1068,9 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   reference.** `_merge_transcription_statements` (`hmo_canonical_wikidata.py`)
   collapses per-fragment P1684/P1922/P3132 claims (one per colophon or scribal
   intervention from the HMO stage) into a single claim per property — joined
-  value capped at 4000 chars, catalogue-note placeholders dropped before the
-  join (Rule W-72 filter), NLI reference attached. The build fingerprint salt
-  is `hmo-wikidata-v16` after W-296. *Why:* a manuscript carrying 62 inscription claims
+  with `" | "` and capped at 4000 chars, catalogue-note placeholders dropped before the
+  join (Rule W-72 filter), NLI reference attached. W-296 used fingerprint salt
+  `hmo-wikidata-v16`; W-300 advances it to `hmo-wikidata-v17`. *Why:* a manuscript carrying 62 inscription claims
   pushed its P31 past the judge's 40-statement projection and 111 items failed
   AI verify for "no instance of" that was present (run 47e03437, Rule W-286).
 
@@ -1113,8 +1111,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   on reconciled skips, and new/verified scope filters (Rule W-292).**
   `run_wikidata_upload_shard` authenticates per-slot `WikidataUploader`
   instances once per shard and `_get_authenticated_user()` reads the logged-in
-  WBI session (plus `classify_ownership_with_uploader` forwards `our_p3959` on
-  manuscripts); `prewarm_reconciler_for_items` and `_reconcile_for_upload`
+  WBI session. P3959 does not establish ownership (W-302);
+  `prewarm_reconciler_for_items` and `_reconcile_for_upload`
   reconcile works by exact `P2888` HMO Wikibase URI first and
   `_apply_uncertain_duplicate_confirm` treats a shared live `P2888` as an
   exact identifier match while passing author + description context (with
@@ -1166,7 +1164,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 - **R150 — Source scope and qualified meaning survive every projection (W-296).**
   Preserve named unresolved scribes without identifierless person items.
   Keep distinct person roles and folio ranges. Keep author and genre evidence
-  on the matching work. Reject image-only codex inference. Preserve exact dates
+  on the matching work. The repeated-title folio projection gap in W-302 is
+  still open. Reject image-only codex inference. Preserve exact dates
   and distinct references. The user chose separate manuscript/work entities.
   *Why:* the full letter exposed losses and false claims after the first audit pass.
 - **R151 — A local audit report is a proposal, with explicit review cases (W-296).**
@@ -1182,3 +1181,64 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   string does not remove it. Do not invent a suffix for live labels. A foreign
   or unidentified target is not retried. *Why:* ten project manuscripts failed
   because their Hebrew title and description duplicated a sibling item's pair.
+
+- **R153 — The record-author fallback covers the main work or the record's sole content work (W-300).**
+  A secondary 500/740/contents-NER work keeps its own responsibility evidence
+  (W-296: the Etz Chayim selection must not inherit Bagi). When the record
+  projects no 100/245 main work and the contents-NER work is its only content
+  work, the record author attributes it, and the author-scoped work key keeps
+  same-title works with different record authors separate. Colophon field
+  labels (`קולופון:` on 957/590/500 pieces) are stripped at ingest before the
+  W-72 apparatus filter so colophon year, Hebrew year, and scribe survive.
+  *Why:* the W-296 restriction also removed the fallback from studio sole-work
+  records (same-title works merged and lost their record association), and the
+  labeled 500/590 colophon pieces were dropped whole (colophon-only production
+  years and Hebrew years were lost).
+
+- **R154 — Bind authorization and preserve source folio evidence (W-302).**
+  Foreign live updates require exact-QID curator approval. Publication also
+  binds revision and entity digest, and requires a fresh Plan when CREATE finds
+  a target. Pass 2 binds the first-pass target and current foreign approval.
+  Publication rechecks its execution authorization before the remote write.
+  Bulk upload rechecks persisted approval for a foreign write. Neither check
+  is atomic with the Wikidata write; a later revocation can race the write.
+  Bulk live work P31 and applicable author/source checks fail closed. Ingest retains
+  distinct repeated-title folios, but title-only projection can suppress later
+  P1574 claims. *Why:* identity is not permission, and retained source evidence
+  does not guarantee complete projection.
+
+- **R155 — Publication preserves work source identity and bounds main sends.**
+  Work source fields are digest-bound and cannot change in automatic projection.
+  Record-scoped remote identity requires the same source record set. The gateway
+  checks work author/source identity and requires verified non-deprecated
+  remote written-work P31 values before UPDATE. Main WBI writes use one attempt without redirects; a confirmed CSRF
+  rejection permits one separately authorized retry. Test-wiki remapping can
+  write stubs during preparation or confirmation outside that send check.
+  Local approval and remote writes are not atomic.
+  *Why:* a source match is not interchangeable with a title match, and an
+  ambiguous write or approval change must not be treated as a safe resend.
+
+- **R156 — Owner-only updates require exact manuscript evidence (W-303).**
+  Bind each target to its exact live ledger mapping and one record in the
+  selected run. Require exactly one local and one remote `P3959`, each equal
+  to the source control number and ranked `normal` or `preferred`. Reject
+  works, persons, local references, generic `P1574=Q234460` claims,
+  foreign consent, ambiguous targets, and unverifiable creators. Run serially
+  without shards, and never write ledger mappings. A dry-run needs the live
+  credential and reports eligibility, not permission or a guaranteed future
+  write. A live audit failure stops the job after the item outcome; the remote
+  write may already have succeeded and requires verification before retry.
+  Do not remove claims for absent properties or use `REPLACE_ALL`. With built
+  `P31`, block a proposed property when a remote claim is unmatched. Preserve
+  existing labels, descriptions, ranks, and references; reject metadata
+  conflicts. Local snapshots and post-write audit records are not atomic with
+  the remote write.
+    *Why:* a QID or catalog identity alone cannot authorize a safe update.
+
+- **R157 — Preserve source reference blocks and reject unproven grouping (W-304).**
+  Keep complete blocks through build, merge, cache, Publication, deferred links,
+  and writes. Reject inconsistent views and old flat lists with multiple snaks
+  at the applicable safety gates. A fresh-source marker cannot certify old data.
+  Test wiki requires verified namespace and remapping evidence. See
+  [reference blocks](reference-blocks.md) for lower-level and UI limitations.
+  *Why:* flat snaks cannot establish which source supplied each statement.

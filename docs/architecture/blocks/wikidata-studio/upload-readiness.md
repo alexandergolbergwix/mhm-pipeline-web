@@ -16,7 +16,8 @@ Shared ancestor names cannot establish identity when the given names differ.
 The build preserves supported alternative headings and existing spelling tolerance.
 The build clears unconfirmed identifiers and omits people without a publishable identity.
 The source evidence remains available for curator correction.
-Fingerprint version `hmo-wikidata-v14` invalidates older canonical caches.
+Fingerprint version `hmo-wikidata-v14` introduced this identity change; the
+current canonical salt is `hmo-wikidata-v21` (W-304).
 
 `converter.authority.heading_fidelity.given_names_match` supplies the shared comparison.
 The export audit checks emitted P8189 claims against their authority headings.

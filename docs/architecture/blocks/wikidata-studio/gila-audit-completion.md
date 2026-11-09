@@ -43,13 +43,16 @@ Qualified Ktiv membership replaces an unqualified duplicate.
 An exact source date removes stale circa from the same canonical date and precision.
 Different dates or uncertainty statements remain distinct.
 
-Owned updates deduplicate reference blocks by semantic snaks.
-They preserve distinct sources and ignore transport hashes and property order.
-The claim compiler also removes repeated native reference snaks.
+Owned updates deduplicate existing reference blocks by semantic snaks.
+Native statements now carry explicit blocks and a flat compatibility view
+(W-304). The original boundaries of old flat multi-snak data cannot be
+reconstructed reliably; safety gates require a rebuild from source.
 Reference-only changes count as updates, so the exists path does not skip them.
+The local migration does not prove that live references were corrected.
 
-The legacy build schema is `source-aware-works-v13`.
-The canonical fingerprint salt is `hmo-wikidata-v16`.
+The current legacy build schema is `source-aware-works-v19`.
+The current canonical fingerprint salt is `hmo-wikidata-v21` (W-304).
+W-296 originally used `source-aware-works-v13` and `hmo-wikidata-v16`.
 Port shared converter changes upstream before the next full desktop sync.
 
 ## Deterministic report
@@ -74,6 +77,43 @@ control numbers, and source authors as a `review_source_partition` proposal.
 Multiple authors can be legitimate; this proposal requires source review.
 The report never performs a repair or declares a QID corrected.
 
+## Full-corpus receipt: upload `24802798-dd95-4973-8ec8-32138f459e8f`
+
+The live job processed 1,996 items. Its result recorded zero connections added
+and 433 unresolved connections; inspect the per-link outcomes before retry.
+It recorded 1,558 adopted, 407 blocked, 19 skipped, one created, and 11 failed.
+Ten failures are owned manuscript updates with colliding Hebrew label/description
+pairs. The builder proposed each literary Hebrew title as a label.
+The target's Hebrew description plus that title duplicated a sibling item's pair.
+The API named the sibling QID. Each target P3959 still matched its source record.
+The local uploader fix preserves the existing target label and adds the proposed
+title as an alias. A targeted retry must verify all ten outcomes.
+
+| Source CN | Target QID | Conflicting sibling QID |
+|---|---|---|
+| `990000413130205171` | `Q141746838` | `Q141746840` |
+| `990000898590205171` | `Q141747184` | `Q141747245` |
+| `990000953610205171` | `Q141747216` | `Q141747217` |
+| `990001022920205171` | `Q141747250` | `Q141747327` |
+| `990001067870205171` | `Q141747292` | `Q141747291` |
+| `990001078470205171` | `Q141747296` | `Q141747323` |
+| `990001153990205171` | `Q141747437` | `Q141747438` |
+| `990001324750205171` | `Q141747621` | `Q141747618` |
+| `990001366520205171` | `Q141747665` | `Q141747666` |
+| `990001905840205171` | `Q141748194` | `Q141748246` |
+
+The remaining failure is `work:מדרש_איכה`.
+Its cached proposal has Hebrew label `מדרש איכה` and only an English description.
+The local WBI payload does not contain an equal same-language label/description
+pair. The API returned the generic Hebrew collision message without a QID.
+`wbsearchentities` found only the different-title Q141748690, and exact work
+reconciliation found no candidate. The local uploader now stops after one such
+error and reports manual payload review. It does not guess a QID. This item
+remains failed until a reviewed payload or exact candidate resolves it.
+
+The 407 blocked and 19 skipped items are separate from the 11 write failures.
+Work-identity review and uncertain duplicate confirmation remain open.
+
 The report compares selected source fields. Its remaining-check list identifies
 semantic and live checks that still need review.
 Zero transfer cases in this report do not certify all nine requirements.
@@ -85,5 +125,8 @@ It retained 413 named unknown scribe claims on 400 manuscripts, 897 qualified
 Ktiv memberships, and 563 role-qualified colophons.
 The report listed 147 absent-source field cases and 1,163 identity/scope cases.
 These counts describe proposals and review cases, not completed live corrections.
+The 2026-11-07 read-only legacy audit checked 897 records and found 896 known
+QIDs. It reported 90 absent-source cases, zero selected transfer cases, and
+1,220 identity/scope cases. It did not verify live corrections.
 The mixed old work and failed bulk items still need their own repair receipts
 and live read-back before the audit can close.

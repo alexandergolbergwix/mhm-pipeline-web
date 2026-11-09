@@ -61,6 +61,7 @@ Pipeline stages, in order:
   rule engine: per-rule pass/fail/not-relevant/error results, blocking-rule
   settings, approve-by-filter, Modal shard fan-out.
 - [Rules](rules.md) — the invariants (R1–R35) this block enforces.
+- [Read-back claim fidelity](readback-claim-fidelity.md) — rank, qualifiers, and reference blocks kept on live read-back; fail-closed on unsupported snaks.
 - [Skills](skills.md) — operator playbooks: bootstrap, upload, debug coverage,
   rotate credentials, adopt existing items.
 - [Tests](tests.md) — the test suites pinning this block.

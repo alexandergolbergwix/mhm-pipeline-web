@@ -19,3 +19,4 @@
 | `backend/scripts/backfill_versioning.py` | One-shot, idempotent: `op=create` event for every pre-existing read-model row |
 | `frontend/src/api/export.ts` | Typed client — hidden-anchor download (no JS-heap buffering) |
 | `frontend/src/components/export/ExportButton.tsx` / `ExportProjectDialog.tsx` | Project-header "Export…" entry point + entity-type picker |
+| `backend/app/export/formatters.py` | `items_to_rdf_graph`: statement nodes, `pq:` qualifiers, `prov:wasDerivedFrom` references, best-rank `wdt:`; raises `ValueError` on unrepresentable input (see [TTL statement export](ttl-statement-export.md)) |

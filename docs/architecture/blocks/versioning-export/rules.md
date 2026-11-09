@@ -37,3 +37,11 @@
 10. **R10 — A revert MUST also project the target state onto the read-model
     table in the same commit.** *Why:* the UI reads the projection; an
     event-only revert would show nothing changed (`history.py:325-339`).
+11. **R11 — Preserve Wikidata reference blocks in section exports (W-304).**
+    Preserve built overrides and expose unverified provenance as a finding.
+    *Why:* flat snaks cannot recover the boundaries of distinct sources.
+12. **R12 — TTL item exports build the whole graph first and return 422 on
+    unrepresentable input.** Emit `pq:` qualifiers and `prov:wasDerivedFrom`
+    reference nodes. Never stream a partial graph. *Why:* a partial TTL file
+    looks valid but drops claims silently. See
+    [TTL statement export](ttl-statement-export.md).

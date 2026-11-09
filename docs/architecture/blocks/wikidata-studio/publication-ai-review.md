@@ -25,7 +25,8 @@ The worker uses the verify admission slot. It checks account and encrypted grant
 It saves the partial report after every item. The job result stores the final report.
 The page restores the report after refresh and polls active jobs.
 Cancellation stops the subprocess. A restart can reuse saved item progress for the same job.
-Reports support at most 500 blocked actions per Plan.
+Advisory reports support at most 500 blocked actions per Plan. The separate
+automatic worker accepts at most 2,000 Plan actions.
 Generic job messages omit the report to keep Postgres notifications small.
 
 ## Evidence and gates
@@ -72,6 +73,8 @@ An explicit override bypasses both report reuse and inference cache reads.
 
 ## Automatic mode
 
-The default automatic mode assesses blocked actions and preserves safe current Plan actions.
+The Studio requests automatic `blocked` mode. It preserves checked CREATE and
+reuse actions and sends other actions to the assessment flow. The API defaults
+to `full` when a caller omits `automatic_scope`.
 It prepares a supported subset without an AI call for each already-safe item.
 It uses policy approval and never supplies foreign consent. See [automatic resolution](automatic-resolution.md).
