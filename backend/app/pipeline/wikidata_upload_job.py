@@ -450,12 +450,16 @@ async def _assert_studio_source_unchanged(
     fingerprint: str,
     summary: dict[str, Any],
 ) -> None:
-    from app.routers.wikidata_studio import _studio_cache_is_current  # noqa: PLC0415
+    from app.routers.wikidata_studio import (  # noqa: PLC0415
+        STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
+        _studio_cache_is_current,
+    )
 
     async with session_scope() as db:
         current = await _studio_cache_is_current(
             db, run_id, source=source, approved_only=approved_only,
             fingerprint=fingerprint, summary=summary,
+            timeout_seconds=STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
         )
     if not current:
         raise StudioSourceChangedError(run_id)

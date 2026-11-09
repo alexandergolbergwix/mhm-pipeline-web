@@ -123,6 +123,9 @@ router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
 
 _CANONICAL_LOAD_BATCH = 500
 _STUDIO_FRESHNESS_TIMEOUT_SECONDS = 25.0
+# Background upload jobs have no HTTP limit. A full-corpus fingerprint takes
+# about 40 seconds on production data, so the job path gets a larger budget.
+STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS = 120.0
 
 
 def _without_statement_cap(driver: object) -> None:
@@ -408,6 +411,7 @@ def _studio_items_digest(items: list[dict[str, Any]]) -> str:
 async def _studio_cache_is_current(
     db: AsyncSession, run_id: uuid.UUID, *, source: str, approved_only: bool,
     fingerprint: str, summary: dict[str, Any] | None,
+    timeout_seconds: float | None = None,
 ) -> bool:
     try:
         return await asyncio.wait_for(
@@ -415,7 +419,7 @@ async def _studio_cache_is_current(
                 db, run_id, source=source, approved_only=approved_only,
                 fingerprint=fingerprint, summary=summary,
             ),
-            timeout=_STUDIO_FRESHNESS_TIMEOUT_SECONDS,
+            timeout=timeout_seconds or _STUDIO_FRESHNESS_TIMEOUT_SECONDS,
         )
     except TimeoutError as exc:
         raise HTTPException(

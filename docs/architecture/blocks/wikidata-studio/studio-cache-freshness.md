@@ -58,3 +58,9 @@ returns 409 when the cache is not current, so a rebuild is needed before upload.
 - `backend/tests/unit/test_wikidata_row_rebuild_required.py` (merged and paged parity)
 - `backend/tests/test_wikidata_cache_freshness_gate.py`
 - `backend/tests/unit/test_wikidata_studio_sharding.py`
+
+## Time budget
+
+- HTTP routes check freshness inline with a 25-second budget (`_STUDIO_FRESHNESS_TIMEOUT_SECONDS`). Heroku closes requests after 30 seconds.
+- Background upload jobs use `STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS` (120 seconds). A full-corpus fingerprint took about 40 seconds on run `47e03437` (897 records, 4,439 matches).
+- A timeout still fails closed with HTTP 409 and no write.
