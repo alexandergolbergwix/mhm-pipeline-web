@@ -32,8 +32,9 @@ async def record_wikibase_write(
     target_key: str,
     wikibase_id: str | None = None,
     outcome_message: str = "ok",
+    raise_on_error: bool = False,
 ) -> None:
-    """Append one audit row. Failures are logged and swallowed."""
+    """Append one audit row. Optionally propagate a persistence failure."""
     try:
         db.add(
             WikibaseCloudWrite(
@@ -50,9 +51,11 @@ async def record_wikibase_write(
             )
         )
         await db.commit()
-    except Exception:  # noqa: BLE001 — audit must never break writes
+    except Exception:  # noqa: BLE001 — callers may request a visible failure
         logger.warning("failed to record wikibase_cloud_write", exc_info=True)
         await db.rollback()
+        if raise_on_error:
+            raise
 
 
 async def fetch_latest_wikibase_writes(

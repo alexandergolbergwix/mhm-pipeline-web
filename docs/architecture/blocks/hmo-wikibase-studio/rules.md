@@ -46,7 +46,9 @@
     personal account would silently mis-attribute every edit.
 11. **R11 — Every live write is audited; audit never breaks the write.**
     `record_wikibase_write` (and versioning `apply_event` calls) MUST swallow
-    their own failures. Manifest uploads audit *intent* before the network call.
+    their own failures. The one exception is a caller that passes
+    `raise_on_error=True` (the strict Wikidata upload audit), which accepts a
+    visible failure. Manifest uploads audit *intent* before the network call.
     *Why:* forensic recovery needs the trail, but an audit-table hiccup must
     not 500 a batch.
 12. **R12 — Batch loops never let one bad item kill the batch.** Writer entity

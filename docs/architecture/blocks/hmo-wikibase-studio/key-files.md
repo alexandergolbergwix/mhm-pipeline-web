@@ -52,7 +52,7 @@
 | `backend/converter/wikibase/resolved_models.py` | `ResolvedWikibaseEntity` incl. `entity_type` + `control_numbers` persisted in `HmoStudioItemCache` |
 | `backend/scripts/audit_hmo_authority_consistency.py` | Deterministic export audit for authority coverage, malformed links, and duplicate local-QID mappings |
 | `backend/app/services/wikibase_credentials.py` | Server-held OAuth config → verified `WikibaseCloudWriter` (checks the session is the expected write user) |
-| `backend/app/services/wikibase_audit.py` | `record_wikibase_write` — one `wikibase_cloud_writes` row per outcome, never raises; `fetch_latest_wikibase_writes` — portable "latest row per target" query powering the review table's upload-outcome fields |
+| `backend/app/services/wikibase_audit.py` | `record_wikibase_write` — one `wikibase_cloud_writes` row per outcome, never raises unless the caller passes `raise_on_error` (strict upload audit); `fetch_latest_wikibase_writes` — portable "latest row per target" query powering the review table's upload-outcome fields |
 | `backend/app/services/wikibase_user_access.py` | Best-effort per-curator wiki provision on login/invite only (5 s cap; failed is no-retry — Rule W-123) |
 | `backend/app/models/hmo_studio_item_row.py` | Per-item review read-model row (`hmo_studio_item_rows`, migration 0046) — powers the SQL-paginated review table |
 | `backend/app/pipeline/hmo_item_rows.py` | Writes rows at build time; lazily backfills them from the build cache for existing runs |
