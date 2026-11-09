@@ -26,3 +26,7 @@
     *Why:* they run in one-off dynos with no app context, and concurrent retention jobs contend on the same small connection pool.
 11. **R11 — `DATABASE_URL` scheme rewriting and forced-SSL connect args live in `settings.py`/`db.py`; NEVER construct a second engine with different connect args.**
     *Why:* Heroku Postgres refuses non-SSL connections and ships the legacy `postgres://` scheme; a second engine silently breaks in prod.
+12. **R12 — Deploy the owner-only job runner and Modal dispatcher together (W-243 / W-303).**
+    Owner-only jobs use the saved live credential, including for dry-run, and
+    run without upload shards. A stale Modal image can use the wrong dispatch
+    or guard behavior. *Why:* Modal executes its own copy of the runner.

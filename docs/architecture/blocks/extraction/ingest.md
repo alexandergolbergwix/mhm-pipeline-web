@@ -50,13 +50,20 @@ the rest of the pipeline reads:
   `script_mode`, through the `SCRIPT_TYPES` / `SCRIPT_MODES` vocabulary.
   A tradition with no verified QID (`פרובנצלית`, `מערבית`, `קראית`) is left
   unmapped rather than guessed (Rule R8).
-- **Colophon label (W-281)**: NLI labels `957$a` with the field name
-  (`קולופון: "תם ונשלם …"`). That prefix is stripped at ingest, because
+- **Colophon label (W-281)**: NLI labels colophon fields with the field name
+  (`קולופון: "תם ונשלם …"` on `957$a`, and the same prefix on `590$a` /
+  keyword-detected `500$a` pieces). That prefix is stripped at ingest, because
   `is_catalog_note_placeholder` rejects any string containing `קולופון` (the
-  scribe never names his own colophon, Rule W-72). The guard itself is
+  scribe never names his own colophon, Rule W-72). Stripping the label keeps
+  the colophon content (year, Hebrew year, scribe) extractable instead of
+  dropping the labeled piece whole (Rule W-300). The guard itself is
   untouched — `בסופו קולופון` / `קולופון המחבר` / `(קולופון 4)` are still
   rejected. Placeholder pieces are dropped before the compound join so one
   `רשומה זמנית` note cannot sink a real colophon.
+- **Repeated work folios (W-302)**: ingest retains distinct title and folio
+  pairs from 505/500, including after repeated preparation. Downstream
+  Wikidata projection can still suppress a later folio for the same title;
+  see [Wikidata Studio rules](../wikidata-studio/rules.md).
 - **Structured colophon**: `_extract_colophon_fields` pulls `colophon_year`
   (Hebrew gematria via desktop `converter.transformer.gematria`, or a
   Gregorian 4-digit fallback) and `colophon_scribe` (patronymic בן / ב"ר

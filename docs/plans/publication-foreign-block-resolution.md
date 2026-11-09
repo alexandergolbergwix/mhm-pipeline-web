@@ -1,5 +1,8 @@
 # Publication Foreign-Block Resolution — Full Implementation Plan
 
+> Historical plan: W-302 supersedes F1's P3959 ownership override and F3's
+> automatic foreign update. See [the current rule](../architecture/rules/wikidata-studio.md#rule-w-302--identity-is-not-permission-writes-bind-the-authorized-target).
+
 Status: IMPLEMENTED (2026-10-17; F2 → F1 → F3 → F4). Target release: the
 next live pass (run `3494ebf5-ceb0-4702-a94e-c8f10be7f251`, publication
 `f0992dbf-…`, release 1849 entities / 107 blocks).

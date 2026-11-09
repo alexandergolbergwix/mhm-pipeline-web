@@ -533,3 +533,23 @@ R14 and H12 also occurred during the incident. These changes reduce specific
 risks; they do not establish the cause of all timeouts or resolve dyno memory
 pressure. A retry of an XADD transaction can duplicate a complete batch when
 Redis commits it but the response is lost.
+
+### Rule W-301 — Answer simple manuscript example requests before the planner (added 2026-11-06)
+
+A request for ten manuscript examples triggered an unrelated audit of upload
+counts and nineteen research steps. The user received no examples first.
+
+1. After the prompt gate, recognize only unfiltered requests for 1–50
+   manuscript examples. Read at most that many MARC records from the grant's
+   run, in control-number order, and link each record to its source endpoint.
+2. Confirm that the run belongs to the granted project. Label the run scope
+   and the number of records returned. Never imply the records were uploaded.
+3. Do not take the direct route for requests with filters, extra conditions,
+   or unsupported counts. Mixed count-and-example requests must not receive a
+   count-only answer.
+4. The planner should address the latest request before resuming an earlier
+   audit. It must not investigate unrelated counts to answer an example list.
+
+The deterministic answer is stored as a canvas note and relayed through the
+normal AG-UI stream. Tests: `test_research_answer_router.py` and
+`test_research_async_run.py`.

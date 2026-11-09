@@ -5,10 +5,9 @@
 The user asks for code fixes for all issues in Gila's full nine-point letter.
 The user chose separate physical manuscripts and written works.
 Use `docs/plans/gila-builder-completion.md` for the acceptance criteria.
-No commit, push, deployment, or live mutation has occurred in this task.
-The current HEAD is `0c38b4d398e4835fe0ad34894608cd5cd4cb4ac4`.
-All code changes remain in the worktree.
-Preserve the earlier Research Assistant edits from this session.
+Commits `90e4cbf`, `0d05a7ed`, and `84942a1c` include the builder changes.
+Heroku and Modal received those releases. Full-corpus upload `24802798` completed.
+Preserve unrelated Research Assistant changes in the worktree.
 
 ## Completed first pass
 
@@ -77,17 +76,21 @@ Resume those sessions for exact probe details if needed.
 
 ## Verification and remaining work
 
-The last broad focused run passed 183 tests before the newest reference-metadata
-regression. Run that regression after the latest compiler fix.
-The full backend suite exceeded a 240-second limit and produced no retained
-summary. No pytest process remains from that attempt. Do not claim a full pass.
-The environment has no `mypy`.
-Ruff has existing baseline failures. Compare new findings with HEAD.
-The latest delta found four new issues in the audit/CLI; the subsequent patch
-bound the per-record closure, split long lines, moved the snapshot read to a
-thread, and used UTC. Recheck the delta.
+The read-only inspection grouped 10 failures as owned-manuscript label conflicts.
+The API named sibling items with the same Hebrew title and description pair.
+The target's existing label is an item-specific manuscript designation.
+The local uploader now preserves it and adds the literary title as an alias.
+This fix is not deployed yet.
+The remaining failure, `work:מדרש_איכה`, has no same-language pair in the
+cached or locally constructed WBI payload. Exact title reconciliation found no
+candidate. The new code reports that API response after one attempt for manual review.
 
-Finish the seven review fixes, focused tests, and a read-only canonical check.
-Update the plan checkboxes and measurement docs after the final checks.
-The report remains a selected-field proposal. Preserve its `remaining_checks`
-and empty `corrected_qids` until a separate live write and read-back occur.
+Focused upload tests now cover the label-conflict retry and equal-description
+removal. The full backend suite is not verified here. The environment has no
+`mypy`. Ruff has baseline findings; compare new findings with HEAD.
+
+The next safe upload scope is the ten failed manuscript local IDs only.
+Exclude `work:מדרש_איכה` until its create payload is understood.
+Do not include the 407 blocked or 19 skipped items in that retry.
+The local audit report remains a proposal. Keep `corrected_qids` empty until a
+separate live write and read-back confirm corrections.

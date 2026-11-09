@@ -1,5 +1,8 @@
 # Post-pass hardening fixes — code issues found during the 2026-10-17 publication pass
 
+> Historical plan: W-302 supersedes the P3959 ownership and CREATE adoption
+> claims below. See [the current rule](../architecture/rules/wikidata-studio.md#rule-w-302--identity-is-not-permission-writes-bind-the-authorized-target).
+
 Status: IMPLEMENTED 2026-10-17 — H1–H5 done and tested (190 backend tests green); H6–H12 remain planned.
 Source: the live publication session (F1–F4 deploy → resolve → publish → adopt).
 Rule of scope: fix in code every issue the pass surfaced. No behavior change

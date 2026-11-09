@@ -98,6 +98,9 @@ Defaults:
 - User may **modify** only entities they created (token-proven), unless they explicitly accept each foreign QID.
 
 Accept is stored on `WikidataItemOverride` as `accept_foreign_modify` + `accepted_foreign_qid` and must match the reconciled QID at upload time.
+P3959 is identity evidence, not creator ownership or permission to edit (W-302).
+Publication additionally binds foreign consent to the entity key, remote revision,
+and sealed entity digest. Bulk upload does not use that Publication consent.
 
 ---
 

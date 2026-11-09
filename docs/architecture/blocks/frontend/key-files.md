@@ -36,6 +36,7 @@
 | `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Studio item drawer: labelled multilingual overrides, one-row Hebrew aliases, foreign-modify accept (W-99), push/reconcile, HMO Wikibase Item:Q link (W-122) |
 | `frontend/src/components/wikidata/WikidataItemTable.tsx` | Searchable result list with a labelled record search and direct item editor entry |
 | `frontend/src/components/wikidata/WikidataUploadSteps.tsx` | Two-step Wikidata upload bars (Now + ETA; Rule W-192); per-step counter tooltips explain the step-local scale |
+| `frontend/src/components/wikidata/WikidataOwnerPreview.tsx` | Owner-only dry-run controls, progress, scope and result tables; does not patch upload status (W-303) |
 | `frontend/src/utils/formatJobEta.ts` | Shared remaining/elapsed time labels for job progress |
 | `frontend/src/api/wikidataStudio.ts` | Typed Wikidata Studio client incl. `accept_foreign_modify` override fields |
 | `frontend/src/api/publication.ts` | Typed Publication commands and cursor reads; a prepare response can contain a queued job before it contains a Release |
@@ -52,7 +53,7 @@
 
 Publication restore (W-219) includes completed job progress and errors. The current plan can be reused; explicit cache override queues fresh checks.
 
-[Publication consent](../wikidata-studio/production-publication.md) requires an explicit checkbox per foreign QID and fresh worker checks (W-221). The accept drawer `WikidataBlockedActionDrawer.tsx` shows the claims diff per blocked row and offers reuse / accept & update / leave out (W-270).
+[Publication consent](../wikidata-studio/production-publication.md) requires an explicit checkbox per foreign QID and fresh worker checks (W-221/W-302). The accept drawer `WikidataBlockedActionDrawer.tsx` shows the claims diff per blocked row and offers reuse / accept & update / leave out (W-270). `WikidataItemDetailDrawer.tsx` displays approval only when the saved QID matches the current target, and changes it only after a successful save.
 
 [AI review of blocked Publication items](../wikidata-studio/publication-ai-review.md) lists the route, job, evaluator, report component, and tests (W-222).
 

@@ -1,5 +1,9 @@
 # MARC → Wikidata coverage & mapping improvement plan
 
+> The publication references below predate W-302. P3959 is identity evidence,
+> not permission to edit; Publication CREATE needs a fresh Plan when a target
+> exists. See [the current rule](../architecture/rules/wikidata-studio.md#rule-w-302--identity-is-not-permission-writes-bind-the-authorized-target).
+
 Status: IN PROGRESS (2026-10-19) — WP9 + WP7 landed in one session; WP1…WP6
 and WP8 remain. Next session continues from the WP9 gate below.
 Basis: `reports/marc-wikidata-field-coverage-17th-century.md` +

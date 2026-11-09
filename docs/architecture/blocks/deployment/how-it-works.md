@@ -71,6 +71,12 @@ Heavy run-jobs execute on the separate `mhm-jobs` app
 (`modal deploy modal_jobs.py`, Rule W-237) — every change to job-runner
 code MUST land with that deploy in the same change (Rule W-243), because
 the detached container executes its own copy of `backend/`.
+Owner-only Wikidata upload jobs bypass shard fan-out and run serially in the
+claimed runner. Their dry-run requires the curator's saved live credential
+and contacts live Wikidata for checks, but makes no Wikidata writes (W-303).
+The `mhm-jobs` runner reads the private token from the job parameters; this is
+separate from the research-agent Modal boundary described above.
+Synchronize the Modal dispatcher and backend runner when shipping this path.
 `run_modal_job_detached` and the Wikidata Studio shard use a 24-hour
 timeout (`_TIMEOUT_S = 86400`). The web poller waits the same budget
 (`modal_job_client._WAIT_BUDGET_S`) before a local fallback (Rule W-261).

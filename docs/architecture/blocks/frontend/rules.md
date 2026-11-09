@@ -29,3 +29,12 @@
 
 25. **R25 — A studio-build conflict MUST keep the studio page on screen.** A 409 `studio_build_in_progress` or `studio_build_failed` shows the job progress on the review page. The page must not replace itself with the sentence "Wikidata Studio build is running in the background." *Why:* that sentence was the only content on the page while a build was still running (2026-10-01).
 26. **R26 — Research reports preserve table cells and split panels shrink within the viewport (W-298).** Parse supported malformed pipe rows without losing their first cell. Use table view by default, and treat unsafe integers and digit strings with leading zeroes as text. *Why:* the canvas showed raw pipe text, numeric conversion could change control numbers, and a split panel could overflow.
+27. **R27 — Owner-only preview is not a write or authorization (W-303).** Show
+    job status, scope, item outcomes, and any deferred-connection outcomes.
+    Do not patch the review table's upload status from preview progress. Label
+    `would_update` as eligibility to attempt an update, not a guarantee.
+    *Why:* preview results do not reserve or approve a later live write.
+28. **R28 — The flat reference view does not establish source grouping (W-304).**
+    The current `Snak` type and legacy statement view use `references`, not
+    `reference_blocks`. The displayed count is a snak count, not a source count.
+    *Why:* flattening loses the boundaries between distinct sources.

@@ -378,7 +378,7 @@ control number.
 Every manuscript with a live HMO Wikibase QID also carries **`P2888` exact
 match** + **`P973` described at URL** to the project wiki item. Mapping runs
 through `hmo_wikidata_pq_mapper` only; project Cloud QIDs never become
-statement values. Build fingerprint salt: `hmo-wikidata-v9` (W-125 full MARC/authority enrichment merge onto canonical Studio; prior `hmo-wikidata-v8` = W-122 Item:Q bridges + catalog-note P1684 filter).
+statement values. W-125 used build fingerprint salt `hmo-wikidata-v9` for full MARC/authority enrichment; W-122 used `hmo-wikidata-v8`. The current canonical salt is `hmo-wikidata-v21` (W-304).
 
 ---
 

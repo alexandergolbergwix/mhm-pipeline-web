@@ -15,7 +15,7 @@ it all together.
 - [Key files](key-files.md) — Procfile, scripts, migrations, scheduler jobs, Modal app
 - [How it works](how-it-works.md) — web dyno, release phase, Scheduler, background jobs, Modal, data imports
 - [Environment variables](env-vars.md) — the full grep-verified env-var table
-- [Rules](rules.md) — the 11 invariants (R1–R11)
+- [Rules](rules.md) — the 12 invariants (R1–R12)
 - [Skills & tests](skills.md) — deploy/migration/env-var/Scheduler/Modal/authority playbooks and the pinning test suites
 
 ## Related blocks

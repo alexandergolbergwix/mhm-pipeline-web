@@ -20,6 +20,8 @@
 | Limit parallel verify/build on one dyno (crash-safe queue) | [job-service](blocks/job-service/README.md) R21 + Rule W-129 + `RUN_JOB_MAX_*` env |
 | Map HMO / project Wikibase P/Q → public Wikidata | [wikidata-studio](blocks/wikidata-studio/README.md) R38 + `hmo_wikidata_pq_mapper.py` + [docs/wikidata-data-access.md](../wikidata-data-access.md) |
 | Change upload ownership / foreign-modify accept | [wikidata-studio guards](blocks/wikidata-studio/guards-and-upload.md) + Rule W-99 |
+| Preview or change owner-only manuscript updates | [owner-only upload](blocks/wikidata-studio/owner-only-upload.md) + Rule W-303; dry-run needs a live credential and is not authorization |
+| Diagnose reference grouping, old caches, or test-wiki reference writes | [reference blocks](blocks/wikidata-studio/reference-blocks.md) + Rule W-304 |
 | Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |
 | Change MARC 500/505 work candidates or Studio item counts | [extraction ingest](blocks/extraction/ingest.md) + [Wikidata Studio R22](blocks/wikidata-studio/rules.md) |
 | Touch Wikibase Cloud items/schema | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) — schema AI verify: eval-agent [R17](blocks/eval-agent/rules.md), Rule W-47 |
@@ -40,7 +42,7 @@
 | Measure MARC → Wikidata coverage, or price a projection change before upload | [wikidata-studio skills](blocks/wikidata-studio/skills.md) — `marc_wikidata_coverage.py` + `marc_field_map.py` (Rules W-275/W-276) |
 | Audit a test.wikidata.org upload for live readiness | [wikidata-studio skills](blocks/wikidata-studio/skills.md) — `audit_test_wikidata_upload.py` (natives + test wiki entities + live identity clash; do not copy test Q/P) |
 | LLM-judge a test.wikidata.org upload before www.wikidata.org | [wikidata-studio skills](blocks/wikidata-studio/skills.md) — `judge_test_wikidata_live_ready.py` + eval-agent `wikidata_test_live_ready` (natives only; test Q/P never copied; `skip_for_live` excluded from written live-ready, W-195) |
-| Live write after a person heading clash / uncertain duplicate | [Wikidata Studio R97](blocks/wikidata-studio/rules.md) + Rule W-195 — identifierless clash-cleared persons skip, never CREATE; DeepSeek confirms only non-identifier matches fail-closed; pass 2 UPDATE own/created only; never copy test Q/P |
+| Live write after a person heading clash / uncertain duplicate | [Wikidata Studio R97](blocks/wikidata-studio/rules.md) + Rules W-195/W-302 — identifierless clash-cleared persons skip; DeepSeek confirms uncertain matches fail-closed; pass 2 binds the first-pass QID and foreign approval; never copy test Q/P |
 | Live write of a catalog work that already exists as prayer/literary title | [Wikidata Studio R99](blocks/wikidata-studio/rules.md) + Rule W-196 — skip CREATE/UPDATE; store `link_qid`; manuscripts may P1574; never merge community QIDs |
 | Add caching or an external API call | [caching](blocks/caching/README.md) |
 | Add a curator-mutable field | [versioning-export](blocks/versioning-export/README.md) |
