@@ -7,7 +7,8 @@ import json
 import logging
 import re
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
@@ -25,9 +26,17 @@ from converter.wikidata.hmo_wikidata_pq_mapper import (
     HMO_CLASS_TO_WIKIDATA_QID,
     map_hmo_claim_to_wikidata,
     map_local_name_to_wikidata_pid,
+    map_property_to_wikidata_pid,
     ontology_local_name,
 )
-from converter.wikidata.item_models import WikidataItem, WikidataStatement
+from converter.wikidata.item_models import (
+    WikidataItem,
+    WikidataStatement,
+    matching_qualifiers,
+    merge_statement_references,
+    snak_identity,
+    validate_statement_references,
+)
 from converter.wikidata.projection_coverage import STRATEGY_BY_LOCAL_NAME, ProjectionStrategy
 from converter.wikidata.property_mapping import (
     P_AUTHOR,
@@ -369,7 +378,9 @@ def canonical_wikidata_fingerprint(
     # v15 — merge per-fragment transcription claims (P1684/P1922/P3132) into
     # one claim per property with an NLI reference (run 47e03437 AI-verdict
     # fails: 62-claim spam drowned P31 in the judge prompt).
-    salt = "hmo-wikidata-v16:"  # Source-scoped authors, roles, and manuscript form.
+    # v17 — sole-content-work author fallback and colophon label stripping
+    # (Rule W-300); canonical rows built before them must not revalidate.
+    salt = "hmo-wikidata-v21:"  # Fresh references carry their live namespace.
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -399,22 +410,105 @@ def uploadable_entities_from_hmo(
     return uploadable
 
 
+_STATEMENT_RANKS = frozenset({"normal", "preferred", "deprecated"})
+_EVIDENCE_KEYS = ("rank", "qualifiers", "reference_blocks")
+
+
+def _snak_rows(raw: object, *, local_id: str, field_name: str) -> list[dict[str, object]]:
+    if not isinstance(raw, list) or not all(isinstance(snak, Mapping) for snak in raw):
+        raise ValueError(f"HMO_CLAIM_EVIDENCE_UNMAPPED {local_id}: {field_name} must be a list of snaks")
+    return [dict(snak) for snak in raw]
+
+
+def _claim_evidence(claim: Mapping[str, Any], *, local_id: str) -> dict[str, object]:
+    """Return the rank, qualifiers, and reference blocks that a native row keeps."""
+    if claim.get("references"):
+        raise ValueError(f"HMO_CLAIM_EVIDENCE_UNMAPPED {local_id}: flat references need reference_blocks")
+    rank = str(claim.get("rank") or "normal")
+    if rank not in _STATEMENT_RANKS:
+        raise ValueError(f"HMO_CLAIM_EVIDENCE_UNMAPPED {local_id}: unsupported rank {rank!r}")
+    evidence: dict[str, object] = {}
+    if rank != "normal":
+        evidence["rank"] = rank
+    if claim.get("qualifiers"):
+        evidence["qualifiers"] = _snak_rows(claim["qualifiers"], local_id=local_id, field_name="qualifiers")
+    raw_blocks = claim.get("reference_blocks")
+    if raw_blocks:
+        if not isinstance(raw_blocks, list):
+            raise ValueError(f"HMO_CLAIM_EVIDENCE_UNMAPPED {local_id}: reference_blocks must be a list")
+        blocks = [_snak_rows(block, local_id=local_id, field_name="reference_blocks") for block in raw_blocks]
+        if not all(blocks):
+            raise ValueError(f"HMO_CLAIM_EVIDENCE_UNMAPPED {local_id}: reference block is empty")
+        evidence["reference_blocks"] = blocks
+    return evidence
+
+
+def _row_evidence(row: Mapping[str, object]) -> dict[str, object]:
+    return {key: row[key] for key in _EVIDENCE_KEYS if key in row}
+
+
+def _statement_from_native_row(row: Mapping[str, object], *, local_id: str) -> WikidataStatement:
+    """Build one upload statement, keeping the rank, qualifiers, and sources of the row."""
+    value = str(row["value"])
+    property_id = str(row["property"])
+    blocks = [
+        _snak_rows(block, local_id=local_id, field_name="reference_blocks")
+        for block in (row.get("reference_blocks") or [])
+    ]
+    return WikidataStatement(
+        property_id=property_id,
+        value=_claim_value_for(property_id, value),
+        value_type=str(row.get("value_type") or ("wikibase-item" if _QID.fullmatch(value) else "string")),
+        language=str(row.get("language") or "he"),
+        rank=str(row.get("rank") or "normal"),
+        qualifiers=_snak_rows(row.get("qualifiers") or [], local_id=local_id, field_name="qualifiers"),
+        references=[snak for block in blocks for snak in block],
+        reference_blocks=blocks,
+    )
+
+
 def native_wikidata_claims(
     entity: CanonicalHmoEntity,
     *,
     ontology_uri_by_project_pid: Mapping[str, str] | None = None,
     rollup_sources: Iterable[CanonicalHmoEntity] | None = None,
-) -> list[dict[str, str]]:
-    native: list[dict[str, str]] = []
+) -> list[dict[str, object]]:
+    native: list[dict[str, object]] = []
     seen: set[tuple[str, str]] = set()
+    evidence_by_key: dict[tuple[str, str], dict[str, object]] = {}
     wd_type = _wikidata_entity_type(entity) or ""
 
-    def _append_mapped(claim_dict: dict[str, str]) -> None:
-        key = (claim_dict["property"], claim_dict["value"])
+    def _append_mapped(claim_dict: dict[str, object]) -> None:
+        key = (str(claim_dict["property"]), str(claim_dict["value"]))
+        evidence = _row_evidence(claim_dict)
         if key in seen:
+            if evidence != evidence_by_key.get(key, {}):
+                raise ValueError(
+                    f"CONFLICTING_CLAIM_EVIDENCE {entity.local_id}: {key[0]} repeats with a different rank or source"
+                )
             return
         seen.add(key)
+        evidence_by_key[key] = evidence
         native.append(claim_dict)
+
+    def _require_author_metadata_mapping(claim: Mapping[str, Any], pid: str) -> None:
+        if pid in {P_AUTHOR, P_AUTHOR_NAME_STRING} and (
+            claim.get("qualifiers") or claim.get("references") or claim.get("reference_blocks")
+            or claim.get("rank", "normal") != "normal"
+        ):
+            raise ValueError(
+                f"AUTHOR_EVIDENCE_UNVERIFIED {entity.local_id}: "
+                "HMO author metadata requires a verified public mapping"
+            )
+
+    def _mapped_property(claim: Mapping[str, Any]) -> str | None:
+        return map_property_to_wikidata_pid(
+            wikidata_property=str(claim.get("wikidata_property") or ""),
+            property_uri=str(claim.get("property_uri") or ""),
+            property_local_name=str(claim.get("property_local_name") or ""),
+            project_property_id=str(claim.get("property_id") or ""),
+            ontology_uri_by_project_pid=ontology_uri_by_project_pid,
+        )
 
     for claim in entity.claims:
         mapped = map_hmo_claim_to_wikidata(
@@ -424,19 +518,23 @@ def native_wikidata_claims(
             project_item_qid=entity.wikibase_id,
         )
         if mapped is None:
+            if wd_type == "work":
+                _require_author_metadata_mapping(claim, _mapped_property(claim) or "")
             continue
         property_id = mapped.property_id
+        _require_author_metadata_mapping(claim, property_id)
         raw = mapped.value
         if property_id == "P8189" and not str(raw).startswith("9870"):
             if wd_type == "manuscript" and str(raw).startswith("990"):
                 property_id = P_NLI_CATALOG_ID
             else:
                 continue
-        row: dict[str, str] = {"property": property_id, "value": str(raw)}
+        row: dict[str, object] = {"property": property_id, "value": str(raw)}
         if mapped.value_type:
             row["value_type"] = mapped.value_type
         if mapped.language:
             row["language"] = mapped.language
+        row.update(_claim_evidence(claim, local_id=entity.local_id))
         _append_mapped(row)
 
     for source in rollup_sources or ():
@@ -450,20 +548,27 @@ def native_wikidata_claims(
                 ontology_uri_by_project_pid=ontology_uri_by_project_pid,
                 project_item_qid=source.wikibase_id,
             )
-            if mapped is None or mapped.property_id not in allowed_pids:
+            if mapped is None:
+                pid = _mapped_property(claim) if wd_type == "work" else None
+                if pid and pid in allowed_pids:
+                    _require_author_metadata_mapping(claim, pid)
+                continue
+            if mapped.property_id not in allowed_pids:
                 continue
             property_id = mapped.property_id
+            _require_author_metadata_mapping(claim, property_id)
             raw = mapped.value
             if property_id == "P8189" and not str(raw).startswith("9870"):
                 if wd_type == "manuscript" and str(raw).startswith("990"):
                     property_id = P_NLI_CATALOG_ID
                 else:
                     continue
-            row: dict[str, str] = {"property": property_id, "value": str(raw)}
+            row: dict[str, object] = {"property": property_id, "value": str(raw)}
             if mapped.value_type:
                 row["value_type"] = mapped.value_type
             if mapped.language:
                 row["language"] = mapped.language
+            row.update(_claim_evidence(claim, local_id=entity.local_id))
             _append_mapped(row)
 
     # One catalog id per manuscript — its own. Emitting a P3959 per linked CN
@@ -510,7 +615,7 @@ _MERGED_TRANSCRIPTION_CHARS = 4000
 def _merge_transcription_statements(
     statements: list[WikidataStatement], *, control_number: str,
 ) -> None:
-    """Collapse per-fragment transcription claims into one claim per property.
+    """Join transcription fragments only when their complete provenance matches.
 
     The HMO stage emits one P1684/P1922/P3132 claim per colophon or scribal
     intervention — 60+ inscription rows on a single manuscript. On Wikidata
@@ -518,16 +623,17 @@ def _merge_transcription_statements(
     that sits behind the fragments and failed 111 items for "no instance of"
     that was present all along (run 47e03437). Placeholder catalogue notes
     are dropped before joining (same filter as the sanitize pass), and every
-    surviving transcription claim carries the NLI catalogue reference.
+    surviving transcription claim carries the NLI catalogue reference when known.
     """
     from converter.wikidata.catalog_notes import (  # noqa: PLC0415
         is_catalog_note_placeholder,
     )
 
-    for statement in statements:
+    normalized_texts: dict[int, str] = {}
+    for index, statement in enumerate(statements):
         if statement.property_id in _TRANSCRIPTION_PIDS:
-            if not statement.references and control_number:
-                statement.references = nli_reference(control_number)
+            if not statement.references and not statement.reference_blocks and control_number:
+                statement.set_fresh_source(nli_reference(control_number))
             raw_val = str(statement.value or "").strip().replace('""', '"')
             while len(raw_val) >= 2 and raw_val.startswith('"') and (
                 raw_val.endswith('"') or raw_val.endswith('".')
@@ -541,18 +647,33 @@ def _merge_transcription_statements(
                 raw_val = " | ".join(
                     p.strip() for p in re.split(r"[\r\n]+", raw_val) if p.strip()
                 )
-            statement.value = raw_val
+            normalized_texts[index] = raw_val
 
-    grouped: dict[str, list[WikidataStatement]] = {}
-    for statement in statements:
-        if statement.property_id in _TRANSCRIPTION_PIDS:
-            grouped.setdefault(statement.property_id, []).append(statement)
-    for pid, rows in grouped.items():
-        if len(rows) < 2:
+    grouped: dict[tuple, list[int]] = {}
+    for index, statement in enumerate(statements):
+        if statement.property_id not in _TRANSCRIPTION_PIDS:
+            continue
+        validate_statement_references(statement)
+        if not statement.reference_blocks or not all(statement.reference_blocks):
+            continue
+        sources = tuple(sorted({
+            tuple(sorted({snak_identity(snak) for snak in block}))
+            for block in statement.reference_blocks
+        }))
+        metadata = (
+            statement.property_id, statement.value_type, statement.language,
+            statement.precision, statement.unit, statement.rank,
+            tuple(sorted(snak_identity(snak) for snak in statement.qualifiers or [])),
+        )
+        grouped.setdefault((metadata, sources), []).append(index)
+
+    removed: set[int] = set()
+    for indices in grouped.values():
+        if len(indices) < 2:
             continue
         texts: list[str] = []
-        for row in rows:
-            text = str(row.value or "").strip()
+        for index in indices:
+            text = normalized_texts[index]
             if not text or is_catalog_note_placeholder(text):
                 continue
             texts.append(text)
@@ -561,14 +682,28 @@ def _merge_transcription_statements(
             continue
         merged = " | ".join(texts)
         if len(merged) > _MERGED_TRANSCRIPTION_CHARS:
-            merged = merged[:_MERGED_TRANSCRIPTION_CHARS].rstrip() + "…"
-        first = rows[0]
+            continue
+        first = statements[indices[0]]
         first.value = merged
-        kept: list[WikidataStatement] = []
-        for statement in statements:
-            if statement.property_id != pid or statement is first:
-                kept.append(statement)
-        statements[:] = kept
+        removed.update(indices[1:])
+
+    # Equal complete texts can share sources, but never add a fragment's source
+    # to a different text that only contains that fragment.
+    complete: dict[tuple, WikidataStatement] = {}
+    for (metadata, _sources), indices in grouped.items():
+        for index in indices:
+            if index in removed:
+                continue
+            statement = statements[index]
+            key = (metadata, statement.value)
+            if key in complete:
+                merge_statement_references(complete[key], statement)
+                removed.add(index)
+            else:
+                complete[key] = statement
+    statements[:] = [
+        statement for index, statement in enumerate(statements) if index not in removed
+    ]
 
 
 def _split_work_title_claims(statements: list[WikidataStatement]) -> None:
@@ -606,6 +741,8 @@ def _split_work_title_claims(statements: list[WikidataStatement]) -> None:
                     value=subtitle,
                     value_type="monolingualtext",
                     language=statement.language,
+                    references=deepcopy(statement.references),
+                    reference_blocks=deepcopy(statement.reference_blocks),
                 ),
             )
 
@@ -712,19 +849,7 @@ def native_items_from_hmo(
             entity, wd_type, all_entities, entities_by_cn, uploadable_ids=uploadable_ids,
         )
         statements = [
-            WikidataStatement(
-                property_id=claim["property"],
-                value=_claim_value_for(claim["property"], claim["value"]),
-                value_type=(
-                    claim.get("value_type")
-                    or (
-                        "wikibase-item"
-                        if _QID.fullmatch(claim["value"])
-                        else "string"
-                    )
-                ),
-                language=claim.get("language") or "he",
-            )
+            _statement_from_native_row(claim, local_id=entity.local_id)
             for claim in native_wikidata_claims(entity, rollup_sources=rollup_sources)
         ]
         if wd_type == "work" and context is not None:
@@ -802,15 +927,41 @@ def native_items_from_hmo(
     return items
 
 
+def _author_claim_has_metadata(statement: WikidataStatement) -> bool:
+    return bool(
+        statement.references or statement.reference_blocks or statement.qualifiers
+        or statement.rank != "normal"
+    )
+
+
+def _public_author_qid(value: object) -> str | None:
+    # Namespace-marked string subclasses must not become public QIDs.
+    if type(value) is not str:
+        return None
+    text = value.strip()
+    if re.fullmatch(r"Q[1-9][0-9]*", text, re.IGNORECASE):
+        return text.upper()
+    match = re.fullmatch(
+        r"https?://www\.wikidata\.org/(?:entity|wiki)/(Q[1-9][0-9]*)/?",
+        text, re.IGNORECASE,
+    )
+    return match.group(1).upper() if match else None
+
+
 def _append_context_work_author(
     entity: CanonicalHmoEntity,
     context: CanonicalStudioContext,
     statements: list[WikidataStatement],
 ) -> None:
     """Carry an approved primary anchor-record author onto a canonical work (W-201/W-206)."""
+    if len({canonical_control_number(cn) for cn in entity.control_numbers if cn}) != 1:
+        return
     control_number = identity_control_number(entity)
     record = context.marc_by_cn.get(control_number)
     if not record:
+        return
+    if not any(_titles_match(title, str(record.get("title") or ""))
+               for title in _work_title_candidates(entity)):
         return
     from converter.wikidata.item_builder import (  # noqa: PLC0415
         _normalise_label,
@@ -833,6 +984,19 @@ def _append_context_work_author(
             and str(author.get("role") or "author").strip().casefold()
             in {"author", "attributed author", "presumed author"}
         ]
+    candidate_names = {
+        _normalise_label(_strip_name_quotes(str(
+            candidate.get("name") or candidate.get("entity_text")
+            or candidate.get("matched_name") or "",
+        ))).rstrip(" .,;:/-").casefold()
+        for candidate in candidates
+    } - {""}
+    candidate_qids = {
+        qid for candidate in candidates
+        if (qid := _public_author_qid(candidate.get("wikidata_qid")))
+    }
+    if len(candidate_names) != 1 or len(candidate_qids) > 1:
+        return
     for candidate in candidates:
         name = str(
             candidate.get("name")
@@ -842,7 +1006,7 @@ def _append_context_work_author(
         ).strip()
         if not name:
             continue
-        qid = normalize_wikidata_qid(candidate.get("wikidata_qid"))
+        qid = _public_author_qid(candidate.get("wikidata_qid"))
         clean_author_name = _normalise_label(_strip_name_quotes(name)).rstrip(
             " .,;:/-",
         )
@@ -858,21 +1022,27 @@ def _append_context_work_author(
             ).rstrip(" .,;:/-").casefold()
             if (
                 (qid and value == qid)
+                or (statement.property_id == P_AUTHOR and value.startswith("__LOCAL:"))
                 or (
                     statement.property_id == P_AUTHOR_NAME_STRING
                     and statement_name == expected_name
                 )
             ):
                 if statement.property_id == P_AUTHOR_NAME_STRING:
-                    statement.value = clean_author_name
+                    statement = replace(statement, value=clean_author_name)
                 kept.append(statement)
-        statements[:] = kept
+            elif _author_claim_has_metadata(statement):
+                raise ValueError(
+                    f"AUTHOR_EVIDENCE_UNVERIFIED {entity.local_id}: "
+                    "author identity or evidence could not be verified"
+                )
         if any(
             statement.property_id in {P_AUTHOR, P_AUTHOR_NAME_STRING}
-            for statement in statements
+            for statement in kept
         ):
+            statements[:] = kept
             return
-        statements.append(
+        kept.append(
             WikidataStatement(
                 property_id=P_AUTHOR if qid else P_AUTHOR_NAME_STRING,
                 value=qid or clean_author_name,
@@ -880,13 +1050,14 @@ def _append_context_work_author(
                 references=nli_reference(control_number),
             ),
         )
+        statements[:] = kept
         return
 
 
 def _context_work_author_evidence(
     item: WikidataItem,
     context: CanonicalStudioContext,
-) -> tuple[set[str], set[str]]:
+) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     """Return structured work-author names before parent-record authors."""
     from converter.rdf.rdf_helpers import parse_contents_entry  # noqa: PLC0415
     from converter.wikidata.item_builder import (
@@ -901,12 +1072,13 @@ def _context_work_author_evidence(
             " .,;:/-",
         ).casefold()
 
-    explicit_names: set[str] = set()
+    explicit_names: dict[str, set[str]] = {}
 
-    def add_name(value: object) -> None:
+    def add_name(value: object, source_cn: str) -> None:
         name = str(value or "").strip()
-        if name:
-            explicit_names.add(name_key(name))
+        key = name_key(name)
+        if key and source_cn:
+            explicit_names.setdefault(key, set()).add(source_cn)
 
     def title_matches(value: object) -> bool:
         candidate = str(value or "").strip()
@@ -916,7 +1088,8 @@ def _context_work_author_evidence(
         )
 
     for raw_cn in item.records or []:
-        record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)))
+        source_cn = canonical_control_number(str(raw_cn))
+        record = context.marc_by_cn.get(source_cn)
         if not record:
             continue
         for content in record.get("contents") or []:
@@ -931,21 +1104,21 @@ def _context_work_author_evidence(
             entry = content if isinstance(content, Mapping) else {"title": content}
             attribution = structured_work_attribution(entry)
             if title_matches(attribution.title):
-                add_name(_content_author(record, attribution, dict(entry)))
+                add_name(_content_author(record, attribution, dict(entry)), source_cn)
             if not title_matches(content_title):
                 continue
             if isinstance(content, Mapping):
                 for key in ("author", "author_name", "work_author"):
-                    add_name(content.get(key))
+                    add_name(content.get(key), source_cn)
             _title, embedded_author = _split_work_title_author(source_text)
             if embedded_author and _PERSON_NAME_SIGNALS_RE.search(embedded_author):
-                add_name(embedded_author)
+                add_name(embedded_author, source_cn)
         if title_matches(record.get("title")):
             for author in record.get("authors") or []:
                 if isinstance(author, Mapping):
-                    add_name(author.get("name") or author.get("heading"))
+                    add_name(author.get("name") or author.get("heading"), source_cn)
                 else:
-                    add_name(author)
+                    add_name(author, source_cn)
 
         entities = [
             entity for entity in record.get("entities") or []
@@ -966,15 +1139,22 @@ def _context_work_author_evidence(
                     int(author_entity.get("start") or 0)
                     - int(work_entity.get("end") or 0)
                 ) < 20:
-                    add_name(author_entity.get("text"))
+                    add_name(author_entity.get("text"), source_cn)
 
+    record_ids = {canonical_control_number(cn) for cn in item.records or []}
     for evidence in item.work_candidate_evidence or []:
-        if not isinstance(evidence, Mapping):
+        if (not isinstance(evidence, Mapping) or evidence.get("accepted") is not True
+                or evidence.get("source_scope") == "authority"):
+            continue
+        source_cn = canonical_control_number(evidence.get("source_record_id"))
+        if source_cn not in record_ids:
+            continue
+        if source_cn not in context.marc_by_cn:
             continue
         raw_title = str(evidence.get("raw_title") or "").strip()
         _title, embedded_author = _split_work_title_author(raw_title)
         if embedded_author and _PERSON_NAME_SIGNALS_RE.search(embedded_author):
-            add_name(embedded_author)
+            add_name(embedded_author, source_cn)
             continue
         source_text = str(evidence.get("source_text") or "").strip()
         if "—" not in source_text:
@@ -982,31 +1162,25 @@ def _context_work_author_evidence(
         _title, candidate = source_text.rsplit("—", 1)
         candidate = candidate.strip().strip('"\'')
         if len(candidate.split()) >= 2:
-            explicit_names.add(name_key(candidate))
+            add_name(candidate, source_cn)
     if explicit_names:
         from converter.wikidata.work_projection import _find_work_author_match  # noqa: PLC0415
 
-        explicit_qids: set[str] = set()
-        for raw_cn in item.records or []:
-            record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)))
-            if not record:
-                continue
-            for name in explicit_names:
+        explicit_qids: dict[str, set[str]] = {}
+        for name, source_cns in explicit_names.items():
+            for source_cn in source_cns:
+                record = context.marc_by_cn[source_cn]
                 match = _find_work_author_match(name, record)
-                qid = normalize_wikidata_qid((match or {}).get("wikidata_qid"))
-                if not qid:
-                    from converter.wikidata.person_projection import audited_person_authority  # noqa: PLC0415
-                    audited = audited_person_authority(name)
-                    if audited:
-                        qid = normalize_wikidata_qid(audited.get("wikidata_qid"))
+                qid = _public_author_qid((match or {}).get("wikidata_qid"))
                 if qid:
-                    explicit_qids.add(qid)
+                    explicit_qids.setdefault(qid, set()).add(source_cn)
         return explicit_names, explicit_qids
 
-    names: set[str] = set()
-    qids: set[str] = set()
+    names: dict[str, set[str]] = {}
+    qids: dict[str, set[str]] = {}
     for raw_cn in item.records or []:
-        record = context.marc_by_cn.get(canonical_control_number(str(raw_cn)))
+        source_cn = canonical_control_number(str(raw_cn))
+        record = context.marc_by_cn.get(source_cn)
         if not record or not title_matches(record.get("title")):
             continue
         candidates = [
@@ -1032,10 +1206,10 @@ def _context_work_author_evidence(
                 or "",
             ).strip()
             if name:
-                names.add(name_key(name))
-            qid = normalize_wikidata_qid(candidate.get("wikidata_qid"))
-            if qid:
-                qids.add(qid)
+                names.setdefault(name_key(name), set()).add(source_cn)
+            qid = _public_author_qid(candidate.get("wikidata_qid"))
+            if qid and name:
+                qids.setdefault(qid, set()).add(source_cn)
     return names, qids
 
 
@@ -1136,16 +1310,149 @@ def _sanitize_work_authors_against_context(
     context: CanonicalStudioContext | None,
 ) -> int:
     """Remove work-author claims that the work evidence does not support (W-206)."""
+    def require_context_for_local_authors(item: WikidataItem) -> None:
+        if str(item.entity_type or "").strip().lower() != "work":
+            return
+        if any(
+            statement.property_id == P_AUTHOR
+            and str(statement.value or "").strip().startswith("__LOCAL:")
+            for statement in item.statements or []
+        ):
+            raise ValueError(
+                f"AUTHOR_IDENTITY_UNVERIFIED {item.local_id}: "
+                "local author identity requires record evidence"
+            )
+
     if context is None:
+        for item in items:
+            require_context_for_local_authors(item)
         return 0
     from converter.wikidata.item_builder import _normalise_label, _strip_name_quotes
+    from converter.wikidata.semantic_policy import DEFAULT_SEMANTIC_POLICY
+    from converter.wikidata.work_author_claims import (
+        _author_sources_match,
+        _has_identity_warning,
+        _has_safe_identity,
+        _identity_collision_members,
+    )
 
     def name_key(value: object) -> str:
         return _normalise_label(_strip_name_quotes(str(value or ""))).rstrip(
             " .,;:/-",
         ).casefold()
 
+    def person_names(person: WikidataItem) -> set[str]:
+        names = {name_key(value) for value in (person.labels or {}).values()}
+        for aliases in (person.aliases or {}).values():
+            names.update(name_key(value) for value in aliases)
+        names.update(name_key(s.value) for s in person.statements or [] if s.property_id == "P1559")
+        return names - {""}
+
+    by_local_id: dict[str, list[WikidataItem]] = {}
+    person_qid_owners: dict[str, set[str]] = {}
+    people = [candidate for candidate in items
+              if str(candidate.entity_type or "").strip().lower() == "person"]
+    collisions = _identity_collision_members(people, DEFAULT_SEMANTIC_POLICY)
+    trusted_people: set[int] = set()
+    people_by_name: dict[str, list[WikidataItem]] = {}
+    for person in people:
+        if (
+            not person.local_id or person.local_id in collisions
+            or not _has_safe_identity(person, DEFAULT_SEMANTIC_POLICY)
+            or _has_identity_warning(person)
+            or any(isinstance(row, Mapping) and row.get("accepted") is False
+                   for row in person.authority_evidence or [])
+        ):
+            continue
+        trusted_people.add(id(person))
+        for name in person_names(person):
+            people_by_name.setdefault(name, []).append(person)
+    for candidate in items:
+        local_id = str(candidate.local_id or "").strip()
+        if not local_id:
+            continue
+        by_local_id.setdefault(local_id, []).append(candidate)
+        qid = _public_author_qid(candidate.existing_qid)
+        if str(candidate.entity_type or "").strip().lower() == "person" and qid:
+            person_qid_owners.setdefault(qid, set()).add(local_id)
+
+    def source_blocks(statement: WikidataStatement) -> list[list[dict[str, object]]] | None:
+        if statement.reference_blocks:
+            return statement.reference_blocks
+        if len(statement.references or []) == 1:
+            return [statement.references]
+        return None
+
+    def snak_record(snak: dict[str, object]) -> str:
+        value = snak.get("value")
+        data = snak.get("datavalue")
+        if value is None and isinstance(data, Mapping):
+            value = data.get("value")
+        return canonical_control_number(value)
+
+    def source_records(statement: WikidataStatement) -> set[str] | None:
+        blocks = source_blocks(statement)
+        if not blocks:
+            return None
+        records: set[str] = set()
+        for block in blocks:
+            block_records = [snak_record(snak) for snak in block
+                             if (snak.get("property") or snak.get("property_id")) == "P3959"]
+            if not block_records or not all(block_records):
+                return None
+            records.update(block_records)
+        return records
+
+    def declared_source_records(statement: WikidataStatement) -> set[str] | None:
+        records = [snak_record(snak) for snak in statement.references or []
+                   if (snak.get("property") or snak.get("property_id")) == "P3959"]
+        return set(records) if all(records) else None
+
+    def rejected_qid_is_covered(
+        statement: WikidataStatement, item: WikidataItem,
+        names: dict[str, set[str]],
+    ) -> bool:
+        qid = _public_author_qid(statement.value)
+        records = source_records(statement)
+        blocks = source_blocks(statement)
+        if not qid or not records or not blocks or len(names) != 1:
+            return False
+        rejected: set[str] = set()
+        for cn in records:
+            record = context.marc_by_cn.get(cn) or {}
+            for row in record.get("marc_authority_matches") or []:
+                if not isinstance(row, Mapping):
+                    continue
+                row_name = name_key(
+                    row.get("name") or row.get("entity_text") or row.get("matched_name"),
+                )
+                if (
+                    _public_author_qid(row.get("wikidata_qid")) == qid
+                    and str(row.get("role") or "").strip().casefold()
+                    in {"author", "attributed author", "presumed author"}
+                    and row_name in names and cn in names[row_name]
+                    and (row.get("approved") is False or row.get("guard_flags")
+                         or row.get("rejection_reason"))
+                ):
+                    rejected.add(cn)
+        if not records <= rejected:
+            return False
+        original = {tuple(sorted(snak_identity(snak) for snak in block)) for block in blocks}
+        for candidate in item.statements or []:
+            if (candidate.property_id != P_AUTHOR_NAME_STRING
+                    or name_key(candidate.value) not in names
+                    or not records <= names[name_key(candidate.value)]
+                    or not matching_qualifiers(statement, candidate)):
+                continue
+            other = source_blocks(candidate)
+            if other and original <= {
+                tuple(sorted(snak_identity(snak) for snak in block)) for block in other
+            }:
+                return True
+        return False
+
     changed = 0
+    planned: list[tuple[WikidataItem, list[WikidataStatement]]] = []
     for item in items:
         if str(item.entity_type or "").strip().lower() != "work":
             continue
@@ -1154,63 +1461,116 @@ def _sanitize_work_authors_against_context(
             for raw_cn in item.records or []
         )
         if not has_context_record:
+            require_context_for_local_authors(item)
             continue
         names, qids = _context_work_author_evidence(item, context)
-        if not names and not qids:
-            kept = [
-                statement
-                for statement in item.statements or []
-                if statement.property_id not in {P_AUTHOR, P_AUTHOR_NAME_STRING}
-            ]
-            changed += len(item.statements or []) - len(kept)
-            item.statements = kept
-            continue
-
         kept: list[WikidataStatement] = []
         for statement in item.statements or []:
+            if statement.property_id in {P_AUTHOR, P_AUTHOR_NAME_STRING}:
+                validate_statement_references(statement)
             if statement.property_id == P_AUTHOR_NAME_STRING:
-                keep = name_key(statement.value) in names
+                author_name = name_key(statement.value)
+                declared_records = declared_source_records(statement)
+                keep = bool(
+                    author_name in names and declared_records is not None
+                    and (not declared_records or declared_records <= names[author_name])
+                )
             elif statement.property_id == P_AUTHOR:
-                keep = str(statement.value or "").strip() in qids
+                value = str(statement.value or "").strip()
+                if value.startswith("__LOCAL:"):
+                    target_id = value.removeprefix("__LOCAL:")
+                    candidates = by_local_id.get(target_id, [])
+                    person = candidates[0] if len(candidates) == 1 else None
+                    person_qid = _public_author_qid(person.existing_qid) if person else None
+                    person_trusted = bool(
+                        person and id(person) in trusted_people
+                        and (not person.existing_qid or (
+                            person_qid is not None and re.fullmatch(
+                                r"Q[1-9][0-9]*", str(person.existing_qid),
+                            )
+                        ))
+                    )
+                    records = source_records(statement)
+                    declared_records = declared_source_records(statement)
+                    target_names = person_names(person) if person else set()
+                    keep = bool(
+                        person_trusted and person
+                        and person_qid and person_qid in qids
+                        and person_qid_owners.get(person_qid) == {target_id}
+                        and (not target_names or not names or bool(target_names & names.keys()))
+                        and declared_records is not None
+                        and (not declared_records or declared_records <= qids[person_qid])
+                        and (
+                            len(qids) == 1
+                            or (records is not None and records <= qids[person_qid])
+                        )
+                    )
+                    if not keep and person_trusted and person and not qids and not person_qid:
+                        matching_names = {
+                            name for name in person_names(person) & names.keys()
+                            if records and records <= names[name]
+                        }
+                        possible = {id(candidate): candidate for name in matching_names
+                                    for candidate in people_by_name.get(name, [])}
+                        matching_people = [candidate for candidate in possible.values()
+                                           if _author_sources_match(statement, item, candidate)]
+                        keep = bool(records and matching_names and len(matching_people) == 1
+                                    and matching_people[0] is person
+                                    and _author_sources_match(statement, item, person))
+                    if not keep:
+                        raise ValueError(
+                            f"AUTHOR_IDENTITY_UNVERIFIED {item.local_id}: "
+                            "local author identity or evidence could not be verified"
+                        )
+                else:
+                    keep = value in qids
+                    if keep:
+                        declared_records = declared_source_records(statement)
+                        keep = declared_records is not None and (
+                            not declared_records or declared_records <= qids[value]
+                        )
             else:
                 keep = True
             if keep:
                 kept.append(statement)
             else:
+                if (_author_claim_has_metadata(statement)
+                        and not rejected_qid_is_covered(statement, item, names)):
+                    raise ValueError(
+                        f"AUTHOR_EVIDENCE_UNVERIFIED {item.local_id}: "
+                        "author identity or evidence could not be verified"
+                    )
                 changed += 1
-        item.statements = kept
 
         if any(
             statement.property_id in {P_AUTHOR, P_AUTHOR_NAME_STRING}
             for statement in kept
         ):
+            planned.append((item, kept))
             continue
-        control_number = next(
-            (
-                canonical_control_number(str(raw_cn))
-                for raw_cn in item.records or []
-                if canonical_control_number(str(raw_cn))
-            ),
-            "",
+        if len(names) != 1 or len(qids) > 1:
+            planned.append((item, kept))
+            continue
+        value = next(iter(qids)) if qids else next(iter(names))
+        source_cns = qids[value] if qids else names[value]
+        if not source_cns:
+            planned.append((item, kept))
+            continue
+        prop = P_AUTHOR if qids else P_AUTHOR_NAME_STRING
+        value_type = "item" if qids else "string"
+        sources = iter(sorted(source_cns))
+        statement = WikidataStatement(
+            prop, value, value_type, references=nli_reference(next(sources)),
         )
-        if qids:
-            item.statements.append(
-                WikidataStatement(
-                    property_id=P_AUTHOR,
-                    value=sorted(qids)[0],
-                    value_type="item",
-                    references=nli_reference(control_number),
-                ),
+        for source_cn in sources:
+            merge_statement_references(
+                statement, WikidataStatement(prop, value, value_type,
+                                              references=nli_reference(source_cn)),
             )
-        elif names:
-            item.statements.append(
-                WikidataStatement(
-                    property_id=P_AUTHOR_NAME_STRING,
-                    value=sorted(names)[0],
-                    value_type="string",
-                    references=nli_reference(control_number),
-                ),
-            )
+        kept.append(statement)
+        planned.append((item, kept))
+    for item, statements in planned:
+        item.statements = statements
     return changed
 
 

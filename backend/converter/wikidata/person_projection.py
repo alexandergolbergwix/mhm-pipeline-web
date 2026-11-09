@@ -782,7 +782,7 @@ class PersonProjectionMixin:
         if person_ref:
             for stmt in person.statements:
                 if not stmt.references:
-                    stmt.references = list(person_ref)
+                    stmt.set_fresh_source(person_ref)
 
         self._person_items[key] = person
         return person

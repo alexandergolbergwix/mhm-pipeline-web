@@ -15,20 +15,21 @@ from __future__ import annotations
 from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
 import asyncio
+import hashlib
 import json
 import logging
 import threading
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
@@ -46,11 +47,8 @@ from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, RunRecord
 from app.models.run_job import (
     JOB_KIND_HMO_ITEM_UPLOAD,
-    JOB_KIND_WIKIDATA_STUDIO_BUILD,
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_WIKIDATA_VERIFY,
-    JOB_STATUS_CANCELLED,
-    JOB_STATUS_FAILED,
     JOB_STATUS_SUCCEEDED,
     RunJob,
 )
@@ -124,6 +122,7 @@ router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
 
 
 _CANONICAL_LOAD_BATCH = 500
+_STUDIO_FRESHNESS_TIMEOUT_SECONDS = 25.0
 
 
 def _without_statement_cap(driver: object) -> None:
@@ -361,10 +360,111 @@ async def _canonical_missing_detail(db: AsyncSession, run_id: uuid.UUID) -> str:
 
 
 async def _canonical_cache_fingerprint(
-    db: AsyncSession, run_id: uuid.UUID,
+    db: AsyncSession, run_id: uuid.UUID, enrichment_fingerprint: str,
+    *, release_read_transaction: bool = False,
 ) -> str:
-    canonical = await _canonical_entities_for_run(db, run_id)
-    return canonical_wikidata_fingerprint(canonical) if canonical else ""
+    from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
+    snapshots = await db.stream(
+        select(HmoCanonicalEntity.snapshot)
+        .where(HmoCanonicalEntity.run_id == run_id)
+        .order_by(HmoCanonicalEntity.id),
+        execution_options={"yield_per": _CANONICAL_LOAD_BATCH},
+    )
+    canonical = []
+    async for batch in snapshots.partitions():
+        canonical.extend(await run_in_threadpool(
+            lambda: [normalize_live_entity(row[0]) for row in batch],
+        ))
+    if not canonical:
+        return ""
+    if release_read_transaction:
+        await _release_read_transaction(db)
+
+    return await run_in_threadpool(
+        lambda: canonical_wikidata_fingerprint(
+            canonical, enrichment_fingerprint=enrichment_fingerprint,
+        ),
+    )
+
+
+def _update_studio_items_digest(digest: Any, item: dict[str, Any]) -> None:
+    # The mining job may add advisory proposals after the build is stored.
+    payload = json.dumps(
+        {key: value for key, value in item.items() if key != "_llm_proposals"},
+        sort_keys=True, ensure_ascii=True, separators=(",", ":"),
+    ).encode()
+    digest.update(len(payload).to_bytes(8, "big"))
+    digest.update(payload)
+
+
+def _studio_items_digest(items: list[dict[str, Any]]) -> str:
+    digest = hashlib.sha256()
+    for item in items:
+        _update_studio_items_digest(digest, item)
+    return digest.hexdigest()
+
+
+async def _studio_cache_is_current(
+    db: AsyncSession, run_id: uuid.UUID, *, source: str, approved_only: bool,
+    fingerprint: str, summary: dict[str, Any] | None,
+) -> bool:
+    try:
+        return await asyncio.wait_for(
+            _check_studio_cache_current(
+                db, run_id, source=source, approved_only=approved_only,
+                fingerprint=fingerprint, summary=summary,
+            ),
+            timeout=_STUDIO_FRESHNESS_TIMEOUT_SECONDS,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot verify Studio source freshness within the time limit; no upload or Publication write is permitted.",
+        ) from exc
+
+
+async def _check_studio_cache_current(
+    db: AsyncSession, run_id: uuid.UUID, *, source: str, approved_only: bool,
+    fingerprint: str, summary: dict[str, Any] | None,
+) -> bool:
+    if (source not in {"legacy", "canonical"} or not isinstance(summary, dict)
+            or "selected_rebuild" in summary or summary.get("overrides_applied") is not True):
+        return False
+    expected_digest = summary.get("source_items_sha256")
+    if not isinstance(expected_digest, str) or len(expected_digest) != 64:
+        return False
+    from app.pipeline.wikidata_studio_batches import compute_build_fingerprint_streamed  # noqa: PLC0415
+
+    current = await compute_build_fingerprint_streamed(db, run_id, approved_only=approved_only)
+    if source == "canonical":
+        current = await _canonical_cache_fingerprint(db, run_id, current)
+    if not current or fingerprint != current:
+        return False
+    postgres = db.bind is not None and db.bind.dialect.name == "postgresql"
+    statement = text(
+        "SELECT expanded.item FROM wikidata_studio_cache "
+        "CROSS JOIN LATERAL jsonb_array_elements(result_items) WITH ORDINALITY AS expanded(item, n) "
+        "WHERE run_id = :run_id AND source = :source AND approved_only = :approved_only "
+        "AND input_fingerprint = :fingerprint ORDER BY expanded.n"
+        if postgres else
+        "SELECT value AS item FROM wikidata_studio_cache, json_each(result_items) "
+        "WHERE run_id = :run_id AND source = :source AND approved_only = :approved_only "
+        "AND input_fingerprint = :fingerprint ORDER BY CAST(json_each.key AS INTEGER)"
+    )
+    rows = await db.stream(statement, {
+        "run_id": run_id if postgres else run_id.hex, "source": source,
+        "approved_only": approved_only, "fingerprint": fingerprint,
+    })
+    digest = hashlib.sha256()
+    async for row in rows:
+        item = row[0]
+        if isinstance(item, str):
+            item = json.loads(item)
+        if not isinstance(item, dict):
+            return False
+        _update_studio_items_digest(digest, item)
+    return digest.hexdigest() == expected_digest
 
 
 async def studio_items_for_project(
@@ -1126,6 +1226,10 @@ async def _execute_studio_build(
             not force_rebuild
             and cached is not None
             and cached.input_fingerprint == canonical_fp
+            and isinstance(cached.summary, dict)
+            and "selected_rebuild" not in cached.summary
+            and cached.summary.get("overrides_applied") is True
+            and cached.summary.get("source_items_sha256") == _studio_items_digest(cached.result_items or [])
             and not studio_cache_has_non_public_items(
                 cached.result_items, source="canonical",
             )
@@ -1138,6 +1242,10 @@ async def _execute_studio_build(
         not force_rebuild
         and cached is not None
         and cached.input_fingerprint == fingerprint
+        and isinstance(cached.summary, dict)
+        and "selected_rebuild" not in cached.summary
+        and cached.summary.get("overrides_applied") is True
+        and cached.summary.get("source_items_sha256") == _studio_items_digest(cached.result_items or [])
         and not wikidata_studio.studio_cache_has_stale_validation(
             cached.result_items,
         )
@@ -1198,7 +1306,7 @@ async def _execute_studio_build(
                     marc_records=marc_records,
                     approved_matches=approved_matches,
                     entities_by_cn=entities_by_cn,
-                    overrides=overrides,
+                    overrides={},
                     return_native=True,
                     hmo_instance_qids=hmo_instance_qids,
                     progress_cb=progress_cb,
@@ -1344,62 +1452,52 @@ async def _execute_studio_build(
     return row
 
 
-async def _enqueue_studio_build_job(
-    db: AsyncSession,
-    *,
-    project_id: uuid.UUID,
-    run_id: uuid.UUID,
-    approved_only: bool,
-    source: str,
-    force_rebuild: bool,
-    user_id: uuid.UUID,
-) -> uuid.UUID:
-    from app.pipeline.run_job_service import (  # noqa: PLC0415
-        ActiveJobError,
-        create_job,
-        find_active_job,
-    )
+def _with_reference_provenance_finding(
+    item: dict[str, Any], *, reference_source: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    source = item if reference_source is None else reference_source
+    if isinstance(source, dict) and not wikidata_studio.reference_provenance_error(source):
+        return item
+    issues = item.get("validation_issues")
+    issues = list(issues) if isinstance(issues, list) else []
+    if not any(isinstance(issue, dict) and issue.get("code") == "REFERENCE_PROVENANCE_UNVERIFIED"
+               for issue in issues):
+        issues.append({
+            "code": "REFERENCE_PROVENANCE_UNVERIFIED",
+            "severity": "error",
+            "message": "Reference groups are invalid or ambiguous. Explicit source blocks are required.",
+        })
+    return {**item, "validation_issues": issues, "has_blocking_validation": True}
 
-    active = await find_active_job(
-        db, run_id=run_id, kind=JOB_KIND_WIKIDATA_STUDIO_BUILD,
-    )
-    if active is not None:
-        return active.id
+
+def _statement_edit_index(key: Any) -> int | None:
     try:
-        job = await create_job(
-            db,
-            project_id=project_id,
-            run_id=run_id,
-            kind=JOB_KIND_WIKIDATA_STUDIO_BUILD,
-            params={
-                "approved_only": approved_only,
-                "source": source,
-                "force_rebuild": force_rebuild,
-            },
-            created_by=user_id,
-        )
-        return job.id
-    except ActiveJobError as exc:
-        return exc.job_id
+        return int(key)
+    except (TypeError, ValueError):
+        return None
 
 
-def _studio_build_in_progress_detail(job_id: uuid.UUID) -> dict[str, str]:
-    return {
-        "code": "studio_build_in_progress",
-        "message": "Wikidata Studio build is running in the background.",
-        "job_id": str(job_id),
-    }
-
-
-def _studio_build_failed_detail(job_id: uuid.UUID, error: str | None) -> dict[str, str]:
-    text = (error or "The last Wikidata Studio build failed.").strip()
-    if len(text) > 500:
-        text = text[:500] + "…"
-    return {
-        "code": "studio_build_failed",
-        "message": text,
-        "job_id": str(job_id),
-    }
+def _reference_source_with_override(raw: dict[str, Any], override: Any) -> dict[str, Any]:
+    statements = raw.get("statements")
+    if not isinstance(statements, list) or override is None:
+        return raw
+    additions = override.add_statements or []
+    edits = override.statement_edits or {}
+    if not isinstance(additions, list) or not isinstance(edits, dict):
+        return {"statements": None}
+    bound = list(statements)
+    unbound: list[dict[str, Any]] = []
+    for key, patch in edits.items():
+        if not isinstance(patch, dict):
+            continue
+        if "references" not in patch and "reference_blocks" not in patch:
+            continue
+        idx = _statement_edit_index(key)
+        if idx is None or not 0 <= idx < len(bound) or not isinstance(bound[idx], dict):
+            unbound.append(patch)
+            continue
+        bound[idx] = {**bound[idx], **patch}
+    return {"statements": [*bound, *additions, *unbound]}
 
 
 def _studio_response_from_cache(
@@ -1427,11 +1525,12 @@ def _studio_response_from_cache(
         page=page,
         page_size=page_size,
     )
+    sliced = [_with_reference_provenance_finding(item) for item in sliced]
     if list_view:
         sliced = [trim_studio_list_item(item) for item in sliced]
     return StudioBuildResponse(
         items=sliced,
-        quickstatements="" if list_view else cached.quickstatements,
+        quickstatements="" if list_view or cache_stale else cached.quickstatements,
         summary=StudioSummary(**cached.summary),
         approved_match_count=cached.approved_match_count,
         pending_match_count=cached.pending_match_count,
@@ -1462,10 +1561,7 @@ async def build_studio(
     ),
     force_rebuild: bool = Query(
         default=False,
-        description="When true, skip the fingerprint cache and rebuild from "
-                    "scratch. The result is still written to cache so the next "
-                    "normal GET is fast. Does not affect the inference cache "
-                    "(VIAF / authority calls).",
+        description="GET cannot start a rebuild. Submit a Studio build job instead.",
     ),
     # ── server-side slicing params (applied AFTER cache load) ──────────
     entity_type: str | None = Query(
@@ -1503,58 +1599,15 @@ async def build_studio(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> StudioBuildResponse:
-    run = await _lookup_run_with_access(db, run_id, auth)
+    await _lookup_run_with_access(db, run_id, auth)
     if source == "legacy" and get_settings().canonical_first_for_run(run_id):
         source = "canonical"
 
     cached = await _get_studio_cache_row(db, run_id, approved_only, source)
     if cached is None or force_rebuild:
-        # Cache miss: enqueue + 409 immediately. The fingerprint comparisons
-        # below only matter against an existing cache row — computing them on
-        # a miss loaded all 18.5k canonical snapshots + 897 MARC records onto
-        # the 512MB web dyno on every polling page load and R14-crashed it
-        # while a Modal build was running (run 3494ebf5, Rule W-15 class).
-        logger.debug("wikidata-studio cache miss for run %s", run_id)
-        if not force_rebuild:
-            # A passive page load must not auto-requeue a build that just
-            # failed — the curator's browser polling spawned doomed build
-            # after doomed build against a dropped-connection Postgres
-            # (run 3494ebf5). Surface the failure instead; the explicit
-            # Rebuild button (force_rebuild) bypasses this guard.
-            recent_failed = (
-                (
-                    await db.execute(
-                        select(RunJob)
-                        .where(
-                            RunJob.run_id == run_id,
-                            RunJob.kind == JOB_KIND_WIKIDATA_STUDIO_BUILD,
-                            RunJob.status.in_([JOB_STATUS_FAILED, JOB_STATUS_CANCELLED]),
-                            RunJob.finished_at > func.now() - timedelta(minutes=15),
-                        )
-                        .order_by(RunJob.finished_at.desc())
-                        .limit(1),
-                    )
-                )
-                .scalars()
-                .first()
-            )
-            if recent_failed is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=_studio_build_failed_detail(recent_failed.id, recent_failed.error),
-                )
-        job_id = await _enqueue_studio_build_job(
-            db,
-            project_id=run.project_id,
-            run_id=run_id,
-            approved_only=approved_only,
-            source=source,
-            force_rebuild=force_rebuild,
-            user_id=auth.user.id,
-        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=_studio_build_in_progress_detail(job_id),
+            detail={"code": "studio_rebuild_required", "message": "Rebuild the Studio source from source data with skip cache."},
         )
 
     records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
@@ -1564,16 +1617,24 @@ async def build_studio(
         db, run_id, [r.control_number for r in records],
     )
 
-    fingerprint = wikidata_studio.compute_build_fingerprint(
-        records, all_matches, entity_rows, override_rows, approved_only,
-        hmo_instance_qids,
-    )
+    await _release_read_transaction(db)
+    from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
 
-    cache_fingerprint = (
-        await _canonical_cache_fingerprint(db, run_id)
-        if source == "canonical"
-        else fingerprint
-    )
+    try:
+        async with asyncio.timeout(_STUDIO_FRESHNESS_TIMEOUT_SECONDS):
+            fingerprint = await run_in_threadpool(
+                wikidata_studio.compute_build_fingerprint,
+                records, all_matches, entity_rows, override_rows, approved_only, hmo_instance_qids,
+            )
+            cache_fingerprint = (
+                await _canonical_cache_fingerprint(db, run_id, fingerprint, release_read_transaction=True)
+                if source == "canonical"
+                else fingerprint
+            )
+    except TimeoutError as exc:
+        raise HTTPException(
+            status_code=409, detail="Cannot verify Studio source freshness within the time limit.",
+        ) from exc
 
     if cached.input_fingerprint == cache_fingerprint:
         logger.debug("wikidata-studio cache hit for run %s (fp=%s)", run_id, fingerprint[:8])
@@ -1581,11 +1642,20 @@ async def build_studio(
             db, run_id, approved_only=approved_only, source=source,
         )
         cache_shape_stale = (
-            studio_cache_has_non_public_items(cached.result_items, source=source)
+            not isinstance(cached.summary, dict)
+            or "selected_rebuild" in cached.summary
+            or cached.summary.get("overrides_applied") is not True
+            or studio_cache_has_non_public_items(cached.result_items, source=source)
             or wikidata_studio.studio_cache_has_stale_validation(
                 cached.result_items,
             )
         )
+        if not cache_shape_stale:
+            from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+
+            cache_shape_stale = cached.summary.get("source_items_sha256") != await run_in_threadpool(
+                _studio_items_digest, cached.result_items or [],
+            )
         return _studio_response_from_cache(
             cached,
             merged,
@@ -1685,23 +1755,14 @@ async def download_quickstatements(
         if blocked:
             header_lines.append(f"# excluded {len(blocked)} items:")
             for p in blocked[:50]:
-                header_lines.append(f"# {p.local_id} — {p.block_message}")
+                local_id = " ".join(str(p.local_id).split())
+                message = " ".join(str(p.block_message).split())
+                header_lines.append(f"# {local_id} — {message}")
             if len(blocked) > 50:
                 header_lines.append(f"# … and {len(blocked) - 50} more")
             qs_text = "\n".join(header_lines) + "\n" + qs_text
-    elif item_approved_only or approved_only:
-        qs_text = await wikidata_studio.quickstatements_for_items(native)
     else:
-        cached = await _get_studio_cache_row(db, run_id, approved_only, source)
-        if cached is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Wikidata Studio has not been built for this run yet — "
-                    "open the Studio page and wait for the build to finish."
-                ),
-            )
-        qs_text = cached.quickstatements
+        qs_text = await wikidata_studio.quickstatements_for_items(native)
 
     suffix = "approved" if item_approved_only else ("match-approved" if approved_only else "all")
     return PlainTextResponse(
@@ -1921,11 +1982,12 @@ async def rebuild_selected_wikidata_items(
             approved_matches=slice_inputs["approved_matches"],
             entities_by_cn=slice_inputs["entities_by_cn"],
         )
+        # Overrides apply once, in build_canonical_studio_result. Index-based
+        # edits applied to the legacy stage would repeat in the canonical stage.
         legacy_native = await wikidata_studio.build_items_for_run(
             marc_records=slice_inputs["marc_records"],
             approved_matches=slice_inputs["approved_matches"],
             entities_by_cn=slice_inputs["entities_by_cn"],
-            overrides=overrides,
             return_native=True,
             hmo_instance_qids=hmo_instance_qids,
         )
@@ -2009,6 +2071,7 @@ async def rebuild_selected_wikidata_items(
 async def upload_to_wikidata(
     run_id: uuid.UUID,
     response: Response,
+    request: Request,
     source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
     upload_target: str = Query(
         default="dry_run",
@@ -2028,6 +2091,7 @@ async def upload_to_wikidata(
         description="When true, only upload items where the curator has "
                     "explicitly ticked 'Approved' in the Studio item overlay.",
     ),
+    owner_only: Literal["true", "false"] = Query(default="false"),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
@@ -2045,8 +2109,21 @@ async def upload_to_wikidata(
         serialise_job,
     )
 
+    if len(request.query_params.getlist("owner_only")) > 1:
+        raise HTTPException(status_code=400, detail="owner_only must be supplied at most once")
+    if owner_only == "true":
+        for key in ("owner_only", "dry_run", "approved_only", "item_approved_only"):
+            values = request.query_params.getlist(key)
+            if values and (len(values) != 1 or values[0] not in {"true", "false"}):
+                raise HTTPException(status_code=400, detail=f"{key} must be true or false")
     mode = wikidata_upload.resolve_upload_mode(upload_target, dry_run=dry_run)
     run = await _lookup_run_with_access(db, run_id, auth, write=not mode.dry_run)
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
+    if cached is None or not await _studio_cache_is_current(
+        db, run_id, source=source, approved_only=approved_only,
+        fingerprint=cached.input_fingerprint, summary=cached.summary,
+    ):
+        raise HTTPException(status_code=409, detail="Rebuild the Studio source from source data with skip cache before upload.")
     params = await prepare_job_params(
         db, auth, run_id=run_id, kind=JOB_KIND_WIKIDATA_UPLOAD,
         params={
@@ -2054,6 +2131,7 @@ async def upload_to_wikidata(
             "dry_run": mode.dry_run,
             "approved_only": approved_only,
             "item_approved_only": item_approved_only,
+            "owner_only": owner_only == "true",
             "source": source,
         },
     )
@@ -2212,12 +2290,44 @@ async def list_wikidata_items_page(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=detail,
         ) from exc
-    return await page_wikidata_items(
+    page = await page_wikidata_items(
         db, run_id,
         cursor=cursor, limit=limit, q=q, entity_type=entity_type,
         sort=sort, dir=dir, approved_only=approved_only, source=source,
         include_total=include_total,
     )
+    items = page.get("items") or []
+    ids = [str(item.get("local_id") or "") for item in items]
+    if ids:
+        from app.models.wikidata_studio_item_row import WikidataStudioItemRow  # noqa: PLC0415
+
+        rows = (await db.execute(
+            select(
+                WikidataStudioItemRow.local_id, WikidataStudioItemRow.payload, WikidataItemOverride,
+            ).join(
+                WikidataItemOverride,
+                (WikidataItemOverride.run_id == WikidataStudioItemRow.run_id)
+                & (WikidataItemOverride.local_id == WikidataStudioItemRow.local_id),
+                isouter=True,
+            ).where(
+                WikidataStudioItemRow.run_id == run_id,
+                WikidataStudioItemRow.approved_only.is_(approved_only),
+                WikidataStudioItemRow.source == source,
+                WikidataStudioItemRow.local_id.in_(ids),
+            )
+        )).all()
+        sources = {
+            str(local_id): _reference_source_with_override(payload, override)
+            if isinstance(payload, dict) else payload
+            for local_id, payload, override in rows
+        }
+        page["items"] = [
+            _with_reference_provenance_finding(
+                item, reference_source=sources.get(str(item.get("local_id") or ""))
+                or {"statements": None},
+            ) for item in items
+        ]
+    return page
 
 
 @router.get("/{run_id}/wikidata-studio/items/export")
@@ -2291,11 +2401,18 @@ async def export_wikidata_items(
                     select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
                 )
             ).scalars().all()
+            cache_summary = await db.scalar(select(WikidataStudioCache.summary).where(
+                WikidataStudioCache.run_id == run_id,
+                WikidataStudioCache.approved_only == approved_only,
+                WikidataStudioCache.source == source,
+            ))
         overrides_by_id = {r.local_id: r for r in override_rows}
+        overrides_applied = isinstance(cache_summary, dict) and cache_summary.get("overrides_applied") is True
 
         async for partition in iter_wikidata_row_payloads(
             run_id, approved_only=approved_only, source=source,
         ):
+            raw_by_id = {str(row.get("local_id") or ""): row for row in partition}
             # Build the evidence pack BEFORE the probe answer is stamped, then
             # let `stamp_duplicate_check` publish that answer into it. Doing it
             # the other way round is what left
@@ -2307,6 +2424,7 @@ async def export_wikidata_items(
                 ov_row = overrides_by_id.get(local_id)
                 merged.append(_merge_one_wikidata_item(
                     raw, ov_row=ov_row, ledger=ledger, latest_writes=latest_writes,
+                    overrides_applied=overrides_applied,
                 ))
             attach_local_reference_targets(merged)
 
@@ -2337,7 +2455,12 @@ async def export_wikidata_items(
                 annotated = annotate_duplicate_rejudge(item.get("ai_verdict"), item)
                 if annotated is not None:
                     item["ai_verdict"] = annotated
-                yield item
+                raw = raw_by_id.get(str(item.get("local_id") or ""), item)
+                yield _with_reference_provenance_finding(
+                    item, reference_source=_reference_source_with_override(
+                        raw, overrides_by_id.get(str(item.get("local_id") or "")),
+                    ),
+                )
 
     filename = f"run-{run_id}-wikidata-studio-items.{format}"
     if format == "json":
@@ -2674,7 +2797,7 @@ async def get_studio_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"unknown local_id {local_id!r}",
         )
-    return item
+    return _with_reference_provenance_finding(item)
 
 
 @router.patch(
@@ -3297,7 +3420,7 @@ def _slice_items(
 
 async def _build_native_items(
     db: AsyncSession, run_id: uuid.UUID, auth: AuthContext,
-    *, approved_only: bool, source: str = "canonical",
+    *, approved_only: bool, source: str = "canonical", adopt_probe: bool = True,
 ) -> list[Any]:
     """Return native WikidataItem objects for upload — same set as the Studio table.
 
@@ -3307,7 +3430,7 @@ async def _build_native_items(
     """
     await _lookup_run_with_access(db, run_id, auth)
     if source not in ("legacy", "canonical"):
-        source = "canonical"
+        raise HTTPException(status_code=409, detail="Select a valid Studio source and rebuild it first.")
 
     override_rows = (
         await db.execute(
@@ -3317,10 +3440,11 @@ async def _build_native_items(
     overrides_by_id = {row.local_id: row for row in override_rows}
 
     cached = await _get_studio_cache_row(db, run_id, approved_only, source)
-    if cached is None or not (cached.result_items or []):
-        alt = await _get_studio_cache_row(db, run_id, not approved_only, source)
-        if alt is not None and (alt.result_items or []):
-            cached = alt
+    if cached is None or not await _studio_cache_is_current(
+        db, run_id, source=source, approved_only=approved_only,
+        fingerprint=cached.input_fingerprint, summary=cached.summary,
+    ):
+        raise HTTPException(status_code=409, detail="Rebuild the Studio source from source data with skip cache before upload.")
 
     if cached is not None and (cached.result_items or []):
         scoped = filter_public_wikidata_items(
@@ -3330,124 +3454,80 @@ async def _build_native_items(
         native: list[Any] = []
         for raw in scoped:
             override = overrides_by_id.get(str(raw.get("local_id") or ""))
+            override_data = override_row_to_dict(override) if override is not None else None
+            if override_data is not None:
+                override_data = {key: value for key, value in override_data.items()
+                                 if key in {"accepted_foreign_qid", "ai_verdict", "ai_verdict_at"}}
+            if override_data is not None and not adopt_probe:
+                override_data.pop("accepted_foreign_qid", None)
             item_dict = (
-                apply_wikidata_item_override(raw, override_row_to_dict(override))
-                if override is not None
+                apply_wikidata_item_override(raw, override_data)
+                if override_data is not None
                 else raw
             )
-            native.append(studio_dict_to_native_item(item_dict))
+            native.append(studio_dict_to_native_item(
+                item_dict, strict_p3959_rank=not adopt_probe, strict_quantity_unit=not adopt_probe,
+            ))
+        _require_upload_reference_blocks(native)
+        _require_upload_local_targets(native)
         await _apply_cached_qid_adoption_to_native(
             db, run_id, approved_only=approved_only, source=source, native=native,
+            adopt_probe=adopt_probe,
         )
+        if not adopt_probe:
+            return native
         from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
             prepare_wikidata_upload_native_items,
         )
 
-        return prepare_wikidata_upload_native_items(native)
+        prepared = prepare_wikidata_upload_native_items(native)
+        _require_upload_reference_blocks(prepared)
+        _require_upload_local_targets(prepared)
+        return prepared
 
-    # Cache miss — fall back to a rebuild (same sources as before).
-    records = (
-        await db.execute(
-            select(RunRecord).where(RunRecord.run_id == run_id)
-            .order_by(RunRecord.control_number.asc())
-        )
-    ).scalars().all()
-    all_matches = (
-        await db.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))
-    ).scalars().all()
-    entity_rows = (
-        await db.execute(
-            select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
-        )
-    ).scalars().all()
-    if source == "canonical":
-        canonical_rows = (await db.execute(
-            select(HmoCanonicalEntity).where(HmoCanonicalEntity.run_id == run_id)
-        )).scalars().all()
-        canonical = [normalize_live_entity(row.snapshot) for row in canonical_rows]
-        if not canonical:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="HMO Wikibase records are not ready for Wikidata projection; complete HMO read-back first.",
-            )
-        overrides = {
-            r.local_id: {
-                "labels":            r.labels,
-                "descriptions":      r.descriptions,
-                "aliases":           r.aliases,
-                "add_statements":    r.add_statements,
-                "remove_statements": r.remove_statements,
-                "statement_edits":   r.statement_edits,
-            }
-            for r in override_rows
-        }
-        native = native_items_from_hmo(canonical)
-        for item in native:
-            ov = overrides.get(item.local_id)
-            if ov:
-                wikidata_studio._apply_override(item, ov)
-        await _apply_cached_qid_adoption_to_native(
-            db, run_id, approved_only=approved_only, source=source, native=native,
-        )
-        return native
-    matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
-
-    overrides = {
-        r.local_id: {
-            "labels":            r.labels,
-            "descriptions":      r.descriptions,
-            "aliases":           r.aliases,
-            "add_statements":    r.add_statements,
-            "remove_statements": r.remove_statements,
-            "statement_edits":   r.statement_edits,
-        }
-        for r in override_rows
-    }
-    entities_by_cn = _group_entity_rows(entity_rows, approved_only)
-    result = await wikidata_studio.build_items_for_run(
-        marc_records=[dict(r.marc) for r in records],
-        approved_matches=[
-            {
-                "id": str(m.id),
-                "control_number": m.control_number,
-                "entity_text": m.entity_text,
-                "role": m.role,
-                "matched_name": m.matched_name,
-                "mazal_id": m.mazal_id,
-                "viaf_id": m.viaf_id,
-                "wikidata_qid": m.wikidata_qid,
-                "confidence": m.confidence,
-                "source": m.source,
-                "payload": m.payload or {},
-            }
-            for m in matches
-        ],
-        entities_by_cn=entities_by_cn,
-        overrides=overrides,
-        return_native=True,
-    )
-    native = result.get("native_items") or []
-    await _apply_cached_qid_adoption_to_native(
-        db, run_id, approved_only=approved_only, source=source, native=native,
-    )
-    return native
+    return []
 
 
-def studio_dict_to_native_item(raw: dict[str, Any]) -> Any:
+def _require_upload_reference_blocks(native: list[Any]) -> None:
+    try:
+        wikidata_studio.validate_upload_reference_blocks(native)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Reference provenance is invalid or ambiguous: {exc}",
+        ) from exc
+
+
+def _require_upload_local_targets(native: list[Any]) -> None:
+    from app.pipeline.wikidata_local_refs import ensure_sourced_authors_resolvable  # noqa: PLC0415
+
+    try:
+        ensure_sourced_authors_resolvable(native)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+def studio_dict_to_native_item(
+    raw: dict[str, Any], *, strict_p3959_rank: bool = False, strict_quantity_unit: bool = False,
+) -> Any:
     """Rebuild a ``WikidataItem`` from a Studio-cache / list-API dict."""
     from converter.wikidata.item_models import (  # noqa: PLC0415
         WikidataItem,
         WikidataStatement,
     )
     from converter.wikidata.property_mapping import PRECISION_YEAR  # noqa: PLC0415
+    from converter.wikidata.quickstatements import statement_reference_kwargs  # noqa: PLC0415
 
     stmts: list[WikidataStatement] = []
-    for s in raw.get("statements") or []:
+    raw_statements = raw.get("statements", [])
+    if not isinstance(raw_statements, list):
+        raise ValueError("statements must be a list of objects")
+    for s in raw_statements:
         if not isinstance(s, dict):
-            continue
+            raise ValueError("statements must be a list of objects")
         pid = str(s.get("property_id") or s.get("property") or "").strip()
         if not pid:
-            continue
+            raise ValueError("A Wikidata statement requires a property ID")
         vtype = str(s.get("value_type") or "string")
         precision = s.get("precision")
         try:
@@ -3460,11 +3540,15 @@ def studio_dict_to_native_item(raw: dict[str, Any]) -> Any:
                 value=s.get("value"),
                 value_type=vtype,
                 qualifiers=list(s.get("qualifiers") or []),
-                references=list(s.get("references") or []),
+                **statement_reference_kwargs(s, WikidataStatement),
                 precision=precision_i,
                 language=str(s.get("language") or "he"),
-                unit=str(s.get("unit") or ""),
-                rank=str(s.get("rank") or "normal"),
+                unit=("__INVALID_QUANTITY_UNIT__" if strict_quantity_unit
+                      and s.get("unit") is not None and not isinstance(s.get("unit"), str)
+                      else str(s.get("unit") or "")),
+                rank=("" if strict_p3959_rank and pid == "P3959"
+                      and s.get("rank") not in ("normal", "preferred")
+                      else str(s.get("rank") or "normal")),
             )
         )
 
@@ -4279,6 +4363,7 @@ async def _apply_cached_qid_adoption_to_native(
     approved_only: bool,
     source: str,
     native: list[Any],
+    adopt_probe: bool = True,
 ) -> int:
     """Stamp build/verify-adopted QIDs onto re-projected upload natives (Rule W-177).
 
@@ -4310,6 +4395,8 @@ async def _apply_cached_qid_adoption_to_native(
             item.existing_qid = qid
             stamped += 1
 
+    if not adopt_probe:
+        return stamped
     serialised: list[dict[str, Any]] = []
     for item in native:
         row = wikidata_studio._serialise_item(item)
@@ -4343,7 +4430,10 @@ async def _upsert_studio_cache(
     so a cache write failure never degrades the user-facing response."""
     try:
         from datetime import datetime  # noqa: PLC0415
+        from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
 
+        summary = {**summary, "overrides_applied": True,
+                   "source_items_sha256": await run_in_threadpool(_studio_items_digest, items)}
         if existing is None:
             row = WikidataStudioCache(
                 run_id=run_id,

@@ -119,8 +119,8 @@ def test_build_claim_uses_the_qid_from_a_wikibase_entity_value() -> None:
 
     uploader = WikidataUploader(
         token="user@bot:xxxxxxxxxxxxxxxx",
-        is_test=True,
-        allow_live=False,
+        is_test=False,
+        allow_live=True,
     )
     statement = WikidataStatement(
         property_id="P31",

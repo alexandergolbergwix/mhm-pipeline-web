@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.pipeline.judge_models import default_tier1_model  # noqa: PLC0415
 
+import json
 import re
 
 from typing import Any
@@ -70,6 +71,13 @@ _FIXTURE_STATEMENT_KEYS = (
     "property", "property_id", "property_label",
     "value", "value_id", "value_type", "value_label", "unit", "rank",
 )
+# Qualifiers and references are part of the claim: a changed folio (P304) or
+# source URL (P854) is a changed claim, so both key the verdict and reach the judge.
+_FINGERPRINT_SNAK_KEYS = ("property", "property_id", "value", "value_id", "value_type", "unit")
+_FIXTURE_SNAK_KEYS = (
+    "property", "property_id", "property_label",
+    "value", "value_id", "value_type", "value_label", "unit",
+)
 
 # Structural PIDs the judge must never lose to the statement cap: an item
 # whose 62 inscription fragments pushed P31 past position 40 failed AI
@@ -86,6 +94,41 @@ def _statement_priority(statement: Any) -> tuple[int, str]:
     except ValueError:
         rank = len(_PRIORITY_PIDS)
     return (rank, pid)
+
+
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, default=str)
+
+
+def _snak_rows(snaks: Any, keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    if not isinstance(snaks, list):
+        return []
+    rows: list[dict[str, Any]] = []
+    for snak in snaks:
+        if not isinstance(snak, dict):
+            continue
+        row = {key: snak.get(key) for key in keys if snak.get(key) not in (None, "")}
+        if row:
+            rows.append(row)
+    return sorted(rows, key=_canonical_json)
+
+
+def _reference_rows(
+    statement: dict[str, Any],
+    keys: tuple[str, ...],
+) -> list[list[dict[str, Any]]]:
+    """One snak group per reference; ``reference_blocks`` wins over flat ``references``."""
+    blocks = statement.get("reference_blocks")
+    if isinstance(blocks, list) and blocks:
+        groups = [_snak_rows(block, keys) for block in blocks]
+    else:
+        groups = []
+        for reference in statement.get("references") or []:
+            if not isinstance(reference, dict):
+                continue
+            snaks = reference.get("snaks")
+            groups.append(_snak_rows(snaks if isinstance(snaks, list) else [reference], keys))
+    return sorted((group for group in groups if group), key=_canonical_json)
 
 
 def fingerprint_statements(
@@ -105,6 +148,9 @@ def fingerprint_statements(
     ``include_presentation_labels`` is true (judge fixtures). Cache keys omit
     them so a gloss-only enrich cannot bust sticky-full (Rule W-175).
 
+    Qualifiers and references are projected for both keys and fixtures, so a
+    changed folio or source URL invalidates the verdict it supports.
+
     When the item carries more statements than ``limit``, the projection is
     prioritised (P31 / structural links first) before truncation so the cap
     can never drop the instance-of the judge needs to see.
@@ -118,15 +164,26 @@ def fingerprint_statements(
         _FIXTURE_STATEMENT_KEYS if include_presentation_labels
         else _FINGERPRINT_STATEMENT_KEYS
     )
+    snak_keys = (
+        _FIXTURE_SNAK_KEYS if include_presentation_labels
+        else _FINGERPRINT_SNAK_KEYS
+    )
     rows: list[dict[str, Any]] = []
     for statement in statements[:limit]:
         if not isinstance(statement, dict):
             continue
-        row = {
+        row: dict[str, Any] = {
             key: statement.get(key)
             for key in keys
             if statement.get(key) not in (None, "")
         }
+        qualifiers = _snak_rows(statement.get("qualifiers"), snak_keys)
+        if qualifiers:
+            row["qualifiers"] = qualifiers
+        references = _reference_rows(statement, snak_keys)
+        if references:
+            # Studio reference shape, so a slimmed row re-projects to the same key.
+            row["references"] = [{"snaks": group} for group in references]
         if row:
             rows.append(row)
     return rows

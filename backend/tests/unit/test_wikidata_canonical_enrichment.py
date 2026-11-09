@@ -40,6 +40,7 @@ def test_canonical_merge_preserves_two_named_unknown_scribes() -> None:
 
 
 def test_canonical_merge_adds_the_digital_collection_role() -> None:
+    """Do not treat an unqualified assertion as evidence for the qualified claim."""
     canonical = _ms("canonical-ms", "990001", WikidataStatement(
         property_id="P361", value="Q118384267", value_type="item",
     ))
@@ -49,8 +50,9 @@ def test_canonical_merge_adds_the_digital_collection_role() -> None:
     ))
     merged = merge_legacy_into_canonical([canonical], [legacy])
     claims = [s for s in merged[0].statements if s.property_id == "P361"]
-    assert len(claims) == 1
-    assert claims[0].qualifiers == legacy.statements[0].qualifiers
+    assert len(claims) == 2
+    assert any(not claim.qualifiers for claim in claims)
+    assert any(claim.qualifiers == legacy.statements[0].qualifiers for claim in claims)
 
 
 def test_statement_dedup_keeps_distinct_folios_but_ignores_qualifier_order() -> None:
@@ -68,6 +70,35 @@ def test_statement_dedup_keeps_distinct_folios_but_ignores_qualifier_order() -> 
         qualifiers=[{"property": "P958", "value": "10א-11ב", "type": "string"}],
     )
     assert len(dedupe_statements([first, duplicate, second])) == 2
+
+
+def test_canonical_merge_preserves_independently_sourced_bare_exemplar() -> None:
+    bare = WikidataStatement(
+        property_id="P1574", value="Q123", value_type="item",
+        references=[{"property": "P854", "value": "https://example.org/hmo", "type": "url"}],
+    )
+    located = WikidataStatement(
+        property_id="P1574", value="Q123", value_type="item",
+        qualifiers=[{"property": "P958", "value": "א-ב", "type": "string"}],
+    )
+    merged = merge_legacy_into_canonical(
+        [_ms("canonical-ms", "990001", bare)], [_ms("marc:990001", "990001", located)],
+    )
+    claims = [s for s in merged[0].statements if s.property_id == "P1574"]
+    assert len(claims) == 2
+    assert any(s.references == bare.references and not s.qualifiers for s in claims)
+
+
+def test_canonical_merge_does_not_collapse_unknown_text_exemplars() -> None:
+    bare = WikidataStatement(property_id="P1574", value="Q234460", value_type="item")
+    located = WikidataStatement(
+        property_id="P1574", value="Q234460", value_type="item",
+        qualifiers=[{"property": "P958", "value": "א-ב", "type": "string"}],
+    )
+    merged = merge_legacy_into_canonical(
+        [_ms("canonical-ms", "990001", bare)], [_ms("marc:990001", "990001", located)],
+    )
+    assert len([s for s in merged[0].statements if s.property_id == "P1574"]) == 2
 
 
 def test_canonical_merge_does_not_restore_a_section_genre_on_the_manuscript() -> None:
@@ -400,16 +431,30 @@ def test_merge_rewrites_local_references_to_canonical_person_id() -> None:
 
 def test_merge_prefers_safe_p50_over_legacy_p2093() -> None:
     person = _person("person:author", viaf="123", label="שמעון אבן חביב")
+    person.records = ["990001"]
+    person.aliases = {"he": ["חביב, שמעון אבן"]}
+    qualifier = {"property": "P958", "value": "1r", "type": "string"}
+    canonical_source = [
+        {"property": "P3959", "value": "990001", "type": "external-id"},
+        {"property": "P854", "value": "https://example.org/canonical", "type": "url"},
+    ]
+    legacy_source = [
+        {"property": "P3959", "value": "990001", "type": "external-id"},
+        {"property": "P854", "value": "https://example.org/legacy", "type": "url"},
+    ]
     canonical_work = WikidataItem(
         local_id="work:canonical",
         entity_type="work",
         labels={"he": "פסק דין"},
+        records=["990001"],
         statements=[
             WikidataStatement(
                 property_id="P50",
                 value="__LOCAL:person:author",
                 value_type="item",
-                references=[{"property": "P248", "value": "canonical"}],
+                qualifiers=[qualifier],
+                references=canonical_source,
+                reference_blocks=[canonical_source],
             ),
         ],
     )
@@ -417,12 +462,15 @@ def test_merge_prefers_safe_p50_over_legacy_p2093() -> None:
         local_id="work:legacy",
         entity_type="work",
         labels={"he": "פסק דין"},
+        records=["990001"],
         statements=[
             WikidataStatement(
                 property_id="P2093",
                 value="חביב, שמעון אבן",
                 value_type="string",
-                references=[{"property": "P248", "value": "legacy"}],
+                qualifiers=[qualifier],
+                references=legacy_source,
+                reference_blocks=[legacy_source],
             ),
         ],
     )
@@ -437,12 +485,12 @@ def test_merge_prefers_safe_p50_over_legacy_p2093() -> None:
     assert [(claim.property_id, claim.value) for claim in author_claims] == [
         ("P50", "__LOCAL:person:author"),
     ]
-    assert {reference["value"] for reference in author_claims[0].references} == {
-        "canonical", "legacy",
-    }
+    assert author_claims[0].reference_blocks == [canonical_source, legacy_source]
+    assert author_claims[0].qualifiers == [qualifier]
 
 
 def test_unresolved_p50_falls_back_to_p2093() -> None:
+    """The resolver removes an unsourced dangling claim, not an author source."""
     work = WikidataItem(
         local_id="work:unresolved-author",
         entity_type="work",
@@ -460,30 +508,39 @@ def test_unresolved_p50_falls_back_to_p2093() -> None:
         ],
     )
 
-    assert normalize_work_author_claims([work]) == 1
+    assert normalize_work_author_claims([work]) == 0
+    assert resolve_local_references([work])["dropped"] == 1
     assert [(statement.property_id, statement.value) for statement in work.statements] == [
         ("P2093", "מחבר לא מזוהה"),
     ]
 
 
 def test_qid_p50_replaces_p2093_fallback() -> None:
+    person = WikidataItem(
+        local_id="person:42", entity_type="person", existing_qid="Q42",
+        labels={"en": "Douglas Adams"}, records=["990001"],
+    )
+    source = [{"property": "P3959", "value": "990001", "type": "external-id"}]
     work = WikidataItem(
         local_id="work:qid-author",
         entity_type="work",
+        records=["990001"],
         statements=[
             WikidataStatement(property_id="P50", value="Q42", value_type="item"),
             WikidataStatement(
                 property_id="P2093",
                 value="Douglas Adams",
                 value_type="string",
+                references=source,
             ),
         ],
     )
 
-    assert normalize_work_author_claims([work]) == 1
+    assert normalize_work_author_claims([person, work]) == 1
     assert [(statement.property_id, statement.value) for statement in work.statements] == [
         ("P50", "Q42"),
     ]
+    assert work.statements[0].reference_blocks == [source]
 
 
 def test_merge_drops_identifierless_person_items() -> None:
@@ -652,3 +709,71 @@ def test_prepare_upload_recovers_legacy_viaf_uri() -> None:
     kept = prepare_wikidata_upload_native_items([person])
     assert [item.local_id for item in kept] == ["person:viaf"]
     assert any(s.property_id == "P214" and s.value == "123456789" for s in kept[0].statements)
+
+
+def test_exact_legacy_year_keeps_a_sourced_canonical_circa_claim() -> None:
+    """A sourced circa date is evidence; an exact legacy date must not erase it."""
+    source = {"property": "P854", "value": "https://example.org/hmo-date", "type": "url"}
+    canonical = _ms("canonical-ms", "990001", WikidataStatement(
+        property_id="P571", value="+1650-00-00T00:00:00Z", value_type="time",
+        qualifiers=[{"property": "P1480", "value": "Q5727902", "type": "item"}],
+        references=[source],
+        reference_blocks=[[source]],
+    ))
+    legacy = _ms("marc:990001", "990001", WikidataStatement(
+        property_id="P571", value="+1650-00-00T00:00:00Z", value_type="time",
+    ))
+    merged = merge_legacy_into_canonical([canonical], [legacy])
+    dates = [s for s in merged[0].statements if s.property_id == "P571"]
+    assert len(dates) == 2
+    circa = [
+        s for s in dates
+        if any(q.get("property") == "P1480" for q in s.qualifiers)
+    ]
+    assert len(circa) == 1
+    assert circa[0].reference_blocks == [[source]]
+
+
+def test_canonical_preferred_p31_keeps_a_distinct_qualified_legacy_class() -> None:
+    """A qualified legacy P31 is a distinct claim, not a duplicate of the canonical P31."""
+    canonical = _ms("canonical-ms", "990001", WikidataStatement(
+        property_id="P31", value="Q87167", value_type="item",
+    ))
+    legacy = _ms("marc:990001", "990001", WikidataStatement(
+        property_id="P31", value="Q87167", value_type="item",
+        qualifiers=[{"property": "P1932", "value": "כתב יד", "type": "string"}],
+    ))
+    merged = merge_legacy_into_canonical([canonical], [legacy])
+    classes = [s for s in merged[0].statements if s.property_id == "P31"]
+    assert len(classes) == 2
+    assert [s.qualifiers for s in classes if s.qualifiers] == [legacy.statements[0].qualifiers]
+
+
+def test_work_merge_keeps_a_sourced_title_that_differs_from_the_label() -> None:
+    """A sourced P1476 is evidence; the single-title rule must not drop it."""
+    source = {"property": "P854", "value": "https://example.org/title-source", "type": "url"}
+    canonical = WikidataItem(
+        local_id="work:מנחת_יהודה",
+        entity_type="work",
+        labels={"he": "מנחת יהודה"},
+        records=["990001238980205171"],
+        statements=[WikidataStatement(
+            property_id="P1476", value="מנחת יהודה", value_type="monolingualtext",
+        )],
+    )
+    legacy = WikidataItem(
+        local_id="legacy-work:מנחת_יהודה",
+        entity_type="work",
+        labels={"he": "מנחת יהודה"},
+        records=["990001238980205171"],
+        statements=[WikidataStatement(
+            property_id="P1476", value="מנחת יהודה - חלק ב", value_type="monolingualtext",
+            references=[source],
+            reference_blocks=[[source]],
+        )],
+    )
+    merged = merge_legacy_into_canonical([canonical], [legacy])
+    titles = [s for s in merged[0].statements if s.property_id == "P1476"]
+    sourced = [s for s in titles if s.value == "מנחת יהודה - חלק ב"]
+    assert len(sourced) == 1
+    assert sourced[0].reference_blocks == [[source]]

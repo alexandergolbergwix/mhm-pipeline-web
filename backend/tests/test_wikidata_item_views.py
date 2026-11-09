@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -478,3 +478,47 @@ async def test_fetch_merged_wikidata_item_returns_one_full_row(db_session) -> No
     assert await fetch_merged_wikidata_item(
         db_session, run_id, "missing", source="canonical",
     ) is None
+
+
+@pytest.mark.asyncio
+async def test_cached_view_flags_content_override_newer_than_build(db_session) -> None:
+    run_id = uuid.uuid4()
+    built_at = datetime(2026, 11, 1, tzinfo=UTC)
+    db_session.add(
+        WikidataStudioCache(
+            run_id=run_id,
+            approved_only=True,
+            input_fingerprint="f" * 64,
+            result_items=[
+                {
+                    "local_id": "990001234",
+                    "entity_type": "manuscript",
+                    "labels": {"en": "MS 1234"},
+                    "statements": [],
+                    "validation_issues": [],
+                },
+            ],
+            quickstatements="",
+            summary={"overrides_applied": True},
+            approved_match_count=0,
+            pending_match_count=0,
+            used_match_count=0,
+            record_count=1,
+            built_at=built_at,
+        )
+    )
+    db_session.add(
+        WikidataItemOverride(
+            run_id=run_id,
+            local_id="990001234",
+            add_statements=[{"property_id": "P2", "value": "curator"}],
+            updated_at=built_at + timedelta(hours=1),
+        )
+    )
+    await db_session.commit()
+
+    items = await fetch_merged_wikidata_items(db_session, run_id)
+
+    assert len(items) == 1
+    assert items[0]["rebuild_required"] is True
+    assert items[0]["statements"] == []

@@ -769,3 +769,60 @@ def test_fingerprint_statements_preserves_order_under_the_cap() -> None:
     ]
     rows = fingerprint_statements({"statements": statements}, limit=40)
     assert [r["property_id"] for r in rows] == ["P217", "P31"]
+
+
+def _sourced_statement_item(folio: str = "12a", source_url: str = "https://example.org/ms") -> dict:
+    return {
+        "_local_id": "manuscript_folio",
+        "entity_type": "manuscript",
+        "record_ids": ["990000403370205171"],
+        "labels": {"en": "MS folio"},
+        "descriptions": {"en": "Hebrew manuscript."},
+        "statements": [{
+            "property": "P1684",
+            "property_id": "P1684",
+            "value": "Sefer",
+            "value_type": "string",
+            "rank": "normal",
+            "qualifiers": [{"property": "P304", "property_id": "P304", "value": folio}],
+            "references": [{"snaks": [
+                {"property": "P854", "property_id": "P854", "value": source_url},
+            ]}],
+        }],
+        "validation_issues": [],
+        "_marc_context": {"title": "MS folio"},
+    }
+
+
+def test_fingerprint_changes_when_folio_qualifier_changes() -> None:
+    item = _sourced_statement_item(folio="12a")
+    before = wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash")
+    item["statements"][0]["qualifiers"][0]["value"] = "12b"
+    after = wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash")
+    assert before != after
+
+
+def test_fingerprint_changes_when_source_url_changes() -> None:
+    item = _sourced_statement_item(source_url="https://example.org/ms")
+    before = wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash")
+    item["statements"][0]["references"][0]["snaks"][0]["value"] = "https://example.org/other"
+    after = wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash")
+    assert before != after
+
+
+def test_fingerprint_ignores_qualifier_label_changes() -> None:
+    item = _sourced_statement_item()
+    before = wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash")
+    item["statements"][0]["qualifiers"][0]["property_label"] = "folio"
+    after = wikidata_verdict_input_fingerprint(item, "gemini-3.5-flash")
+    assert before == after
+
+
+def test_fixture_statements_carry_qualifiers_and_references_to_the_judge() -> None:
+    from app.pipeline.wikidata_verdict_cache import fixture_statements
+
+    row = fixture_statements(_sourced_statement_item())[0]
+    assert row["qualifiers"] == [{"property": "P304", "property_id": "P304", "value": "12a"}]
+    assert row["references"] == [{"snaks": [
+        {"property": "P854", "property_id": "P854", "value": "https://example.org/ms"},
+    ]}]

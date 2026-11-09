@@ -29,19 +29,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.extraction_approval import ExtractionApproval
 from app.models.item_override import WikidataItemOverride
 from app.models.run import AuthorityMatch, RunRecord
-from app.pipeline.ai_verdict_cache_common import strip_volatile_metadata
-from app.pipeline.wikidata_studio import WIKIDATA_STUDIO_BUILD_SCHEMA, hmo_instance_qids_for_run
+from app.pipeline.wikidata_studio import (
+    WIKIDATA_STUDIO_BUILD_SCHEMA,
+    _fingerprint_entity,
+    _fingerprint_hash,
+    _fingerprint_match,
+    _fingerprint_override,
+    hmo_instance_qids_for_run,
+)
 
 DEFAULT_SHARD_CNS = 500
-
-
-def _hash16(obj: Any) -> str:
-    import hashlib  # noqa: PLC0415
-    import json  # noqa: PLC0415
-
-    return hashlib.sha256(
-        json.dumps(strip_volatile_metadata(obj), sort_keys=True, default=str).encode()
-    ).hexdigest()[:16]
 
 
 async def list_run_control_numbers(
@@ -77,7 +74,7 @@ async def _streamed_column_hashes(
     )
     async for partition in result.partitions():
         for control_number, marc in partition:
-            record_parts.append((str(control_number), _hash16(marc or {})))
+            record_parts.append((str(control_number), _fingerprint_hash(marc or {})))
 
     match_parts: list[tuple[Any, ...]] = []
     result = await db.stream(
@@ -88,10 +85,7 @@ async def _streamed_column_hashes(
     )
     async for partition in result.partitions():
         for (m,) in partition:
-            match_parts.append((
-                str(m.id), m.approved, m.wikidata_qid or "", m.viaf_id or "",
-                m.mazal_id or "", _hash16(m.payload or {}),
-            ))
+            match_parts.append(_fingerprint_match(m))
 
     entity_parts: list[tuple[Any, ...]] = []
     result = await db.stream(
@@ -102,10 +96,7 @@ async def _streamed_column_hashes(
     )
     async for partition in result.partitions():
         for (e,) in partition:
-            entity_parts.append((
-                str(e.id), bool(e.approved),
-                e.override_text or "", e.override_type or "", e.override_role or "",
-            ))
+            entity_parts.append(_fingerprint_entity(e))
     return record_parts, match_parts, entity_parts
 
 
@@ -134,19 +125,7 @@ async def compute_build_fingerprint_streamed(
             select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id)
         )
     ).scalars().all()
-    override_parts = [
-        (
-            str(o.id), o.local_id,
-            o.approved,
-            _hash16({
-                "labels": o.labels, "descriptions": o.descriptions,
-                "aliases": o.aliases, "add_statements": o.add_statements,
-                "remove_statements": o.remove_statements,
-                "statement_edits": o.statement_edits,
-            }),
-        )
-        for o in override_rows
-    ]
+    override_parts = [_fingerprint_override(o) for o in override_rows]
 
     parts = {
         "build_schema": WIKIDATA_STUDIO_BUILD_SCHEMA,

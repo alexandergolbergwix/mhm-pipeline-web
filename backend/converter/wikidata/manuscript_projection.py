@@ -72,6 +72,7 @@ from converter.wikidata.item_builder import (
     nli_j9u_id,
     nli_reference,
 )
+from converter.wikidata.property_mapping import extend_source_reference
 
 
 _QID_RE = re.compile(r"^Q\d+$")
@@ -578,13 +579,13 @@ class ManuscriptProjectionMixin:
             # NOT be used as a statement qualifier. Move it into the reference
             # block alongside P248/P813. Fix 2026-04-15 third audit Fix #3.
             if "dates" in colophon_fields or "colophon_text" in colophon_fields:
-                colophon_ref = list(ref) + [
+                colophon_ref = extend_source_reference(ref, [
                     {
                         "property": P_BASED_ON_HEURISTIC,
                         "value": Q_COLOPHON,
                         "type": "item",
                     }
-                ]
+                ])
                 inception_ref = colophon_ref
             else:
                 inception_ref = ref
@@ -616,13 +617,13 @@ class ManuscriptProjectionMixin:
                         q.get("property") == P_BASED_ON_HEURISTIC
                         for q in inception_ref
                     ):
-                        inception_ref = list(inception_ref) + [
+                        inception_ref = extend_source_reference(inception_ref, [
                             {
                                 "property": P_BASED_ON_HEURISTIC,
                                 "value": Q_COLOPHON,
                                 "type": "item",
                             }
-                        ]
+                        ])
                 elif precision == PRECISION_YEAR:
                     # Prefer the audited bibliographic year over a century-encoded
                     # midpoint that leaked into ``dates.year`` / ``year_start``.

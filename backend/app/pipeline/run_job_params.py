@@ -131,6 +131,23 @@ async def prepare_job_params(
         )
         from app.routers.wikidata_studio import _unwrap_user_secret  # noqa: PLC0415
 
+        owner_only = merged.get("owner_only", False)
+        if type(owner_only) is not bool:
+            raise HTTPException(status_code=400, detail="owner_only must be a boolean")
+        merged["owner_only"] = owner_only
+        if "source" in merged and merged["source"] not in ("canonical", "legacy"):
+            raise HTTPException(status_code=400, detail="source must be canonical or legacy")
+        if owner_only:
+            for name in ("dry_run", "update_existing", "approved_only", "item_approved_only", "ai_verified_only"):
+                if name in merged and type(merged[name]) is not bool:
+                    raise HTTPException(status_code=400, detail=f"{name} must be a boolean")
+            if "local_ids" in merged:
+                local_ids = merged["local_ids"]
+                if (not isinstance(local_ids, list) or not local_ids
+                        or any(not isinstance(lid, str) or not lid.strip() for lid in local_ids)):
+                    raise HTTPException(status_code=400, detail="local_ids must be a non-empty list of non-empty strings")
+                merged["local_ids"] = list(dict.fromkeys(lid.strip() for lid in local_ids))
+
         raw_target = merged.get("upload_target")
         if raw_target is not None and str(raw_target).strip():
             target = str(raw_target).strip().lower()
@@ -156,9 +173,12 @@ async def prepare_job_params(
         merged["dry_run"] = mode.dry_run
         merged["upload_target"] = mode.target
 
+        if owner_only and mode.is_test:
+            raise HTTPException(status_code=400, detail="owner_only supports live and dry_run only")
+
         secret_name = wikidata_secret_key_for_target(mode.target)
         token = await _unwrap_user_secret(db, auth, secret_name)
-        if not mode.dry_run and not token:
+        if (not mode.dry_run or owner_only) and not token:
             if mode.is_test:
                 detail = (
                     "Test upload requires a Wikidata *test* bot password in "

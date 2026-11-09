@@ -12,14 +12,17 @@ placeholder string on a live item.
 
 Contained-text links degrade to `P1574 → Q234460` ("text") keeping the catalog
 title as a `P1932` qualifier, which is what WikiProject Manuscripts prescribes
-for an unidentified text. Any other property loses the claim outright rather
-than asserting a relation we cannot name (Rule W-138).
+for an unidentified text. Unsourced and unqualified unresolved claims can be
+dropped rather than asserting a relation we cannot name (Rule W-138). A sourced
+or qualified claim blocks resolution instead of losing its evidence.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from copy import deepcopy
+from typing import Any
 
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
@@ -64,7 +67,9 @@ def _degrade(statement: WikidataStatement, target_id: str) -> WikidataStatement:
     return statement
 
 
-def _work_title_index(items: list[WikidataItem]) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
+def _work_title_index(
+    items: list[WikidataItem],
+) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
     """Emitted work items keyed by title and by (record_cn, title).
 
     A dropped-and-rebuilt work keeps its title but not its original local id, so
@@ -107,21 +112,138 @@ def _intended_title(statement: WikidataStatement, target_id: str) -> str:
     return target_id.split(":", 1)[-1].replace("_", " ").strip()
 
 
+def ensure_sourced_authors_resolvable(items: list[Any]) -> None:
+    """Validate local claim evidence and P50 authors before changing any item."""
+    def field(statement: Any, name: str, default: Any = None) -> Any:
+        return statement.get(name, default) if isinstance(statement, dict) else getattr(
+            statement, name, default,
+        )
+
+    entity_types: dict[str, list[str]] = {}
+    for item in items:
+        local_id = str(field(item, "local_id") or "")
+        if local_id:
+            entity_type = str(field(item, "entity_type") or field(item, "type") or "")
+            entity_types.setdefault(local_id, []).append(entity_type.strip().lower())
+    known = set(entity_types)
+
+    def unresolved(value: Any, *, include_known: bool = False) -> str:
+        if isinstance(value, str):
+            target = _local_target(value)
+            if value.startswith(LOCAL_PREFIX) and not target:
+                return value
+            if target and target in known and len(entity_types[target]) != 1:
+                raise ValueError(f"AMBIGUOUS_LOCAL_REFERENCE {target!r} has multiple items")
+            return target if target and (include_known or target not in known) else ""
+        if isinstance(value, dict):
+            values = value.values()
+        elif isinstance(value, list):
+            values = value
+        else:
+            return ""
+        for nested in values:
+            target = unresolved(nested, include_known=include_known)
+            if target:
+                return target
+        return ""
+
+    for item in items:
+        if isinstance(item, dict):
+            local_id = item.get("local_id", "")
+            statements = item.get("statements", [])
+        else:
+            local_id = getattr(item, "local_id", "")
+            statements = getattr(item, "statements", [])
+        for statement in statements or []:
+            pid = str(field(statement, "property_id") or field(statement, "property") or "")
+            value = field(statement, "value")
+            if not isinstance(value, str) and unresolved(value, include_known=True):
+                raise ValueError(
+                    f"INVALID_LOCAL_TARGET {local_id}: {pid} local target must be a string"
+                )
+            target = _local_target(value)
+            if isinstance(value, str) and value.startswith(LOCAL_PREFIX):
+                if not target:
+                    raise ValueError(
+                        f"DANGLING_LOCAL_REFERENCE {local_id}: {pid} has an empty local target"
+                    )
+                if pid == "P50" and target in known and entity_types[target] != ["person"]:
+                    raise ValueError(
+                        f"INVALID_AUTHOR_TARGET {local_id}: P50 target {target!r} "
+                        "must identify exactly one person"
+                    )
+                if target in known and len(entity_types[target]) != 1:
+                    raise ValueError(
+                        f"AMBIGUOUS_LOCAL_REFERENCE {local_id}: {pid} target {target!r} "
+                        "has multiple items"
+                    )
+            if (
+                isinstance(value, str) and value.startswith(LOCAL_PREFIX)
+                and target not in known
+                and (
+                    field(statement, "references") or field(statement, "reference_blocks")
+                    or field(statement, "qualifiers")
+                    or field(statement, "rank", "normal") != "normal"
+                )
+            ):
+                raise ValueError(
+                    f"DANGLING_LOCAL_REFERENCE {local_id}: sourced or qualified "
+                    f"{pid} target {target!r} was not built"
+                )
+            references = field(statement, "references") or []
+            blocks = field(statement, "reference_blocks") or []
+            target = unresolved([field(statement, "qualifiers") or [], references, blocks])
+            if target:
+                raise ValueError(
+                    f"DANGLING_LOCAL_REFERENCE {local_id}: {pid} metadata "
+                    f"target {target!r} was not built"
+                )
+            groups = [field(statement, "qualifiers") or [], references]
+            if isinstance(blocks, list):
+                groups.extend(blocks)
+            for group in groups:
+                if not isinstance(group, list):
+                    if unresolved(group, include_known=True):
+                        raise ValueError(
+                            f"UNSUPPORTED_LOCAL_REFERENCE {local_id}: {pid} "
+                            "metadata is not a snak list"
+                        )
+                    continue
+                for snak in group:
+                    if not isinstance(snak, dict):
+                        target = unresolved(snak, include_known=True)
+                    else:
+                        target = unresolved(
+                            {key: nested for key, nested in snak.items()
+                             if not (key == "value" and isinstance(nested, str)
+                                     and nested.startswith(LOCAL_PREFIX))},
+                            include_known=True,
+                        )
+                    if target:
+                        raise ValueError(
+                            f"UNSUPPORTED_LOCAL_REFERENCE {local_id}: {pid} metadata "
+                            f"target {target!r} is nested in a snak"
+                        )
+
+
 def resolve_local_references(
     items: list[WikidataItem],
     on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, int]:
-    """Rewrite or drop every ``__LOCAL:`` target that no built item provides.
+    """Rewrite or drop unresolved targets, except sourced or qualified claims.
 
     Returns a count per action for the build summary — a silent rewrite would
     hide a projection bug (Rule W-110's "no silent caps" reasoning).
     """
+    ensure_sourced_authors_resolvable(items)
     known = {str(item.local_id or "") for item in items if item.local_id}
     work_titles, work_titles_by_cn = _work_title_index(items)
     degraded = 0
     dropped = 0
     relinked = 0
     item_total = len(items)
+    planned: list[tuple[WikidataItem, list[WikidataStatement]]] = []
+    dropped_targets: list[tuple[str, str, str]] = []
 
     for index, item in enumerate(items, start=1):
         kept: list[WikidataStatement] = []
@@ -146,39 +268,29 @@ def resolve_local_references(
                     if not relinked_id and not item_cns:
                         relinked_id = work_titles.get(title)
                 if relinked_id and relinked_id != str(item.local_id or ""):
+                    statement = deepcopy(statement)
                     statement.value = f"__LOCAL:{relinked_id}"
                     statement.value_type = "item"
                     kept.append(statement)
                     relinked += 1
                     continue
-                kept.append(_degrade(statement, target))
+                kept.append(_degrade(deepcopy(statement), target))
                 degraded += 1
                 continue
             dropped += 1
-            logger.warning(
-                "dropping %s on %s — local target %r was never built",
-                pid, item.local_id, target,
-            )
-        item.statements = kept
-
-        # Qualifiers may also carry a local target (e.g. a role qualifier).
-        for statement in item.statements:
-            qualifiers = []
-            for qualifier in statement.qualifiers or []:
-                if not isinstance(qualifier, dict):
-                    qualifiers.append(qualifier)
-                    continue
-                target = _local_target(qualifier.get("value"))
-                if target and target not in known:
-                    dropped += 1
-                    continue
-                qualifiers.append(qualifier)
-            statement.qualifiers = qualifiers
+            dropped_targets.append((pid, str(item.local_id or ""), target))
+        planned.append((item, kept))
         if on_progress is not None and item_total and (
             index == item_total or index % 25 == 0
         ):
             on_progress(index, item_total)
 
+    for item, kept in planned:
+        item.statements = kept
+    for pid, local_id, target in dropped_targets:
+        logger.warning(
+            "dropping %s on %s — local target %r was never built", pid, local_id, target,
+        )
     if relinked:
         logger.info("resolved local references: %d relinked to a built work", relinked)
     if degraded or dropped:

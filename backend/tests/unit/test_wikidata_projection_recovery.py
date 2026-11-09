@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
+import pytest
+
 from app.pipeline.hmo_canonical_wikidata import (
     _hebrew_manuscript_description,
     _hebrew_manuscript_label,
@@ -24,9 +28,9 @@ def _contained(target: str, stated: str) -> WikidataStatement:
 
 
 class TestContainedWorkRelinking:
-    """32 of 42 degraded P1574 claims named a work that WAS in the build."""
+    """Qualified links must not be relinked or degraded without target identity."""
 
-    def test_relinks_by_work_label(self) -> None:
+    def test_qualified_link_does_not_relink_by_work_label(self) -> None:
         work = WikidataItem(
             entity_type="work", local_id="QDraft_Work_71",
             labels={"he": "פרי עץ חיים ענף ראשון"}, statements=[],
@@ -35,12 +39,12 @@ class TestContainedWorkRelinking:
             entity_type="manuscript", local_id="QDraft_MS_1",
             statements=[_contained("QDraft_Work_stale", "פרי עץ חיים ענף ראשון")],
         )
-        stats = resolve_local_references([work, ms])
-        assert stats["relinked"] == 1
-        assert stats["degraded"] == 0
-        assert ms.statements[0].value == "__LOCAL:QDraft_Work_71"
+        before = deepcopy(ms)
+        with pytest.raises(ValueError, match="DANGLING_LOCAL_REFERENCE"):
+            resolve_local_references([work, ms])
+        assert ms == before
 
-    def test_relinks_by_work_title_claim(self) -> None:
+    def test_qualified_link_does_not_relink_by_work_title(self) -> None:
         work = WikidataItem(
             entity_type="work", local_id="QDraft_Work_9", labels={},
             statements=[_stmt("P1476", "נר ה'", value_type="monolingualtext")],
@@ -49,17 +53,20 @@ class TestContainedWorkRelinking:
             entity_type="manuscript", local_id="QDraft_MS_2",
             statements=[_contained("QDraft_Work_gone", "נר ה'")],
         )
-        assert resolve_local_references([work, ms])["relinked"] == 1
-        assert ms.statements[0].value == "__LOCAL:QDraft_Work_9"
+        before = deepcopy(ms)
+        with pytest.raises(ValueError, match="DANGLING_LOCAL_REFERENCE"):
+            resolve_local_references([work, ms])
+        assert ms == before
 
-    def test_a_genuine_orphan_still_degrades(self) -> None:
+    def test_qualified_orphan_is_not_degraded(self) -> None:
         ms = WikidataItem(
             entity_type="manuscript", local_id="QDraft_MS_3",
             statements=[_contained("QDraft_Work_absent", "עבודה שלא נבנתה")],
         )
-        stats = resolve_local_references([ms])
-        assert stats == {"degraded": 1, "dropped": 0, "relinked": 0}
-        assert ms.statements[0].value == "Q234460"
+        before = deepcopy(ms)
+        with pytest.raises(ValueError, match="DANGLING_LOCAL_REFERENCE"):
+            resolve_local_references([ms])
+        assert ms == before
 
     def test_never_creates_a_self_reference(self) -> None:
         """The circular P1574 the judge flagged must stay impossible."""
@@ -68,8 +75,18 @@ class TestContainedWorkRelinking:
             labels={"he": "מגלת אסתר"},
             statements=[_contained("gone", "מגלת אסתר")],
         )
-        assert resolve_local_references([work])["relinked"] == 0
-        assert work.statements[0].value == "Q234460"
+        before = deepcopy(work)
+        with pytest.raises(ValueError, match="DANGLING_LOCAL_REFERENCE"):
+            resolve_local_references([work])
+        assert work == before
+
+    def test_unqualified_unsourced_orphan_keeps_legacy_fallback(self) -> None:
+        ms = WikidataItem(
+            entity_type="manuscript", local_id="QDraft_MS_4",
+            statements=[_stmt("P1574", "__LOCAL:work:missing")],
+        )
+        assert resolve_local_references([ms])["degraded"] == 1
+        assert ms.statements[0].value == "Q234460"
 
 
 class TestCanonicalMergeKeepsDistinctUrls:

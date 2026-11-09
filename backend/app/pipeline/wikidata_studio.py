@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import uuid
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
@@ -56,19 +57,70 @@ logger = logging.getLogger(__name__)
 # v11: collection-level Bible/Tanakh titles no longer map to work QIDs
 # (Rule W-70 fail-closed) — cached rows still carrying those links must
 # not upload.
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v13"
+# v14: colophon field labels (957/590/500) stripped at ingest and the
+# record-author fallback limited to the main or sole content work
+# (Rule W-300) — cached rows built before those fixes must not upload.
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v20"
+
+
+def _fingerprint_hash(value: Any) -> str:
+    if isinstance(value, dict):
+        stable_keys = strip_volatile_metadata(dict.fromkeys(value))
+        value = {key: value[key] for key in stable_keys}
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, default=str).encode()
+    ).hexdigest()
+
+
+def _fingerprint_match(match: Any) -> tuple[str, str]:
+    fields = (
+        "control_number", "entity_text", "entity_kind", "role", "matched_name",
+        "mazal_id", "viaf_id", "wikidata_qid", "confidence", "source", "payload", "approved",
+    )
+    return str(match.id), _fingerprint_hash({name: getattr(match, name, None) for name in fields})
+
+
+def _fingerprint_entity(entity: Any) -> tuple[str, str]:
+    fields = (
+        "control_number", "source", "text", "start", "end", "type", "role",
+        "confidence", "model_confidence", "override_text", "override_type", "override_role", "approved",
+    )
+    return str(entity.id), _fingerprint_hash({name: getattr(entity, name, None) for name in fields})
+
+
+def _fingerprint_override(override: Any) -> tuple[str, str, bool | None, str]:
+    """Override tuple shared by the sequential and streamed builds.
+
+    ``accepted_foreign_qid`` changes the reconciled QID that the builder
+    emits, so it must stale the cache. ``ai_verdict`` is deliberately absent.
+    """
+    return (
+        str(override.id), override.local_id, override.approved,
+        _fingerprint_hash({
+            "labels": override.labels, "descriptions": override.descriptions,
+            "aliases": override.aliases, "add_statements": override.add_statements,
+            "remove_statements": override.remove_statements,
+            "statement_edits": override.statement_edits,
+            "accepted_foreign_qid": override.accepted_foreign_qid,
+        }),
+    )
 
 
 def studio_cache_has_stale_validation(
     result_items: list[dict[str, Any]] | None,
 ) -> bool:
-    """Detect cached person rows from before the notability gate.
+    """Detect stale validation and reference-provenance shapes in a cache.
 
     ``NO_IDENTIFIER`` is an ERROR for a person and the current builders either
     attach an external identifier or omit the person. A cache containing that
     issue therefore cannot be a valid result for either Studio projection.
+    Flat multi-snak sources do not prove their original reference groups.
     """
     for item in result_items or []:
+        if not isinstance(item, dict):
+            return True
+        if reference_provenance_error(item):
+            return True
         if str(item.get("entity_type") or "").lower() != "person":
             continue
         issues = item.get("validation_issues")
@@ -83,6 +135,36 @@ def studio_cache_has_stale_validation(
             ):
                 return True
     return False
+
+
+def reference_provenance_error(item: dict[str, Any]) -> bool:
+    from converter.wikidata.quickstatements import validate_source_references  # noqa: PLC0415
+
+    statements = item.get("statements", [])
+    if not isinstance(statements, list):
+        return True
+    for statement in statements:
+        if not isinstance(statement, dict):
+            return True
+        try:
+            validate_source_references(
+                statement.get("references", []), statement.get("reference_blocks", []),
+                allow_local=True, require_proven_blocks=True,
+            )
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
+def validate_upload_reference_blocks(items: list[Any]) -> None:
+    from converter.wikidata.quickstatements import validate_source_references  # noqa: PLC0415
+
+    for item in items:
+        for statement in item.statements:
+            validate_source_references(
+                statement.references, statement.reference_blocks,
+                allow_local=True, require_proven_blocks=True,
+            )
 
 
 async def hmo_instance_qids_for_run(
@@ -159,11 +241,6 @@ def compute_build_fingerprint(
     P2888/P973 would keep pointing at the stale slug URL until some
     unrelated field changed.
     """
-    def _h(obj: Any) -> str:
-        return hashlib.sha256(
-            json.dumps(strip_volatile_metadata(obj), sort_keys=True, default=str).encode()
-        ).hexdigest()[:16]
-
     total = max(
         len(records) + len(all_matches) + len(entity_rows) + len(override_rows),
         1,
@@ -178,34 +255,19 @@ def compute_build_fingerprint(
 
     record_parts: list[tuple[str, str]] = []
     for record in records:
-        record_parts.append((record.control_number, _h(record.marc or {})))
+        record_parts.append((record.control_number, _fingerprint_hash(record.marc or {})))
         tick()
-    match_parts: list[tuple[str, bool | None, str, str, str, str]] = []
+    match_parts: list[tuple[str, str]] = []
     for match in all_matches:
-        match_parts.append((
-            str(match.id), match.approved, match.wikidata_qid or "",
-            match.viaf_id or "", match.mazal_id or "", _h(match.payload or {}),
-        ))
+        match_parts.append(_fingerprint_match(match))
         tick()
-    entity_parts: list[tuple[str, bool, str, str, str]] = []
+    entity_parts: list[tuple[str, str]] = []
     for entity in entity_rows:
-        entity_parts.append((
-            str(entity.id), bool(entity.approved),
-            entity.override_text or "", entity.override_type or "",
-            entity.override_role or "",
-        ))
+        entity_parts.append(_fingerprint_entity(entity))
         tick()
     override_parts: list[tuple[str, str, bool | None, str]] = []
     for override in override_rows:
-        override_parts.append((
-            str(override.id), override.local_id, override.approved,
-            _h({
-                "labels": override.labels, "descriptions": override.descriptions,
-                "aliases": override.aliases, "add_statements": override.add_statements,
-                "remove_statements": override.remove_statements,
-                "statement_edits": override.statement_edits,
-            }),
-        ))
+        override_parts.append(_fingerprint_override(override))
         tick()
     parts = {
         "build_schema": WIKIDATA_STUDIO_BUILD_SCHEMA,
@@ -468,7 +530,17 @@ def native_item_payload(item: Any) -> dict[str, Any]:
     """
     from dataclasses import asdict  # noqa: PLC0415
 
-    return _coerce(asdict(item))
+    data = _coerce(asdict(item))
+    from converter.wikidata.quickstatements import reference_data  # noqa: PLC0415
+
+    for statement, raw in zip(item.statements, data.get("statements", []), strict=True):
+        references, blocks = reference_data(
+            statement.references, getattr(statement, "reference_blocks", []),
+        )
+        if blocks and "reference_blocks" not in raw:
+            raise ValueError("WikidataStatement cannot serialize reference_blocks")
+        raw["references"] = references
+    return data
 
 
 def native_item_from_payload(payload: dict[str, Any]) -> Any:
@@ -479,11 +551,19 @@ def native_item_from_payload(payload: dict[str, Any]) -> Any:
         WikidataItem,
         WikidataStatement,
     )
+    from converter.wikidata.quickstatements import statement_reference_kwargs  # noqa: PLC0415
 
     stmt_fields = {f.name for f in fields(WikidataStatement)}
+    raw_statements = payload.get("statements", [])
+    if not isinstance(raw_statements, list) or any(not isinstance(s, dict) for s in raw_statements):
+        raise ValueError("statements must be a list of objects")
     statements = [
-        WikidataStatement(**{k: v for k, v in s.items() if k in stmt_fields})
-        for s in payload.get("statements") or []
+        WikidataStatement(**{
+            **{k: v for k, v in s.items()
+               if k in stmt_fields and k not in {"references", "reference_blocks"}},
+            **statement_reference_kwargs(s, WikidataStatement),
+        })
+        for s in raw_statements
     ]
     item_fields = {f.name for f in fields(WikidataItem)}
     data = {k: v for k, v in payload.items() if k in item_fields}
@@ -494,20 +574,44 @@ def native_item_from_payload(payload: dict[str, Any]) -> Any:
 def merge_shard_items(shards: list[list[Any]]) -> list[Any]:
     """Merge shard-built native items into one corpus (build order).
 
-    Persons and works dedupe by ``local_id`` — the builder's own
-    dedup key, so the merged corpus matches what a single sequential
-    ``build_all`` over the same records produced. First occurrence
-    (shards arrive in control_number order) wins for content, exactly
-    like the sequential path; only the source-record associations
-    (``records``) union. Manuscripts never dedupe.
-
-    The corpus-wide ``promote_safe_work_author_claims`` pass re-runs
-    here over the merged corpus — it is idempotent (P2093 claims it
-    rewrote are gone on the second pass).
+    Duplicate identities must agree on claims and source scope. Matching
+    claims retain complete source blocks from each shard.
     """
+    from copy import deepcopy  # noqa: PLC0415
+
+    from converter.wikidata.item_builder import _is_anonymous_name  # noqa: PLC0415
+    from converter.wikidata.item_models import (  # noqa: PLC0415
+        merge_statement_references,
+        snak_identity,
+    )
+    from converter.wikidata.quickstatements import validate_source_references  # noqa: PLC0415
     from converter.wikidata.work_author_claims import (  # noqa: PLC0415
         promote_safe_work_author_claims,
     )
+    from converter.wikidata.work_identity import author_name_key  # noqa: PLC0415
+    from converter.wikidata.semantic_policy import DEFAULT_SEMANTIC_POLICY  # noqa: PLC0415
+
+    def claims_for(item: Any) -> dict[str, Any]:
+        claims: dict[str, Any] = {}
+        for statement in item.statements:
+            validate_source_references(
+                statement.references, statement.reference_blocks,
+                allow_local=True, require_proven_blocks=True,
+            )
+            data = asdict(statement)
+            data.pop("references")
+            data.pop("reference_blocks")
+            if not isinstance(statement.qualifiers, list) or any(
+                not isinstance(qualifier, dict) for qualifier in statement.qualifiers
+            ):
+                raise ValueError("Shard statement qualifiers must be a list of objects")
+            data["qualifiers"] = sorted(snak_identity(q) for q in statement.qualifiers)
+            key = json.dumps(data, sort_keys=True, ensure_ascii=False, allow_nan=False)
+            if key in claims:
+                merge_statement_references(claims[key], statement)
+            else:
+                claims[key] = deepcopy(statement)
+        return claims
 
     manuscripts: list[Any] = []
     persons: dict[str, Any] = {}
@@ -519,12 +623,199 @@ def merge_shard_items(shards: list[list[Any]]) -> list[Any]:
                 manuscripts.append(item)
                 continue
             local_id = str(getattr(item, "local_id", "") or "")
+            if not local_id:
+                raise ValueError("A sharded entity requires a local ID")
             bucket = persons if entity_type == "person" else works
+            other_bucket = works if entity_type == "person" else persons
+            if local_id in other_bucket:
+                raise ValueError(f"Shard item {local_id} has conflicting entity types")
             existing = bucket.get(local_id)
             if existing is None:
-                bucket[local_id] = item
+                bucket[local_id] = deepcopy(item)
                 continue
+            if (entity_type != existing.entity_type or item.existing_qid != existing.existing_qid
+                    or item.semantic_type != existing.semantic_type
+                    or item.heading_mismatch != existing.heading_mismatch):
+                raise ValueError(f"Shard item {local_id} has conflicting identity")
+            if entity_type not in {"person", "work"}:
+                raise ValueError(f"Shard item {local_id} has an unsupported identity type")
+            if item.existing_qid and (
+                not isinstance(item.existing_qid, str)
+                or not re.fullmatch(r"Q[1-9][0-9]*", item.existing_qid)
+            ):
+                raise ValueError(f"Shard item {local_id} has an invalid Wikidata identity")
+            if any(
+                not isinstance(source.records, list)
+                or any(not isinstance(record, str) or not record.strip() for record in source.records)
+                for source in (existing, item)
+            ):
+                raise ValueError(f"Shard item {local_id} has invalid source records")
+            existing_claims = claims_for(existing)
+            incoming_claims = claims_for(item)
+            additional_keys = existing_claims.keys() ^ incoming_claims.keys()
+            multi_value_properties = {"P106"} if entity_type == "person" else {"P407", "P136"}
+            for property_id in {
+                statement.property_id for statement in [
+                    *existing_claims.values(), *incoming_claims.values(),
+                ]
+            }:
+                old = {key for key, statement in existing_claims.items()
+                       if statement.property_id == property_id}
+                new = {key for key, statement in incoming_claims.items()
+                       if statement.property_id == property_id}
+                if property_id in multi_value_properties:
+                    combined = [existing_claims[key] for key in old] + [
+                        incoming_claims[key] for key in new
+                    ]
+                    for index, previous in enumerate(combined):
+                        for incoming in combined[index + 1:]:
+                            if previous.value == incoming.value and any(
+                                getattr(previous, field) != getattr(incoming, field)
+                                for field in ("value_type", "rank", "precision", "language", "unit")
+                            ):
+                                raise ValueError(
+                                    f"Shard item {local_id} has conflicting {property_id} claims"
+                                )
+                elif old and new and old != new:
+                    raise ValueError(f"Shard item {local_id} has conflicting {property_id} claims")
+                if (property_id in DEFAULT_SEMANTIC_POLICY.strong_external_id_properties
+                        and max(len(old), len(new)) > 1):
+                    raise ValueError(f"Shard item {local_id} has conflicting {property_id} claims")
+            records = set(existing.records) & set(item.records)
+            if entity_type == "work":
+                for property_id in ("P1476", "P50", "P2093"):
+                    if {key for key, statement in existing_claims.items()
+                        if statement.property_id == property_id} != {
+                        key for key, statement in incoming_claims.items()
+                        if statement.property_id == property_id
+                    }:
+                        raise ValueError(f"Shard work {local_id} has conflicting title or authors")
+                evidence = [*existing.work_candidate_evidence, *item.work_candidate_evidence]
+                if any(not isinstance(row, dict) for row in evidence):
+                    raise ValueError(f"Shard work {local_id} has invalid identity evidence")
+                evidence_names: list[set[str]] = []
+                for source in (existing, item):
+                    names: set[str] = set()
+                    for row in source.work_candidate_evidence:
+                        if row.get("accepted") is False:
+                            continue
+                        name = row.get("author_name")
+                        if name is not None and not isinstance(name, str):
+                            raise ValueError(f"Shard work {local_id} has invalid author evidence")
+                        source_text = row.get("source_text")
+                        if (not name and row.get("source_field") == "100/245"
+                                and isinstance(source_text, str) and " \u2014 " in source_text):
+                            name = source_text.rsplit(" \u2014 ", 1)[1]
+                        if name and author_name_key(name):
+                            names.add(author_name_key(name))
+                    evidence_names.append(names)
+                if any(len(names) > 1 for names in evidence_names) or (
+                    all(evidence_names) and evidence_names[0] != evidence_names[1]
+                ):
+                    raise ValueError(f"Shard work {local_id} has conflicting author evidence")
+                if any(row.get("identity_scope") == "record" for row in evidence) and (
+                    not existing.records or not item.records
+                    or set(existing.records) != set(item.records)
+                ):
+                    raise ValueError(f"Shard work {local_id} has different record-scoped identity")
+                titles = [s for s in existing.statements if s.property_id == "P1476" and s.value]
+                authors = [
+                    s for s in existing.statements
+                    if isinstance(s.value, str) and (
+                        (s.property_id == "P50"
+                         and s.value_type in {"item", "wikibase-item", "wikibase-entityid"}
+                         and (re.fullmatch(r"Q[1-9][0-9]*", s.value)
+                              or re.fullmatch(r"__LOCAL:(?:viaf|mazal):[0-9]+", s.value)))
+                        or (s.property_id == "P2093" and s.value_type == "string"
+                            and s.value.strip() and not _is_anonymous_name(s.value))
+                    )
+                ]
+                if not titles or (not records and not authors):
+                    raise ValueError(f"Shard work {local_id} has ambiguous identity")
+                if additional_keys and not authors:
+                    raise ValueError(f"Shard work {local_id} has ambiguous author identity")
+            if entity_type == "person":
+                identity = re.fullmatch(r"(viaf|mazal):([0-9]+)", local_id)
+                if identity:
+                    identity_property = "P214" if identity.group(1) == "viaf" else "P8189"
+                    if any(str(statement.value) != identity.group(2) for statement in [
+                        *existing_claims.values(), *incoming_claims.values(),
+                    ] if statement.property_id == identity_property):
+                        raise ValueError(f"Shard person {local_id} has a conflicting identifier")
+                if not (identity or existing.existing_qid):
+                    raise ValueError(f"Shard person {local_id} has ambiguous identity")
+                if existing.heading_mismatch or any(
+                    not isinstance(row, dict) or row.get("accepted") is False
+                    or row.get("guard_flags") or row.get("rejection_reason")
+                    for row in [*existing.authority_evidence, *item.authority_evidence]
+                ):
+                    raise ValueError(f"Shard person {local_id} has untrusted identity evidence")
+                shared_languages = {
+                    language for language in existing.labels.keys() & item.labels.keys()
+                    if existing.labels[language].strip() and item.labels[language].strip()
+                }
+                if existing.labels and item.labels and not shared_languages:
+                    raise ValueError(f"Shard person {local_id} has unverified label identity")
+                for language in shared_languages:
+                    old_label = " ".join(existing.labels[language].split()).casefold()
+                    new_label = " ".join(item.labels[language].split()).casefold()
+                    old_aliases = {" ".join(value.split()).casefold()
+                                   for value in existing.aliases.get(language, [])}
+                    new_aliases = {" ".join(value.split()).casefold()
+                                   for value in item.aliases.get(language, [])}
+                    if old_label != new_label and new_label not in old_aliases and (
+                        old_label not in new_aliases
+                    ):
+                        raise ValueError(f"Shard person {local_id} has conflicting labels")
+            for key in additional_keys:
+                statement = existing_claims.get(key) or incoming_claims[key]
+                if (not isinstance(statement.value, str) or not statement.value.strip()
+                        or statement.value != statement.value.strip()
+                        or any(ord(character) < 32 for character in statement.value)
+                        or not (statement.references or statement.reference_blocks)):
+                    raise ValueError(f"Shard item {local_id} has an unsafe additional claim")
+                identifier = (
+                    statement.property_id in DEFAULT_SEMANTIC_POLICY.strong_external_id_properties
+                    and statement.value_type == "external-id"
+                )
+                source_backed_item = (
+                    statement.property_id in (
+                        {"P106"} if entity_type == "person" else {"P407", "P136"}
+                    )
+                    and statement.value_type in {"item", "wikibase-item", "wikibase-entityid"}
+                    and re.fullmatch(r"Q[1-9][0-9]*", statement.value)
+                )
+                if not identifier and not source_backed_item:
+                    raise ValueError(f"Shard item {local_id} has an unsafe additional claim")
+                if statement.property_id in {"P214", "P8189"} and not re.fullmatch(
+                    r"[1-9][0-9]*", statement.value,
+                ):
+                    raise ValueError(f"Shard item {local_id} has an invalid identifier")
+                if (entity_type == "person" and statement.property_id == "P8189"
+                        and not statement.value.startswith("9870")):
+                    raise ValueError(f"Shard person {local_id} has an invalid NLI authority identifier")
+            for key, statement in incoming_claims.items():
+                if key in existing_claims:
+                    merge_statement_references(existing_claims[key], statement)
+                else:
+                    existing_claims[key] = statement
+            existing.statements = list(existing_claims.values())
             existing.records = sorted({*existing.records, *item.records})
+            for field_name in ("labels", "descriptions"):
+                retained_text = getattr(existing, field_name)
+                for language, value in getattr(item, field_name).items():
+                    if language not in retained_text and value:
+                        retained_text[language] = value
+            for field_name in ("authority_evidence", "work_candidate_evidence"):
+                retained = getattr(existing, field_name)
+                for row in getattr(item, field_name):
+                    if row not in retained:
+                        retained.append(deepcopy(row))
+            for language, aliases in item.aliases.items():
+                retained_aliases = existing.aliases.setdefault(language, [])
+                for alias in aliases:
+                    if alias not in retained_aliases:
+                        retained_aliases.append(alias)
     merged = [*works.values(), *persons.values(), *manuscripts]
     promote_safe_work_author_claims(merged)
     return merged
@@ -640,8 +931,20 @@ def _serialise_item(item: Any) -> dict[str, Any]:
             "work_candidate_evidence": getattr(item, "work_candidate_evidence", []),
         }
 
+    from converter.wikidata.quickstatements import reference_data  # noqa: PLC0415
+
     # Enrich every statement (+ its qualifiers + references) with labels.
-    for stmt in data.get("statements") or []:
+    for native, stmt in zip(
+        getattr(item, "statements", []), data.get("statements") or [], strict=True,
+    ):
+        if getattr(native, "reference_blocks", []) and "reference_blocks" not in stmt:
+            raise ValueError("WikidataStatement cannot serialize reference_blocks")
+        references, blocks = reference_data(
+            stmt.get("references", []), stmt.get("reference_blocks", []),
+        )
+        stmt["references"] = references
+        if "reference_blocks" in stmt:
+            stmt["reference_blocks"] = blocks
         _enrich_snak(stmt)
         for q in stmt.get("qualifiers") or []:
             _enrich_snak(q)
@@ -652,6 +955,9 @@ def _serialise_item(item: Any) -> dict[str, Any]:
                 _enrich_snak(r)
                 for s in r.get("snaks") or []:
                     _enrich_snak(s)
+        for block in blocks:
+            for snak in block:
+                _enrich_snak(snak)
     return data
 
 
@@ -816,9 +1122,7 @@ def _apply_override(item: Any, ov: dict[str, Any]) -> None:
     if remove:
         stmts = [s for i, s in enumerate(stmts) if i not in remove]
 
-    # Appended statements — only safe if we have the desktop's
-    # WikidataStatement available; otherwise stash a plain dict that
-    # the QS exporter can stringify.
+    # Appended statements must remain native so validation and export see them.
     for raw in add:
         if isinstance(raw, dict):
             stmts.append(_dict_to_stmt(raw))
@@ -827,18 +1131,26 @@ def _apply_override(item: Any, ov: dict[str, Any]) -> None:
 
 
 def _dict_to_stmt(d: dict[str, Any]) -> Any:
-    """Best-effort: build a WikidataStatement from a flat dict the UI
-    sent (``{"property":"P31","value":"Q5"}``)."""
-    try:
-        from converter.wikidata.item_builder import WikidataStatement  # noqa: PLC0415
+    """Build a native statement from a curator override."""
+    from converter.wikidata.item_models import WikidataStatement  # noqa: PLC0415
+    from converter.wikidata.property_mapping import PRECISION_YEAR  # noqa: PLC0415
+    from converter.wikidata.quickstatements import statement_reference_kwargs  # noqa: PLC0415
 
-        return WikidataStatement(
-            property=str(d.get("property") or d.get("property_id") or ""),
-            value=d.get("value"),
-            value_id=str(d.get("value_id") or "") or None,
-            value_type=str(d.get("value_type") or "") or None,
-            rank=str(d.get("rank") or "normal"),
-        )
-    except Exception:
-        # Bare dict — the exporter coerces via _coerce on serialisation.
-        return d
+    property_id = str(d.get("property_id") or d.get("property") or "").strip()
+    if not property_id:
+        raise ValueError("A Wikidata statement requires a property ID")
+    qualifiers = d.get("qualifiers", [])
+    if not isinstance(qualifiers, list) or any(not isinstance(q, dict) for q in qualifiers):
+        raise ValueError("Statement qualifiers must be a list of objects")
+    precision = d.get("precision")
+    return WikidataStatement(
+        property_id=property_id,
+        value=d.get("value", d.get("value_id")),
+        value_type=str(d.get("value_type") or "string"),
+        qualifiers=qualifiers,
+        **statement_reference_kwargs(d, WikidataStatement),
+        precision=int(precision) if precision is not None else PRECISION_YEAR,
+        language=str(d.get("language") or "he"),
+        unit=str(d.get("unit") or ""),
+        rank=str(d.get("rank") or "normal"),
+    )

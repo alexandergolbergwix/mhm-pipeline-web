@@ -15,6 +15,101 @@ from dataclasses import dataclass, field, replace
 
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
+
+class LocalTargetQid(str):
+    """A QID from a local-ID lookup; the wiki still requires proof."""
+
+    def __new__(cls, qid: str, local_id: str = "") -> LocalTargetQid:
+        value = super().__new__(cls, qid)
+        value.local_id = local_id
+        return value
+
+
+class MappedTestQid(str):
+    """A live QID remapped by the current test-wiki session."""
+
+
+def mark_fresh_live_reference(stmt: WikidataStatement, source: object) -> WikidataStatement:
+    """Mark an unchanged, freshly built source before its provenance is lost."""
+    from converter.wikidata.property_mapping import FreshSourceReference  # noqa: PLC0415
+
+    if not isinstance(source, FreshSourceReference):
+        raise ValueError("A fresh source reference is required")
+    source._assert_unchanged()
+    if stmt.references != list(source) or stmt.reference_blocks != [list(source)]:
+        raise ValueError("The statement does not contain exactly the fresh source reference")
+
+    def mark(snak: Mapping[str, object]) -> dict[str, object]:
+        result = dict(snak)
+        if expected_wikibase_datatype(_snak_value_type(snak)) == "wikibase-item":
+            result["value_namespace"] = "wikidata"
+        return result
+
+    return replace(
+        stmt,
+        references=[mark(snak) for snak in stmt.references],
+        reference_blocks=[[mark(snak) for snak in stmt.reference_blocks[0]]],
+    )
+
+
+def explicit_live_item_qid(value: object) -> str | None:
+    """Return the QID only when the value explicitly names live Wikidata."""
+    if isinstance(value, Mapping):
+        value = value.get("id")
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)", value)
+    return match.group(1) if match else None
+
+
+def _reference_has_calendar(snak: Mapping[str, object]) -> bool:
+    value = snak.get("value")
+    datavalue = snak.get("datavalue")
+    nested = datavalue.get("value") if isinstance(datavalue, Mapping) else None
+    return (
+        "calendarmodel" in snak
+        or (isinstance(value, Mapping) and "calendarmodel" in value)
+        or (isinstance(nested, Mapping) and "calendarmodel" in nested)
+    )
+
+
+def reference_write_issues_for_test_wiki(
+    item: WikidataItem, *, verified_targets: Mapping[str, str] | None = None,
+) -> list[str]:
+    """Refuse reference values whose wiki or calendar cannot be established."""
+    issues: list[str] = []
+    for stmt in item.statements:
+        if not isinstance(stmt.reference_blocks, list):
+            issues.append("malformed reference blocks")
+            continue
+        blocks = stmt.reference_blocks or ([stmt.references] if stmt.references else [])
+        for block in blocks:
+            if not isinstance(block, list) or not block:
+                issues.append("malformed reference block")
+                continue
+            for snak in block:
+                if not isinstance(snak, Mapping):
+                    issues.append("malformed reference snak")
+                    continue
+                vtype = _snak_value_type(snak)
+                if expected_wikibase_datatype(vtype) == "wikibase-item":
+                    value = snak.get("value")
+                    namespace = snak.get("value_namespace")
+                    local_id = snak.get("value_local_id")
+                    if namespace == "local" or isinstance(value, LocalTargetQid):
+                        if (not isinstance(local_id, str) or not item_target_qid(value)
+                                or (verified_targets or {}).get(local_id) != item_target_qid(value)):
+                            issues.append(f"{_snak_pid(snak)} reference target lacks test-ledger proof")
+                    elif namespace == "wikidata":
+                        if not isinstance(value, str) or not re.fullmatch(r"Q[1-9][0-9]*", value):
+                            issues.append(f"{_snak_pid(snak)} has invalid live-reference provenance")
+                    elif not explicit_live_item_qid(value):
+                        issues.append(f"{_snak_pid(snak)} reference item has an ambiguous wiki namespace")
+                if vtype.lower() == "time" and _reference_has_calendar(snak):
+                    issues.append(f"{_snak_pid(snak)} reference calendar remap is unsupported on test")
+    return issues
+
+
 # Projection value_type → Wikibase `datatype` string from wbgetentities.
 VALUE_TYPE_TO_WIKIBASE_DATATYPE: dict[str, str] = {
     "item": "wikibase-item",
@@ -52,6 +147,8 @@ def expected_wikibase_datatype(value_type: str) -> str | None:
 
 
 def item_target_qid(value: object) -> str | None:
+    if isinstance(value, Mapping):
+        value = value.get("id")
     text = str(value or "").strip()
     if text[:1] in {"Q", "q"} and text[1:].isdigit():
         return "Q" + text[1:]
@@ -60,6 +157,13 @@ def item_target_qid(value: object) -> str | None:
         if tail[:1] in {"Q", "q"} and tail[1:].isdigit():
             return "Q" + tail[1:]
     return None
+
+
+def _test_unit_qid(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(r"https?://test\.wikidata\.org/entity/(Q[1-9][0-9]*)", value)
+    return match.group(1) if match else None
 
 
 # Short unit tokens and live Wikidata unit Q-ids used in manuscript claims.
@@ -222,6 +326,9 @@ def normalize_item_quantity_units(item: WikidataItem) -> WikidataItem:
         if stmt.value_type != "quantity" or not stmt.unit:
             kept.append(stmt)
             continue
+        if _test_unit_qid(stmt.unit):
+            kept.append(stmt)
+            continue
         qid = quantity_unit_to_live_qid(stmt.unit)
         kept.append(replace(stmt, unit=qid if qid else stmt.unit))
     return replace(item, statements=kept)
@@ -239,7 +346,7 @@ def _snak_pid(snak: Mapping[str, object]) -> str:
 
 
 def _snak_value_type(snak: Mapping[str, object]) -> str:
-    return str(snak.get("value_type") or snak.get("type") or "string").strip()
+    return str(snak.get("value_type") or snak.get("type") or snak.get("datatype") or "string").strip()
 
 
 def collect_live_pids_with_types(item: WikidataItem) -> list[tuple[str, str]]:
@@ -255,16 +362,22 @@ def collect_live_pids_with_types(item: WikidataItem) -> list[tuple[str, str]]:
 
     def walk_snaks(snaks: Sequence[Mapping[str, object]] | None) -> None:
         for snak in snaks or []:
-            add(_snak_pid(snak), _snak_value_type(snak))
+            if isinstance(snak, Mapping):
+                add(_snak_pid(snak), _snak_value_type(snak))
 
     for stmt in item.statements:
         add(stmt.property_id, stmt.value_type)
         walk_snaks(stmt.qualifiers)
-        walk_snaks(stmt.references)
+        if stmt.reference_blocks:
+            for block in stmt.reference_blocks:
+                if isinstance(block, list):
+                    walk_snaks(block)
+        else:
+            walk_snaks(stmt.references)
     return out
 
 
-def collect_test_wiki_ids(item: WikidataItem) -> tuple[list[str], list[str]]:
+def collect_test_wiki_ids(item: WikidataItem, *, exclude_local: bool = False) -> tuple[list[str], list[str]]:
     """Return unique property ids and item QIDs referenced by the item."""
     pids: list[str] = []
     qids: list[str] = []
@@ -283,25 +396,38 @@ def collect_test_wiki_ids(item: WikidataItem) -> tuple[list[str], list[str]]:
 
     def walk_snaks(snaks: Sequence[Mapping[str, object]] | None) -> None:
         for snak in snaks or []:
+            if not isinstance(snak, Mapping):
+                continue
             add_pid(_snak_pid(snak))
             vtype = _snak_value_type(snak)
             if expected_wikibase_datatype(vtype) == "wikibase-item":
-                add_qid(item_target_qid(snak.get("value")))
+                value = snak.get("value")
+                if not exclude_local or (not isinstance(value, (LocalTargetQid, MappedTestQid))
+                                         and snak.get("value_namespace") not in ("local", "mapped-test")):
+                    add_qid(item_target_qid(value))
 
     for stmt in item.statements:
         add_pid(stmt.property_id)
         if expected_wikibase_datatype(stmt.value_type) == "wikibase-item":
-            add_qid(item_target_qid(stmt.value))
-        if stmt.unit:
+            is_local = (isinstance(stmt.value, (LocalTargetQid, MappedTestQid))
+                        or (isinstance(stmt.value, Mapping) and stmt.value.get("value_namespace") == "local"))
+            if not exclude_local or not is_local:
+                add_qid(item_target_qid(stmt.value))
+        if stmt.unit and (not exclude_local or not _test_unit_qid(stmt.unit)):
             add_qid(item_target_qid(stmt.unit))
         walk_snaks(stmt.qualifiers)
-        walk_snaks(stmt.references)
+        if stmt.reference_blocks:
+            for block in stmt.reference_blocks:
+                if isinstance(block, list):
+                    walk_snaks(block)
+        else:
+            walk_snaks(stmt.references)
     return pids, qids
 
 
 def collect_live_qids(item: WikidataItem) -> list[str]:
     """Return live Q-ids referenced as item values or quantity units."""
-    _, qids = collect_test_wiki_ids(item)
+    _, qids = collect_test_wiki_ids(item, exclude_local=True)
     return qids
 
 
@@ -321,9 +447,6 @@ def choose_test_property(
     expected = expected_wikibase_datatype(value_type)
     if expected is None:
         return None
-    actual_same = property_datatypes.get(live_pid)
-    if actual_same == expected:
-        return live_pid
     target_label = property_label.strip().lower()
     if not target_label:
         return None
@@ -374,6 +497,8 @@ def rewrite_item_with_maps(
     item: WikidataItem,
     pid_map: Mapping[str, str],
     qid_map: Mapping[str, str],
+    *,
+    verified_targets: Mapping[str, str] | None = None,
 ) -> WikidataItem:
     """Rewrite statement P/Q ids using session maps (pure)."""
 
@@ -382,9 +507,12 @@ def rewrite_item_with_maps(
         return mapped if mapped else pid
 
     def map_qid_value(value: object) -> object:
+        if (isinstance(value, (LocalTargetQid, MappedTestQid))
+                or (isinstance(value, Mapping) and value.get("value_namespace") == "local")):
+            return value
         qid = item_target_qid(value)
         if qid and qid in qid_map:
-            return qid_map[qid]
+            return MappedTestQid(qid_map[qid])
         return value
 
     def map_value(vtype: str, value: object) -> object:
@@ -392,7 +520,9 @@ def rewrite_item_with_maps(
             return map_qid_value(value)
         return value
 
-    def rewrite_snak(snak: Mapping[str, object]) -> dict[str, object]:
+    def rewrite_snak(snak: object, *, reference: bool = False) -> object:
+        if not isinstance(snak, Mapping):
+            return snak
         new: dict[str, object] = dict(snak)
         pid = _snak_pid(snak)
         vtype = _snak_value_type(snak)
@@ -402,19 +532,34 @@ def rewrite_item_with_maps(
             if "property_id" in new:
                 new["property_id"] = new_pid
         val = snak.get("value")
-        new_val = map_value(vtype, val)
-        if new_val != val:
+        if snak.get("value_namespace") == "local":
+            local_id = snak.get("value_local_id")
+            qid = item_target_qid(val)
+            new_val = MappedTestQid(qid) if (isinstance(local_id, str) and qid
+                                             and (verified_targets or {}).get(local_id) == qid) else val
+        elif reference and expected_wikibase_datatype(vtype) == "wikibase-item":
+            live_qid = (item_target_qid(val) if snak.get("value_namespace") == "wikidata"
+                        else explicit_live_item_qid(val))
+            mapped_qid = qid_map.get(live_qid) if live_qid else None
+            new_val = MappedTestQid(mapped_qid) if mapped_qid else val
+            if mapped_qid:
+                new["value_namespace"] = "mapped-test"
+        else:
+            new_val = map_value(vtype, val)
+            if isinstance(new_val, MappedTestQid) and not isinstance(val, MappedTestQid):
+                new["value_namespace"] = "mapped-test"
+        if new_val != val or type(new_val) is not type(val):
             new["value"] = new_val
         return new
 
     kept: list[WikidataStatement] = []
     for stmt in item.statements:
         unit = stmt.unit
-        if unit:
+        if unit and not _test_unit_qid(unit):
             unit_qid = quantity_unit_to_live_qid(str(unit)) or item_target_qid(unit)
             if unit_qid:
-                mapped_unit = map_qid_value(unit_qid)
-                unit = str(mapped_unit) if mapped_unit is not None else unit_qid
+                mapped_unit = qid_map.get(unit_qid)
+                unit = f"http://test.wikidata.org/entity/{mapped_unit}" if mapped_unit else unit_qid
             else:
                 unit = str(unit)
         kept.append(
@@ -424,7 +569,11 @@ def rewrite_item_with_maps(
                 value=map_value(stmt.value_type, stmt.value),
                 unit=unit if isinstance(unit, str) else stmt.unit,
                 qualifiers=[rewrite_snak(q) for q in (stmt.qualifiers or [])],
-                references=[rewrite_snak(r) for r in (stmt.references or [])],
+                references=[rewrite_snak(r, reference=True) for r in (stmt.references or [])],
+                reference_blocks=[
+                    [rewrite_snak(r, reference=True) for r in block] if isinstance(block, list) else block
+                    for block in stmt.reference_blocks
+                ] if isinstance(stmt.reference_blocks, list) else stmt.reference_blocks,
             )
         )
     return replace(item, statements=kept)
@@ -461,15 +610,17 @@ def snak_compatible_with_test(
         if raw.startswith("__LOCAL:"):
             return f"{pid} unresolved {raw}"
         qid = item_target_qid(value)
-        if qid:
-            allowed = allowed_item_ids or set()
-            if live_static_qids and qid in live_static_qids and qid not in allowed:
-                return (
-                    f"{pid} target {qid} is a live Q-id not remapped on test "
-                    "(Rule W-183)"
-                )
-            if qid not in existing_item_ids:
-                return f"{pid} target {qid} missing on test"
+        if not qid:
+            return f"{pid} invalid item target"
+        allowed = allowed_item_ids or set()
+        if (not isinstance(value, (LocalTargetQid, MappedTestQid)) and live_static_qids
+                and qid in live_static_qids and qid not in allowed):
+            return (
+                f"{pid} target {qid} is a live Q-id not remapped on test "
+                "(Rule W-183)"
+            )
+        if qid not in existing_item_ids:
+            return f"{pid} target {qid} missing on test"
     return None
 
 
@@ -517,9 +668,20 @@ def filter_item_for_test_wiki(
 
     def filter_snaks(
         snaks: Sequence[Mapping[str, object]] | None,
+        *, reference: bool = False,
     ) -> list:
         out: list = []
         for snak in snaks or []:
+            if not isinstance(snak, Mapping):
+                skipped.append("malformed snak")
+                continue
+            if reference and _snak_value_type(snak).lower() == "time" and _reference_has_calendar(snak):
+                skipped.append(f"{_snak_pid(snak)} reference calendar remap is unsupported on test")
+                continue
+            if (reference and expected_wikibase_datatype(_snak_value_type(snak)) == "wikibase-item"
+                    and not isinstance(snak.get("value"), MappedTestQid)):
+                skipped.append(f"{_snak_pid(snak)} reference item has an ambiguous wiki namespace")
+                continue
             reason = snak_compatible_with_test(
                 property_id=_snak_pid(snak),
                 value_type=_snak_value_type(snak),
@@ -536,6 +698,9 @@ def filter_item_for_test_wiki(
         return out
 
     for stmt in item.statements:
+        if not isinstance(stmt.reference_blocks, list):
+            skipped.append("malformed reference blocks")
+            continue
         reason = snak_compatible_with_test(
             property_id=stmt.property_id,
             value_type=stmt.value_type,
@@ -559,11 +724,18 @@ def filter_item_for_test_wiki(
         if unit_reason:
             skipped.append(unit_reason)
             continue
+        blocks = []
+        for block in stmt.reference_blocks or []:
+            if not isinstance(block, list) or not block:
+                skipped.append("malformed reference block")
+                continue
+            blocks.append(filter_snaks(block, reference=True))
         kept.append(
             replace(
                 stmt,
                 qualifiers=filter_snaks(stmt.qualifiers),
-                references=filter_snaks(stmt.references),
+                references=filter_snaks(stmt.references, reference=True),
+                reference_blocks=blocks,
             )
         )
     return replace(item, statements=kept), skipped

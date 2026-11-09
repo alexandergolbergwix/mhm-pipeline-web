@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.models.run_job import JOB_STATUS_FAILED, JOB_STATUS_SUCCEEDED, RunJob
@@ -16,6 +18,21 @@ from app.pipeline.wikidata_export_quality_gate import (
 from app.pipeline.wikidata_upload import prepare_items_for_upload
 from converter.wikidata.item_builder import WikidataItemBuilder
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
+
+
+@pytest.fixture(autouse=True)
+def _stub_studio_source_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def get_cache_row(*args, **kwargs):
+        return SimpleNamespace(
+            input_fingerprint="a" * 64,
+            summary={"overrides_applied": True, "source_items_sha256": "b" * 64},
+        )
+
+    async def cache_is_current(*args, **kwargs):
+        return True
+
+    monkeypatch.setattr("app.routers.wikidata_studio._get_studio_cache_row", get_cache_row)
+    monkeypatch.setattr("app.routers.wikidata_studio._studio_cache_is_current", cache_is_current)
 
 
 def test_structured_content_responsibility_becomes_work_author_claim() -> None:

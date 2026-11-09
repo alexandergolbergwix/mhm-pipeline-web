@@ -68,7 +68,7 @@ def test_tikkun_skip_keeps_link_qid(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.fetch_entity_p31",
-        lambda qids, *, is_test=False: {},
+        lambda qids, *, is_test=False, **kwargs: {"Q2740944": []},
     )
     item = type("W", (), {
         "entity_type": "work",
@@ -110,7 +110,7 @@ def test_same_item_work_skip_keeps_link_qid(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.fetch_entity_p31",
-        lambda qids, *, is_test=False: {"Q140051042": ["Q47461344"]},
+        lambda qids, *, is_test=False, **kwargs: {"Q140051042": ["Q47461344"]},
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_duplicate_confirm.confirm_uncertain_duplicate",

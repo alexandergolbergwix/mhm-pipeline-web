@@ -27,6 +27,7 @@ from converter.wikidata.item_builder import (
     _split_work_title_author,
     known_work_qid_for_title,
 )
+from converter.wikidata.property_mapping import extend_source_reference
 from converter.wikidata.work_candidates import assess_work_candidate
 from converter.wikidata.work_link_specificity import (
     refine_exemplar_work_qid,
@@ -215,6 +216,29 @@ def _content_author(
     return None
 
 
+def _record_projects_main_work(record: dict[str, object]) -> bool:
+    """True when the 100/245 main-work gate in ``_add_contents`` passes.
+
+    Mirror of that gate without its ``seen_works`` bookkeeping. A
+    secondary content work must not inherit the record author (W-296:
+    the Etz Chayim selection must not inherit Bagi), so the NER author
+    fallback below applies only when the record projects no main work
+    and the NER work is its sole content work.
+    """
+    title = _clean_work_title(str(record.get("title") or ""))
+    author_name = _record_author(record) or ""
+    if not title or not author_name or _is_noise_work_title(title):
+        return False
+    decision = assess_work_candidate(
+        title,
+        source_field="100/245",
+        approved=True,
+        candidate_kind="marc_title_author",
+        source_text=f"{title} — {author_name}",
+    )
+    return bool(decision.accepted and decision.title)
+
+
 def _entry_work_qid(entry: dict[str, object]) -> str | None:
     for key in ("wikidata_id", "wikidata_qid", "existing_qid"):
         qid = _safe_work_qid(entry.get(key))
@@ -326,6 +350,7 @@ class ContentProjectionMixin:
     ) -> None:
         """Add P1574 only for source-backed, identifiable contained works."""
         seen_works: set[str] = set()
+        seen_occurrences: set[tuple[str, str]] = set()
         approved_work_titles: set[str] = set()
         approved_work_qids: dict[str, str] = {}
         for match in record.get("marc_authority_matches") or []:
@@ -395,8 +420,10 @@ class ContentProjectionMixin:
             remember_evidence(item, evidence)
             work_title = decision.title
             key = work_title.casefold()
-            if not decision.accepted or not work_title or key in seen_works:
+            occurrence = (key, str(decision.folio_range or ""))
+            if not decision.accepted or not work_title or occurrence in seen_occurrences:
                 continue
+            seen_occurrences.add(occurrence)
             seen_works.add(key)
 
             named_as = work_title or cleaned or raw_title
@@ -517,8 +544,15 @@ class ContentProjectionMixin:
                     break
 
             author_name = embedded_author
-            if _work_title_key(decision.title) == _work_title_key(record.get("title")):
-                author_name = author_name or _record_author(record)
+            if not author_name and (
+                _work_title_key(decision.title) == _work_title_key(record.get("title"))
+                or (
+                    len(works) == 1
+                    and not seen_works - {key}
+                    and not _record_projects_main_work(record)
+                )
+            ):
+                author_name = _record_author(record)
             named_as = decision.title or work_title or raw
             if work_qid:
                 local_work = self._find_work_for_title(decision.title, author_name, record)
@@ -663,9 +697,9 @@ class ContentProjectionMixin:
         if not marc_genres and record.get("allow_inferred_genre"):
             _clf = _get_genre_classifier()
             if _clf is not None:
-                heuristic_ref = list(ref) + [
+                heuristic_ref = extend_source_reference(ref, [
                     {"property": P_BASED_ON_HEURISTIC, "value": "Q2539", "type": "item"},
-                ]
+                ])
                 inferred = _clf.predict(title, record.get("notes") or [])
                 for genre_str, _conf in inferred:
                     if genre_str == "other":

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from wikibaseintegrator.wbi_exceptions import MWApiError
+
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 from converter.wikidata.test_wiki_compat import (
     WikiTestAdaptResult,
@@ -72,7 +74,7 @@ def test_choose_test_property_prefers_exact_label_and_lowest_pid() -> None:
     assert chosen == "P82"
 
 
-def test_choose_test_property_same_id_fast_path() -> None:
+def test_choose_test_property_same_id_requires_label_match() -> None:
     chosen = choose_test_property(
         "P217",
         "string",
@@ -81,7 +83,7 @@ def test_choose_test_property_same_id_fast_path() -> None:
         pid_map={},
         search_hits=[],
     )
-    assert chosen == "P217"
+    assert chosen is None
 
 
 def test_choose_test_item_never_uses_live_qid_without_map() -> None:
@@ -115,7 +117,7 @@ def test_rewrite_item_with_maps() -> None:
                 property_id="P1476",
                 value="title",
                 value_type="monolingualtext",
-                references=[{"property": "P248", "value": "Q118384267", "type": "item"}],
+                references=[{"property": "P248", "value": "http://www.wikidata.org/entity/Q118384267", "type": "item"}],
             ),
         ],
     )
@@ -233,9 +235,10 @@ def test_upload_item_adapts_before_write(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeWbiItem:
-        id = "Q9"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
+            self.id = "Q9"
             return self
 
     def _build(_item: WikidataItem):
@@ -295,9 +298,10 @@ def test_live_upload_does_not_strip_claims(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeWbiItem:
-        id = "Q1"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
+            self.id = "Q1"
             return self
 
     def _build(_item: WikidataItem):
@@ -341,11 +345,14 @@ def test_bad_value_type_does_not_retry(monkeypatch) -> None:
     calls = {"n": 0}
 
     class _FakeWbiItem:
-        id = "Q9"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
             calls["n"] += 1
-            raise RuntimeError("Bad value type monolingualtext, expected globecoordinate")
+            raise MWApiError({
+                "code": "modification-failed",
+                "info": "Bad value type monolingualtext, expected globecoordinate",
+            })
 
     monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
     monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
@@ -404,7 +411,7 @@ def test_ensure_test_maps_resolves_property_and_item(monkeypatch) -> None:
             WikidataStatement(
                 property_id="P1476", value="t", value_type="monolingualtext",
             ),
-            WikidataStatement(property_id="P407", value="Q9288", value_type="item"),
+            WikidataStatement(property_id="P407", value={"id": "Q9288", "value_namespace": "wikidata"}, value_type="item"),
         ],
     )
     stats = up._ensure_test_maps_for_item(item)
@@ -460,7 +467,7 @@ def test_ensure_test_maps_rejects_foreign_search_hit(monkeypatch) -> None:
     stats = up._ensure_test_maps_for_item(
         WikidataItem(
             statements=[
-                WikidataStatement(property_id="P407", value="Q9288", value_type="item"),
+                WikidataStatement(property_id="P407", value={"id": "Q9288", "value_namespace": "wikidata"}, value_type="item"),
             ],
         ),
     )
@@ -496,7 +503,7 @@ def test_quantity_unit_mm_is_collected_and_remapped() -> None:
         pid_map={pid_map_key("P2048", "quantity"): "P2048"},
         qid_map={"Q174789": "Q777"},
     )
-    assert rewritten.statements[0].unit == "Q777"
+    assert rewritten.statements[0].unit == "http://test.wikidata.org/entity/Q777"
 
 
 def test_quantity_unit_qids_have_glosses() -> None:
@@ -603,13 +610,14 @@ def test_illegal_live_entity_does_not_retry(monkeypatch) -> None:
     calls = {"n": 0}
 
     class _FakeWbiItem:
-        id = "Q9"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
             calls["n"] += 1
-            raise RuntimeError(
-                "Illegal value: http://www.wikidata.org/entity/Q174789"
-            )
+            raise MWApiError({
+                "code": "modification-failed",
+                "info": "Illegal value: http://www.wikidata.org/entity/Q174789",
+            })
 
     monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
     monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
@@ -667,7 +675,7 @@ def test_filter_keeps_remapped_live_class() -> None:
     assert skipped == []
 
 
-def test_foreign_existing_qid_creates_on_test(monkeypatch) -> None:
+def test_existing_qid_without_test_ledger_is_blocked(monkeypatch) -> None:
     up = WikidataUploader(
         token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
         is_test=True,
@@ -676,10 +684,11 @@ def test_foreign_existing_qid_creates_on_test(monkeypatch) -> None:
     written = {"n": 0}
 
     class _FakeWbiItem:
-        id = "Q9"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
             written["n"] += 1
+            self.id = "Q9"
             return self
 
     def _adapt(item: WikidataItem):
@@ -704,13 +713,14 @@ def test_foreign_existing_qid_creates_on_test(monkeypatch) -> None:
             existing_qid="Q209579",
             labels={"en": "x"},
             statements=[
-                WikidataStatement(property_id="P31", value="Q87167", value_type="item"),
+                WikidataStatement(property_id="P31", value={"id": "Q87167", "value_namespace": "wikidata"}, value_type="item"),
             ],
         ),
     )
-    assert result.status == "success"
-    assert adapted["n"] == 1
-    assert written["n"] == 1
+    assert result.status == "blocked"
+    assert "test-ledger proof" in result.message
+    assert adapted["n"] == 0
+    assert written["n"] == 0
 
 
 def test_foreign_existing_qid_skips_on_live(monkeypatch) -> None:
@@ -1085,7 +1095,7 @@ def test_holder_qid_stubs_without_qid_labels(monkeypatch) -> None:
         WikidataItem(
             statements=[
                 WikidataStatement(
-                    property_id="P195", value="Q107722626", value_type="item",
+                    property_id="P195", value={"id": "Q107722626", "value_namespace": "wikidata"}, value_type="item",
                 ),
             ],
         ),
@@ -1120,7 +1130,7 @@ def test_unglossed_qid_uses_live_fetch_then_fallback(monkeypatch) -> None:
         WikidataItem(
             statements=[
                 WikidataStatement(
-                    property_id="P1071", value="Q160544", value_type="item",
+                    property_id="P1071", value={"id": "Q160544", "value_namespace": "wikidata"}, value_type="item",
                 ),
             ],
         ),
@@ -1174,24 +1184,27 @@ def test_p1680_creates_disambiguated_label_when_subtitle_wrong_type(
     assert stats.properties_created == 1
 
 
-def test_upload_item_adopts_own_label_conflict(monkeypatch) -> None:
+def test_upload_item_does_not_adopt_label_conflict_without_test_ledger(monkeypatch) -> None:
     up = WikidataUploader(
         token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
         is_test=True,
     )
     captured: list[str | None] = []
+    writes: list[bool] = []
 
     class _FakeWbiItem:
         def __init__(self, qid: str | None) -> None:
             self.id = qid
 
         def write(self, **kwargs):  # noqa: ANN003
+            writes.append(True)
             if self.id is None:
-                raise RuntimeError(
-                    'Item [[Q248005|Q248005]] already has label '
+                raise MWApiError({
+                    "code": "modification-failed",
+                    "info": 'Item [[Q248005|Q248005]] already has label '
                     '"National Library of Israel, Ms. Heb. 8729=4" associated '
-                    "with language code en, using the same description text."
-                )
+                    "with language code en, using the same description text.",
+                })
             return self
 
     def _build(_item: WikidataItem):
@@ -1217,12 +1230,14 @@ def test_upload_item_adopts_own_label_conflict(monkeypatch) -> None:
             labels={"en": "National Library of Israel, Ms. Heb. 8729=4"},
             descriptions={"en": "hebrew manuscript"},
             statements=[
-                WikidataStatement(property_id="P31", value="Q87167", value_type="item"),
+                WikidataStatement(property_id="P31", value={"id": "Q87167", "value_namespace": "wikidata"}, value_type="item"),
             ],
         ),
     )
-    assert result.status == "updated"
+    assert result.status == "blocked"
     assert result.qid == "Q248005"
+    assert "test-ledger proof" in result.message
+    assert writes == [True]
     assert captured == [None, "Q248005"]
 
 
@@ -1234,7 +1249,7 @@ def test_upload_item_uniquifies_foreign_label_conflict(monkeypatch) -> None:
     captured: list[str] = []
 
     class _FakeWbiItem:
-        id = "Q9"
+        id = None
 
         def __init__(self, item: WikidataItem) -> None:
             self._item = item
@@ -1242,10 +1257,12 @@ def test_upload_item_uniquifies_foreign_label_conflict(monkeypatch) -> None:
         def write(self, **kwargs):  # noqa: ANN003
             en = str((self._item.descriptions or {}).get("en") or "")
             if "(MHM QDraft_Person_conflict_retry)" not in en:
-                raise RuntimeError(
-                    'Item [[Q248095|Q248095]] already has label "Mordecai Bassani" '
-                    "associated with language code en, using the same description text."
-                )
+                raise MWApiError({
+                    "code": "modification-failed",
+                    "info": 'Item [[Q248095|Q248095]] already has label "Mordecai Bassani" '
+                    "associated with language code en, using the same description text.",
+                })
+            self.id = "Q9"
             return self
 
     def _build(_item: WikidataItem):
@@ -1270,7 +1287,7 @@ def test_upload_item_uniquifies_foreign_label_conflict(monkeypatch) -> None:
             labels={"en": "Mordecai Bassani"},
             descriptions={"en": "Italian rabbi"},
             statements=[
-                WikidataStatement(property_id="P31", value="Q5", value_type="item"),
+                WikidataStatement(property_id="P31", value={"id": "Q5", "value_namespace": "wikidata"}, value_type="item"),
             ],
         ),
     )

@@ -468,7 +468,7 @@ def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
     contents = record.get("contents")
     if isinstance(contents, list):
         deduped: list[Any] = []
-        by_source: dict[str, dict[str, Any]] = {}
+        by_source: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
         has_source_evidence = any(
             item.get("source_field") or item.get("source_text")
             for item in contents
@@ -481,7 +481,16 @@ def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
                 entry.get("source_field") or entry.get("source_text")
             ):
                 continue
-            source = str(entry.get("source_text") or "")
+            source = (
+                str(entry.get("source_text") or ""),
+                str(entry.get("title") or "").strip().casefold(),
+                str(entry.get("folio_range") or "").strip(),
+                str(entry.get("author") or entry.get("author_name")
+                    or entry.get("work_author") or entry.get("responsibility")
+                    or entry.get("statement_of_responsibility") or "").strip().casefold(),
+                str(entry.get("wikidata_id") or entry.get("wikidata_qid")
+                    or entry.get("existing_qid") or "").strip(),
+            )
             previous = by_source.get(source)
             score = int(entry.get("candidate_kind") == "named_work") * 2 + int(bool(entry.get("folio_range")))
             previous_score = (
@@ -868,15 +877,20 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
         if piece:
             colophon_pieces.append(piece)
     for piece in _split_multi(_str(record.get("590$a"))):
+        piece = _strip_colophon_label(piece)
         if piece:
             colophon_pieces.append(piece)
-    # 500$a keyword detection
+    # 500$a keyword detection. The ``קולופון:`` field label is catalog
+    # apparatus (Rule W-72) — strip it like the 957$a label so the content
+    # after it survives the placeholder filter and the structured
+    # year/scribe extraction below can read it.
     for piece in _split_multi(_str(record.get("500$a"))):
         if not piece:
             continue
         lower = piece.lower()
         if any(kw in lower for kw in _COLOPHON_KEYWORDS):
-            if piece not in colophon_pieces:
+            piece = _strip_colophon_label(piece)
+            if piece and piece not in colophon_pieces:
                 colophon_pieces.append(piece)
     # One catalog-workflow piece (``רשומה זמנית``, a cross-reference, …) used
     # to poison the whole compound: ``"<real colophon> | רשומה זמנית"`` then
@@ -1118,6 +1132,7 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
 
     work_mentions: list[dict[str, str]] = []
     seen_titles: set[str] = set()
+    seen_folios: set[tuple[str, str]] = set()
     for note in candidates:
         sermon = _INSERTED_SERMON_RE.fullmatch(note.strip())
         if sermon:
@@ -1143,9 +1158,10 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
                 if len(title) < 3 or is_descriptive_content_title(title):
                     continue
                 key = title.casefold()
-                if key in seen_titles:
+                if (key, folio_range) in seen_folios:
                     continue
                 seen_titles.add(key)
+                seen_folios.add((key, folio_range))
                 work_mentions.append({
                     "title": title,
                     "source_field": "500",
@@ -1735,7 +1751,8 @@ def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
             record.pop("contents", None)
         return
     existing = {
-        clean_marc_label(str(c.get("title") or "")).casefold()
+        (clean_marc_label(str(c.get("title") or "")).casefold(),
+         str(c.get("folio_range") or "").strip())
         for c in contents
         if isinstance(c, dict) and c.get("title")
     }
@@ -1745,8 +1762,10 @@ def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
         title = clean_marc_label(str(wm.get("title") or ""))
         if not title or is_descriptive_content_title(title):
             continue
-        key = title.casefold()
-        if key in existing:
+        key = (title.casefold(), str(wm.get("folio_range") or "").strip())
+        if key in existing or (
+            not key[1] and any(title_key == key[0] for title_key, _ in existing)
+        ):
             continue
         row_out = {
             "title": title,

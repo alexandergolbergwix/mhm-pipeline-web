@@ -24,6 +24,7 @@ from __future__ import annotations
 import pytest
 
 from app.pipeline import wikidata_studio
+from app.pipeline.marc_ingest import prepare_record_for_pipeline
 
 
 def _fake_marc_record(control_number: str = "1") -> dict:
@@ -52,6 +53,34 @@ def _fake_work_entity(text: str, control_number: str = "1") -> dict:
         "model_confidence": 0.92,
         "approved":         True,
     }
+
+
+@pytest.mark.parametrize("raw", [
+    {"505$a": "1) דף א-ב : ספר הדרושים -- 2) דף ג-ד : ספר הדרושים"},
+    {"500$a": 'דפים א-ב: "ספר הדרושים" | דפים ג-ד: "ספר הדרושים"'},
+    {"505$a": "1) דף א-ב : ספר הדרושים",
+     "500$a": 'דפים ג-ד: "ספר הדרושים"'},
+])
+def test_repeated_work_folios_survive_ingest(raw: dict) -> None:
+    record = {**_fake_marc_record(), **raw}
+    prepared = prepare_record_for_pipeline(record)
+    repeated = prepare_record_for_pipeline(prepared)
+    for row in (prepared, repeated):
+        assert {(entry["title"], entry.get("folio_range")) for entry in row["contents"]} == {
+            ("ספר הדרושים", "א-ב"), ("ספר הדרושים", "ג-ד"),
+        }
+
+
+def test_record_author_not_inferred_across_conflicting_content_authors() -> None:
+    import converter.wikidata.item_builder  # noqa: F401  (import order)
+    from converter.wikidata.content_projection import _content_author, structured_work_attribution
+
+    entries = [
+        {"title": "ספר הדרושים", "author": "מחבר שני", "source_field": "505"},
+        {"title": "ספר הדרושים", "source_field": "505"},
+    ]
+    record = {"authors": [{"name": "מחבר ראשון"}], "contents": entries}
+    assert _content_author(record, structured_work_attribution(entries[1]), entries[1]) is None
 
 
 class TestEntitiesByCnDrivesWorkCreation:
@@ -416,6 +445,43 @@ class TestSourceAwareMarcWorks:
             qualifier["property"] == "P958" and qualifier["value"] == "א-ב"
             for qualifier in p1574["qualifiers"]
         )
+
+    @pytest.mark.asyncio
+    async def test_repeated_505_work_keeps_each_folio_qualifier(self) -> None:
+        rec = {
+            **_fake_marc_record(),
+            "contents": [
+                {
+                    "title": "ספר הדרושים",
+                    "source_field": "505",
+                    "candidate_kind": "named_work",
+                    "folio_range": "1r-2v",
+                },
+                {
+                    "title": "ספר הדרושים",
+                    "source_field": "505",
+                    "candidate_kind": "named_work",
+                    "folio_range": "5r-6v",
+                },
+            ],
+        }
+        result = await wikidata_studio.build_items_for_run(
+            marc_records=[rec],
+            approved_matches=[],
+            entities_by_cn={},
+            return_native=False,
+        )
+        manuscript = next(
+            item for item in result["items"] if item["entity_type"] == "manuscript"
+        )
+        folios = sorted(
+            qualifier["value"]
+            for stmt in manuscript["statements"]
+            if stmt["property_id"] == "P1574"
+            for qualifier in stmt["qualifiers"]
+            if qualifier["property"] == "P958"
+        )
+        assert folios == ["1r-2v", "5r-6v"]
 
     @pytest.mark.asyncio
     async def test_unverified_latin_505_heading_does_not_create_work(self) -> None:

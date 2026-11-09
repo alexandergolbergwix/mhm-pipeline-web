@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from wikibaseintegrator.wbi_exceptions import MWApiError
+
 from converter.wikidata.item_models import WikidataItem
 from converter.wikidata.uploader import WikidataUploader
 
@@ -17,11 +19,12 @@ def test_upload_item_default_is_bot_false(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeWbiItem:
-        id = "Q999"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
             captured.clear()
             captured.update(kwargs)
+            self.id = "Q999"
             return self
 
     monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
@@ -55,11 +58,12 @@ def test_upload_item_mark_as_bot_true(monkeypatch) -> None:
     captured: dict[str, object] = {}
 
     class _FakeWbiItem:
-        id = "Q999"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
             captured.clear()
             captured.update(kwargs)
+            self.id = "Q999"
             return self
 
     monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
@@ -88,13 +92,14 @@ def test_bot_right_error_does_not_retry(monkeypatch) -> None:
     calls = {"n": 0}
 
     class _FakeWbiItem:
-        id = "Q999"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
             calls["n"] += 1
-            raise RuntimeError(
-                'You do not have the "bot" right, so the action could not be completed.'
-            )
+            raise MWApiError({
+                "code": "permissiondenied",
+                "info": 'You do not have the "bot" right, so the action could not be completed.',
+            })
 
     monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
     monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
@@ -123,15 +128,14 @@ def test_permissiondenied_does_not_retry(monkeypatch) -> None:
     calls = {"n": 0}
 
     class _FakeWbiItem:
-        id = "Q999"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
             calls["n"] += 1
-            err = RuntimeError(
-                "You do not have the permissions needed to carry out this action."
-            )
-            err.code = "permissiondenied"  # type: ignore[attr-defined]
-            raise err
+            raise MWApiError({
+                "code": "permissiondenied",
+                "info": "You do not have the permissions needed to carry out this action.",
+            })
 
     monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
     monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
@@ -161,11 +165,14 @@ def test_session_death_does_not_retry(monkeypatch) -> None:
     calls = {"n": 0}
 
     class _FakeWbiItem:
-        id = "Q999"
+        id = None
 
         def write(self, **kwargs):  # noqa: ANN003
             calls["n"] += 1
-            raise RuntimeError("You are no longer logged in, so this action could not be completed.")
+            raise MWApiError({
+                "code": "notloggedin",
+                "info": "You are no longer logged in, so this action could not be completed.",
+            })
 
     monkeypatch.setattr(up, "_check_moratorium_for_live", lambda: None)
     monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())

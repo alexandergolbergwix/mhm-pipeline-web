@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -30,6 +31,17 @@ from app.pipeline.wikidata_verify_fixture import slim_item_for_verdict_persist
 from app.services.wikibase_audit import fetch_latest_wikibase_writes
 
 logger = logging.getLogger(__name__)
+
+# A cache built with overrides_applied already holds the build-time statement
+# edits. Re-applying add/remove/statement_edits would apply them twice, so only
+# the set-by-key fields re-apply on a cached item. Labels, descriptions and
+# aliases replace their keys, so a second apply yields the current curator value.
+# A content override newer than the cache build is not applied to cached data;
+# the item view sets rebuild_required instead.
+_CACHE_REAPPLY_KEYS = frozenset({
+    "labels", "descriptions", "aliases",
+    "accepted_foreign_qid", "ai_verdict", "ai_verdict_at",
+})
 
 
 class StudioBuildMissingError(RuntimeError):
@@ -66,6 +78,14 @@ async def fetch_merged_wikidata_items(
         )
     ).scalars().all()
     overrides_by_id = {r.local_id: r for r in override_rows}
+    overrides_applied = (cache_row.summary or {}).get("overrides_applied") is True
+    rebuild_local_ids = (
+        {
+            r.local_id for r in override_rows
+            if _content_override_newer_than_build(r, cache_row.built_at)
+        }
+        if overrides_applied else set()
+    )
 
     ledger = await load_global_ledger(db)
     latest_writes = await fetch_latest_wikibase_writes(
@@ -86,7 +106,7 @@ async def fetch_merged_wikidata_items(
         local_id = str(raw.get("local_id") or "")
         ov_row = overrides_by_id.get(local_id)
         stable_items[local_id] = (
-            apply_wikidata_item_override(raw, override_row_to_dict(ov_row))
+            apply_wikidata_item_override(raw, _cache_override_data(ov_row, overrides_applied))
             if ov_row else dict(raw)
         )
         row = _merge_one_wikidata_item(
@@ -94,6 +114,8 @@ async def fetch_merged_wikidata_items(
             ov_row=ov_row,
             ledger=ledger,
             latest_writes=latest_writes,
+            overrides_applied=overrides_applied,
+            rebuild_required=local_id in rebuild_local_ids,
         )
         stored = row.get("ai_verdict")
         if stored:
@@ -307,16 +329,39 @@ def trim_studio_list_item(item: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _cache_override_data(row: WikidataItemOverride, overrides_applied: bool) -> dict[str, Any]:
+    data = override_row_to_dict(row)
+    if overrides_applied:
+        return {key: value for key, value in data.items()
+                if key in _CACHE_REAPPLY_KEYS}
+    return data
+
+
+def _content_override_newer_than_build(row: WikidataItemOverride, built_at: datetime) -> bool:
+    """True when a content override changed after the cached build.
+
+    Only content fields change the build output. Approval and verdict-only
+    edits do not set the flag.
+    """
+    has_content = bool(
+        row.labels or row.descriptions or row.aliases
+        or row.add_statements or row.remove_statements or row.statement_edits
+    )
+    return has_content and row.updated_at > built_at
+
+
 def _merge_one_wikidata_item(
     raw: dict[str, Any],
     *,
     ov_row: WikidataItemOverride | None,
     ledger: dict[str, str],
     latest_writes: dict[str, Any],
+    overrides_applied: bool = False,
+    rebuild_required: bool = False,
 ) -> dict[str, Any]:
     entity = dict(raw)
     local_id = str(entity.get("local_id") or "")
-    ov_dict = override_row_to_dict(ov_row) if ov_row else {}
+    ov_dict = _cache_override_data(ov_row, overrides_applied) if ov_row else {}
     merged = apply_wikidata_item_override(entity, ov_dict) if ov_row else entity
 
     ledger_key = ledger_key_for_item(merged)
@@ -355,6 +400,7 @@ def _merge_one_wikidata_item(
         ),
         "override_present": ov_row is not None,
         "override_id": str(ov_row.id) if ov_row else None,
+        "rebuild_required": rebuild_required,
         "upload_outcome": last_write.operation if last_write else None,
         "upload_message": last_write.outcome_message if last_write else "",
         "upload_at": (

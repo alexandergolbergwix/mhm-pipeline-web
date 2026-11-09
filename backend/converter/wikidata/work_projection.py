@@ -276,7 +276,7 @@ class WorkProjectionMixin:
 
         control_number = str(source_record.get("_control_number") or "").strip()
         if control_number:
-            statement.references = list(nli_reference(control_number))
+            statement.set_fresh_source(nli_reference(control_number))
         work.statements.append(statement)
 
     def _get_or_create_work(
@@ -496,7 +496,7 @@ class WorkProjectionMixin:
             work_ref = nli_reference(ms_ctrl)
             for stmt in work.statements:
                 if not stmt.references:
-                    stmt.references = list(work_ref)
+                    stmt.set_fresh_source(work_ref)
 
         self._work_items[key] = work
         return work

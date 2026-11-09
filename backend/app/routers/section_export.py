@@ -72,6 +72,14 @@ def _attachment(filename: str) -> dict[str, str]:
     return {"Content-Disposition": f'attachment; filename="{filename}"'}
 
 
+async def _rdf_graph_or_422(items: list[dict[str, Any]], base_uri: str) -> Any:
+    """Build the RDF graph before streaming, so an unrepresentable item fails closed."""
+    try:
+        return await asyncio.to_thread(items_to_rdf_graph, items, base_uri)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 # ── Extraction ────────────────────────────────────────────────────────
 
 _EXTRACTION_JSON_FIELDS = [
@@ -370,13 +378,9 @@ async def export_wikibase(
         for item in items
     ]
 
-    async def _ttl_gen() -> AsyncIterator[bytes]:
-        graph = await asyncio.to_thread(items_to_rdf_graph, rdf_items, _WIKIBASE_BASE_URI)
-        async for chunk in ttl_stream(graph):
-            yield chunk
-
+    graph = await _rdf_graph_or_422(rdf_items, _WIKIBASE_BASE_URI)
     return StreamingResponse(
-        _ttl_gen(),
+        ttl_stream(graph),
         media_type="text/turtle",
         headers=_attachment(filename),
     )
@@ -400,7 +404,10 @@ _WIKIDATA_BASE_URI = "http://www.wikidata.org/entity/"
 def _wikidata_csv_row(item: dict[str, Any]) -> dict[str, Any]:
     labels = item.get("labels") or {}
     descs = item.get("descriptions") or {}
-    claims = item.get("claims") or item.get("statements") or []
+    claims = (
+        item.get("statements")
+        if isinstance(item.get("statements"), list) else item.get("claims") or []
+    )
     verdict = (
         normalise_public_verdict(item["ai_verdict"])
         if isinstance(item.get("ai_verdict"), dict) else {}
@@ -481,6 +488,7 @@ async def _get_wikidata_items(
     )
     from app.routers.wikidata_studio import (  # noqa: PLC0415
         _group_entity_rows,
+        _with_reference_provenance_finding,
         match_to_build_payload,
     )
 
@@ -520,7 +528,10 @@ async def _get_wikidata_items(
     ).scalar_one_or_none()
 
     if cached is not None and cached.input_fingerprint == fingerprint:
-        return _attach_item_review_metadata(cached.result_items, override_rows)
+        return [
+            _with_reference_provenance_finding(item)
+            for item in _attach_item_review_metadata(cached.result_items or [], override_rows)
+        ]
 
     # Cache miss — full build with canonical-shape inputs
     matches = [m for m in all_matches if m.approved] if approved_only else list(all_matches)
@@ -543,7 +554,10 @@ async def _get_wikidata_items(
         } for r in override_rows},
         hmo_instance_qids=hmo_instance_qids,
     )
-    return _attach_item_review_metadata(result.get("items", []), override_rows)
+    return [
+        _with_reference_provenance_finding(item)
+        for item in _attach_item_review_metadata(result.get("items", []), override_rows)
+    ]
 
 
 @router.get("/{run_id}/wikidata-studio/export", response_model=None)
@@ -557,6 +571,11 @@ async def export_wikidata_studio(
     """Export Wikidata Studio items as JSON, CSV, or TTL."""
     await _lookup_run_with_access(db, run_id, auth)
     items = await _get_wikidata_items(db, run_id, approved_only)
+    items = [
+        {**item, "claims": item["statements"]}
+        if "claims" in item and isinstance(item.get("statements"), list) else item
+        for item in items
+    ]
 
     suffix = "approved" if approved_only else "all"
 
@@ -584,14 +603,9 @@ async def export_wikidata_studio(
 
     # TTL
     filename = f"run-{run_id}-wikidata-{suffix}.ttl"
-
-    async def _ttl_gen() -> AsyncIterator[bytes]:
-        graph = await asyncio.to_thread(items_to_rdf_graph, items, _WIKIDATA_BASE_URI)
-        async for chunk in ttl_stream(graph):
-            yield chunk
-
+    graph = await _rdf_graph_or_422(items, _WIKIDATA_BASE_URI)
     return StreamingResponse(
-        _ttl_gen(),
+        ttl_stream(graph),
         media_type="text/turtle",
         headers=_attachment(filename),
     )

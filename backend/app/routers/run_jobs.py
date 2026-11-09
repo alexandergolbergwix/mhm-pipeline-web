@@ -83,6 +83,11 @@ async def start_run_job(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    if any(str(key).startswith("_") for key in body.params):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Internal job parameters cannot be supplied by clients.",
+        )
     params = await prepare_job_params(
         db, auth, run_id=run_id, kind=body.kind, params=body.params,
     )

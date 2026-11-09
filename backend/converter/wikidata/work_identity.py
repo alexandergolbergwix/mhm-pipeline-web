@@ -177,9 +177,7 @@ def work_identity_from_metadata(metadata: Mapping[str, object]) -> WorkIdentity:
 def compare_work_identity(
     proposed: WorkIdentity, existing: WorkIdentity, *, strong_identifier: bool = False,
 ) -> WorkComparison:
-    if proposed.unresolved_authors or (existing.unresolved_authors and (
-        not strong_identifier or existing.author_qids or existing.author_names
-    )):
+    if proposed.unresolved_authors or existing.unresolved_authors:
         return "uncertain"
     if proposed.source_scoped and (
         not proposed.source_records or proposed.source_records != existing.source_records
@@ -209,6 +207,8 @@ def compare_work_identity(
         return "uncertain"
     proposed_authors = bool(proposed.author_qids or proposed.author_names)
     existing_authors = bool(existing.author_qids or existing.author_names)
+    if proposed_authors and not existing_authors:
+        return "uncertain"
     if not strong_identifier and proposed_authors != existing_authors:
         return "uncertain"
     return "match"

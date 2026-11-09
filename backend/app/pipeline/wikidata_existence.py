@@ -299,11 +299,39 @@ def fetch_entity_p31(
     qids: list[str],
     *,
     is_test: bool = False,
+    require_complete: bool = False,
 ) -> dict[str, list[str]]:
-    """Batch ``wbgetentities`` P31 values. Missing QIDs are omitted."""
-    from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
-        live_p31_from_entity,
-    )
+    """Return P31 values, including empty lists; omit unavailable entities."""
+    def p31_values(entity: dict[str, Any]) -> list[str] | None:
+        claims = entity.get("claims")
+        if claims == []:
+            claims = {}
+        if not isinstance(claims, dict):
+            return None
+        rows = claims.get("P31", [])
+        if not isinstance(rows, list):
+            return None
+        qids: list[str] = []
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("mainsnak"), dict):
+                return None
+            snak = row["mainsnak"]
+            if snak.get("snaktype") in ("somevalue", "novalue"):
+                if require_complete:
+                    return None
+                continue
+            if snak.get("snaktype") != "value" and (
+                require_complete or snak.get("snaktype") is not None
+            ):
+                return None
+            datavalue = snak.get("datavalue")
+            if not isinstance(datavalue, dict) or not isinstance(datavalue.get("value"), dict):
+                return None
+            value = datavalue["value"].get("id")
+            if not isinstance(value, str) or _normalize_qid(value) != value:
+                return None
+            qids.append(value)
+        return qids
 
     out: dict[str, list[str]] = {}
     normalized: list[str] = []
@@ -315,10 +343,10 @@ def fetch_entity_p31(
         seen.add(qid)
         cached = _PREFETCHED_ENTITIES.get((is_test, qid))
         if isinstance(cached, dict) and "claims" in cached:
-            p31 = live_p31_from_entity(cached)
-            if p31:
+            p31 = p31_values(cached)
+            if p31 is not None:
                 out[qid] = p31
-            continue
+                continue
         normalized.append(qid)
     if not normalized:
         return out
@@ -342,8 +370,8 @@ def fetch_entity_p31(
         for qid, ent in entities.items():
             if not isinstance(ent, dict) or ent.get("missing") is not None:
                 continue
-            p31 = live_p31_from_entity(ent)
-            if p31:
+            p31 = p31_values(ent)
+            if p31 is not None:
                 out[str(qid)] = p31
     return out
 
@@ -361,7 +389,10 @@ def fetch_entity_duplicate_metadata(
     )
     from converter.wikidata.work_identity import work_identity_from_entity  # noqa: PLC0415
 
-    def metadata(entity: dict[str, object]) -> dict[str, object]:
+    def metadata(entity: dict[str, object]) -> dict[str, object] | None:
+        claims = entity.get("claims")
+        if not isinstance(claims, dict) and claims != []:
+            return None
         identity = work_identity_from_entity(entity)
         return {
             "descriptions": live_descriptions_from_entity(entity),
@@ -383,8 +414,14 @@ def fetch_entity_duplicate_metadata(
             seen.add(norm)
             cached = _PREFETCHED_ENTITIES.get((is_test, norm))
             if isinstance(cached, dict) and "claims" in cached and "descriptions" in cached:
-                out[norm] = metadata(cached)
-                continue
+                try:
+                    result = metadata(cached)
+                except Exception as exc:  # noqa: BLE001 — retry an invalid cache entry
+                    logger.warning("Invalid cached identity metadata for %s: %s", norm, exc)
+                    result = None
+                if result is not None:
+                    out[norm] = result
+                    continue
             cleaned.append(norm)
     if not cleaned:
         return out
@@ -408,7 +445,9 @@ def fetch_entity_duplicate_metadata(
         for qid, ent in entities.items():
             if not isinstance(ent, dict) or ent.get("missing") is not None:
                 continue
-            out[str(qid)] = metadata(ent)
+            result = metadata(ent)
+            if result is not None:
+                out[str(qid)] = result
     return out
 
 

@@ -11,7 +11,9 @@ Sources:
 
 from __future__ import annotations
 
+import json
 import re
+from copy import deepcopy
 from datetime import UTC, datetime
 
 # ── Wikidata PIDs ────────────────────────────────────────────────────
@@ -858,7 +860,58 @@ def nli_catalog_url(control_number: str) -> str:
     return f"https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH{cn}"
 
 
-def nli_reference(control_number: str) -> list[dict[str, str]]:
+_FRESH_SOURCE_TOKEN = object()
+
+
+class FreshSourceReference(list[dict[str, object]]):
+    """A single source constructed in this process, not imported flat data."""
+
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        raise TypeError("Fresh source references cannot be subclassed")
+
+    def __init__(self, snaks: list[dict[str, object]], *, _token: object = None) -> None:
+        if _token is not _FRESH_SOURCE_TOKEN:
+            raise ValueError("Fresh references require a source constructor")
+        super().__init__(deepcopy(snaks))
+        self._snapshot = json.dumps(self, sort_keys=True, ensure_ascii=False, allow_nan=False)
+
+    def _assert_unchanged(self) -> None:
+        if json.dumps(self, sort_keys=True, ensure_ascii=False, allow_nan=False) != self._snapshot:
+            raise ValueError("Fresh source reference was modified")
+
+    def extended(self, snaks: list[dict[str, object]]) -> FreshSourceReference:
+        self._assert_unchanged()
+        if snaks and (
+            len(snaks) != 1
+            or set(snaks[0]) != {"property", "value", "type"}
+            or snaks[0].get("property") != P_BASED_ON_HEURISTIC
+            or snaks[0].get("type") != "item"
+            or not isinstance(snaks[0].get("value"), str)
+            or not re.fullmatch(r"Q[1-9][0-9]*", str(snaks[0]["value"]))
+        ):
+            raise ValueError("A fresh source accepts only one explicit heuristic snak")
+        additions = [{**snak, "value_namespace": "wikidata"} for snak in snaks]
+        return FreshSourceReference([*self, *additions], _token=_FRESH_SOURCE_TOKEN)
+
+    def copy(self) -> FreshSourceReference:
+        return self.extended([])
+
+    def __copy__(self) -> FreshSourceReference:
+        return self.copy()
+
+    def __deepcopy__(self, memo: dict[int, object]) -> FreshSourceReference:
+        return self.copy()
+
+
+def extend_source_reference(
+    reference: list[dict[str, object]], snaks: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    if isinstance(reference, FreshSourceReference):
+        return reference.extended(snaks)
+    return [*reference, *snaks]
+
+
+def nli_reference(control_number: str) -> FreshSourceReference:
     """Build a Wikidata reference snak set for NLI catalog sourcing.
 
     Every statement added to Wikidata should include this reference.
@@ -873,8 +926,9 @@ def nli_reference(control_number: str) -> list[dict[str, str]]:
         List of reference snak dicts with P248, P3959, P854, P813.
     """
     today = datetime.now(tz=UTC).strftime("+%Y-%m-%dT00:00:00Z")
-    snaks: list[dict[str, str]] = [
-        {"property": P_STATED_IN, "value": Q_KTIV, "type": "item"},
+    snaks: list[dict[str, object]] = [
+        {"property": P_STATED_IN, "value": Q_KTIV, "type": "item",
+         "value_namespace": "wikidata"},
     ]
     if control_number:
         snaks.append(
@@ -884,15 +938,16 @@ def nli_reference(control_number: str) -> list[dict[str, str]]:
         {"property": P_REFERENCE_URL, "value": nli_catalog_url(control_number), "type": "url"},
         {"property": P_RETRIEVED, "value": today, "type": "time", "precision": PRECISION_DAY},
     ]
-    return snaks
+    return FreshSourceReference(snaks, _token=_FRESH_SOURCE_TOKEN)
 
 
-def nli_authority_reference(authority_id: str) -> list[dict[str, str]]:
+def nli_authority_reference(authority_id: str) -> FreshSourceReference:
     """Build a reference for an NLI authority record (9870… J9U ID)."""
     today = datetime.now(tz=UTC).strftime("+%Y-%m-%dT00:00:00Z")
     value = authority_id.strip()
-    return [
-        {"property": P_STATED_IN, "value": Q_KTIV, "type": "item"},
+    return FreshSourceReference([
+        {"property": P_STATED_IN, "value": Q_KTIV, "type": "item",
+         "value_namespace": "wikidata"},
         {"property": P_NLI_J9U_ID, "value": value, "type": "external-id"},
         {
             "property": P_REFERENCE_URL,
@@ -900,9 +955,9 @@ def nli_authority_reference(authority_id: str) -> list[dict[str, str]]:
             "type": "url",
         },
         {"property": P_RETRIEVED, "value": today, "type": "time", "precision": PRECISION_DAY},
-    ]
+    ], _token=_FRESH_SOURCE_TOKEN)
 
-def viaf_reference(viaf_id: str) -> list[dict[str, str]]:
+def viaf_reference(viaf_id: str) -> FreshSourceReference:
     """Build a Wikidata reference snak set for VIAF-cluster sourcing.
 
     Used on person/work statements where the data was harvested from a
@@ -919,15 +974,16 @@ def viaf_reference(viaf_id: str) -> list[dict[str, str]]:
         https://viaf.org/viaf/<id>; retrieved: today.
     """
     today = datetime.now(tz=UTC).strftime("+%Y-%m-%dT00:00:00Z")
-    return [
-        {"property": P_STATED_IN, "value": "Q54919", "type": "item"},
+    return FreshSourceReference([
+        {"property": P_STATED_IN, "value": "Q54919", "type": "item",
+         "value_namespace": "wikidata"},
         {
             "property": P_REFERENCE_URL,
             "value": f"https://viaf.org/viaf/{viaf_id}",
             "type": "url",
         },
         {"property": P_RETRIEVED, "value": today, "type": "time", "precision": PRECISION_DAY},
-    ]
+    ], _token=_FRESH_SOURCE_TOKEN)
 
 
 # ── Identifier-format normalisers ────────────────────────────────────

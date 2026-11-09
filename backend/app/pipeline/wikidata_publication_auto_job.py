@@ -210,15 +210,6 @@ async def run_automatic_publication(job_id):
                         return 'defer', 'The live-wiki target could not be fetched for the identity sweep; curator review required.'
                     remote = dict(snapshot.document)
                     route = route_blocked_target(document, remote, entity.entity_type)
-                    if route == 'update_existing':
-                        reason = ('The target carries this record\'s P3959 catalog control '
-                            'number; the item is project-owned data.')
-                        retained[entity.entity_key] = {'action': 'update_existing', 'qid': target_qid,
-                            'remote_revision': snapshot.revision,
-                            'statement_indices': list(range(len(document.get('statements') or []))),
-                            'reason': reason}
-                        document['existing_qid'] = target_qid
-                        return 'update_existing', reason
                     if route == 'judge':
                         return 'judge', ''
                     return 'defer', ('A live-wiki item exists but shares no verifiable '
@@ -233,15 +224,10 @@ async def run_automatic_publication(job_id):
                         kept_work.append(work_item)
                         routed += 1
                         continue
-                    if route == 'update_existing':
-                        routed += 1
-                        status = 'update_existing'
-                        resolution = retained[entity.entity_key]
-                    else:
-                        deferred += 1
-                        status = 'deferred'
-                        resolution = {'action': 'defer', 'statement_indices': [], 'reason': reason}
-                        retained[entity.entity_key] = resolution
+                    deferred += 1
+                    status = 'deferred'
+                    resolution = {'action': 'defer', 'statement_indices': [], 'reason': reason}
+                    retained[entity.entity_key] = resolution
                     labels = document.get('labels') or {}
                     report.items.append(PublicationAiReviewItem(
                         entity_key=entity.entity_key,

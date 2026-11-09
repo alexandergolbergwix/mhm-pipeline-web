@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -22,7 +23,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from converter.wikidata.item_builder import WikidataItem, WikidataStatement
+from converter.wikidata.item_models import validate_statement_references
 from converter.wikidata.property_mapping import repair_wikidata_time
+from converter.wikidata.test_wiki_compat import LocalTargetQid, MappedTestQid
 
 if TYPE_CHECKING:
     from wikibaseintegrator.models import Claim
@@ -46,6 +49,9 @@ _RETRY_DELAY_SECONDS = 5.0
 _EDIT_DELAY_SECONDS = 1.5  # ~40 edits/minute (safe for OAuth with 5000 req/hr)
 
 _UPLOAD_TYPE_ORDER = {"work": 0, "person": 1, "manuscript": 2}
+
+# Link properties that pass 2 can replace after a local reference resolves (Rule W-192).
+_DEFERRED_LINK_PIDS = ("P1574", "P3342", "P11603", "P1891", "P11105", "P88", "P110", "P655")
 
 _WBI_VALUE_TYPE_ALIASES = {
     "wikibase-item": "item",
@@ -90,6 +96,70 @@ def _reference_identity(reference: Mapping[str, object]) -> str:
             ))
         normalized[str(pid)] = sorted(values)
     return json.dumps(normalized, sort_keys=True, ensure_ascii=False)
+
+
+def _owner_snak_identity(snak: Mapping[str, object]) -> str:
+    pid = snak.get("property")
+    snaktype = snak.get("snaktype")
+    datatype = snak.get("datatype")
+    if (not isinstance(pid, str) or re.fullmatch(r"P[1-9][0-9]*", pid) is None
+            or snaktype not in ("value", "somevalue", "novalue")
+            or not isinstance(datatype, str) or not datatype):
+        raise ValueError("Malformed Wikibase snak")
+    identity: dict[str, object] = {"property": pid, "snaktype": snaktype, "datatype": datatype}
+    if snaktype == "value":
+        datavalue = snak.get("datavalue")
+        if (not isinstance(datavalue, Mapping) or not isinstance(datavalue.get("type"), str)
+                or "value" not in datavalue or datavalue["value"] is None):
+            raise ValueError("Malformed Wikibase datavalue")
+        identity["datavalue"] = datavalue
+    return json.dumps(identity, sort_keys=True, ensure_ascii=False, allow_nan=False)
+
+
+def _owner_claim_identity(claim: Claim) -> tuple[str, tuple[str, ...]]:
+    main = _owner_snak_identity(claim.mainsnak.get_json())
+    qualifiers = claim.qualifiers.get_json()
+    if not isinstance(qualifiers, Mapping):
+        raise ValueError("Malformed Wikibase qualifiers")
+    values: list[str] = []
+    for pid, snaks in qualifiers.items():
+        if not isinstance(pid, str) or not isinstance(snaks, list) or not snaks:
+            raise ValueError("Malformed Wikibase qualifier list")
+        for snak in snaks:
+            if not isinstance(snak, Mapping) or snak.get("property") != pid:
+                raise ValueError("Mismatched Wikibase qualifier property")
+            values.append(_owner_snak_identity(snak))
+    return main, tuple(sorted(values))
+
+
+def _claim_identity(claim: Claim) -> tuple[str, tuple[str, ...], str]:
+    main, qualifiers = _owner_claim_identity(claim)
+    rank = getattr(claim.rank, "value", claim.rank)
+    if rank not in ("normal", "preferred", "deprecated"):
+        raise ValueError("Malformed Wikibase rank")
+    return main, qualifiers, rank
+
+
+def owner_only_quantity_unit_uri(unit: object) -> str:
+    from converter.wikidata.test_wiki_compat import QUANTITY_UNIT_ALIASES  # noqa: PLC0415
+
+    if unit is None or unit == "" or unit == "1":
+        return "1"
+    if not isinstance(unit, str):
+        raise ClaimBuildError(["OWNER_ONLY_UNIT: quantity unit must be a canonical string."])
+    if unit in QUANTITY_UNIT_ALIASES:
+        return f"http://www.wikidata.org/entity/{QUANTITY_UNIT_ALIASES[unit]}"
+    if re.fullmatch(r"Q[1-9][0-9]*", unit):
+        return f"http://www.wikidata.org/entity/{unit}"
+    if re.fullmatch(r"http://www\.wikidata\.org/entity/Q[1-9][0-9]*", unit):
+        return unit
+    raise ClaimBuildError(["OWNER_ONLY_UNIT: unknown or noncanonical quantity unit."])
+
+
+def owner_only_validate_quantity_units(item: WikidataItem) -> None:
+    for statement in getattr(item, "statements", []) or []:
+        if _normalize_wbi_value_type(getattr(statement, "value_type", None)) == "quantity":
+            owner_only_quantity_unit_uri(getattr(statement, "unit", None))
 
 
 def quantity_amounts_equal(left: object, right: object) -> bool:
@@ -153,6 +223,182 @@ class ClaimBuildError(Exception):
         Exception.__init__(self, "; ".join(self.reasons))
 
 
+def _validate_reference_views(stmt: WikidataStatement, *, owner_only: bool = False) -> None:
+    prefix = "OWNER_ONLY_METADATA: " if owner_only else ""
+    if not isinstance(stmt.references, list):
+        raise ClaimBuildError([f"{prefix}Invalid references for {stmt.property_id}."])
+    if not isinstance(stmt.reference_blocks, list):
+        raise ClaimBuildError([f"{prefix}Invalid reference blocks for {stmt.property_id}."])
+    if not stmt.reference_blocks and len(stmt.references) > 1:
+        raise ClaimBuildError([f"{prefix}Ambiguous flat references for {stmt.property_id}; rebuild from source."])
+
+    allowed = {
+        "property", "property_id", "value", "type", "value_type", "datatype", "snaktype",
+        "property_label", "value_label", "label", "precision", "calendarmodel", "before", "after", "timezone",
+        "value_namespace", "value_local_id",
+    }
+    blocks = [stmt.references, *stmt.reference_blocks]
+    for index, block in enumerate(blocks):
+        if not isinstance(block, list) or (index > 0 and not block):
+            raise ClaimBuildError([f"{prefix}Invalid reference block for {stmt.property_id}."])
+        for snak in block:
+            if not isinstance(snak, dict) or set(snak) - allowed:
+                raise ClaimBuildError([f"{prefix}unsupported reference metadata for {stmt.property_id}."])
+            types = [snak[key] for key in ("type", "value_type", "datatype") if key in snak]
+            if any(not isinstance(value, str) or not value.strip() for value in types):
+                raise ClaimBuildError([f"{prefix}invalid reference type for {stmt.property_id}."])
+            normalized = {_normalize_wbi_value_type(value) for value in types}
+            if len(normalized) > 1 or snak.get("snaktype", "value") != "value":
+                raise ClaimBuildError([f"{prefix}invalid reference metadata for {stmt.property_id}."])
+            kind = next(iter(normalized), "string")
+            namespace = snak.get("value_namespace")
+            if "value_namespace" in snak or "value_local_id" in snak:
+                if (kind != "item" or namespace not in ("wikidata", "local", "mapped-test")
+                        or (namespace in ("wikidata", "mapped-test") and "value_local_id" in snak)
+                        or (namespace == "local" and (
+                            not isinstance(snak.get("value_local_id"), str)
+                            or not snak["value_local_id"].strip()
+                        ))):
+                    raise ClaimBuildError([f"{prefix}invalid reference namespace for {stmt.property_id}."])
+            time_keys = {"precision", "calendarmodel", "before", "after", "timezone"}
+            if kind != "time" and time_keys.intersection(snak):
+                raise ClaimBuildError([f"{prefix}unsupported reference time metadata for {stmt.property_id}."])
+            if kind == "time":
+                precision = snak.get("precision", 11)
+                from converter.wikidata.quickstatements import validate_reference_time  # noqa: PLC0415
+
+                try:
+                    validate_reference_time(snak.get("value"), precision, calendarmodel=snak.get("calendarmodel"))
+                except ValueError as exc:
+                    raise ClaimBuildError([f"{prefix}invalid reference time for {stmt.property_id}: {exc}"]) from exc
+                for key in ("before", "after", "timezone"):
+                    if key in snak and (type(snak[key]) is not int or (key != "timezone" and snak[key] < 0)):
+                        raise ClaimBuildError([f"{prefix}invalid reference time {key} for {stmt.property_id}."])
+                if "calendarmodel" in snak:
+                    calendar = snak["calendarmodel"]
+                    if not isinstance(calendar, str) or re.fullmatch(r"https?://www\.wikidata\.org/entity/Q[1-9][0-9]*", calendar) is None:
+                        raise ClaimBuildError([f"{prefix}invalid reference calendar for {stmt.property_id}."])
+            value = snak.get("value")
+            if kind == "item" and isinstance(value, Mapping):
+                item_id = value.get("id")
+                if (set(value) - {"id", "numeric-id", "entity-type"}
+                        or not isinstance(item_id, str) or value.get("entity-type", "item") != "item"):
+                    raise ClaimBuildError([f"{prefix}unsupported reference item metadata for {stmt.property_id}."])
+                if "numeric-id" in value:
+                    match = re.fullmatch(r"Q([1-9][0-9]*)", item_id)
+                    if type(value["numeric-id"]) is not int or not match or int(match.group(1)) != value["numeric-id"]:
+                        raise ClaimBuildError([f"{prefix}invalid reference item metadata for {stmt.property_id}."])
+    try:
+        validate_statement_references(stmt)
+    except (ValueError, TypeError, AttributeError, KeyError) as exc:
+        raise ClaimBuildError([f"{prefix}invalid reference views for {stmt.property_id}: {exc}"]) from exc
+
+
+def _validate_qualifiers(
+    stmt: WikidataStatement, *, is_test: bool, owner_only: bool = False, allow_local: bool = False,
+) -> None:
+    from converter.wikidata.quickstatements import validate_reference_time  # noqa: PLC0415
+
+    prefix = "OWNER_ONLY_METADATA: " if owner_only else ""
+    if not isinstance(stmt.qualifiers, list):
+        raise ClaimBuildError([f"{prefix}invalid qualifier list for {stmt.property_id}."])
+    allowed = {
+        "property", "property_id", "value", "type", "value_type", "datatype", "snaktype",
+        "property_label", "value_label", "label", "language", "precision", "calendarmodel",
+        "before", "after", "timezone", "value_namespace", "value_local_id",
+    }
+    supported = {"item", "wikibase-item", "wikibase-entityid", "string", "external-id", "externalid",
+                 "url", "time", "monolingualtext"}
+    for qual in stmt.qualifiers:
+        if not isinstance(qual, dict) or set(qual) - allowed:
+            raise ClaimBuildError([f"{prefix}unsupported qualifier metadata for {stmt.property_id}."])
+        prop = qual.get("property") or qual.get("property_id")
+        types = [qual[key] for key in ("type", "value_type", "datatype") if key in qual]
+        if (not isinstance(prop, str) or re.fullmatch(r"P[1-9][0-9]*", prop) is None
+                or any(not isinstance(qual[key], str) or re.fullmatch(r"P[1-9][0-9]*", qual[key]) is None
+                       for key in ("property", "property_id") if key in qual)
+                or ("property" in qual and "property_id" in qual and qual["property"] != qual["property_id"])
+                or any(not isinstance(value, str) or value.strip().lower() not in supported for value in types)
+                or len({_normalize_wbi_value_type(value) for value in types}) > 1
+                or qual.get("snaktype", "value") != "value"):
+            raise ClaimBuildError([f"{prefix}invalid qualifier metadata for {stmt.property_id}."])
+        kind = _normalize_wbi_value_type(types[0]) if types else "string"
+        value = qual.get("value")
+        if kind == "item" and isinstance(value, Mapping):
+            item_id = value.get("id")
+            if (set(value) - {"id", "numeric-id", "entity-type"}
+                    or not isinstance(item_id, str) or value.get("entity-type", "item") != "item"):
+                raise ClaimBuildError([f"{prefix}invalid qualifier item metadata for {stmt.property_id}."])
+            if "numeric-id" in value:
+                match = re.fullmatch(r"Q([1-9][0-9]*)", item_id)
+                if type(value["numeric-id"]) is not int or not match or int(match.group(1)) != value["numeric-id"]:
+                    raise ClaimBuildError([f"{prefix}invalid qualifier item metadata for {stmt.property_id}."])
+        else:
+            item_id = value
+        if not isinstance(item_id, str) or not item_id.strip() or "\n" in item_id or "\r" in item_id:
+            raise ClaimBuildError([f"{prefix}invalid qualifier value for {stmt.property_id}."])
+        if kind == "item" and not (
+            re.fullmatch(r"Q[1-9][0-9]*", item_id)
+            or re.fullmatch(r"https?://www\.wikidata\.org/entity/Q[1-9][0-9]*", item_id)
+            or (allow_local and re.fullmatch(r"__LOCAL:[^\s]+", item_id))
+        ):
+            raise ClaimBuildError([f"{prefix}invalid qualifier item for {stmt.property_id}."])
+        namespace = qual.get("value_namespace")
+        if "value_namespace" in qual or "value_local_id" in qual:
+            if (kind != "item" or namespace not in ("wikidata", "local", "mapped-test")
+                    or (namespace != "local" and "value_local_id" in qual)
+                    or (namespace == "local" and (not isinstance(qual.get("value_local_id"), str)
+                                                   or not qual["value_local_id"].strip()))
+                    or (namespace == "mapped-test" and not is_test)):
+                raise ClaimBuildError([f"{prefix}invalid qualifier namespace for {stmt.property_id}."])
+        if kind == "monolingualtext":
+            language = qual.get("language")
+            if not isinstance(language, str) or re.fullmatch(r"[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*", language) is None:
+                raise ClaimBuildError([f"{prefix}invalid qualifier language for {stmt.property_id}."])
+        elif "language" in qual:
+            raise ClaimBuildError([f"{prefix}unsupported qualifier language for {stmt.property_id}."])
+        time_keys = {"precision", "calendarmodel", "before", "after", "timezone"}
+        if kind != "time" and time_keys.intersection(qual):
+            raise ClaimBuildError([f"{prefix}unsupported qualifier time metadata for {stmt.property_id}."])
+        if kind == "time":
+            try:
+                validate_reference_time(item_id, qual.get("precision", 11), calendarmodel=qual.get("calendarmodel"))
+            except ValueError as exc:
+                raise ClaimBuildError([f"{prefix}invalid qualifier time for {stmt.property_id}: {exc}"]) from exc
+            for key in ("before", "after", "timezone"):
+                if key in qual and (type(qual[key]) is not int or (key != "timezone" and qual[key] < 0)):
+                    raise ClaimBuildError([f"{prefix}invalid qualifier time {key} for {stmt.property_id}."])
+            if "calendarmodel" in qual and (is_test or not isinstance(qual["calendarmodel"], str)):
+                raise ClaimBuildError([f"{prefix}unsupported qualifier calendar for {stmt.property_id}."])
+        if kind == "url" and re.fullmatch(r"[a-z][a-z0-9+.-]*:[^][<>\"\x00-\x20\x7f]+", item_id) is None:
+            raise ClaimBuildError([f"{prefix}invalid qualifier URL for {stmt.property_id}."])
+
+
+def _validate_quantity_unit(unit: object, *, is_test: bool, owner_only: bool = False) -> None:
+    from converter.wikidata.test_wiki_compat import _test_unit_qid  # noqa: PLC0415
+
+    if not owner_only and is_test and isinstance(unit, str) and _test_unit_qid(unit):
+        return
+    if (not owner_only and isinstance(unit, str)
+            and re.fullmatch(r"https://www\.wikidata\.org/entity/Q[1-9][0-9]*", unit)):
+        return
+    try:
+        owner_only_quantity_unit_uri(unit)
+    except ClaimBuildError as exc:
+        if owner_only:
+            raise
+        raise ClaimBuildError(["Invalid quantity unit."]) from exc
+
+
+def _validate_native_statement(
+    stmt: WikidataStatement, *, is_test: bool, owner_only: bool = False, allow_local: bool = False,
+) -> None:
+    _validate_reference_views(stmt, owner_only=owner_only)
+    _validate_qualifiers(stmt, is_test=is_test, owner_only=owner_only, allow_local=allow_local)
+    if _normalize_wbi_value_type(stmt.value_type) == "quantity":
+        _validate_quantity_unit(stmt.unit, is_test=is_test, owner_only=owner_only)
+
+
 def sort_items_for_upload(items: list[Any]) -> list[Any]:
     """Works then persons then manuscripts so ``__LOCAL:`` can resolve (W-191)."""
     return sorted(
@@ -164,9 +410,19 @@ def sort_items_for_upload(items: list[Any]) -> list[Any]:
     )
 
 
+def _statement_reference_snaks(stmt: WikidataStatement) -> Iterable[object]:
+    yield from stmt.references or []
+    if isinstance(stmt.reference_blocks, list):
+        for block in stmt.reference_blocks:
+            if isinstance(block, list):
+                yield from block
+
+
 def resolve_local_statement_refs(
     item: WikidataItem,
     created_qids: dict[str, str],
+    *,
+    test_namespace: bool = False,
 ) -> list[str]:
     """Rewrite ``__LOCAL:`` snaks from previously written QIDs. Return leftovers."""
     remaining: list[str] = []
@@ -176,16 +432,68 @@ def resolve_local_statement_refs(
             ref = value[len("__LOCAL:"):]
             qid = created_qids.get(ref)
             if qid:
-                return qid
+                return LocalTargetQid(qid, ref)
             remaining.append(value)
         return value
 
     for stmt in item.statements or []:
         stmt.value = resolve_value(stmt.value)
-        for snak in list(stmt.qualifiers or []) + list(stmt.references or []):
+        if test_namespace and isinstance(stmt.value, LocalTargetQid):
+            stmt.value = {"id": str(stmt.value), "value_namespace": "local", "value_local_id": stmt.value.local_id}
+        for snak in [*(stmt.qualifiers or []), *_statement_reference_snaks(stmt)]:
             if isinstance(snak, dict) and "value" in snak:
                 snak["value"] = resolve_value(snak["value"])
+                if isinstance(snak["value"], LocalTargetQid):
+                    snak["value_namespace"] = "local"
+                    snak["value_local_id"] = snak["value"].local_id
     return remaining
+
+
+def owner_only_has_local_references(item: WikidataItem) -> bool:
+    def contains(value: object) -> bool:
+        if isinstance(value, LocalTargetQid):
+            return True
+        if isinstance(value, str):
+            return value.startswith("__LOCAL:")
+        if isinstance(value, dict):
+            if value.get("value_namespace") == "local":
+                return True
+            return any(contains(v) for v in value.values())
+        if isinstance(value, (list, tuple)):
+            return any(contains(v) for v in value)
+        return False
+
+    return any(
+        contains(stmt.value) or contains(stmt.qualifiers) or contains(stmt.references)
+        or contains(stmt.reference_blocks)
+        for stmt in item.statements or []
+    )
+
+
+def owner_only_has_generic_text(item: WikidataItem) -> bool:
+    return any(
+        getattr(stmt, "property_id", None) == "P1574" and getattr(stmt, "value", None) == "Q234460"
+        for stmt in getattr(item, "statements", []) or []
+    )
+
+
+def owner_only_control_number(item: WikidataItem) -> str | None:
+    local_id = getattr(item, "local_id", None)
+    if not isinstance(local_id, str) or str(getattr(item, "entity_type", "")).lower() != "manuscript":
+        return None
+    match = re.fullmatch(r"(?:QDraft_MS_|marc:)([0-9]{5,})", local_id)
+    records = getattr(item, "records", None)
+    if (match is None or not isinstance(records, list) or len(records) != 1
+            or not isinstance(records[0], str)
+            or records[0].strip().strip("\"'").strip() != match.group(1)):
+        return None
+    statements = [s for s in (getattr(item, "statements", None) or [])
+                  if getattr(s, "property_id", None) == "P3959"]
+    if (len(statements) != 1 or getattr(statements[0], "value_type", None) != "external-id"
+            or getattr(statements[0], "value", None) != match.group(1)
+            or getattr(statements[0], "rank", None) not in ("normal", "preferred")):
+        return None
+    return match.group(1)
 
 
 def _is_unresolved_local_value(value: Any, created_qids: dict[str, str]) -> bool:
@@ -201,7 +509,7 @@ def statement_has_unresolved_local(
 ) -> bool:
     if _is_unresolved_local_value(stmt.value, created_qids):
         return True
-    for snak in list(stmt.qualifiers or []) + list(stmt.references or []):
+    for snak in [*(stmt.qualifiers or []), *_statement_reference_snaks(stmt)]:
         if isinstance(snak, dict) and _is_unresolved_local_value(
             snak.get("value"), created_qids,
         ):
@@ -212,15 +520,16 @@ def statement_has_unresolved_local(
 def clone_statement(stmt: WikidataStatement) -> WikidataStatement:
     return replace(
         stmt,
-        qualifiers=copy.deepcopy(list(stmt.qualifiers or [])),
-        references=copy.deepcopy(list(stmt.references or [])),
+        qualifiers=copy.deepcopy(stmt.qualifiers),
+        references=copy.deepcopy(stmt.references),
+        reference_blocks=copy.deepcopy(stmt.reference_blocks),
     )
 
 
 def first_local_target(stmt: WikidataStatement) -> str:
     if isinstance(stmt.value, str) and stmt.value.startswith("__LOCAL:"):
         return stmt.value[len("__LOCAL:"):]
-    for snak in list(stmt.qualifiers or []) + list(stmt.references or []):
+    for snak in [*(stmt.qualifiers or []), *_statement_reference_snaks(stmt)]:
         if not isinstance(snak, dict):
             continue
         value = snak.get("value")
@@ -251,10 +560,12 @@ def partition_unresolved_local(
 def resolve_statement_locals(
     stmt: WikidataStatement,
     created_qids: dict[str, str],
+    *,
+    test_namespace: bool = False,
 ) -> tuple[WikidataStatement, list[str]]:
     """Rewrite one statement's ``__LOCAL:`` snaks. Return leftovers."""
     probe = WikidataItem(local_id="probe", statements=[clone_statement(stmt)])
-    leftover = resolve_local_statement_refs(probe, created_qids)
+    leftover = resolve_local_statement_refs(probe, created_qids, test_namespace=test_namespace)
     return probe.statements[0], leftover
 
 
@@ -337,6 +648,7 @@ class WikidataUploader:
         self._mark_as_bot = bool(mark_as_bot)
         self._wbi = None
         self._login = None
+        self._owner_only_session = None
         self._last_edit_time: float = 0.0
         self._rate_limit_state: dict[str, Any] = {
             "last": 0.0,
@@ -348,17 +660,109 @@ class WikidataUploader:
         self._q3959_cache: dict[str, frozenset[str]] = {}  # qid → remote P3959 values
         self._bot_exclusion_cache: dict[str, bool] = {}
         self._prefetched_entities: dict[str, dict[str, object]] = {}
+        self._existing_label_snapshot: dict[str, dict[str, str]] = {}
         self._test_property_datatypes: dict[str, str | None] = {}
         self._test_entity_exists: dict[str, bool] = {}
         self._test_pid_map: dict[str, str] = {}
         self._test_qid_map: dict[str, str] = {}
+        self._verified_test_targets: dict[str, str] = {}
         self._test_stubs_we_created: set[str] = set()
         self._test_fresh_creates: set[str] = set()
         self._test_item_descriptions: dict[str, str] = {}
         self._live_qid_labels: dict[str, str] = {}
-        self._foreign_accept_qids: set[str] = set()
+        self._foreign_accept_local = threading.local()
         self._test_can_create_properties: bool | None = None
         self._enforce_moratorium()
+
+    @property
+    def _foreign_accept_qids(self) -> set[str]:
+        accepts = getattr(self._foreign_accept_local, "qids", None)
+        if accepts is None:
+            accepts = set()
+            self._foreign_accept_local.qids = accepts
+        return accepts
+
+    def register_test_ledger_target(self, item: WikidataItem, ledger: Mapping[str, str]) -> str:
+        """Bind a local ID to its exact test-ledger entry, never its live QID."""
+        if not self._is_test or not isinstance(item.local_id, str) or not item.local_id:
+            raise ValueError("A test-wiki item with a local ID is required")
+        from app.pipeline.wikidata_qid_ledger import ledger_key_for_item  # noqa: PLC0415
+
+        key = ledger_key_for_item(item, "wikidata-test")
+        qid = ledger.get(key)
+        if not isinstance(qid, str) or re.fullmatch(r"Q[1-9][0-9]*", qid) is None:
+            raise ValueError("The exact test-ledger mapping is missing or invalid")
+        return self.register_test_local_target(item.local_id, qid)
+
+    def register_test_local_target(self, local_id: str, qid: str) -> str:
+        """Bind a local ID to one sealed test-ledger QID; conflicting proof is refused."""
+        if not self._is_test or not local_id:
+            raise ValueError("A test-wiki local ID is required")
+        if re.fullmatch(r"Q[1-9][0-9]*", qid) is None:
+            raise ValueError("The sealed test-ledger QID is invalid")
+        previous = self._verified_test_targets.get(local_id)
+        if previous is not None and previous != qid:
+            raise ValueError("Conflicting test-target proof")
+        self._verified_test_targets[local_id] = qid
+        return qid
+
+    def _test_local_target_issues(self, item: WikidataItem, *, require_mapped: bool = False) -> list[str]:
+        from converter.wikidata.test_wiki_compat import explicit_live_item_qid, item_target_qid  # noqa: PLC0415
+
+        issues: list[str] = []
+        for stmt in item.statements or []:
+            if _normalize_wbi_value_type(stmt.value_type) == "item":
+                value = stmt.value
+                known_live = bool(explicit_live_item_qid(value)) or (
+                    isinstance(value, Mapping) and set(value) == {"id", "value_namespace"}
+                    and value.get("value_namespace") == "wikidata"
+                    and isinstance(value.get("id"), str)
+                    and re.fullmatch(r"Q[1-9][0-9]*", value["id"]) is not None
+                )
+                if require_mapped:
+                    known_live = False
+                known_mapped = (isinstance(value, MappedTestQid) and str(value) in self._test_qid_map.values()
+                                and self._test_entity_exists.get(str(value)) is True)
+                known_local = (isinstance(value, LocalTargetQid)
+                               or (isinstance(value, Mapping) and value.get("value_namespace") == "local"))
+                if not known_live and not known_mapped and not known_local:
+                    issues.append(f"{stmt.property_id} item has an ambiguous wiki namespace")
+            if (isinstance(stmt.value, LocalTargetQid)
+                    or (isinstance(stmt.value, Mapping) and stmt.value.get("value_namespace") == "local")):
+                local_id = (stmt.value.local_id if isinstance(stmt.value, LocalTargetQid)
+                            else stmt.value.get("value_local_id"))
+                if (not isinstance(local_id, str) or not item_target_qid(stmt.value)
+                        or (isinstance(stmt.value, Mapping) and set(stmt.value) != {"id", "value_namespace", "value_local_id"})
+                        or self._verified_test_targets.get(local_id) != item_target_qid(stmt.value)):
+                    issues.append(f"{stmt.property_id} local target lacks test-ledger proof")
+            for snak in [*(stmt.qualifiers or []), *_statement_reference_snaks(stmt)]:
+                if not isinstance(snak, dict):
+                    continue
+                value = snak.get("value")
+                if snak.get("value_namespace") == "local" or isinstance(value, LocalTargetQid):
+                    local_id = snak.get("value_local_id")
+                    if (not isinstance(local_id, str) or not item_target_qid(value)
+                            or (isinstance(value, LocalTargetQid) and value.local_id != local_id)
+                            or self._verified_test_targets.get(local_id) != item_target_qid(value)):
+                        issues.append(f"{stmt.property_id} local target lacks test-ledger proof")
+            for snak in stmt.qualifiers or []:
+                if (not isinstance(snak, dict) or _normalize_wbi_value_type(
+                    snak.get("value_type") or snak.get("type") or snak.get("datatype") or "string",
+                ) != "item"):
+                    continue
+                value = snak.get("value")
+                namespace = snak.get("value_namespace")
+                known_live = bool(explicit_live_item_qid(value)) or (
+                    namespace == "wikidata" and isinstance(value, str)
+                    and re.fullmatch(r"Q[1-9][0-9]*", value) is not None
+                )
+                if require_mapped:
+                    known_live = False
+                known_mapped = (isinstance(value, MappedTestQid) and str(value) in self._test_qid_map.values()
+                                and self._test_entity_exists.get(str(value)) is True)
+                if not known_live and not known_mapped and namespace != "local" and not isinstance(value, LocalTargetQid):
+                    issues.append(f"{stmt.property_id} qualifier has an ambiguous wiki namespace")
+        return issues
 
     @staticmethod
     def _enforce_moratorium() -> None:
@@ -453,7 +857,7 @@ class WikidataUploader:
         #    consumer-secret exchange needed — we wrap a requests.Session
         #    with the Authorization: Bearer header and hand it straight
         #    to wbi_login._Login.)
-        api_url = wbi_config["MEDIAWIKI_API_URL"]
+        api_url = _TEST_API if self._is_test else _WIKIDATA_API
         user_agent = "MHMPipeline/1.0 (shvedbook@gmail.com)"
 
         # JWT bearer detection: 3 dot-separated base64url parts, starts
@@ -487,6 +891,8 @@ class WikidataUploader:
                     consumer_token=parts[0].strip(),
                     consumer_secret=parts[1].strip(),
                     mediawiki_api_url=api_url,
+                    mediawiki_rest_url=("https://test.wikidata.org/w/rest.php" if self._is_test
+                                        else "https://www.wikidata.org/w/rest.php"),
                     user_agent=user_agent,
                 )
             elif len(parts) >= 4:
@@ -497,6 +903,8 @@ class WikidataUploader:
                     access_token=parts[2].strip(),
                     access_secret=parts[3].strip(),
                     mediawiki_api_url=api_url,
+                    mediawiki_index_url=("https://test.wikidata.org/w/index.php" if self._is_test
+                                         else "https://www.wikidata.org/w/index.php"),
                     user_agent=user_agent,
                 )
             else:
@@ -544,6 +952,58 @@ class WikidataUploader:
         self._init_wbi()
         self.assert_write_capability()
 
+    def ensure_owner_only_authenticated(self) -> None:
+        if self._is_test:
+            raise RuntimeError("Owner-only authentication requires live Wikidata")
+        if self._wbi is None:
+            import requests  # noqa: PLC0415
+            from wikibaseintegrator import WikibaseIntegrator, wbi_login  # noqa: PLC0415
+
+            class PinnedSession(requests.Session):
+                def request(self, method: str, url: str, **kwargs: Any) -> Any:
+                    if url != _WIKIDATA_API:
+                        raise RuntimeError("Owner-only session refused a non-Wikidata URL")
+                    kwargs["allow_redirects"] = False
+                    kwargs.setdefault("timeout", 15)
+                    return super().request(method, url, **kwargs)
+
+            session = PinnedSession()
+            session.headers.update({"User-Agent": "MHMPipeline/1.0 (shvedbook@gmail.com)"})
+            if ":" in self._token and "@" in self._token.split(":", 1)[0]:
+                user, password = self._token.split(":", 1)
+                response = session.post(_WIKIDATA_API, data={
+                    "action": "query", "meta": "tokens", "type": "login", "format": "json",
+                })
+                if response.status_code != 200:
+                    raise RuntimeError("Owner-only login token request failed")
+                login_token = response.json()["query"]["tokens"]["logintoken"]
+                response = session.post(_WIKIDATA_API, data={
+                    "action": "login", "lgname": user.strip(), "lgpassword": password.strip(),
+                    "lgtoken": login_token, "format": "json",
+                })
+                if response.status_code != 200 or response.json().get("login", {}).get("result") != "Success":
+                    raise RuntimeError("Owner-only Wikidata login failed")
+            elif (":" not in self._token and "|" not in self._token
+                  and self._token.count(".") == 2 and self._token.startswith("eyJ")):
+                session.headers["Authorization"] = f"Bearer {self._token}"
+            else:
+                raise RuntimeError("Owner-only mode supports live bot passwords or JWT credentials only")
+            login = wbi_login._Login(session=session, mediawiki_api_url=_WIKIDATA_API,
+                                     user_agent="MHMPipeline/1.0 (shvedbook@gmail.com)")
+            self._login = login
+            self._wbi = WikibaseIntegrator(login=login)
+            self._owner_only_session = session
+        if (self._login is None or self._login.mediawiki_api_url != _WIKIDATA_API
+                or self._owner_only_session is None
+                or self._login.get_session() is not self._owner_only_session):
+            raise RuntimeError("Owner-only session is not pinned to Wikidata")
+        info = self._query_userinfo_rights()
+        if (not isinstance(info, dict) or "anon" in info
+                or not isinstance(info.get("name"), str)
+                or not info["name"] or info["name"] == "127.0.0.1"):
+            raise RuntimeError("Owner-only Wikidata authentication could not be verified")
+        self._authenticated_user = info["name"]
+
     def assert_write_capability(self) -> None:
         """Abort early when the session cannot create Wikidata items.
 
@@ -555,7 +1015,7 @@ class WikidataUploader:
             logger.warning("Could not verify write rights via userinfo; continuing")
             return
         name = str(info.get("name") or "")
-        if info.get("anon") or not name or name == "127.0.0.1":
+        if "anon" in info or not name or name == "127.0.0.1":
             wiki = "test.wikidata.org" if self._is_test else "www.wikidata.org"
             raise RuntimeError(
                 f"Wikidata session is anonymous on {wiki}. "
@@ -596,7 +1056,10 @@ class WikidataUploader:
                     "format": "json",
                 },
                 timeout=15,
+                allow_redirects=False,
             )
+            if resp.status_code != 200:
+                return None
             resp.raise_for_status()
             return resp.json().get("query", {}).get("userinfo")
         except Exception as exc:  # noqa: BLE001
@@ -720,6 +1183,7 @@ class WikidataUploader:
         item: WikidataItem,
         *,
         read_only: bool = False,
+        owner_only: bool = False,
     ) -> tuple[object, int, list[str]]:
         """Convert a WikidataItem to a WikibaseIntegrator item object.
 
@@ -729,6 +1193,15 @@ class WikidataUploader:
         Returns:
             Tuple of (wbi_item, new_claims_count, added_properties).
         """
+
+        if (self._is_test and not read_only and item.existing_qid
+                and self._verified_test_targets.get(item.local_id) != item.existing_qid):
+            raise ClaimBuildError(["Test UPDATE target lacks exact test-ledger proof."])
+        if owner_only:
+            if not item.existing_qid:
+                raise ClaimBuildError(["OWNER_ONLY_TARGET: an existing QID is required."])
+            if owner_only_has_local_references(item) or owner_only_has_generic_text(item):
+                raise ClaimBuildError(["OWNER_ONLY_INCOMPLETE_SOURCE: unresolved or generic text evidence."])
 
         wbi = self._init_wbi()
 
@@ -744,7 +1217,7 @@ class WikidataUploader:
             )
 
         if item.existing_qid:
-            prefetched = self._prefetched_entities.pop(str(item.existing_qid), None)
+            prefetched = None if owner_only else self._prefetched_entities.pop(str(item.existing_qid), None)
             if (
                 isinstance(prefetched, dict)
                 and "missing" not in prefetched
@@ -753,17 +1226,35 @@ class WikidataUploader:
                 wbi_item = wbi.item.new().from_json(prefetched)
             else:
                 try:
+                    options = {"mediawiki_api_url": _WIKIDATA_API, "allow_redirects": False} if owner_only else {}
                     wbi_item = wbi.item.get(
                         item.existing_qid,
                         maxlag=20,
                         retry_after=5,
                         max_retries=4,
                         timeout=30,
+                        **options,
                     )
                 except TypeError:
+                    if owner_only:
+                        raise
                     wbi_item = wbi.item.get(item.existing_qid)
         else:
             wbi_item = wbi.item.new()
+
+        actual_qid = getattr(wbi_item, "id", None)
+        if actual_qid != (item.existing_qid or None):
+            raise ClaimBuildError(["TARGET: the loaded entity does not match the requested QID."])
+
+        if item.existing_qid:
+            self._existing_label_snapshot.setdefault(
+                str(item.existing_qid),
+                {
+                    lang: str(value.get("value") or "")
+                    for lang, value in wbi_item.labels.get_json().items()
+                    if isinstance(value, dict) and value.get("value")
+                },
+            )
 
         if item.existing_qid and item.entity_type == "work" and not self._is_test:
             from converter.wikidata.work_identity import (  # noqa: PLC0415
@@ -788,7 +1279,7 @@ class WikidataUploader:
                 ])
 
         # Labels — never overwrite an existing label on an item we did not create.
-        # On items we created/own (or project-owned manuscripts matched via P3959),
+        # On items we created/own,
         # allow updating labels and descriptions when our projection improves them
         # (e.g. replacing a microfilm-based F-number label with the MARC 942
         # shelfmark designation).
@@ -797,6 +1288,34 @@ class WikidataUploader:
             and self._is_our_item_cache.get(str(item.existing_qid)) is True
             and str(item.existing_qid) not in self._foreign_accept_qids
         )
+        if owner_only:
+            for lang, aliases in item.aliases.items():
+                if (not isinstance(lang, str) or not lang.strip() or lang != lang.strip()
+                        or not isinstance(aliases, list)
+                        or any(not isinstance(alias, str) or not alias.strip() for alias in aliases)):
+                    raise ClaimBuildError(["OWNER_ONLY_METADATA: invalid alias data."])
+            for lang in set(item.labels) | set(item.descriptions):
+                if not isinstance(lang, str) or not lang.strip() or lang != lang.strip():
+                    raise ClaimBuildError(["OWNER_ONLY_METADATA: invalid language key."])
+                try:
+                    old_label = wbi_item.labels.get(lang)
+                    old_desc = wbi_item.descriptions.get(lang)
+                    old_label = old_label.value if old_label is not None else None
+                    old_desc = old_desc.value if old_desc is not None else None
+                except Exception as exc:
+                    raise ClaimBuildError([f"OWNER_ONLY_METADATA: cannot read {lang} metadata."]) from exc
+                if any(value is not None and not isinstance(value, str) for value in (old_label, old_desc)):
+                    raise ClaimBuildError([f"OWNER_ONLY_METADATA: malformed existing {lang} metadata."])
+                new_label = item.labels.get(lang) if lang in item.labels else old_label
+                new_desc = item.descriptions.get(lang) if lang in item.descriptions else old_desc
+                if (
+                    (lang in item.labels and (not isinstance(new_label, str) or not new_label.strip()))
+                    or (lang in item.descriptions and (not isinstance(new_desc, str) or not new_desc.strip()))
+                    or (old_label and lang in item.labels and new_label != old_label)
+                    or (old_desc and lang in item.descriptions and new_desc != old_desc)
+                    or (new_label and new_desc and new_label == new_desc)
+                ):
+                    raise ClaimBuildError([f"OWNER_ONLY_METADATA: conflicting {lang} label or description."])
         metadata_updated = False
         for lang, label in item.labels.items():
             try:
@@ -804,7 +1323,9 @@ class WikidataUploader:
                 current_val = (
                     current.value if current and getattr(current, "value", None) else ""
                 )
-            except Exception:
+            except Exception as exc:
+                if owner_only:
+                    raise ClaimBuildError([f"OWNER_ONLY_METADATA: cannot read {lang} label."]) from exc
                 current_val = ""
             if item.existing_qid and not is_owned_by_us and current_val:
                 continue
@@ -823,11 +1344,11 @@ class WikidataUploader:
                 # that only repeats the label carries no information; drop
                 # it instead of refusing the item (2026-10-14: 234 release
                 # items failed with 'Label and description ... same value').
-                if item.existing_qid and is_owned_by_us:
+                if item.existing_qid and is_owned_by_us and not owner_only:
                     try:
                         current = wbi_item.descriptions.get(lang)
                         if current and getattr(current, "value", None):
-                            wbi_item.descriptions.set(lang, "")
+                            wbi_item.descriptions.set(lang, None)
                             metadata_updated = True
                     except Exception:
                         pass
@@ -837,7 +1358,9 @@ class WikidataUploader:
                 current_val = (
                     current.value if current and getattr(current, "value", None) else ""
                 )
-            except Exception:
+            except Exception as exc:
+                if owner_only:
+                    raise ClaimBuildError([f"OWNER_ONLY_METADATA: cannot read {lang} description."]) from exc
                 current_val = ""
             if item.existing_qid and not is_owned_by_us and current_val:
                 continue
@@ -846,21 +1369,32 @@ class WikidataUploader:
                 if item.existing_qid:
                     metadata_updated = True
 
-        if item.existing_qid and is_owned_by_us:
+        if item.existing_qid and is_owned_by_us and not owner_only:
             for lang, label in item.labels.items():
                 if not label:
                     continue
                 try:
                     current_desc = wbi_item.descriptions.get(lang)
                     if current_desc and getattr(current_desc, "value", None) == label:
-                        wbi_item.descriptions.set(lang, "")
+                        wbi_item.descriptions.set(lang, None)
                         metadata_updated = True
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(
+                        "Could not check the existing %s description on %s: %s",
+                        lang, item.existing_qid, exc,
+                    )
 
         # Aliases
+        alias_updated = False
         for lang, alias_list in item.aliases.items():
             for alias in alias_list:
+                if owner_only:
+                    try:
+                        current_aliases = wbi_item.aliases.get(lang) or []
+                        if not any(getattr(current, "value", None) == alias for current in current_aliases):
+                            alias_updated = True
+                    except Exception as exc:
+                        raise ClaimBuildError([f"OWNER_ONLY_METADATA: cannot read {lang} aliases."]) from exc
                 wbi_item.aliases.set(lang, alias)
 
         # Statements — use WBI's built-in dedup for existing items
@@ -872,6 +1406,9 @@ class WikidataUploader:
         failures: list[str] = []
         built_by_pid: dict[str, list[object]] = {}
         for stmt in item.statements:
+            if getattr(stmt, "rank", None) not in ("normal", "preferred", "deprecated"):
+                prefix = "OWNER_ONLY_METADATA: " if owner_only else ""
+                raise ClaimBuildError([f"{prefix}invalid rank for {stmt.property_id}."])
             # SAFETY: never add an identity-property value that conflicts with
             # an existing one on a pre-existing item.
             if (
@@ -885,7 +1422,7 @@ class WikidataUploader:
                     f"{item.existing_qid}"
                 )
                 continue
-            claim = self._build_claim(stmt)
+            claim = self._build_claim(stmt, owner_only=True) if owner_only else self._build_claim(stmt)
             if claim is None:
                 failures.append(
                     f"{stmt.property_id}={stmt.value} build-failed "
@@ -898,75 +1435,133 @@ class WikidataUploader:
         if failures:
             raise ClaimBuildError(failures)
 
-        deferred_pids = set()
-        if item.existing_qid and is_owned_by_us and "P31" in built_by_pid:
-            for dpid in ("P1574", "P3342", "P11603", "P1891", "P11105", "P88", "P110", "P655"):
-                if dpid in built_by_pid:
-                    continue
+        existing_by_pid: dict[str, list[Claim]] = {}
+        if item.existing_qid:
+            for pid, claims_list in built_by_pid.items():
+                prefix = "OWNER_ONLY_METADATA: " if owner_only else ""
                 try:
-                    old_links = [
-                        c for c in (wbi_item.claims.get(dpid) or [])
-                        if not getattr(c, "removed", False)
+                    existing_list = [
+                        claim for claim in (wbi_item.claims.get(pid) or [])
+                        if not getattr(claim, "removed", False)
                     ]
-                except Exception:
-                    old_links = []
-                if old_links:
-                    for ol in old_links:
-                        ol.remove()
-                    added_properties.append(dpid)
-                    deferred_pids.add(dpid)
+                    existing_ids = [_claim_identity(claim) for claim in existing_list]
+                    proposed_ids = [_claim_identity(claim) for claim in claims_list]
+                except Exception as exc:
+                    raise ClaimBuildError([f"{prefix}invalid {pid} claim metadata."]) from exc
+                for identity in proposed_ids:
+                    if proposed_ids.count(identity) > 1 or existing_ids.count(identity) > 1:
+                        raise ClaimBuildError([f"{prefix}ambiguous matching {pid} claims."])
+                    if identity not in existing_ids and any(old[:2] == identity[:2] for old in existing_ids):
+                        raise ClaimBuildError([f"{prefix}conflicting {pid} rank."])
+                existing_by_pid[pid] = existing_list
 
         if not item.existing_qid:
             for pid, claims_list in built_by_pid.items():
                 wbi_item.claims.add(claims_list, action_if_exists=ActionIfExists.FORCE_APPEND)
                 added_properties.extend([pid] * len(claims_list))
-        elif is_owned_by_us and "P31" in built_by_pid:
+        elif owner_only:
             for pid, claims_list in built_by_pid.items():
                 try:
-                    existing_list = [
-                        c for c in (wbi_item.claims.get(pid) or [])
-                        if not getattr(c, "removed", False)
-                    ]
-                except Exception:
-                    existing_list = []
-                same_claims = (
-                    len(existing_list) == len(claims_list)
-                    and all(nc in existing_list for nc in claims_list)
-                )
-                needs_ref_fix = False
-                if same_claims:
-                    for nc in claims_list:
-                        for ec in existing_list:
-                            if nc == ec:
-                                ec_refs = getattr(ec, "references", None)
-                                nc_refs = getattr(nc, "references", None)
-                                existing_refs = list(ec_refs or [])
-                                replacement = References()
-                                seen_refs: set[str] = set()
-                                before = [_reference_identity(r.get_json()) for r in existing_refs]
-                                after: list[str] = []
-                                for reference in [*existing_refs, *list(nc_refs or [])]:
-                                    identity = _reference_identity(reference.get_json())
-                                    if identity in seen_refs:
-                                        continue
-                                    seen_refs.add(identity)
-                                    after.append(identity)
-                                    replacement.add(reference)
-                                if after != before:
-                                    ec.references = replacement
-                                    needs_ref_fix = True
-                                break
-                if not same_claims:
-                    wbi_item.claims.add(claims_list, action_if_exists=ActionIfExists.REPLACE_ALL)
+                    existing_list = existing_by_pid[pid]
+                    proposed_ids = [_claim_identity(claim) for claim in claims_list]
+                    incomplete = "P31" in built_by_pid and any(
+                        _claim_identity(old) not in proposed_ids for old in existing_list
+                    )
+                except Exception as exc:
+                    raise ClaimBuildError([f"OWNER_ONLY_METADATA: cannot compare existing {pid} claims."]) from exc
+                if incomplete:
+                    raise ClaimBuildError([
+                        f"OWNER_ONLY_INCOMPLETE_SOURCE: {pid} would remove an existing claim; "
+                        "the complete original source is not verified."
+                    ])
+                for claim in claims_list:
+                    try:
+                        snak = claim.mainsnak.get_json()
+                        claim_id = _claim_identity(claim)
+                        same_snak = [
+                            old for old in existing_list
+                            if _owner_snak_identity(old.mainsnak.get_json()) == claim_id[0]
+                        ]
+                        matches = [old for old in same_snak if _claim_identity(old) == claim_id]
+                        snak_conflict = any(
+                            old.mainsnak.get_json().get("snaktype") != snak.get("snaktype")
+                            and all(old.mainsnak.get_json().get(key) == snak.get(key)
+                                    for key in ("property", "datatype", "datavalue"))
+                            for old in existing_list
+                        )
+                    except Exception as exc:
+                        raise ClaimBuildError([f"OWNER_ONLY_METADATA: cannot compare {pid} metadata."]) from exc
+                    if snak_conflict:
+                        raise ClaimBuildError([f"OWNER_ONLY_METADATA: conflicting {pid} snak type."])
+                    if len(matches) > 1:
+                        raise ClaimBuildError([f"OWNER_ONLY_METADATA: ambiguous matching {pid} claims."])
+                    if matches:
+                        old = matches[0]
+                        try:
+                            seen = {_reference_identity(ref.get_json()) for ref in old.references}
+                            for ref in claim.references:
+                                identity = _reference_identity(ref.get_json())
+                                if identity not in seen:
+                                    old.references.add(ref)
+                                    seen.add(identity)
+                                    added_properties.append(pid)
+                        except Exception as exc:
+                            raise ClaimBuildError([f"OWNER_ONLY_METADATA: invalid {pid} references."]) from exc
+                        continue
+                    if same_snak:
+                        raise ClaimBuildError([f"OWNER_ONLY_METADATA: conflicting {pid} qualifiers."])
+                    wbi_item.claims.add(claim, action_if_exists=ActionIfExists.FORCE_APPEND)
+                    existing_list.append(claim)
                     added_properties.append(pid)
-                elif needs_ref_fix:
+        elif is_owned_by_us and "P31" in built_by_pid:
+            for pid, claims_list in built_by_pid.items():
+                existing_list = existing_by_pid[pid]
+                proposed_ids = [_claim_identity(claim) for claim in claims_list]
+                existing_ids = [_claim_identity(claim) for claim in existing_list]
+                changed = False
+                for nc in claims_list:
+                    for ec in existing_list:
+                        if _claim_identity(nc) == _claim_identity(ec):
+                            existing_refs = list(ec.references or [])
+                            replacement = References()
+                            seen_refs: set[str] = set()
+                            seen_existing: set[tuple[str, object]] = set()
+                            for reference in existing_refs:
+                                identity = _reference_identity(reference.get_json())
+                                key = (identity, reference.hash)
+                                if key in seen_existing:
+                                    continue
+                                seen_existing.add(key)
+                                seen_refs.add(identity)
+                                replacement.add(reference)
+                            for reference in nc.references or []:
+                                identity = _reference_identity(reference.get_json())
+                                if identity in seen_refs:
+                                    continue
+                                seen_refs.add(identity)
+                                replacement.add(reference)
+                            before = [(_reference_identity(ref.get_json()), ref.hash) for ref in existing_refs]
+                            after = [(_reference_identity(ref.get_json()), ref.hash) for ref in replacement]
+                            if after != before:
+                                ec.references = replacement
+                                changed = True
+                            break
+                for old, identity in zip(existing_list, existing_ids, strict=True):
+                    if identity not in proposed_ids and not any(new[0] == identity[0] for new in proposed_ids):
+                        old.remove()
+                        changed = True
+                for claim, identity in zip(claims_list, proposed_ids, strict=True):
+                    if identity not in existing_ids:
+                        wbi_item.claims.add(claim, action_if_exists=ActionIfExists.FORCE_APPEND)
+                        changed = True
+                if changed:
                     added_properties.append(pid)
 
-            for stale_pid in (
+            for stale_pid in (() if owner_only else (
                 "P9302", "P282", "P7153", "P1071", "P136", "P921",
                 "P1680", "P1684", "P528", "P5816",
-            ):
-                if stale_pid in built_by_pid or stale_pid in deferred_pids:
+            )):
+                if stale_pid in built_by_pid:
                     continue
                 try:
                     stale_claims = [
@@ -981,21 +1576,36 @@ class WikidataUploader:
                     added_properties.append(stale_pid)
         else:
             for pid, claims_list in built_by_pid.items():
-                if is_owned_by_us and pid in {"P1574", "P3342", "P11603", "P1891", "P11105", "P88", "P110", "P655", "P50", "P2093"}:
-                    for claim in claims_list:
-                        wbi_item.claims.add(claim, action_if_exists=ActionIfExists.APPEND_OR_REPLACE)
-                        added_properties.append(pid)
-                    continue
+                if is_owned_by_us and pid in _DEFERRED_LINK_PIDS:
+                    # Pass 2 of a deferred link: the replacement and the removal
+                    # of the superseded claim are one write, so a failed write keeps the old claim.
+                    proposed_ids = [_claim_identity(claim) for claim in claims_list]
+                    for old in existing_by_pid[pid]:
+                        old_identity = _claim_identity(old)
+                        if old_identity not in proposed_ids and not any(new[0] == old_identity[0] for new in proposed_ids):
+                            old.remove()
+                            added_properties.append(pid)
                 for claim in claims_list:
-                    count_before = len(wbi_item.claims)
-                    wbi_item.claims.add(
-                        claim, action_if_exists=ActionIfExists.MERGE_REFS_OR_APPEND,
+                    matching = next(
+                        (old for old in existing_by_pid[pid] if _claim_identity(old) == _claim_identity(claim)),
+                        None,
                     )
-                    if len(wbi_item.claims) > count_before:
+                    if matching is None:
+                        wbi_item.claims.add(claim, action_if_exists=ActionIfExists.FORCE_APPEND)
                         added_properties.append(pid)
+                        continue
+                    seen = {_reference_identity(ref.get_json()) for ref in matching.references}
+                    for ref in claim.references:
+                        identity = _reference_identity(ref.get_json())
+                        if identity not in seen:
+                            matching.references.add(ref)
+                            seen.add(identity)
+                            added_properties.append(pid)
 
         if metadata_updated and "labels" not in added_properties:
             added_properties.append("labels")
+        if owner_only and alias_updated:
+            added_properties.append("aliases")
 
         new_claims = len(added_properties) if item.existing_qid else built
         return wbi_item, new_claims, added_properties
@@ -1042,22 +1652,34 @@ class WikidataUploader:
         """Build a Wikibase quantity unit URI on the active wiki (Rule W-185)."""
         from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
             quantity_unit_to_live_qid,
+            _test_unit_qid,
         )
 
+        _validate_quantity_unit(unit, is_test=self._is_test)
         wiki_host = "test.wikidata.org" if self._is_test else "www.wikidata.org"
         raw = str(unit or "").strip()
         if not raw:
             return "1"
+        if self._is_test and _test_unit_qid(raw):
+            test_qid = _test_unit_qid(raw)
+            allowed = set(self._test_qid_map.values()) | set(self._test_stubs_we_created)
+            if test_qid in allowed and self._test_entity_exists.get(test_qid):
+                return f"http://{wiki_host}/entity/{test_qid}"
+            raise ValueError(f"Quantity unit {test_qid} lacks a verified test mapping (Rule W-186)")
         live_qid = quantity_unit_to_live_qid(raw)
         if not live_qid:
+            if raw != "1":
+                raise ValueError(f"Quantity unit {raw!r} has no verified mapping (Rule W-186)")
             return "1"
         if self._is_test:
-            mapped = self._test_qid_map.get(live_qid, live_qid)
+            if raw == live_qid and live_qid in self._test_qid_map.values():
+                raise ValueError(f"Quantity unit {live_qid} has an ambiguous wiki namespace (Rule W-186)")
+            mapped = self._test_qid_map.get(live_qid)
             allowed = set(self._test_qid_map.values()) | set(self._test_stubs_we_created)
             exists = {
                 qid for qid, ok in self._test_entity_exists.items() if ok
             }
-            if mapped in allowed or mapped in exists:
+            if mapped and mapped in allowed and mapped in exists:
                 return f"http://{wiki_host}/entity/{mapped}"
             raise ValueError(
                 f"Quantity unit {live_qid} is not remapped on test.wikidata.org "
@@ -1065,7 +1687,7 @@ class WikidataUploader:
             )
         return f"http://{wiki_host}/entity/{live_qid}"
 
-    def _build_claim(self, stmt: WikidataStatement) -> object | None:
+    def _build_claim(self, stmt: WikidataStatement, *, owner_only: bool = False) -> object | None:
         """Convert a WikidataStatement to a WikibaseIntegrator claim.
 
         Args:
@@ -1078,15 +1700,36 @@ class WikidataUploader:
         from wikibaseintegrator.models import Reference, References  # noqa: PLC0415
         from wikibaseintegrator.wbi_enums import WikibaseRank  # noqa: PLC0415
 
-        # Build references
+        # Each block is a separate source; legacy flat references form one block.
+        _validate_native_statement(stmt, is_test=self._is_test, owner_only=owner_only)
+        if self._is_test:
+            issues = self._test_local_target_issues(WikidataItem(statements=[stmt]), require_mapped=True)
+            if issues:
+                raise ClaimBuildError(issues)
+        for snak in _statement_reference_snaks(stmt):
+            if (self._is_test and isinstance(snak, dict)
+                    and _normalize_wbi_value_type(snak.get("value_type") or snak.get("type") or snak.get("datatype") or "string") == "item"
+                    and snak.get("value_namespace") not in ("local", "mapped-test")):
+                raise ClaimBuildError([f"Unmapped test reference for {stmt.property_id}."])
+            if isinstance(snak, dict) and snak.get("value_namespace") == "mapped-test":
+                from converter.wikidata.test_wiki_compat import item_target_qid  # noqa: PLC0415
+
+                qid = item_target_qid(snak.get("value"))
+                if (not self._is_test or qid not in self._test_qid_map.values()
+                        or not self._test_entity_exists.get(qid)):
+                    raise ClaimBuildError([f"Unverified mapped-test reference for {stmt.property_id}."])
         refs = References()
-        if stmt.references:
+        blocks = stmt.reference_blocks or ([stmt.references] if stmt.references else [])
+        for block in blocks:
+            if not isinstance(block, list) or not block:
+                raise ClaimBuildError([f"Invalid reference block for {stmt.property_id}."])
             ref = Reference()
             seen_snaks: set[str] = set()
-            for ref_snak in stmt.references:
-                ref_claim = self._build_reference_snak(ref_snak)
+            for ref_snak in block:
+                ref_claim = self._build_reference_snak(ref_snak, owner_only=owner_only, reference=True)
                 if ref_claim is None:
-                    continue
+                    prefix = "OWNER_ONLY_METADATA: " if owner_only else ""
+                    raise ClaimBuildError([f"{prefix}invalid reference for {stmt.property_id}."])
                 snak = ref_claim.get_json()["mainsnak"]
                 identity = _reference_identity({"snaks": {snak["property"]: [snak]}})
                 if identity in seen_snaks:
@@ -1104,9 +1747,12 @@ class WikidataUploader:
 
         qualifiers = Qualifiers()
         for qual in stmt.qualifiers or []:
-            qual_claim = self._build_reference_snak(qual)
+            qual_claim = self._build_reference_snak(qual, owner_only=True) if owner_only else self._build_reference_snak(qual)
             if qual_claim:
                 qualifiers.add(qual_claim)
+            else:
+                prefix = "OWNER_ONLY_METADATA: " if owner_only else ""
+                raise ClaimBuildError([f"{prefix}invalid qualifier for {stmt.property_id}."])
 
         # Rule 42: resolve rank for the claim. WikibaseIntegrator's
         # WikibaseRank enum is the canonical surface; we fail closed by
@@ -1168,9 +1814,14 @@ class WikidataUploader:
                     references=refs,
                     qualifiers=qualifiers,
                     rank=rank_enum,
+                    **({"calendarmodel": "http://www.wikidata.org/entity/Q1985727"}
+                       if self._owner_only_session is not None else {}),
                 )
             if vtype == "quantity":
-                unit_val = self._quantity_unit_uri(stmt.unit)
+                try:
+                    unit_val = owner_only_quantity_unit_uri(stmt.unit) if owner_only else self._quantity_unit_uri(stmt.unit)
+                except ValueError as exc:
+                    raise ClaimBuildError([f"Invalid quantity unit for {stmt.property_id}: {exc}"]) from exc
                 return datatypes.Quantity(
                     prop_nr=stmt.property_id,
                     amount=value,
@@ -1199,6 +1850,8 @@ class WikidataUploader:
                     qualifiers=qualifiers,
                     rank=rank_enum,
                 )
+        except ClaimBuildError:
+            raise
         except Exception as exc:
             logger.warning(
                 "Failed to build claim for %s=%s: %s",
@@ -1216,27 +1869,78 @@ class WikidataUploader:
         )
         return None
 
-    def _build_reference_snak(self, ref_snak: dict[str, str]) -> Claim | None:
+    def _build_reference_snak(
+        self, ref_snak: dict[str, object], *, owner_only: bool = False, reference: bool = False,
+    ) -> Claim | None:
         """Build a reference snak for WikibaseIntegrator."""
         from wikibaseintegrator import datatypes  # noqa: PLC0415
 
+        if not isinstance(ref_snak, dict):
+            return None
         prop = ref_snak.get("property", "") or ref_snak.get("property_id", "")
         value = ref_snak.get("value", "")
         snak_type = _normalize_wbi_value_type(
-            ref_snak.get("value_type") or ref_snak.get("type") or "string",
+            ref_snak.get("value_type") or ref_snak.get("type") or ref_snak.get("datatype") or "string",
         )
+
+        if reference:
+            types = {
+                _normalize_wbi_value_type(ref_snak[key])
+                for key in ("type", "value_type", "datatype") if ref_snak.get(key)
+            }
+            if (len(types) > 1 or "datavalue" in ref_snak
+                    or ref_snak.get("snaktype", "value") != "value"
+                    or (ref_snak.get("property") and ref_snak.get("property_id")
+                        and ref_snak["property"] != ref_snak["property_id"])):
+                return None
+        if (owner_only or reference) and (
+            not isinstance(prop, str) or re.fullmatch(r"P[1-9][0-9]*", prop) is None
+            or value is None or (isinstance(value, str) and not value.strip())
+            or snak_type not in ({"item", "url", "time", "string", "external-id"}
+                                 | ({"monolingualtext"} if not reference else set()))
+            or (reference and snak_type == "item" and re.fullmatch(r"Q[1-9][0-9]*", _item_qid(value)) is None)
+            or (reference and snak_type != "item" and not isinstance(value, str))
+        ):
+            return None
+        if reference and snak_type != "time" and any(
+            key in ref_snak for key in ("calendarmodel", "before", "after", "timezone")
+        ):
+            return None
 
         try:
             if snak_type == "item":
                 return datatypes.Item(prop_nr=prop, value=_item_qid(value))
             if snak_type == "url":
                 return datatypes.URL(prop_nr=prop, value=value)
+            if snak_type == "external-id":
+                return datatypes.ExternalID(prop_nr=prop, value=str(value))
+            if not reference and snak_type == "monolingualtext":
+                return datatypes.MonolingualText(prop_nr=prop, text=value, language=ref_snak.get("language"))
             if snak_type == "time":
                 precision = ref_snak.get("precision", 11)
+                time_options: dict[str, object] = {}
+                from converter.wikidata.quickstatements import validate_reference_time  # noqa: PLC0415
+
+                validate_reference_time(value, precision, calendarmodel=ref_snak.get("calendarmodel"))
+                for key in ("before", "after", "timezone"):
+                    if key in ref_snak:
+                        part = ref_snak[key]
+                        if type(part) is not int or (key != "timezone" and part < 0):
+                            return None
+                        time_options[key] = part
+                if "calendarmodel" in ref_snak:
+                    calendar = ref_snak["calendarmodel"]
+                    if (self._is_test or not isinstance(calendar, str)
+                            or re.fullmatch(r"https?://www\.wikidata\.org/entity/Q[1-9][0-9]*", calendar) is None):
+                        return None
+                    time_options["calendarmodel"] = calendar
+                if self._owner_only_session is not None and "calendarmodel" not in time_options:
+                    time_options["calendarmodel"] = "http://www.wikidata.org/entity/Q1985727"
                 return datatypes.Time(
                     prop_nr=prop,
                     time=repair_wikidata_time(str(value)),
                     precision=int(precision),
+                    **time_options,
                 )
             return datatypes.String(prop_nr=prop, value=value)
         except Exception as exc:
@@ -1257,7 +1961,7 @@ class WikidataUploader:
                 info = self._query_userinfo_rights()
                 if info:
                     name = str(info.get("name") or "")
-                    if not info.get("anon") and name and name != "127.0.0.1":
+                    if "anon" not in info and name and name != "127.0.0.1":
                         self._authenticated_user = name
                         logger.info("Authenticated as Wikidata user: %s", name)
                         return name
@@ -1283,8 +1987,9 @@ class WikidataUploader:
                 headers=headers,
                 timeout=10,
             )
-            user = resp.json().get("query", {}).get("userinfo", {}).get("name")
-            if user and user != "127.0.0.1":  # not anonymous
+            info = resp.json().get("query", {}).get("userinfo", {})
+            user = info.get("name")
+            if user and "anon" not in info and user != "127.0.0.1":
                 self._authenticated_user = user
                 logger.info("Authenticated as Wikidata user: %s", user)
                 return user
@@ -1325,6 +2030,91 @@ class WikidataUploader:
         except Exception as exc:
             logger.warning("Could not get first revision author for %s: %s", qid, exc)
         return None
+
+    def owner_only_target_valid(self, qid: str, control_number: str) -> bool:
+        revision = self._owner_only_revision(qid, control_number)
+        return type(revision) is int and revision > 0
+
+    def _owner_only_revision(self, qid: str, control_number: str) -> int | None:
+        """Check the live target identity, first author and current revision."""
+        if (self._is_test or not isinstance(qid, str) or not re.fullmatch(r"Q[1-9][0-9]*", qid)
+                or not isinstance(control_number, str) or not re.fullmatch(r"[0-9]{5,}", control_number)):
+            return None
+        try:
+            self.ensure_owner_only_authenticated()
+            info = self._query_userinfo_rights()
+            if not isinstance(info, dict) or "anon" in info:
+                return None
+            user = info.get("name")
+            if not isinstance(user, str) or not user or user == "127.0.0.1":
+                return None
+            session = self._login.get_session()
+            response = session.get(
+                _WIKIDATA_API,
+                params={"action": "wbgetentities", "ids": qid, "props": "info|claims", "format": "json"},
+                headers={"User-Agent": "MHMPipeline/1.0 (shvedbook@gmail.com)"},
+                timeout=10, allow_redirects=False,
+            )
+            if response.status_code != 200:
+                return None
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get("error") or payload.get("redirects"):
+                return None
+            entities = payload.get("entities") or {}
+            entity = entities.get(qid)
+            if (not isinstance(entity, dict) or entity.get("id") != qid
+                    or entity.get("type") != "item"
+                    or "missing" in entity or "redirect" in entity
+                    or type(entity.get("lastrevid")) is not int or entity["lastrevid"] <= 0):
+                return None
+            claims = entity.get("claims")
+            statements = claims.get("P3959") if isinstance(claims, dict) else None
+            if not isinstance(statements, list) or len(statements) != 1 or not isinstance(statements[0], dict):
+                return None
+            if statements[0].get("rank") not in ("normal", "preferred"):
+                return None
+            snak = statements[0].get("mainsnak")
+            if (not isinstance(snak, dict) or snak.get("property") != "P3959"
+                    or snak.get("snaktype") != "value" or snak.get("datatype") != "external-id"):
+                return None
+            datavalue = snak.get("datavalue")
+            if (not isinstance(datavalue, dict) or datavalue.get("type") != "string"
+                    or datavalue.get("value") != control_number):
+                return None
+            resp = session.get(
+                _WIKIDATA_API,
+                params={"action": "query", "prop": "revisions", "titles": qid,
+                        "rvprop": "user", "rvdir": "newer", "rvlimit": "1", "format": "json"},
+                headers={"User-Agent": "MHMPipeline/1.0 (shvedbook@gmail.com)"},
+                timeout=10,
+                allow_redirects=False,
+            )
+            if resp.status_code != 200:
+                return None
+            resp.raise_for_status()
+            data = resp.json()
+            query = data.get("query") or {}
+            pages = query.get("pages") or {}
+            if data.get("error") or query.get("redirects") or len(pages) != 1:
+                return None
+            page = next(iter(pages.values()))
+            if (not isinstance(page, dict) or page.get("title") != qid
+                    or page.get("ns") != 0 or not isinstance(page.get("pageid"), int)
+                    or page["pageid"] <= 0
+                    or "missing" in page or "redirect" in page):
+                return None
+            revisions = page.get("revisions")
+            valid = bool(
+                isinstance(revisions, list) and len(revisions) == 1
+                and isinstance(revisions[0], dict)
+                and "userhidden" not in revisions[0]
+                and revisions[0].get("user") == user
+            )
+            return entity["lastrevid"] if valid else None
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Owner-only verification failed for %s: %s", qid, exc)
+            return None
 
     def _user_created_via_contribs(self, qid: str, user: str) -> bool | None:
         """Independent cross-check via ``list=usercontribs`` API endpoint.
@@ -1467,7 +2257,6 @@ class WikidataUploader:
             return
         logger.warning("FOREIGN_MODIFY_ACCEPTED qid=%s (live upload only)", clean)
         self._foreign_accept_qids.add(clean)
-        self._is_our_item_cache[clean] = True
 
     def prime_entity_caches(
         self,
@@ -1556,24 +2345,31 @@ class WikidataUploader:
                 and "missing" not in ent
                 and (ent.get("claims") or ent.get("labels"))
             )
-            if qid in created_by_me and has_triples:
-                self._creator_cache[qid] = auth_user
+            if (
+                qid in created_by_me
+                and has_triples
+                and self._get_first_revision_author(qid) == auth_user
+            ):
                 self._is_our_item_cache[qid] = True
-                self._bot_exclusion_cache[qid] = False
             elif complete and qid not in created_by_me:
                 self._is_our_item_cache[qid] = False
 
     def share_caches_from(self, other: WikidataUploader) -> None:
         """Share ownership and prefetched-entity caches across shard slot uploaders."""
+        if (
+            self._is_test != other._is_test
+            or not self._authenticated_user
+            or self._authenticated_user != other._authenticated_user
+        ):
+            raise ValueError("Cannot share Wikidata caches across unverified accounts or wikis")
         self._creator_cache = other._creator_cache
         self._is_our_item_cache = other._is_our_item_cache
         self._q3959_cache = other._q3959_cache
         self._bot_exclusion_cache = other._bot_exclusion_cache
         self._prefetched_entities = other._prefetched_entities
-        self._foreign_accept_qids = other._foreign_accept_qids
+        self._existing_label_snapshot = other._existing_label_snapshot
+        self._foreign_accept_qids.clear()
         self._rate_limit_state = other._rate_limit_state
-        if other._authenticated_user:
-            self._authenticated_user = other._authenticated_user
 
     def _item_usable_as_test_reference(
         self, qid: str, *, live_qid: str | None = None,
@@ -1609,8 +2405,7 @@ class WikidataUploader:
     def _our_p3959(item: object) -> str | None:
         """The record's NNL catalog control number (P3959) — manuscripts only.
 
-        Persons and works keep the strict creator check: their identifiers
-        are not minted by our catalog feed (Rule: F1 ownership override).
+        This is identity evidence, not evidence of creator ownership.
         """
         if str(getattr(item, "entity_type", "") or "").lower() != "manuscript":
             return None
@@ -1652,9 +2447,8 @@ class WikidataUploader:
     def _p3959_identity_accepts(self, qid: str, our_p3959: str | None) -> bool:
         """True when the live item carries exactly our record's P3959 control number.
 
-        The control number is minted by our catalog feed (NLI / Ktiv) and is
-        globally unique, so equal values prove the item is project-owned data
-        regardless of who created it. Two independent values must be equal:
+        Two independent values must be equal. This proves neither creator
+        ownership nor permission to modify the item:
         no prefix or fuzzy compare, never on test.wikidata.org (P-numbers are
         remapped there), never when the remote item lacks P3959.
         """
@@ -1711,30 +2505,6 @@ class WikidataUploader:
         single upload are O(1) and cannot race with a concurrent edit
         that might change the first revision.
         """
-        if self._p3959_identity_accepts(qid, our_p3959):
-            logger.info(
-                "P3959_IDENTITY_ACCEPTED qid=%s — the target carries our NNL "
-                "catalog control number (project-owned manuscript data)",
-                qid,
-            )
-            self._is_our_item_cache[qid] = True
-            return True
-
-        if qid in self._foreign_accept_qids:
-            if self._is_test:
-                logger.error(
-                    "SAFETY: foreign accept registered for %s on test wiki — refusing",
-                    qid,
-                )
-                self._is_our_item_cache[qid] = False
-                return False
-            logger.warning(
-                "FOREIGN_MODIFY_ACCEPTED: skipping Rule-38 creator check for %s",
-                qid,
-            )
-            self._is_our_item_cache[qid] = True
-            return True
-
         cached = self._is_our_item_cache.get(qid)
         if cached is not None:
             return cached
@@ -1829,11 +2599,13 @@ class WikidataUploader:
         missed check at the entry point cannot let an unauthorised edit
         slip through. Raises :class:`UnauthorisedModificationError` —
         the uploader catches it and converts to a ``skipped`` result
-        rather than a crash. ``our_p3959`` enables the project-owned
-        manuscript identity channel (see :meth:`_is_our_item`).
+        rather than a crash. A live curator accept authorizes only its exact
+        QID and does not change the creator ownership result.
         """
         if not qid:
             return  # new-item creation path; no existing item at risk
+        if not self._is_test and qid in self._foreign_accept_qids:
+            return
         if not self._is_our_item(qid, our_p3959=our_p3959):
             raise UnauthorisedModificationError(qid=qid, stage=stage)
 
@@ -1969,9 +2741,11 @@ class WikidataUploader:
         if not csrf:
             return None
         api_url = _TEST_API if self._is_test else _WIKIDATA_API
+        write_started = False
         try:
             self._rate_limit()
             session = login.get_session()
+            write_started = True
             resp = session.post(
                 api_url,
                 data={
@@ -1991,6 +2765,8 @@ class WikidataUploader:
             if entity_id:
                 self._test_fresh_creates.add(entity_id)
                 return entity_id
+            if not isinstance(body.get("error"), dict):
+                raise RuntimeError("Wikidata returned no entity or API error")
             from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
                 parse_wbeditentity_conflict_id,
             )
@@ -2020,6 +2796,11 @@ class WikidataUploader:
             logger.warning("wbeditentity new=%s failed: %s", new, body)
         except Exception as exc:  # noqa: BLE001
             logger.warning("wbeditentity new=%s error: %s", new, exc)
+            if write_started:
+                raise RuntimeError(
+                    f"Wikidata {new} CREATE outcome unknown; the request may have succeeded. "
+                    "Do not retry until the outcome is resolved."
+                ) from exc
             from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
                 parse_label_conflict_id,
             )
@@ -2249,7 +3030,7 @@ class WikidataUploader:
             live_pid, value_type, test_pid, stats, created=False,
         ):
             return True
-        return False
+        return None
 
     def _resolve_test_property_for_snak(
         self,
@@ -2301,8 +3082,16 @@ class WikidataUploader:
             collect_live_qids,
             gloss_for_test_stub,
             mhm_live_qid_gloss,
+            reference_write_issues_for_test_wiki,
         )
 
+        for stmt in item.statements:
+            _validate_native_statement(stmt, is_test=self._is_test, allow_local=True)
+        issues = self._test_local_target_issues(item) + reference_write_issues_for_test_wiki(
+            item, verified_targets=self._verified_test_targets,
+        )
+        if issues:
+            raise ClaimBuildError(issues)
         stats = WikiTestAdaptStats()
         live_pids = collect_live_pids_with_types(item)
         live_qids = collect_live_qids(item)
@@ -2366,15 +3155,32 @@ class WikidataUploader:
         from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
             collect_live_qids,
             gloss_for_test_stub,
+            reference_write_issues_for_test_wiki,
         )
 
         if not self._is_test:
+            return
+        safe_items = []
+        for item in items:
+            try:
+                for stmt in item.statements:
+                    _validate_native_statement(stmt, is_test=self._is_test, allow_local=True)
+                issues = self._test_local_target_issues(item) + reference_write_issues_for_test_wiki(
+                    item, verified_targets=self._verified_test_targets,
+                )
+            except ClaimBuildError as exc:
+                issues = exc.reasons
+            if issues:
+                logger.warning("Skipping test-map prewarm for %s: %s", item.local_id, "; ".join(issues[:12]))
+            else:
+                safe_items.append(item)
+        if not safe_items:
             return
         if self._login is None:
             self._init_wbi()
         pending: list[str] = []
         seen: set[str] = set()
-        for item in items:
+        for item in safe_items:
             for qid in collect_live_qids(item):
                 if qid in seen:
                     continue
@@ -2383,7 +3189,7 @@ class WikidataUploader:
                     pending.append(qid)
         if pending:
             self._live_qid_labels.update(self._fetch_live_english_labels(pending))
-        for item in items:
+        for item in safe_items:
             self._ensure_test_maps_for_item(item)
 
     def _adapt_item_for_test_wiki(
@@ -2392,18 +3198,46 @@ class WikidataUploader:
         """Remap claims for test.wikidata.org; leftovers refuse the write (W-186)."""
         from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
             WikiTestAdaptResult,
+            collect_live_pids_with_types,
+            collect_live_qids,
             collect_test_wiki_ids,
             filter_item_for_test_wiki,
             normalize_item_quantity_units,
+            pid_map_lookup,
+            reference_write_issues_for_test_wiki,
             rewrite_item_with_maps,
         )
 
+        reference_issues = self._test_local_target_issues(item) + reference_write_issues_for_test_wiki(
+            item, verified_targets=self._verified_test_targets,
+        )
+        if reference_issues:
+            return item, WikiTestAdaptResult(skipped=reference_issues)
+        for stmt in item.statements:
+            try:
+                _validate_native_statement(stmt, is_test=self._is_test, allow_local=True)
+            except ClaimBuildError as exc:
+                return item, WikiTestAdaptResult(skipped=exc.reasons)
         item = normalize_item_quantity_units(item)
+        live_pids = collect_live_pids_with_types(item)
+        live_qids = collect_live_qids(item)
         stats = self._ensure_test_maps_for_item(item)
+        unmapped = [
+            f"{pid} ({value_type}) has no verified test property mapping"
+            for pid, value_type in live_pids
+            if not pid_map_lookup(self._test_pid_map, pid, value_type)
+        ]
+        unmapped.extend(
+            f"{qid} has no verified test item mapping"
+            for qid in live_qids if not self._test_qid_map.get(qid)
+        )
+        if unmapped:
+            return item, WikiTestAdaptResult(stats=stats, skipped=unmapped)
         rewritten = rewrite_item_with_maps(
             item,
             self._test_pid_map,
             self._test_qid_map,
+            verified_targets=self._verified_test_targets,
         )
         test_pids, test_qids = collect_test_wiki_ids(rewritten)
         self._ensure_test_property_datatypes(test_pids)
@@ -2411,7 +3245,8 @@ class WikidataUploader:
         existing = {qid for qid, ok in self._test_entity_exists.items() if ok}
         from converter.wikidata.property_labels import QID_LABELS  # noqa: PLC0415
 
-        allowed = set(self._test_qid_map.values()) | set(self._test_stubs_we_created)
+        allowed = (set(self._test_qid_map.values()) | set(self._test_stubs_we_created)
+                   | set(self._verified_test_targets.values()))
         filtered, skipped = filter_item_for_test_wiki(
             rewritten,
             property_datatypes=self._test_property_datatypes,
@@ -2433,21 +3268,75 @@ class WikidataUploader:
         item: WikidataItem,
         *,
         created_qids: dict[str, str] | None = None,
+        owner_only_qid: str | None = None,
+    ) -> UploadResult:
+        try:
+            if owner_only_qid is None:
+                result = self._upload_item(item, created_qids=created_qids)
+            else:
+                result = self._upload_item(item, created_qids=created_qids, owner_only_qid=owner_only_qid)
+            return result
+        finally:
+            self._foreign_accept_qids.clear()
+
+    def _upload_item(
+        self,
+        item: WikidataItem,
+        *,
+        created_qids: dict[str, str] | None = None,
+        owner_only_qid: str | None = None,
     ) -> UploadResult:
         """Upload a single item to Wikidata with retry logic and smart diffing.
 
         For existing items: fetches current claims, compares with new claims,
         and only writes if there are actual changes (avoids duplicates).
 
-        SAFETY: Only modifies existing items that were created by the MHM Pipeline
-        (verified by checking for P1343=Q118384267 marker). If an existing item
-        was NOT created by us, we skip it entirely to avoid modifying community items.
+        Existing items require creator ownership or exact-QID curator approval.
 
         Returns:
             UploadResult with QID and status.
         """
         self._check_moratorium_for_live()
-        leftover_local = resolve_local_statement_refs(item, created_qids or {})
+        try:
+            for stmt in item.statements or []:
+                _validate_native_statement(
+                    stmt, is_test=self._is_test, owner_only=owner_only_qid is not None, allow_local=True,
+                )
+        except ClaimBuildError as exc:
+            reasons = list(exc.reasons)
+            if self._is_test:
+                from converter.wikidata.test_wiki_compat import reference_write_issues_for_test_wiki  # noqa: PLC0415
+
+                reasons.extend(reference_write_issues_for_test_wiki(
+                    item, verified_targets=self._verified_test_targets,
+                ))
+            return UploadResult(
+                local_id=item.local_id, qid=item.existing_qid, status="blocked",
+                message="Refusing write: " + "; ".join(reasons[:12]),
+            )
+        owner_control_number = None
+        if owner_only_qid is not None:
+            self._foreign_accept_qids.clear()
+            try:
+                owner_only_validate_quantity_units(item)
+            except ClaimBuildError as exc:
+                return UploadResult(local_id=item.local_id, qid=item.existing_qid,
+                                    status="blocked", message=str(exc))
+            if owner_only_has_local_references(item) or owner_only_has_generic_text(item):
+                return UploadResult(local_id=item.local_id, qid=item.existing_qid,
+                                    status="blocked", message="Owner-only: unresolved or generic text evidence is not allowed.")
+            owner_control_number = owner_only_control_number(item)
+            if (not owner_control_number or item.existing_qid != owner_only_qid
+                    or not self.owner_only_target_valid(owner_only_qid, owner_control_number)):
+                return UploadResult(local_id=item.local_id, qid=item.existing_qid,
+                                    status="blocked", message="Owner-only target verification failed.")
+        resolution_qids = created_qids or {}
+        if self._is_test:
+            resolution_qids = {
+                local_id: qid for local_id, qid in resolution_qids.items()
+                if self._verified_test_targets.get(local_id) == qid
+            }
+        leftover_local = resolve_local_statement_refs(item, resolution_qids, test_namespace=self._is_test)
         if leftover_local:
             shown = "; ".join(leftover_local[:12])
             extra = (
@@ -2463,15 +3352,57 @@ class WikidataUploader:
                     f"(Rule W-191). {shown}{extra}"
                 ),
             )
+        if self._is_test:
+            from converter.wikidata.test_wiki_compat import reference_write_issues_for_test_wiki  # noqa: PLC0415
+
+            reference_issues = self._test_local_target_issues(item) + reference_write_issues_for_test_wiki(
+                item, verified_targets=self._verified_test_targets,
+            )
+            if reference_issues:
+                return UploadResult(
+                    local_id=item.local_id, status="blocked",
+                    message="Refusing test write: " + "; ".join(reference_issues[:12]),
+                )
+        if self._is_test and created_qids:
+            from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
+                explicit_live_item_qid,
+                item_target_qid,
+            )
+
+            target_qids = set(created_qids.values())
+            for stmt in item.statements or []:
+                values: list[tuple[object, object]] = []
+                if _normalize_wbi_value_type(stmt.value_type) == "item":
+                    namespace = stmt.value.get("value_namespace") if isinstance(stmt.value, Mapping) else None
+                    values.append((stmt.value, namespace))
+                for snak in [*(stmt.qualifiers or []), *_statement_reference_snaks(stmt)]:
+                    if isinstance(snak, dict) and _normalize_wbi_value_type(
+                        snak.get("value_type") or snak.get("type") or snak.get("datatype") or "string",
+                    ) == "item":
+                        values.append((snak.get("value"), snak.get("value_namespace")))
+                if any(namespace not in ("local", "wikidata") and not isinstance(value, LocalTargetQid)
+                       and not explicit_live_item_qid(value)
+                       and item_target_qid(value) in target_qids
+                       for value, namespace in values):
+                    return UploadResult(
+                        local_id=item.local_id, status="blocked",
+                        message="Refusing test write: an item QID has an ambiguous target namespace.",
+                    )
+        if (self._is_test and item.existing_qid
+                and self._verified_test_targets.get(item.local_id) != item.existing_qid):
+            return UploadResult(
+                local_id=item.local_id, qid=item.existing_qid, status="blocked",
+                message="Test UPDATE target lacks exact test-ledger proof.",
+            )
         self._init_wbi()
 
         test_adapt_result = None
 
         # Ownership BEFORE test adapt: never stub-CREATE properties/classes
         # for an item we are about to skip (Rule W-184).
-        if item.existing_qid and not self._is_our_item(
-            item.existing_qid,
-            our_p3959=self._our_p3959(item),
+        if item.existing_qid and not (
+            (not self._is_test and item.existing_qid in self._foreign_accept_qids)
+            or self._is_our_item(item.existing_qid, our_p3959=self._our_p3959(item))
         ):
             if self._is_test:
                 logger.info(
@@ -2535,12 +3466,29 @@ class WikidataUploader:
                 message=f"Skipped {item.existing_qid} — bot exclusion template on talk page",
             )
 
+        def unknown_write(exc: Exception) -> UploadResult:
+            logger.error("Wikidata write outcome unknown for %s: %s", item.local_id, exc)
+            return UploadResult(
+                local_id=item.local_id,
+                qid=item.existing_qid,
+                status="failed",
+                message=(
+                    "Wikidata write outcome unknown; the request may have succeeded. "
+                    "Do not retry until the outcome is resolved. "
+                    f"Detail: {str(exc)[:160]}"
+                ),
+            )
+
         last_error = ""
         for attempt in range(1, _MAX_RETRIES + 1):
+            write_started = False
             if attempt > 1:
                 self._rate_limit()
             try:
-                wbi_item, new_claims, added_props = self._build_wbi_item(item)
+                if owner_only_qid is not None:
+                    wbi_item, new_claims, added_props = self._build_wbi_item(item, owner_only=True)
+                else:
+                    wbi_item, new_claims, added_props = self._build_wbi_item(item)
 
                 if item.existing_qid and new_claims == 0:
                     missing = [
@@ -2587,6 +3535,29 @@ class WikidataUploader:
                 # to leave room for the "..." suffix.
                 if len(edit_summary) > 497:
                     edit_summary = edit_summary[:497] + "..."
+                actual_qid = getattr(wbi_item, "id", None)
+                if actual_qid != (item.existing_qid or None):
+                    return UploadResult(
+                        local_id=item.local_id,
+                        qid=str(actual_qid) if actual_qid else item.existing_qid,
+                        status="blocked",
+                        message="Refusing write: the actual target differs from the approved QID.",
+                    )
+                if (self._is_test and item.existing_qid
+                        and self._verified_test_targets.get(item.local_id) != item.existing_qid):
+                    return UploadResult(
+                        local_id=item.local_id, qid=item.existing_qid, status="blocked",
+                        message="Test UPDATE target lacks exact test-ledger proof.",
+                    )
+                owner_revision = None
+                if owner_only_qid is not None:
+                    owner_revision = self._owner_only_revision(owner_only_qid, owner_control_number)
+                    if (item.existing_qid != owner_only_qid or actual_qid != owner_only_qid
+                            or owner_only_control_number(item) != owner_control_number
+                            or type(owner_revision) is not int or owner_revision <= 0
+                            or getattr(wbi_item, "lastrevid", None) != owner_revision):
+                        return UploadResult(local_id=item.local_id, qid=item.existing_qid,
+                                            status="blocked", message="Owner-only pre-write verification failed.")
                 # DEFENSE-IN-DEPTH #4 (rule 38): immediately before the
                 # only .write() call in the codebase, re-assert that the
                 # target QID is ours. This is the last gate — if someone
@@ -2600,24 +3571,24 @@ class WikidataUploader:
                 # WikibaseIntegrator ≥0.12 takes ``is_bot`` (never bare ``bot=``;
                 # Rule W-180). Default is_bot=False — accounts without the
                 # MediaWiki bot right hard-fail (Rule W-181 / export-40).
-                # Pass explicit maxlag=20 / retry_after=5 / max_retries=4 / timeout=30
-                # because mediawiki_api_call_helper ignores wbi_config["MAXLAG"] and
-                # otherwise defaults to maxlag=5, retry_after=60s, max_retries=1000.
-                try:
-                    result = wbi_item.write(
-                        summary=edit_summary,
-                        is_bot=self._mark_as_bot,
-                        maxlag=20,
-                        retry_after=5,
-                        max_retries=4,
-                        timeout=30,
-                    )
-                except TypeError:
-                    result = wbi_item.write(
-                        summary=edit_summary,
-                        is_bot=self._mark_as_bot,
-                    )
+                # WBI retries connection errors and HTTP 5xx internally unless
+                # limited to one request, even when the first write may have landed.
+                write_started = True
+                owner_write_options = ({"mediawiki_api_url": _WIKIDATA_API,
+                                        "baserevid": owner_revision, "allow_redirects": False}
+                                       if owner_only_qid is not None else {})
+                result = wbi_item.write(
+                    summary=edit_summary,
+                    is_bot=self._mark_as_bot,
+                    maxlag=20,
+                    retry_after=0,
+                    max_retries=1,
+                    timeout=30,
+                    **owner_write_options,
+                )
                 qid = result.id if result else None
+                if not qid:
+                    raise ValueError("Wikidata returned no QID after the write request")
 
                 from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
                     format_test_wiki_outcome_note,
@@ -2648,6 +3619,8 @@ class WikidataUploader:
                     added_properties=added_props,
                 )
             except ClaimBuildError as exc:
+                if write_started:
+                    return unknown_write(exc)
                 return UploadResult(
                     local_id=item.local_id,
                     qid=item.existing_qid,
@@ -2658,6 +3631,8 @@ class WikidataUploader:
                     ),
                 )
             except UnauthorisedModificationError as exc:
+                if write_started:
+                    return unknown_write(exc)
                 # Rule 38 tripwire — any defense-in-depth guard fired.
                 # This is not retryable: the item is not ours, period.
                 # Convert to a clean "skipped" result instead of bubbling
@@ -2677,6 +3652,14 @@ class WikidataUploader:
                 )
             except Exception as exc:
                 last_error = str(exc)
+                if write_started:
+                    from wikibaseintegrator.wbi_exceptions import MWApiError  # noqa: PLC0415
+
+                    if not isinstance(exc, MWApiError):
+                        return unknown_write(exc)
+                    if owner_only_qid is not None:
+                        return UploadResult(local_id=item.local_id, qid=item.existing_qid,
+                                            status="blocked", message=f"Owner-only write rejected: {str(exc)[:160]}")
                 # Bug fix 2026-04-16 (deeper audit Fix #8): inspect the
                 # error to decide retry strategy. editconflict means
                 # someone edited the item between our get() and write();
@@ -2774,6 +3757,16 @@ class WikidataUploader:
                             f"Detail: {last_error[:160]}"
                         ),
                     )
+                if item.existing_qid in self._foreign_accept_qids:
+                    return UploadResult(
+                        local_id=item.local_id,
+                        qid=item.existing_qid,
+                        status="failed",
+                        message=(
+                            "The approved upload stopped; check foreign approval before retry. "
+                            f"Detail: {last_error[:160]}"
+                        ),
+                    )
                 if attempt < _MAX_RETRIES:
                     from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
                         parse_label_conflict_id,
@@ -2784,10 +3777,72 @@ class WikidataUploader:
                     is_label_conflict = (
                         "already has label" in err_lower
                         or "label-with-description-conflict" in err_lower
+                        or "label and description for language code" in err_lower
                         or bool(conflict_id)
                     )
                     if is_label_conflict:
+                        conflict_language = re.search(
+                            r"language code\s+([A-Za-z][A-Za-z0-9-]*)", last_error,
+                        )
+                        if (
+                            item.existing_qid
+                            and item.entity_type == "manuscript"
+                            and not self._is_test
+                            and conflict_language
+                            and self._is_our_item_cache.get(str(item.existing_qid)) is True
+                        ):
+                            lang = conflict_language.group(1)
+                            original = self._existing_label_snapshot.get(
+                                str(item.existing_qid), {},
+                            ).get(lang)
+                            proposed = str(item.labels.get(lang) or "")
+                            if original and proposed and original != proposed:
+                                labels = dict(item.labels)
+                                labels[lang] = original
+                                aliases = {
+                                    key: list(values) for key, values in item.aliases.items()
+                                }
+                                aliases.setdefault(lang, [])
+                                if proposed not in aliases[lang]:
+                                    aliases[lang].append(proposed)
+                                item = replace(item, labels=labels, aliases=aliases)
+                                logger.warning(
+                                    "Preserving the existing %s label for %s after conflict",
+                                    lang, item.existing_qid,
+                                )
+                                continue
+                        if item.existing_qid and not self._is_test:
+                            return UploadResult(
+                                local_id=item.local_id,
+                                qid=item.existing_qid,
+                                status="failed",
+                                message=(
+                                    "Wikidata rejected a label/description update. "
+                                    "The uploader could not safely retain the existing label; "
+                                    "manual metadata review is required."
+                                ),
+                            )
                         if not item.existing_qid:
+                            if "label and description for language code" in err_lower:
+                                language = (
+                                    conflict_language.group(1) if conflict_language else "unknown"
+                                )
+                                label = str(item.labels.get(language) or "")
+                                description = str(item.descriptions.get(language) or "")
+                                if label and label == description:
+                                    descriptions = dict(item.descriptions)
+                                    descriptions.pop(language, None)
+                                    item = replace(item, descriptions=descriptions)
+                                    continue
+                                return UploadResult(
+                                    local_id=item.local_id,
+                                    status="failed",
+                                    message=(
+                                        f"Wikidata rejected the {language} label/description pair, "
+                                        "but the local item has no equal pair and the API supplied "
+                                        "no conflicting QID. Manual payload review is required."
+                                    ),
+                                )
                             if (
                                 conflict_id
                                 and conflict_id.startswith("Q")
@@ -2829,6 +3884,13 @@ class WikidataUploader:
                             item.local_id,
                         )
                         continue
+                if write_started and not (is_conflict or is_badtoken):
+                    return UploadResult(
+                        local_id=item.local_id,
+                        qid=item.existing_qid,
+                        status="failed",
+                        message=f"Wikidata rejected the write: {last_error[:160]}",
+                    )
                 if attempt < _MAX_RETRIES:
                     # Shorter backoff for conflicts (someone is actively
                     # editing this item, so a quick retry is more likely

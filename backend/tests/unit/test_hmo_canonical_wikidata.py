@@ -144,6 +144,139 @@ def test_a_work_keeps_the_record_author_when_the_title_matches() -> None:
     assert "moshe ben yosef" in str(author_claims[0].value).casefold()
 
 
+def test_full_canonical_work_author_cites_the_record_that_supports_it() -> None:
+    from app.pipeline.hmo_canonical_wikidata import CanonicalStudioContext
+
+    first, second = "990000000000000001", "990000000000000002"
+    work = normalize_live_entity({
+        "local_id": "Work_sources", "source_uri": "https://example.org/Work_sources",
+        "wikibase_id": "Q6104", "entity_type": "F1_Work",
+        "labels": {"en": "Example treatise"}, "control_numbers": [first, second],
+        "authority_evidence": [{"kind": "wikidata", "identifier": "Q42", "accepted": True}],
+    })
+    context = CanonicalStudioContext(marc_by_cn={
+        first: {"title": "Unrelated work"},
+        second: {"title": "Example treatise", "authors": [{"name": "Moses Example"}]},
+    })
+    result = build_canonical_studio_result([work], context=context, reconcile=False)
+    item = next(row for row in result["items"] if row["entity_type"] == "work")
+    claim = next(s for s in item["statements"] if s["property"] == "P2093")
+    assert claim["value"].casefold() == "moses example"
+    assert {r["value"] for block in claim["reference_blocks"] for r in block
+            if r["property"] == "P3959"} == {second}
+
+
+def test_full_canonical_work_author_qid_cites_only_supporting_records() -> None:
+    from app.pipeline.hmo_canonical_wikidata import CanonicalStudioContext
+
+    first, second = "990000000000000001", "990000000000000002"
+    work = normalize_live_entity({
+        "local_id": "Work_qid", "source_uri": "https://example.org/Work_qid",
+        "wikibase_id": "Q6104", "entity_type": "F1_Work",
+        "labels": {"en": "Example treatise"}, "control_numbers": [first, second],
+        "authority_evidence": [{"kind": "wikidata", "identifier": "Q42", "accepted": True}],
+    })
+    context = CanonicalStudioContext(marc_by_cn={
+        first: {"title": "Unrelated work", "marc_authority_matches": [{
+            "name": "Moses Example", "role": "author", "wikidata_qid": "Q123",
+        }]},
+        second: {"title": "Example treatise", "authors": [{"name": "Moses Example"}],
+                 "marc_authority_matches": [{
+                     "name": "Moses Example", "role": "author", "wikidata_qid": "Q456",
+                 }]},
+    })
+    result = build_canonical_studio_result([work], context=context, reconcile=False)
+    item = next(row for row in result["items"] if row["entity_type"] == "work")
+    claim = next(s for s in item["statements"] if s["property"] == "P50")
+    assert claim["value"] == "Q456"
+    assert {r["value"] for block in claim["reference_blocks"] for r in block
+            if r["property"] == "P3959"} == {second}
+
+
+def test_full_canonical_work_author_keeps_all_matching_record_sources() -> None:
+    from app.pipeline.hmo_canonical_wikidata import CanonicalStudioContext
+
+    first, second = "990000000000000001", "990000000000000002"
+    work = normalize_live_entity({
+        "local_id": "Work_matching", "source_uri": "https://example.org/Work_matching",
+        "wikibase_id": "Q6104", "entity_type": "F1_Work",
+        "labels": {"en": "Example treatise"}, "control_numbers": [first, second],
+        "authority_evidence": [{"kind": "wikidata", "identifier": "Q42", "accepted": True}],
+    })
+    context = CanonicalStudioContext(marc_by_cn={
+        cn: {"title": "Example treatise", "authors": [{"name": "Moses Example"}]}
+        for cn in (first, second)
+    })
+    result = build_canonical_studio_result([work], context=context, reconcile=False)
+    item = next(row for row in result["items"] if row["entity_type"] == "work")
+    claim = next(s for s in item["statements"] if s["property"] == "P2093")
+    assert len(claim["reference_blocks"]) == 2
+    assert {r["value"] for block in claim["reference_blocks"] for r in block
+            if r["property"] == "P3959"} == {first, second}
+
+
+def test_full_canonical_work_does_not_choose_between_conflicting_authors() -> None:
+    from app.pipeline.hmo_canonical_wikidata import CanonicalStudioContext
+
+    first, second = "990000000000000001", "990000000000000002"
+    work = normalize_live_entity({
+        "local_id": "Work_conflict", "source_uri": "https://example.org/Work_conflict",
+        "wikibase_id": "Q6104", "entity_type": "F1_Work",
+        "labels": {"en": "Example treatise"}, "control_numbers": [first, second],
+        "authority_evidence": [{"kind": "wikidata", "identifier": "Q42", "accepted": True}],
+    })
+    context = CanonicalStudioContext(marc_by_cn={
+        first: {"title": "Example treatise", "authors": [{"name": "Moses Example"}]},
+        second: {"title": "Example treatise", "authors": [{"name": "David Example"}]},
+    })
+    result = build_canonical_studio_result([work], context=context, reconcile=False)
+    item = next(row for row in result["items"] if row["entity_type"] == "work")
+    assert not [s for s in item["statements"] if s["property"] in {"P50", "P2093"}]
+
+
+def test_full_canonical_work_does_not_choose_between_conflicting_author_qids() -> None:
+    from app.pipeline.hmo_canonical_wikidata import CanonicalStudioContext
+
+    first, second = "990000000000000001", "990000000000000002"
+    work = normalize_live_entity({
+        "local_id": "Work_qid_conflict", "source_uri": "https://example.org/Work_qid_conflict",
+        "wikibase_id": "Q6104", "entity_type": "F1_Work",
+        "labels": {"en": "Example treatise"}, "control_numbers": [first, second],
+        "authority_evidence": [{"kind": "wikidata", "identifier": "Q42", "accepted": True}],
+    })
+    context = CanonicalStudioContext(marc_by_cn={
+        cn: {"title": "Example treatise", "authors": [{"name": "Moses Example"}],
+             "marc_authority_matches": [{
+                 "name": "Moses Example", "role": "author", "wikidata_qid": qid,
+             }]}
+        for cn, qid in ((first, "Q123"), (second, "Q456"))
+    })
+    result = build_canonical_studio_result([work], context=context, reconcile=False)
+    item = next(row for row in result["items"] if row["entity_type"] == "work")
+    assert not [s for s in item["statements"] if s["property"] in {"P50", "P2093"}]
+
+
+def test_work_author_evidence_without_a_record_source_cannot_create_a_claim() -> None:
+    from app.pipeline.hmo_canonical_wikidata import (
+        CanonicalStudioContext,
+        _sanitize_work_authors_against_context,
+    )
+    from converter.wikidata.item_models import WikidataItem
+
+    cn = "990000000000000001"
+    for source_id, source_scope in (("", "record"), ("other", "record"), (cn, "authority")):
+        work = WikidataItem(
+            entity_type="work", labels={"en": "Example treatise"}, records=[cn],
+            work_candidate_evidence=[{
+                "accepted": True, "source_record_id": source_id, "source_scope": source_scope,
+                "source_text": "Example treatise — Moses Example",
+            }],
+        )
+        context = CanonicalStudioContext(marc_by_cn={cn: {"title": "Unrelated work"}})
+        _sanitize_work_authors_against_context([work], context)
+        assert not [s for s in work.statements if s.property_id in {"P50", "P2093"}]
+
+
 def test_full_canonical_build_does_not_restore_a_secondary_work_author() -> None:
     from converter.wikidata.item_builder import WikidataItemBuilder
 
@@ -264,6 +397,7 @@ def test_full_canonical_build_retains_a_safe_local_author_for_one_505_work() -> 
 
 
 def test_full_canonical_build_keeps_title_page_and_colophon_separate() -> None:
+    """Keep the unqualified HMO aggregate separate from source-qualified MARC claims."""
     from converter.wikidata.item_builder import WikidataItemBuilder
 
     manuscript = _manuscript_entity(claims=[{
@@ -281,10 +415,75 @@ def test_full_canonical_build_keeps_title_page_and_colophon_separate() -> None:
     )
     item = next(row for row in result["items"] if row["entity_type"] == "manuscript")
     inscriptions = [s for s in item["statements"] if s["property"] == "P1684"]
-    assert len(inscriptions) == 2
-    assert {s["value"] for s in inscriptions} == {"ספר התורה", "תם ונשלם הספר"}
+    assert len(inscriptions) == 3
+    qualified = [s for s in inscriptions if s["qualifiers"]]
+    unqualified = [s for s in inscriptions if not s["qualifiers"]]
+    assert {s["value"] for s in qualified} == {"ספר התורה", "תם ונשלם הספר"}
     assert all(any(q.get("property") == "P3831" for q in s["qualifiers"])
-               for s in inscriptions)
+               for s in qualified)
+    title_page = next(s for s in qualified if s["value"] == "ספר התורה")
+    colophon = next(s for s in qualified if s["value"] == "תם ונשלם הספר")
+    assert any(q.get("property") == "P3831" and q.get("value") == "Q1339862"
+               for q in title_page["qualifiers"])
+    assert any(q.get("property") == "P3831" and q.get("value") == "Q372474"
+               for q in colophon["qualifiers"])
+    assert any(q.get("property") == "P7416" and q.get("value") == "21א"
+               for q in colophon["qualifiers"])
+    assert [s["value"] for s in unqualified] == ["ספר התורה | תם ונשלם הספר"]
+    assert all(any(ref.get("property") == "P3959" and ref.get("value") == "990001"
+                   for ref in s["references"]) for s in inscriptions)
+
+
+def test_full_canonical_build_keeps_transcription_sources_on_their_texts(monkeypatch) -> None:
+    from app.pipeline import hmo_canonical_wikidata as canonical
+    from converter.wikidata.property_mapping import nli_reference
+
+    manuscript = _manuscript_entity(claims=[{
+        "wikidata_property": "P1684", "property_id": "P1684",
+        "value": text, "datatype": "string",
+    } for text in ("alpha", "beta", '"alpha"', "gamma", '"gamma"', '""gamma""')])
+    sources = iter(["1", "1", "2", "2", "3", "3"])
+    monkeypatch.setattr(canonical, "nli_reference", lambda _cn: nli_reference(next(sources)))
+    result = build_canonical_studio_result([manuscript], reconcile=False, return_native=True)
+    native = next(item for item in result["native_items"] if item.entity_type == "manuscript")
+    claims = [statement for statement in native.statements if statement.property_id == "P1684"]
+    assert {claim.value for claim in claims} == {"alpha | beta", "alpha | gamma", "gamma"}
+    for claim in claims:
+        identifiers = {
+            snak["value"] for block in claim.reference_blocks for snak in block
+            if snak.get("property") == "P3959"
+        }
+        assert identifiers == {
+            "alpha | beta": {"1"}, "alpha | gamma": {"2"}, "gamma": {"3"},
+        }[claim.value]
+    serialised = next(item for item in result["items"] if item["entity_type"] == "manuscript")
+    assert {s["value"] for s in serialised["statements"] if s["property"] == "P1684"} == {
+        "alpha | beta", "alpha | gamma", "gamma",
+    }
+
+
+def test_full_canonical_build_keeps_long_transcriptions_with_common_prefix(monkeypatch) -> None:
+    from app.pipeline import hmo_canonical_wikidata as canonical
+    from converter.wikidata.property_mapping import nli_reference
+
+    prefix = "A" * 4000
+    values = [prefix + " first", "first ending", prefix + " second", "second ending"]
+    manuscript = _manuscript_entity(claims=[{
+        "wikidata_property": "P1684", "property_id": "P1684",
+        "value": text, "datatype": "string",
+    } for text in values])
+    sources = iter(["1", "1", "2", "2"])
+    monkeypatch.setattr(canonical, "nli_reference", lambda _cn: nli_reference(next(sources)))
+    result = build_canonical_studio_result([manuscript], reconcile=False, return_native=True)
+    native = next(item for item in result["native_items"] if item.entity_type == "manuscript")
+    claims = [s for s in native.statements if s.property_id == "P1684"]
+    assert {s.value for s in claims} == set(values)
+    for claim in claims:
+        source = "1" if claim.value in values[:2] else "2"
+        assert {r["value"] for block in claim.reference_blocks for r in block
+                if r["property"] == "P3959"} == {source}
+    serialised = next(item for item in result["items"] if item["entity_type"] == "manuscript")
+    assert {s["value"] for s in serialised["statements"] if s["property"] == "P1684"} == set(values)
 
 
 def test_canonical_fingerprint_reports_each_entity() -> None:
@@ -1325,4 +1524,4 @@ def test_full_canonical_chain_has_no_legacy_authority_dependency() -> None:
     assert len(graph) > 0
     assert candidates[0]["hmo_wikibase_id"] == "Q1252"
     assert {"property": "P31", "value": "Q515", "value_type": "wikibase-item"} in native_wikidata_claims(entity)
-    assert 'LAST\tP31\t"Q515"' in quickstatements_from_canonical([entity])
+    assert "LAST\tP31\tQ515" in quickstatements_from_canonical([entity])

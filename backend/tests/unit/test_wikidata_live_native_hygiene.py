@@ -47,7 +47,7 @@ def test_tikkun_chatzot_work_item_must_not_update_ritual_q() -> None:
     assert not existing_qid_of(work)
 
 
-def test_local_rewrites_to_remaining_live_q() -> None:
+def test_local_target_is_kept_for_target_specific_resolution() -> None:
     work = {
         "local_id": "QDraft_Work_1",
         "entity_type": "work",
@@ -62,8 +62,8 @@ def test_local_rewrites_to_remaining_live_q() -> None:
         ],
     }
     stats = sanitize_studio_items_for_live([work, manuscript])
-    assert stats["local_rewritten"] == 1
-    assert manuscript["statements"][0]["value"] == "Q123"
+    assert stats["local_rewritten"] == 0
+    assert manuscript["statements"][0]["value"] == "__LOCAL:QDraft_Work_1"
 
 
 def test_dangling_exemplar_degrades_to_unknown_text() -> None:

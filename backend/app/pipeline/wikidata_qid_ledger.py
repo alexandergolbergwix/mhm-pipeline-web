@@ -89,7 +89,7 @@ def lookup_ledger_qid(ledger: dict[str, str], key: str) -> str | None:
 
 
 async def load_global_ledger(
-    db: AsyncSession, *, is_test: bool | None = None,
+    db: AsyncSession, *, is_test: bool | None = None, reject_ambiguous: bool = False,
 ) -> dict[str, str]:
     """Global Wikidata Studio instance mappings (``run_id IS NULL``)."""
     prefix = f"{ledger_namespace(is_test=is_test)}:"
@@ -105,7 +105,13 @@ async def load_global_ledger(
             )
         )
     ).all()
-    return {uri: qid for uri, qid in rows}
+    ledger: dict[str, str] = {}
+    for uri, qid in rows:
+        if reject_ambiguous and uri in ledger and ledger[uri] != qid:
+            ledger[uri] = "AMBIGUOUS"
+        else:
+            ledger[uri] = qid
+    return ledger
 
 
 async def record_ledger_mapping(

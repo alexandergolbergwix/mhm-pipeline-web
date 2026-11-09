@@ -80,7 +80,7 @@ def test_transcription_fragments_merge_into_one_claim_with_reference() -> None:
     _merge_transcription_statements(statements, control_number="990001")
     p1684 = [s for s in statements if s.property_id == "P1684"]
     assert len(p1684) == 1
-    assert p1684[0].value == "נשלם זה הסדור\n\nנעתק זה הספר"
+    assert p1684[0].value == "נשלם זה הסדור | נעתק זה הספר"
     assert p1684[0].references
     assert [s.property_id for s in statements] == ["P1684", "P217", "P31"]
 
@@ -96,7 +96,7 @@ def test_single_transcription_claim_still_gets_the_catalog_reference() -> None:
     assert statements[0].references
 
 
-def test_merged_transcription_value_is_capped() -> None:
+def test_oversized_transcription_join_keeps_complete_fragments() -> None:
     from app.pipeline.hmo_canonical_wikidata import (
         _MERGED_TRANSCRIPTION_CHARS,
         _merge_transcription_statements,
@@ -108,9 +108,9 @@ def test_merged_transcription_value_is_capped() -> None:
         WikidataStatement(property_id="P1684", value="ב" * 3000, value_type="monolingualtext"),
     ]
     _merge_transcription_statements(statements, control_number="990001")
-    assert len(statements) == 1
-    assert len(statements[0].value) <= _MERGED_TRANSCRIPTION_CHARS + 1
-    assert statements[0].value.endswith("…")
+    assert len(statements) == 2
+    assert [s.value for s in statements] == ["א" * 3000, "ב" * 3000]
+    assert sum(len(s.value) for s in statements) > _MERGED_TRANSCRIPTION_CHARS
 
 
 def test_duplicate_fragments_are_joined_once() -> None:

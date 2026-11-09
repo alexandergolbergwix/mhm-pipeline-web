@@ -94,7 +94,7 @@ def test_uncertain_work_unsure_skips(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.fetch_entity_p31",
-        lambda qids, *, is_test=False: {"Q1": ["Q47461344"]},
+        lambda qids, *, is_test=False, **kwargs: {"Q1": ["Q47461344"]},
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_duplicate_confirm.confirm_uncertain_duplicate",
@@ -184,7 +184,7 @@ def test_pass2_may_update_created_without_ownership() -> None:
         local_id="w1", label="work", entity_type="work",
         qid="Q1", status="created", message="ok", added_properties=[],
     )
-    assert pass2_may_update_source(created) is True
+    assert pass2_may_update_source(created, "Q1") is True
 
 
 def test_pass2_refuses_foreign_update() -> None:
@@ -193,7 +193,7 @@ def test_pass2_refuses_foreign_update() -> None:
         qid="Q9", status="updated", message="ok", added_properties=[],
         ownership="foreign",
     )
-    assert pass2_may_update_source(foreign) is False
+    assert pass2_may_update_source(foreign, "Q9") is False
 
 
 def test_pass2_allows_own_update() -> None:
@@ -202,7 +202,7 @@ def test_pass2_allows_own_update() -> None:
         qid="Q9", status="updated", message="ok", added_properties=[],
         ownership="own",
     )
-    assert pass2_may_update_source(own) is True
+    assert pass2_may_update_source(own, "Q9") is True
 
 
 def test_rewrite_p50_local_to_p2093() -> None:
@@ -227,7 +227,7 @@ def test_p2888_exact_match_bypasses_llm_confirm(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.fetch_entity_p31",
-        lambda qids, *, is_test=False: {"Q141755060": ["Q47461344"]},
+        lambda qids, *, is_test=False, **kwargs: {"Q141755060": ["Q47461344"]},
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.fetch_entity_duplicate_metadata",
@@ -317,7 +317,7 @@ def test_confirm_prompt_includes_author_and_description_context() -> None:
     assert "live_authors: Q12345" in captured[0]
 
 
-def test_manuscript_p3959_passed_to_ownership_classifier(monkeypatch) -> None:
+def test_manuscript_p3959_does_not_establish_ownership(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.confirm_qid_alive",
         lambda qid, *, is_test=False, **kwargs: True,
@@ -358,9 +358,9 @@ def test_manuscript_p3959_passed_to_ownership_classifier(monkeypatch) -> None:
         ownership_checker=_P3959Uploader(),
         is_test=False,
     )
-    assert seen_p3959 == ["990001497790205171"]
-    assert out.blocked is False
-    assert out.ownership == "own"
+    assert seen_p3959 == [None]
+    assert out.blocked is True
+    assert out.ownership == "foreign"
 
 
 def test_ledger_owned_work_bypasses_llm_confirm(monkeypatch) -> None:
@@ -370,7 +370,7 @@ def test_ledger_owned_work_bypasses_llm_confirm(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "app.pipeline.wikidata_existence.fetch_entity_p31",
-        lambda qids, *, is_test=False: {"Q141755239": ["Q47461344"]},
+        lambda qids, *, is_test=False, **kwargs: {"Q141755239": ["Q47461344"]},
     )
 
     def _no_llm(**kwargs):
@@ -414,5 +414,3 @@ def test_ledger_owned_work_bypasses_llm_confirm(monkeypatch) -> None:
     assert out.existing_qid == "Q141755239"
     assert out.ownership == "own"
     assert out.method == "ledger+owned_identifier"
-
-

@@ -35,9 +35,12 @@ and bypasses the production moratorium.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import re
 import uuid
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -144,6 +147,8 @@ class UploadOutcome:
     message: str
     added_properties: list[str]
     ownership: str = ""
+    accepted_foreign_qid: str | None = None
+    audit_status: str = ""
 
 
 @dataclass
@@ -280,18 +285,51 @@ PASS2_OWN_UPDATE_STATUSES = frozenset({
 })
 
 
-def pass2_may_update_source(outcome: UploadOutcome | None) -> bool:
-    """Pass 2 MERGE UPDATE is allowed only on items we created or already own."""
-    if outcome is None:
+def pass2_may_update_source(
+    outcome: UploadOutcome | None, target_qid: str | None, *,
+    accept: ForeignAccept | None = None, dry_run: bool = False,
+) -> bool:
+    """Allow pass 2 only for the target established by the first pass."""
+    if outcome is None or not target_qid:
         return False
-    if outcome.status in PASS2_CREATE_STATUSES:
+    if not outcome.qid:
+        return bool(
+            dry_run
+            and outcome.status in PASS2_CREATE_STATUSES
+            and outcome.ownership in {"", "absent"}
+            and outcome.local_id
+            and target_qid == f"dry:{outcome.local_id}"
+        )
+    if outcome.qid != target_qid or not re.fullmatch(r"Q[1-9][0-9]*", target_qid):
+        return False
+    if outcome.status in PASS2_CREATE_STATUSES and outcome.ownership in {"", "absent"}:
         return True
     if (
         outcome.status in PASS2_OWN_UPDATE_STATUSES
-        and outcome.ownership == "own"
+        and (
+            outcome.ownership == "own"
+            or (
+                outcome.ownership == "foreign"
+                and outcome.accepted_foreign_qid == target_qid
+                and accept is not None
+                and accept.accept_foreign_modify
+                and str(accept.accepted_foreign_qid or "").strip() == target_qid
+            )
+        )
     ):
         return True
     return False
+
+
+def _classify_upload_ownership(ownership_checker: Any, qid: str) -> str:
+    from app.pipeline.wikidata_existence import classify_ownership_with_uploader  # noqa: PLC0415
+
+    if qid in (getattr(ownership_checker, "_foreign_accept_qids", None) or ()):
+        return "foreign"
+    ownership = classify_ownership_with_uploader(ownership_checker, qid)
+    if qid in (getattr(ownership_checker, "_foreign_accept_qids", None) or ()):
+        return "foreign"
+    return ownership
 
 
 def _skip_if_person_unpublishable(prepared: PreparedItem) -> PreparedItem:
@@ -346,7 +384,6 @@ def _apply_person_identity_gate(
         person_heading_conflicts_live_label,
     )
     from app.pipeline.wikidata_existence import (  # noqa: PLC0415
-        classify_ownership_with_uploader,
         fetch_entity_labels,
     )
 
@@ -369,7 +406,7 @@ def _apply_person_identity_gate(
 
     ownership = "unknown"
     if ownership_checker is not None:
-        ownership = classify_ownership_with_uploader(ownership_checker, qid)
+        ownership = _classify_upload_ownership(ownership_checker, qid)
     prepared.ownership = ownership
     if ownership == "own":
         prepared.blocked = True
@@ -461,7 +498,25 @@ def _apply_uncertain_duplicate_confirm(
 
     qid = str(prepared.existing_qid or "").strip()
     labels = fetch_entity_labels([qid], is_test=is_test).get(qid) or {}
-    p31 = fetch_entity_p31([qid], is_test=is_test).get(qid) or []
+    is_work = str(prepared.entity_type or "").lower() == "work"
+    try:
+        if is_work and not is_test:
+            p31 = fetch_entity_p31([qid], is_test=False, require_complete=True).get(qid)
+        else:
+            p31 = fetch_entity_p31([qid], is_test=is_test).get(qid)
+    except Exception as exc:  # noqa: BLE001 — live identity must fail closed
+        logger.warning("Could not read P31 for %s: %s", qid, exc)
+        p31 = None
+    if p31 is None and not is_test:
+        prepared.blocked = True
+        prepared.block_status = "blocked"
+        prepared.block_message = (
+            f"Item {qid} has unverified P31 metadata; refusing adoption, "
+            "UPDATE or CREATE until the entity can be checked."
+        )
+        prepared.method = "work_identity_review" if is_work else "identity_review"
+        return prepared
+    p31 = p31 or []
     has_id = _item_has_identity_pid(prepared.item)
     item_p2888 = str(_find_statement_value(prepared.item, "P2888") or "").strip()
     catalog_author = str(
@@ -527,6 +582,18 @@ def _apply_uncertain_duplicate_confirm(
         prepared.method = f"{prepared.method}+confirmed_same"
         return prepared
     if verdict == DIFFERENT_ITEM:
+        if is_work and not is_test:
+            from converter.wikidata.work_identity import work_identity_for_item  # noqa: PLC0415
+
+            if work_identity_for_item(prepared.item).source_scoped:
+                prepared.blocked = True
+                prepared.block_status = "blocked"
+                prepared.block_message = (
+                    "Source-scoped work has no conclusive duplicate absence check; "
+                    "refusing CREATE until source review."
+                )
+                prepared.method = "work_identity_review"
+                return prepared
         prepared = _clear_qid_for_create(prepared, suffix="confirmed_different")
         return _skip_if_person_unpublishable(prepared)
     return _skip_uncertain_duplicate(prepared, reason=f"verdict={verdict}")
@@ -589,6 +656,10 @@ def _rollup_skipped_person_refs(prepared: list[PreparedItem]) -> None:
             if pid != "P50" or not value.startswith("__LOCAL:"):
                 kept.append(stmt)
                 continue
+            if (getattr(stmt, "qualifiers", None) or getattr(stmt, "references", None)
+                    or getattr(stmt, "reference_blocks", None)):
+                kept.append(stmt)
+                continue
             local_id = value.removeprefix("__LOCAL:")
             name = skipped.get(local_id, "").strip()
             if not name:
@@ -603,7 +674,7 @@ def _rollup_skipped_person_refs(prepared: list[PreparedItem]) -> None:
 def _apply_work_identity_gate(
     prepared: PreparedItem, *, qid: str, is_test: bool = False,
 ) -> PreparedItem:
-    """Refuse UPDATE of a liturgy/concept QID; skip CREATE and keep link_qid (W-196)."""
+    """Check work identity before adoption or link-only handling (W-196)."""
     from app.pipeline.wikidata_existence import fetch_entity_p31  # noqa: PLC0415
     from app.pipeline.wikidata_live_native_hygiene import (  # noqa: PLC0415
         work_qid_refuses_update,
@@ -614,7 +685,25 @@ def _apply_work_identity_gate(
         work_identity_from_metadata,
     )
 
-    p31 = fetch_entity_p31([qid], is_test=is_test).get(qid) or []
+    try:
+        if is_test:
+            p31 = fetch_entity_p31([qid], is_test=True).get(qid)
+        else:
+            p31 = fetch_entity_p31([qid], is_test=False, require_complete=True).get(qid)
+    except Exception as exc:  # noqa: BLE001 — live identity must fail closed
+        logger.warning("Could not read work P31 for %s: %s", qid, exc)
+        p31 = None
+    if p31 is None:
+        if not is_test:
+            prepared.blocked = True
+            prepared.block_status = "blocked"
+            prepared.block_message = (
+                f"Work {qid} has unverified P31 metadata; refusing adoption, "
+                "UPDATE or CREATE until the entity can be checked."
+            )
+            prepared.method = "work_identity_review"
+            return prepared
+        p31 = []
     proposed = work_identity_for_item(prepared.item)
     strong = prepared.method in {"prebuilt", "ledger"} or "identifier" in prepared.method
     has_author_evidence = bool(
@@ -623,29 +712,27 @@ def _apply_work_identity_gate(
     if not is_test and (has_author_evidence or proposed.source_scoped):
         from app.pipeline.wikidata_existence import fetch_entity_duplicate_metadata  # noqa: PLC0415
 
+        compatible = False
         try:
             metadata = fetch_entity_duplicate_metadata([qid], is_test=False).get(qid)
-        except (ValueError, Exception) as exc:  # noqa: BLE001 — fail-open on lookup failure
-            logger.warning("Could not read work identity metadata for %s: %s", qid, exc)
-            metadata = None
-        if metadata:
-            try:
+            if metadata:
                 existing = work_identity_from_metadata(metadata)
                 compatible = compare_work_identity(
                     proposed, existing, strong_identifier=strong,
                 ) == "match"
-            except ValueError as exc:
-                logger.warning("Invalid work author metadata for %s: %s", qid, exc)
-                compatible = True
-            if not compatible:
-                prepared.blocked = True
-                prepared.block_status = "blocked"
-                prepared.block_message = (
-                    f"Work {qid} has conflicting or unverified author/source evidence; "
-                    "refusing adoption or CREATE until source review."
-                )
-                prepared.method = "work_identity_review"
-                return prepared
+            else:
+                logger.warning("Work identity metadata unavailable for %s", qid)
+        except Exception as exc:  # noqa: BLE001 — identity must fail closed
+            logger.warning("Could not read work identity metadata for %s: %s", qid, exc)
+        if not compatible:
+            prepared.blocked = True
+            prepared.block_status = "blocked"
+            prepared.block_message = (
+                f"Work {qid} has conflicting or unverified author/source evidence; "
+                "refusing adoption, UPDATE or CREATE until source review."
+            )
+            prepared.method = "work_identity_review"
+            return prepared
     if not work_qid_refuses_update(qid, p31):
         return prepared
     return _skip_work_link_only(
@@ -666,7 +753,6 @@ def _apply_existence_and_ownership(
     """Confirm QID alive + enforce create-or-own / explicit-foreign-accept policy."""
     from app.pipeline.wikidata_existence import (  # noqa: PLC0415
         accept_allows_foreign_modify,
-        classify_ownership_with_uploader,
         confirm_qid_alive,
     )
 
@@ -747,7 +833,7 @@ def _apply_existence_and_ownership(
         if (
             str(prepared.method or "").lower() == "ledger"
             and ownership_checker is not None
-            and classify_ownership_with_uploader(ownership_checker, clean_qid) == "own"
+            and _classify_upload_ownership(ownership_checker, clean_qid) == "own"
         ):
             prepared.ownership = "own"
             prepared.method = "ledger+owned_identifier"
@@ -759,6 +845,14 @@ def _apply_existence_and_ownership(
             or not prepared.existing_qid
         ):
             return prepared
+
+    ownership = (
+        _classify_upload_ownership(ownership_checker, clean_qid)
+        if ownership_checker is not None else "unknown"
+    )
+    if ownership == "own":
+        prepared.ownership = "own"
+        return prepared
 
     acc = accept or ForeignAccept()
     if (
@@ -788,17 +882,7 @@ def _apply_existence_and_ownership(
         )
         return prepared
 
-    our_p3959 = (
-        str(_find_statement_value(prepared.item, "P3959") or "").strip() or None
-        if str(prepared.entity_type or "").lower() == "manuscript"
-        else None
-    )
-    ownership = classify_ownership_with_uploader(
-        ownership_checker, qid, our_p3959=our_p3959,
-    )
     prepared.ownership = ownership
-    if ownership == "own":
-        return prepared
 
     if ownership == "foreign" and is_test:
         logger.info(
@@ -1150,6 +1234,22 @@ def _prepare_for_upload(
                 adopt_candidate = not had_builder_qid
                 item.existing_qid = existing
 
+        if et == "work" and not existing and not is_test:
+            from converter.wikidata.work_identity import work_identity_for_item  # noqa: PLC0415
+
+            if work_identity_for_item(item).source_scoped:
+                prepared.append(PreparedItem(
+                    item=item, local_id=local_id, label=label, entity_type=et,
+                    existing_qid=None, method="work_identity_review", blocked=True,
+                    block_status="blocked",
+                    block_message=(
+                        "Source-scoped work has no conclusive duplicate absence check; "
+                        "refusing CREATE until source review."
+                    ),
+                    had_builder_qid=had_builder_qid,
+                ))
+                continue
+
         row = PreparedItem(
             item=item, local_id=local_id, label=label, entity_type=et,
             existing_qid=existing, method=method, blocked=False,
@@ -1271,6 +1371,8 @@ def _reconcile_sync(items: list[Any]) -> list[ReconcileOutcome]:
                 existing_qid=qid, method=method,
                 message=(
                     f"Found {qid} via {method}" if qid
+                    else "No conclusive duplicate check for source-scoped work"
+                    if method == "source_scoped_work"
                     else "No existing Wikidata item found"
                 ),
             ))
@@ -1347,6 +1449,8 @@ def _reconcile_sync_with_ledger(
                 existing_qid=qid, method=method,
                 message=(
                     f"Found {qid} via {method}" if qid
+                    else "No conclusive duplicate check for source-scoped work"
+                    if method == "source_scoped_work"
                     else "No existing Wikidata item found"
                 ),
             ))
@@ -1394,6 +1498,24 @@ async def load_foreign_accept_map(
     return out
 
 
+async def _persisted_foreign_accept(run_id: uuid.UUID, local_id: str, qid: str) -> bool:
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.db import session_scope  # noqa: PLC0415
+    from app.models.item_override import WikidataItemOverride  # noqa: PLC0415
+
+    async with session_scope() as db:
+        result = await db.execute(
+            select(WikidataItemOverride.id).where(
+                WikidataItemOverride.run_id == run_id,
+                WikidataItemOverride.local_id == local_id,
+                WikidataItemOverride.accept_foreign_modify.is_(True),
+                WikidataItemOverride.accepted_foreign_qid == qid,
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+
 
 async def persist_upload_outcomes(
     db: AsyncSession,
@@ -1402,6 +1524,8 @@ async def persist_upload_outcomes(
     *,
     audit_ctx: WikibaseAuditContext | None,
     is_test: bool = False,
+    record_ledger: bool = True,
+    strict_audit: bool = False,
 ) -> None:
     """Persist audit and ledger rows after network writes complete (Rule W-40)."""
     if audit_ctx is None:
@@ -1409,9 +1533,13 @@ async def persist_upload_outcomes(
     ns = ledger_namespace(is_test=is_test)
     items_by_id = {_local_id(it, i): it for i, it in enumerate(items)}
     for outcome in outcomes:
-        await _record_outcome_audit(db, audit_ctx, outcome)
+        if strict_audit:
+            await _record_outcome_audit(db, audit_ctx, outcome, strict=True)
+        else:
+            await _record_outcome_audit(db, audit_ctx, outcome)
         if (
-            outcome.qid
+            record_ledger
+            and outcome.qid
             and str(outcome.qid).strip().startswith("Q")
             and outcome.status in ("created", "adopted", "updated", "exists", "skipped")
         ):
@@ -1441,12 +1569,29 @@ async def upload_items(
     existence_cache: dict[str, bool | None] | None = None,
     created_qids: dict[str, str] | None = None,
     quality_preflight: UploadCorpusQualityPreflight | None = None,
+    owner_targets: Mapping[str, str] | None = None,
 ) -> list[UploadOutcome]:
     resolved = mode or resolve_upload_mode(upload_target, dry_run=dry_run)
     if ledger is None and db is not None:
         ledger = await load_ledger_for_prepare(db, is_test=resolved.is_test)
     if accept_by_local_id is None and db is not None and run_id is not None:
         accept_by_local_id = await load_foreign_accept_map(db, run_id)
+    approval_run_id = run_id or (audit_ctx.run_id if audit_ctx is not None else None)
+    loop = asyncio.get_running_loop()
+
+    def check_foreign_accept(local_id: str, qid: str) -> bool:
+        if approval_run_id is None:
+            return False
+        future = asyncio.run_coroutine_threadsafe(
+            _persisted_foreign_accept(approval_run_id, local_id, qid), loop,
+        )
+        try:
+            return future.result(timeout=15)
+        except Exception as exc:  # noqa: BLE001 — no approval on DB failure
+            future.cancel()
+            logger.warning("Could not verify foreign approval for %s (%s): %s", local_id, qid, exc)
+            return False
+
     ns = ledger_namespace(is_test=resolved.is_test)
     outcomes = await run_in_threadpool(
         _upload_sync,
@@ -1462,11 +1607,22 @@ async def upload_items(
         existence_cache,
         created_qids,
         quality_preflight,
+        check_foreign_accept,
+        owner_targets,
     )
     if db is not None and audit_ctx is not None and not resolved.dry_run:
-        await persist_upload_outcomes(
-            db, items, outcomes, audit_ctx=audit_ctx, is_test=resolved.is_test,
-        )
+        try:
+            await persist_upload_outcomes(
+                db, items, outcomes, audit_ctx=audit_ctx, is_test=resolved.is_test,
+                record_ledger=owner_targets is None, strict_audit=owner_targets is not None,
+            )
+        except Exception:  # noqa: BLE001 — retain the actual remote outcome
+            if owner_targets is None:
+                raise
+            logger.exception("Owner-only audit persistence failed")
+            for outcome in outcomes:
+                outcome.audit_status = "failed"
+                outcome.message += " Audit persistence failed; verify the remote outcome before retry."
     return outcomes
 
 
@@ -1506,6 +1662,8 @@ def _upload_sync(
     existence_cache: dict[str, bool | None] | None = None,
     created_qids: dict[str, str] | None = None,
     quality_preflight: UploadCorpusQualityPreflight | None = None,
+    check_foreign_accept: Callable[[str, str], bool] | None = None,
+    owner_targets: Mapping[str, str] | None = None,
 ) -> list[UploadOutcome]:
     from converter.wikidata.uploader import (  # noqa: PLC0415
         UnauthorisedModificationError,
@@ -1534,6 +1692,12 @@ def _upload_sync(
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not init WikidataUploader for ownership: %s", exc)
             ownership_checker = None
+
+    if owner_targets is not None:
+        return _owner_only_upload_sync(
+            items, owner_targets, ownership_checker, dry_run, is_test,
+            session_qids, quality_preflight,
+        )
 
     if dry_run:
         return _dry_run(
@@ -1600,17 +1764,49 @@ def _upload_sync(
                 ownership=p.ownership,
             ))
             continue
+        if str(getattr(p.item, "existing_qid", "") or "").strip() != str(
+            p.existing_qid or ""
+        ).strip():
+            out.append(UploadOutcome(
+                local_id=p.local_id, label=p.label, entity_type=p.entity_type,
+                qid=p.existing_qid, status="blocked",
+                message="Refusing write: the target QID changed after authorization.",
+                added_properties=[], ownership=p.ownership,
+            ))
+            continue
         try:
             if p.allow_foreign_modify and p.existing_qid and not is_test:
+                accept = accepts.get(p.local_id) or ForeignAccept()
+                if (
+                    not accept.accept_foreign_modify
+                    or str(accept.accepted_foreign_qid or "").strip() != p.existing_qid
+                    or str(getattr(p.item, "existing_qid", "") or "").strip() != p.existing_qid
+                    or check_foreign_accept is None
+                    or not check_foreign_accept(p.local_id, p.existing_qid)
+                ):
+                    out.append(UploadOutcome(
+                        local_id=p.local_id, label=p.label, entity_type=p.entity_type,
+                        qid=p.existing_qid, status="blocked",
+                        message=(
+                            "Foreign modification requires current approval "
+                            "for the exact target QID."
+                        ),
+                        added_properties=[], ownership="foreign",
+                    ))
+                    continue
                 write_uploader.register_foreign_accept(p.existing_qid)
             result = write_uploader.upload_item(
                 p.item, created_qids=session_qids,
             )
             status = result.status
+            if not p.existing_qid and result.qid and status in {"updated", "exists"}:
+                p.ownership = _classify_upload_ownership(write_uploader, str(result.qid))
+                if p.ownership == "own" and status == "updated":
+                    status = "adopted"
             if p.adopt_candidate and status == "updated":
                 status = "adopted"
             elif status == "success":
-                status = "created"
+                status = "updated" if p.existing_qid else "created"
             if (
                 result.qid
                 and status in {"created", "updated", "adopted", "exists"}
@@ -1628,6 +1824,11 @@ def _upload_sync(
                     qid=result.qid, status=status, message=result.message,
                     added_properties=list(result.added_properties or []),
                     ownership=p.ownership,
+                    accepted_foreign_qid=(
+                        p.existing_qid
+                        if p.allow_foreign_modify and result.qid == p.existing_qid
+                        else None
+                    ),
                 ),
             )
             if status == "failed" and _is_auth_failure_message(result.message):
@@ -1657,6 +1858,90 @@ def _upload_sync(
                 # Stop the batch immediately — further logins will rate-limit
                 # (Rule W-179). Callers that share an uploader should abort the job.
                 break
+    return out
+
+
+def _owner_only_upload_sync(
+    items: list[Any], targets: Mapping[str, str], uploader: Any, dry_run: bool,
+    is_test: bool, session_qids: dict[str, str],
+    quality_preflight: UploadCorpusQualityPreflight | None,
+) -> list[UploadOutcome]:
+    out: list[UploadOutcome] = []
+    from converter.wikidata.uploader import (  # noqa: PLC0415
+        ClaimBuildError, owner_only_control_number, owner_only_has_generic_text,
+        owner_only_has_local_references, owner_only_validate_quantity_units,
+    )
+
+    for index, item in enumerate(items):
+        local_id = _local_id(item, index)
+        qid = targets.get(local_id)
+        original_qid = getattr(item, "existing_qid", None)
+        def blocked(message: str) -> UploadOutcome:
+            return UploadOutcome(local_id=local_id, label=_label(item),
+                                 entity_type=getattr(item, "entity_type", "") or "other",
+                                 qid=qid, status="blocked", message=message, added_properties=[])
+        try:
+            owner_only_validate_quantity_units(item)
+        except ClaimBuildError as exc:
+            out.append(blocked(str(exc)))
+            continue
+        if owner_only_has_local_references(item):
+            out.append(blocked("Owner-only: local references require a complete independently verified item."))
+            continue
+        if owner_only_has_generic_text(item):
+            out.append(blocked("Owner-only: generic text links may hide unresolved source evidence."))
+            continue
+        control_number = owner_only_control_number(item)
+        if control_number is None:
+            out.append(blocked("Owner-only: local P3959 does not match exactly one source record."))
+            continue
+        if (is_test or not qid or not re.fullmatch(r"Q[1-9][0-9]*", qid)
+                or (original_qid and original_qid != qid) or uploader is None):
+            out.append(blocked("Owner-only: no consistent selected target or live credential."))
+            continue
+        if not uploader.owner_only_target_valid(qid, control_number):
+            out.append(blocked("Owner-only: target, P3959, or creator could not be verified."))
+            continue
+        candidate = replace(item, existing_qid=qid)
+        uploader._foreign_accept_qids.clear()
+        rows = _prepare_for_upload(
+            [candidate], _make_reconciler(), ledger={}, accept_by_local_id={},
+            ownership_checker=uploader, is_test=False, enforce_ownership=True,
+            quality_preflight=quality_preflight,
+        )
+        row = rows[0]
+        if (row.blocked or row.block_status == "skipped" or row.ownership != "own"
+                or row.existing_qid != qid or getattr(row.item, "existing_qid", None) != qid
+                or owner_only_control_number(row.item) != control_number):
+            out.append(blocked(row.block_message or "Owner-only: target changed or ownership is unverified."))
+            continue
+        if dry_run:
+            try:
+                preview, _, _ = uploader._build_wbi_item(row.item, owner_only=True)
+                revision = uploader._owner_only_revision(qid, control_number)
+                if (getattr(preview, "id", None) != qid or type(revision) is not int
+                        or revision <= 0 or getattr(preview, "lastrevid", None) != revision
+                        or owner_only_control_number(row.item) != control_number):
+                    out.append(blocked("Owner-only: target, identity, or revision changed during preview."))
+                    continue
+            except Exception as exc:  # noqa: BLE001 — preview must never predict an unsafe write
+                logger.warning("Owner-only preview blocked for %s: %s", local_id, exc)
+                out.append(blocked(f"Owner-only: write preparation failed: {exc}"))
+                continue
+            out.append(UploadOutcome(local_id, row.label, row.entity_type, qid,
+                                     "would_update", f"Dry-run: eligible to attempt update of {qid}.",
+                                     [], ownership="own"))
+            continue
+        result = uploader.upload_item(row.item, created_qids=session_qids, owner_only_qid=qid)
+        status = result.status
+        if status in {"success", "created"}:
+            out.append(blocked("Owner-only: unexpected create outcome; verify the remote state."))
+            continue
+        if result.qid != qid and status in {"success", "created", "updated", "exists", "adopted"}:
+            out.append(blocked("Owner-only: uploader returned a different target."))
+            continue
+        out.append(UploadOutcome(local_id, row.label, row.entity_type, result.qid, status,
+                                 result.message, list(result.added_properties or []), ownership="own"))
     return out
 
 
@@ -1796,6 +2081,7 @@ def _dry_run(
                     for s in stmts
                 ],
                 ownership=p.ownership,
+                accepted_foreign_qid=p.existing_qid if p.allow_foreign_modify else None,
             ),
         )
     return out
@@ -1805,10 +2091,12 @@ async def _record_outcome_audit(
     db: AsyncSession,
     ctx: WikibaseAuditContext,
     outcome: UploadOutcome,
+    *, strict: bool = False,
 ) -> None:
     operation = _audit_operation_for_status(outcome.status)
     if operation is None:
         return
+    options = {"raise_on_error": True} if strict else {}
     await record_wikibase_write(
         db, ctx,
         operation=operation,
@@ -1816,6 +2104,7 @@ async def _record_outcome_audit(
         target_key=outcome.local_id,
         wikibase_id=outcome.qid,
         outcome_message=outcome.message or "ok",
+        **options,
     )
 
 

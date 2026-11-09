@@ -110,7 +110,7 @@ async def run_wikidata_studio_build_shard(
             marc_records=slice_inputs["marc_records"],
             approved_matches=slice_inputs["approved_matches"],
             entities_by_cn=slice_inputs["entities_by_cn"],
-            overrides=slice_inputs["overrides"],
+            overrides={},
             hmo_instance_qids=slice_inputs["hmo_instance_qids"],
         )
     finally:
@@ -146,7 +146,8 @@ async def load_wikidata_shard_plan(
     from app.pipeline.wikidata_studio import (  # noqa: PLC0415
         studio_cache_has_stale_validation,
     )
-    from app.routers.wikidata_studio import _get_studio_cache_row  # noqa: PLC0415
+    from app.routers.wikidata_studio import _get_studio_cache_row, _studio_items_digest  # noqa: PLC0415
+    from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
 
     async with session_scope() as db:
         job = await db.get(RunJob, job_id)
@@ -186,7 +187,13 @@ async def load_wikidata_shard_plan(
         not force_rebuild
         and cached is not None
         and cached.input_fingerprint == fingerprint
+        and isinstance(cached.summary, dict)
+        and cached.summary.get("overrides_applied") is True
+        and "selected_rebuild" not in cached.summary
         and not studio_cache_has_stale_validation(cached.result_items)
+        and cached.summary.get("source_items_sha256") == await run_in_threadpool(
+            _studio_items_digest, cached.result_items or [],
+        )
     ):
         plan.cached_summary = dict(cached.summary or {})
         plan.cached_result_items = list(cached.result_items or [])
@@ -285,8 +292,26 @@ async def consume_wikidata_shard_results(
         )
         return
 
-    merged = merge_shard_items(shards)
-    result = finish_native_items(merged)
+    from sqlalchemy import select  # noqa: PLC0415
+    from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+    from app.models.item_override import WikidataItemOverride  # noqa: PLC0415
+    from app.pipeline.wikidata_studio import _apply_override, local_id_for_item  # noqa: PLC0415
+
+    async with session_scope() as db:
+        override_rows = (await db.execute(
+            select(WikidataItemOverride).where(WikidataItemOverride.run_id == plan.run_id)
+        )).scalars().all()
+        overrides = {row.local_id: {
+            "labels": row.labels, "descriptions": row.descriptions, "aliases": row.aliases,
+            "add_statements": row.add_statements, "remove_statements": row.remove_statements,
+            "statement_edits": row.statement_edits,
+        } for row in override_rows}
+    merged = await run_in_threadpool(merge_shard_items, shards)
+    for item in merged:
+        override = overrides.get(local_id_for_item(item))
+        if override:
+            _apply_override(item, override)
+    result = await run_in_threadpool(finish_native_items, merged)
     await _persist_build_result(plan, merged, result, should_cancel=should_cancel)
 
 
@@ -440,5 +465,4 @@ async def _mine_and_finalise(
             "message": f"Built {total} items from {plan.total} records",
         },
     )
-
 

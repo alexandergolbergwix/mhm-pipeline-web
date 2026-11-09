@@ -124,6 +124,41 @@ async def test_streamed_fingerprint_flips_on_approval_change(db_session, sample_
     assert before != after
 
 
+@pytest.mark.parametrize(("model", "field", "value"), [
+    (AuthorityMatch, "control_number", "different"),
+    (AuthorityMatch, "entity_text", "different"),
+    (AuthorityMatch, "entity_kind", "place"),
+    (AuthorityMatch, "role", "scribe"),
+    (AuthorityMatch, "matched_name", "different"),
+    (AuthorityMatch, "confidence", "low"),
+    (AuthorityMatch, "source", "different"),
+    (ExtractionApproval, "control_number", "different"),
+    (ExtractionApproval, "source", "contents_ner"),
+    (ExtractionApproval, "text", "different"),
+    (ExtractionApproval, "start", 2),
+    (ExtractionApproval, "end", 8),
+    (ExtractionApproval, "type", "WORK"),
+    (ExtractionApproval, "role", "author"),
+    (ExtractionApproval, "confidence", 0.5),
+    (ExtractionApproval, "model_confidence", 0.6),
+    (WikidataItemOverride, "accepted_foreign_qid", "Q42"),
+])
+async def test_fingerprint_tracks_projection_fields_and_matches_stream(db_session, sample_run, model, field, value):
+    run_id = sample_run["run_id"]
+    await _seed_build_inputs(db_session, run_id)
+    before = await compute_build_fingerprint_streamed(db_session, run_id, approved_only=True)
+    row = (await db_session.execute(select(model).where(model.run_id == run_id))).scalars().first()
+    setattr(row, field, value)
+    await db_session.commit()
+    records = (await db_session.execute(select(RunRecord).where(RunRecord.run_id == run_id))).scalars().all()
+    matches = (await db_session.execute(select(AuthorityMatch).where(AuthorityMatch.run_id == run_id))).scalars().all()
+    entities = (await db_session.execute(select(ExtractionApproval).where(ExtractionApproval.run_id == run_id))).scalars().all()
+    overrides = (await db_session.execute(select(WikidataItemOverride).where(WikidataItemOverride.run_id == run_id))).scalars().all()
+    streamed = await compute_build_fingerprint_streamed(db_session, run_id, approved_only=True)
+    assert streamed == compute_build_fingerprint(list(records), list(matches), list(entities), list(overrides), True)
+    assert streamed != before
+
+
 async def test_list_control_numbers_is_cn_ordered(db_session, sample_run) -> None:
     run_id = sample_run["run_id"]
     await _seed_build_inputs(db_session, run_id)
@@ -201,7 +236,7 @@ def _manuscript(cn: str) -> object:
 def test_merge_shard_items_dedupes_persons_first_wins() -> None:
     first = _person("viaf:1", ["cn001"])
     second = _person("viaf:1", ["cn002"])
-    second.labels = {"en": "SHOULD NOT WIN"}
+    second.labels = {"en": "viaf:1", "he": "Person"}
     shards = [
         [first, _manuscript("cn001")],
         [second, _manuscript("cn002")],
@@ -210,7 +245,7 @@ def test_merge_shard_items_dedupes_persons_first_wins() -> None:
     persons = [i for i in merged if i.entity_type == "person"]
     assert len(persons) == 1
     assert persons[0].records == ["cn001", "cn002"]
-    assert persons[0].labels == {"en": "viaf:1"}  # first shard wins
+    assert persons[0].labels == {"en": "viaf:1", "he": "Person"}
     manuscripts = [i for i in merged if i.entity_type == "manuscript"]
     assert len(manuscripts) == 2  # manuscripts never dedupe
 

@@ -137,6 +137,27 @@ async def test_canonical_build_requests_native_items_for_the_gate(_build_env) ->
 
 
 @pytest.mark.asyncio
+async def test_canonical_build_applies_overrides_after_the_legacy_merge(_build_env) -> None:
+    override = SimpleNamespace(
+        id=uuid.uuid4(), approved=True, local_id="QDraft_MS_1", labels={}, descriptions={}, aliases={},
+        add_statements=[{"property": "P31", "value": "Q5"}],
+        remove_statements=[0], statement_edits={"1": {"value": "Q42"}},
+        accepted_foreign_qid=None,
+    )
+    with (
+        patch.object(router, "_load_studio_build_rows",
+                     new=AsyncMock(return_value=([_marc_row()], [], [], [override]))),
+        patch.object(router, "assert_wikidata_export_quality"),
+    ):
+        await router.execute_studio_build(
+            AsyncMock(), run_id=uuid.uuid4(), approved_only=True, source="canonical",
+            force_rebuild=True, run_user_id=None, reconcile=False,
+        )
+    assert router.wikidata_studio.build_items_for_run.call_args.kwargs["overrides"] == {}
+    assert _build_env.build.call_args.kwargs["overrides"]["QDraft_MS_1"]["remove_statements"] == [0]
+
+
+@pytest.mark.asyncio
 async def test_a_blocking_finding_stops_the_canonical_build(_build_env) -> None:
     with (
         patch.object(

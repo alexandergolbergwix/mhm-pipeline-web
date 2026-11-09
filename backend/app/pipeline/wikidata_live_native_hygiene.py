@@ -2,8 +2,8 @@
 
 Judge/audit read the Studio cache, not upload-prepare. Authority-stamped
 ``existing_qid`` values that fail W-190 (or a work ritual/concept QID) must
-be dropped on the native itself, and ``__LOCAL:`` snaks that already have an
-in-corpus live Q must be rewritten before a live write (Rule W-194).
+be dropped on the native itself. Keep ``__LOCAL:`` snaks until the uploader
+resolves them for the selected wiki.
 """
 
 from __future__ import annotations
@@ -11,7 +11,12 @@ from __future__ import annotations
 from typing import Any
 
 from app.pipeline.wikidata_duplicate_probe import person_heading_conflicts_live_label
-from app.pipeline.wikidata_local_refs import LOCAL_PREFIX, P_EXEMPLAR_OF, Q_UNKNOWN_TEXT
+from app.pipeline.wikidata_local_refs import (
+    LOCAL_PREFIX,
+    P_EXEMPLAR_OF,
+    Q_UNKNOWN_TEXT,
+    ensure_sourced_authors_resolvable,
+)
 from converter.wikidata.property_mapping import work_item_forbidden_update_qids
 
 IDENTITY_PIDS = frozenset({"P214", "P8189", "P244", "P227", "P213", "P268"})
@@ -76,7 +81,8 @@ def sanitize_studio_items_for_live(
     *,
     live_entities: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, int]:
-    """Mutate natives: drop false live QIDs, rewrite in-corpus ``__LOCAL:``."""
+    """Drop false live QIDs while preserving local target identity."""
+    ensure_sourced_authors_resolvable(items)
     live_entities = live_entities or {}
     cleared_persons = 0
     cleared_works = 0
@@ -103,9 +109,9 @@ def sanitize_studio_items_for_live(
 
 
 def rewrite_local_to_live_qids(items: list[Any]) -> dict[str, int]:
-    """Replace ``__LOCAL:`` with the target's remaining live QID; degrade danglers."""
+    """Preserve known local IDs; degrade only unsourced, unqualified danglers."""
+    ensure_sourced_authors_resolvable(items)
     by_id = {local_id_of(item): item for item in items if local_id_of(item)}
-    rewritten = 0
     degraded = 0
     dropped = 0
     for item in items:
@@ -115,15 +121,10 @@ def rewrite_local_to_live_qids(items: list[Any]) -> dict[str, int]:
             value = _stmt_value(stmt)
             target = _local_target(value)
             if not target:
-                _rewrite_local_in_qualifiers(stmt, by_id)
                 kept.append(stmt)
                 continue
             dest = by_id.get(target)
             if dest is not None:
-                live_q = existing_qid_of(dest)
-                if live_q:
-                    _set_stmt_value(stmt, live_q)
-                    rewritten += 1
                 kept.append(stmt)
                 continue
             if _stmt_pid(stmt) == P_EXEMPLAR_OF:
@@ -134,7 +135,7 @@ def rewrite_local_to_live_qids(items: list[Any]) -> dict[str, int]:
                 dropped += 1
         _set_statements(item, kept)
     return {
-        "local_rewritten": rewritten,
+        "local_rewritten": 0,
         "local_degraded": degraded,
         "local_dropped": dropped,
     }
@@ -371,31 +372,3 @@ def _set_stmt_value(stmt: Any, value: Any) -> None:
         stmt["value"] = value
         return
     stmt.value = value
-
-
-def _rewrite_local_in_qualifiers(stmt: Any, by_id: dict[str, Any]) -> None:
-    if isinstance(stmt, dict):
-        raw = list(stmt.get("qualifiers") or [])
-    else:
-        raw = list(getattr(stmt, "qualifiers", None) or [])
-    qualifiers: list[Any] = []
-    for qualifier in raw:
-        if not isinstance(qualifier, dict):
-            qualifiers.append(qualifier)
-            continue
-        target = _local_target(qualifier.get("value"))
-        if not target:
-            qualifiers.append(qualifier)
-            continue
-        dest = by_id.get(target)
-        if dest is None:
-            continue
-        live_q = existing_qid_of(dest)
-        if live_q:
-            qualifier = dict(qualifier)
-            qualifier["value"] = live_q
-        qualifiers.append(qualifier)
-    if isinstance(stmt, dict):
-        stmt["qualifiers"] = qualifiers
-    else:
-        stmt.qualifiers = qualifiers

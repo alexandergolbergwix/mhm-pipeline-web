@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 
 from app.models.run_job import (
     JOB_KIND_AUTHORITY_RE_ENRICH,
     JOB_KIND_RDF_BUILD,
+    JOB_KIND_WIKIDATA_UPLOAD,
     JOB_STATUS_QUEUED,
     JOB_STATUS_RUNNING,
     SUPPORTED_JOB_KINDS,
@@ -26,6 +28,58 @@ async def test_start_job_via_api(db_session, sample_run) -> None:
     )
     assert r.status_code == 410
     assert "retired" in r.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind,key,value", [
+    (JOB_KIND_WIKIDATA_UPLOAD, "_step1_state", {"created_qids": {"source": "Q123"}}),
+    (JOB_KIND_WIKIDATA_UPLOAD, "_step1_state", None),
+    (JOB_KIND_WIKIDATA_UPLOAD, "_wikidata_token", "client-token"),
+    (JOB_KIND_RDF_BUILD, "_future_internal_state", {}),
+])
+async def test_start_job_rejects_internal_params(
+    db_session, sample_run, monkeypatch, kind, key, value,
+) -> None:
+    async def fake_secret(*args):
+        return "server-token"
+
+    monkeypatch.setattr("app.routers.wikidata_studio._unwrap_user_secret", fake_secret)
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda job_id: None)
+    response = await sample_run["client"].post(
+        f"/api/runs/{sample_run['run_id']}/jobs",
+        json={"kind": kind, "params": {key: value}},
+    )
+
+    assert response.status_code == 400
+    jobs = (await db_session.execute(
+        select(RunJob).where(RunJob.run_id == sample_run["run_id"])
+    )).scalars().all()
+    assert jobs == []
+
+
+@pytest.mark.asyncio
+async def test_start_upload_job_uses_server_credential(
+    db_session, sample_run, monkeypatch,
+) -> None:
+    async def fake_secret(*args):
+        return "server-token"
+
+    monkeypatch.setattr("app.routers.wikidata_studio._unwrap_user_secret", fake_secret)
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", lambda job_id: None)
+    response = await sample_run["client"].post(
+        f"/api/runs/{sample_run['run_id']}/jobs",
+        json={"kind": JOB_KIND_WIKIDATA_UPLOAD, "params": {
+            "upload_target": "live", "approved_only": True,
+        }},
+    )
+
+    assert response.status_code == 201
+    assert "_wikidata_token" not in response.json()["params"]
+    job = (await db_session.execute(
+        select(RunJob).where(RunJob.run_id == sample_run["run_id"])
+    )).scalar_one()
+    assert job.params["_wikidata_token"] == "server-token"
+    assert job.params["approved_only"] is True
 
 
 @pytest.mark.asyncio

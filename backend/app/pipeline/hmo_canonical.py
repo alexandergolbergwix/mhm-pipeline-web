@@ -168,6 +168,71 @@ def _wikibase_value(raw: Any) -> tuple[Any, str | None]:
     return raw.get("value", raw), None
 
 
+_STATEMENT_RANKS = frozenset({"normal", "preferred", "deprecated"})
+_READBACK_SOURCE_DATATYPES = frozenset({"string", "external-id", "url"})
+
+
+def _readback_snak(raw: object, *, property_id: str) -> dict[str, Any]:
+    """Convert one qualifier or reference snak, or fail closed."""
+    if not isinstance(raw, Mapping) or raw.get("snaktype") != "value":
+        raise ValueError(f"HMO readback {property_id}: qualifier or reference snak is not a value snak")
+    snak_property = str(raw.get("property") or "")
+    datatype = str(raw.get("datatype") or "")
+    datavalue = raw.get("datavalue")
+    if not snak_property or not isinstance(datavalue, Mapping):
+        raise ValueError(f"HMO readback {property_id}: qualifier or reference snak has no property or datavalue")
+    value = datavalue.get("value")
+    if datatype in _READBACK_SOURCE_DATATYPES and datavalue.get("type") == "string" and isinstance(value, str):
+        return {"property": snak_property, "type": datatype, "value": value}
+    if datatype == "time" and datavalue.get("type") == "time" and isinstance(value, Mapping) and "time" in value and "precision" in value:
+        return {"property": snak_property, "type": "time", "value": dict(value)}
+    raise ValueError(f"HMO readback {property_id}: unsupported {datatype or 'untyped'} snak on {snak_property}")
+
+
+def _readback_snak_groups(raw: object, *, property_id: str) -> list[dict[str, Any]]:
+    """Flatten a Wikibase {property: [snak]} mapping, checking each snak's property."""
+    if not raw:
+        return []
+    if not isinstance(raw, Mapping):
+        raise ValueError(f"HMO readback {property_id}: snak groups are not a mapping")
+    snaks: list[dict[str, Any]] = []
+    for group_property, group in raw.items():
+        if not isinstance(group, list):
+            raise ValueError(f"HMO readback {property_id}: snak group {group_property} is not a list")
+        for raw_snak in group:
+            snak = _readback_snak(raw_snak, property_id=property_id)
+            if snak["property"] != str(group_property):
+                raise ValueError(f"HMO readback {property_id}: snak property does not match group {group_property}")
+            snaks.append(snak)
+    return snaks
+
+
+def _readback_statement_evidence(statement: Mapping[str, Any], *, property_id: str) -> dict[str, Any]:
+    """Return the rank, qualifiers, and reference blocks that a claim keeps."""
+    rank = str(statement.get("rank") or "normal")
+    if rank not in _STATEMENT_RANKS:
+        raise ValueError(f"HMO readback {property_id}: unsupported rank {rank!r}")
+    evidence: dict[str, Any] = {}
+    if rank != "normal":
+        evidence["rank"] = rank
+    qualifiers = _readback_snak_groups(statement.get("qualifiers"), property_id=property_id)
+    if qualifiers:
+        evidence["qualifiers"] = qualifiers
+    raw_references = statement.get("references")
+    if raw_references:
+        if not isinstance(raw_references, list):
+            raise ValueError(f"HMO readback {property_id}: references are not a list")
+        blocks: list[list[dict[str, Any]]] = []
+        for reference in raw_references:
+            snak_groups = reference.get("snaks") if isinstance(reference, Mapping) else None
+            block = _readback_snak_groups(snak_groups, property_id=property_id)
+            if not block:
+                raise ValueError(f"HMO readback {property_id}: reference has no snaks")
+            blocks.append(block)
+        evidence["reference_blocks"] = blocks
+    return evidence
+
+
 def canonical_snapshot_from_wikibase(
     raw: Mapping[str, Any],
     *,
@@ -196,13 +261,14 @@ def canonical_snapshot_from_wikibase(
                 snak = statement.get("mainsnak")
                 if not isinstance(snak, Mapping) or snak.get("snaktype") != "value":
                     continue
+                evidence = _readback_statement_evidence(statement, property_id=property_id)
                 value, datatype = _wikibase_value(snak.get("datavalue"))
                 if datatype == "wikibase-item":
                     target_uri = str(target_uris.get(str(value)) or "").strip()
                     if target_uri:
-                        claims.append({"property_uri": property_uri, "target_uri": target_uri, "property_id": property_id})
+                        claims.append({"property_uri": property_uri, "target_uri": target_uri, "property_id": property_id, **evidence})
                     continue
-                claims.append({"property_uri": property_uri, "property_id": property_id, "datatype": datatype or str(snak.get("datatype") or "string"), "value": value})
+                claims.append({"property_uri": property_uri, "property_id": property_id, "datatype": datatype or str(snak.get("datatype") or "string"), "value": value, **evidence})
     snapshot = {
         "local_id": local_id,
         "source_uri": source_uri,

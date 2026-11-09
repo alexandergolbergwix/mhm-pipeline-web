@@ -21,11 +21,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.item_override import WikidataItemOverride
 from app.models.wikidata_studio_item_row import WikidataStudioItemRow
+from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.pipeline.marc_verify_context import load_run_marc_records_scoped
 from app.pipeline.wikidata_item_merge import apply_wikidata_item_override, override_row_to_dict
 from app.pipeline.wikidata_item_views import (
     _adopt_cached_duplicate_qids,
     _attach_live_labels_for_verdict_keys,
+    _cache_override_data,
+    _content_override_newer_than_build,
     _merge_one_wikidata_item,
     _mirror_adopted_qids,
     _sanitise_merged_verdicts,
@@ -341,6 +344,15 @@ async def page_wikidata_items(
     latest_writes = await fetch_latest_wikibase_writes(
         db, run_id, channel=CHANNEL_WIKIDATA_UPLOAD, target_kind=TARGET_ITEM,
     )
+    cache_row = (await db.execute(
+        select(WikidataStudioCache.summary, WikidataStudioCache.built_at).where(
+            WikidataStudioCache.run_id == run_id, WikidataStudioCache.approved_only == approved_only,
+            WikidataStudioCache.source == source,
+        )
+    )).one_or_none()
+    cache_summary = cache_row.summary if cache_row is not None else None
+    overrides_applied = isinstance(cache_summary, dict) and cache_summary.get("overrides_applied") is True
+    build_marker = cache_row.built_at if cache_row is not None and overrides_applied else None
 
     items: list[dict[str, Any]] = []
     last_sort = ""
@@ -349,8 +361,13 @@ async def page_wikidata_items(
     for row, ov_row in page_rows:
         raw = dict(row.payload or {})
         page_ovs.append(ov_row)
+        rebuild_required = (
+            build_marker is not None and ov_row is not None
+            and _content_override_newer_than_build(ov_row, build_marker)
+        )
         merged = _merge_one_wikidata_item(
             raw, ov_row=ov_row, ledger=ledger, latest_writes=latest_writes,
+            overrides_applied=overrides_applied, rebuild_required=rebuild_required,
         )
         items.append(trim_studio_list_item(merged))
         last_sort = str(
@@ -371,7 +388,7 @@ async def page_wikidata_items(
         stable_rows = [
             apply_wikidata_item_override(
                 dict(row.payload or {}),
-                override_row_to_dict(ov_row) if ov_row else {},
+                _cache_override_data(ov_row, overrides_applied) if ov_row else {},
             )
             for row, ov_row in page_rows
         ]

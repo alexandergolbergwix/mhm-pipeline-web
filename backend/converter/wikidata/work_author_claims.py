@@ -6,9 +6,16 @@ import re
 import unicodedata
 from collections import defaultdict
 from collections.abc import Iterable
+from copy import deepcopy
 from dataclasses import replace
 
-from converter.wikidata.item_models import WikidataItem, WikidataStatement
+from converter.wikidata.item_models import (
+    WikidataItem,
+    WikidataStatement,
+    matching_qualifiers,
+    merge_statement_references,
+    validate_statement_references,
+)
 from converter.wikidata.semantic_policy import (
     DEFAULT_SEMANTIC_POLICY,
     SemanticQualityPolicy,
@@ -44,6 +51,8 @@ def _identity_collision_members(
 ) -> set[str]:
     owners: dict[tuple[str, str], set[str]] = defaultdict(set)
     for person in people:
+        if person.existing_qid and _QID_RE.fullmatch(person.existing_qid):
+            owners[("qid", person.existing_qid)].add(person.local_id)
         for property_id in policy.strong_external_id_properties:
             for value in _statement_values(person, property_id):
                 owners[(property_id, value)].add(person.local_id)
@@ -83,10 +92,36 @@ def _shares_source_record(work: WikidataItem, person: WikidataItem) -> bool:
     return bool(work_records and person_records and work_records & person_records)
 
 
+def _author_sources_match(
+    statement: WikidataStatement, work: WikidataItem, person: WikidataItem,
+) -> bool:
+    shared = {str(value) for value in work.records or [] if value} & {
+        str(value) for value in person.records or [] if value
+    }
+    blocks = statement.reference_blocks or ([statement.references] if statement.references else [])
+    if not shared or not blocks:
+        return False
+    for block in blocks:
+        records: set[str] = set()
+        for snak in block:
+            if (snak.get("property") or snak.get("property_id")) != "P3959":
+                continue
+            value = snak.get("value")
+            data = snak.get("datavalue")
+            if value is None and isinstance(data, dict):
+                value = data.get("value")
+            if isinstance(value, str) and value.strip():
+                records.add(value.strip())
+        if not records or not records <= shared:
+            return False
+    return True
+
+
 def promote_safe_work_author_claims(
     items: Iterable[WikidataItem],
     *,
     policy: SemanticQualityPolicy = DEFAULT_SEMANTIC_POLICY,
+    existing_only: bool = False,
 ) -> int:
     """Replace P2093 only when one safe source-linked person matches exactly."""
     corpus = list(items)
@@ -108,9 +143,11 @@ def promote_safe_work_author_claims(
     for work in corpus:
         if work.entity_type != "work":
             continue
-        rewritten: list[WikidataStatement] = []
-        existing_p50 = _statement_values(work, "P50")
         for statement in work.statements or []:
+            validate_statement_references(statement)
+        statements = [deepcopy(statement) for statement in work.statements or []]
+        rewritten: list[WikidataStatement] = []
+        for statement in statements:
             if statement.property_id != "P2093":
                 rewritten.append(statement)
                 continue
@@ -123,34 +160,32 @@ def promote_safe_work_author_claims(
                 rewritten.append(statement)
                 continue
             person = candidates[0]
+            if not _author_sources_match(statement, work, person):
+                rewritten.append(statement)
+                continue
             target = (
                 str(person.existing_qid)
                 if _QID_RE.fullmatch(str(person.existing_qid or ""))
                 else f"__LOCAL:{person.local_id}"
             )
-            if target in existing_p50:
-                retained = next(s for s in work.statements if s.property_id == "P50" and s.value == target)
-                references = list(retained.references or [])
-                for reference in statement.references or []:
-                    if reference not in references:
-                        references.append(reference)
-                retained.references = references
+            targets = {
+                id(s): s for s in [*rewritten, *statements]
+                if s.property_id == "P50" and s.value == target
+            }
+            compatible = [s for s in targets.values() if matching_qualifiers(s, statement)]
+            if len(compatible) == 1:
+                merge_statement_references(compatible[0], statement)
                 changed += 1
                 continue
-            qualifiers = list(statement.qualifiers)
-            if not any(q.get("property") == "P1932" and q.get("value") == statement.value
-                       for q in qualifiers):
-                qualifiers.append({
-                    "property": "P1932", "value": str(statement.value), "type": "string",
-                })
+            if targets or existing_only:
+                rewritten.append(statement)
+                continue
             rewritten.append(replace(
                 statement,
                 property_id="P50",
                 value=target,
                 value_type="item",
-                qualifiers=qualifiers,
             ))
-            existing_p50.add(target)
             changed += 1
         work.statements = rewritten
     return changed

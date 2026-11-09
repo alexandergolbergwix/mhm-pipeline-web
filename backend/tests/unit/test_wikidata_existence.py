@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import urllib.parse
 
+import pytest
+
 from app.pipeline.wikidata_existence import (
     accept_allows_foreign_modify,
     classify_ownership_with_uploader,
@@ -349,3 +351,90 @@ def test_prefetch_entities_for_upload_populates_labels_p31_and_metadata(monkeypa
     assert meta["Q777777"]["p2888"] == ["https://mhm.example/Item:Q1"]
     assert len(calls) == 1
 
+
+@pytest.mark.parametrize("claims", [
+    None, "absent", "bad", [1], {"P31": "bad"},
+    {"P31": [{"mainsnak": {"datavalue": {"value": {"id": "Q1"}}}}]},
+])
+def test_fetch_p31_omits_incomplete_or_unparseable_claims(monkeypatch, claims):
+    from app.pipeline import wikidata_existence as existence
+
+    entity = {"id": "Q123"}
+    if claims != "absent":
+        entity["claims"] = claims
+    monkeypatch.setattr(existence, "_PREFETCHED_ENTITIES", {})
+    monkeypatch.setattr(
+        existence, "_fetch_json_throttled", lambda *a, **kw: {"entities": {"Q123": entity}},
+    )
+    assert existence.fetch_entity_p31(["Q123"], require_complete=True) == {}
+
+
+@pytest.mark.parametrize("snaktype", ["somevalue", "novalue"])
+def test_p31_preserves_known_values_when_unknown_snaks_exist(monkeypatch, snaktype):
+    from app.pipeline import wikidata_existence as existence
+
+    entity = {"id": "Q123", "claims": {"P31": [
+        {"mainsnak": {"snaktype": snaktype}},
+        {"mainsnak": {"snaktype": "value", "datavalue": {"value": {"id": "Q5"}}}},
+    ]}}
+    monkeypatch.setattr(existence, "_PREFETCHED_ENTITIES", {})
+    monkeypatch.setattr(
+        existence, "_fetch_json_throttled", lambda *a, **kw: {"entities": {"Q123": entity}},
+    )
+    assert existence.fetch_entity_p31(["Q123"]) == {"Q123": ["Q5"]}
+    assert existence.fetch_entity_p31(["Q123"], require_complete=True) == {}
+
+
+@pytest.mark.parametrize("helper", ["p31", "metadata"])
+@pytest.mark.parametrize("bad_claims", [None, {"P31": "invalid"}])
+def test_invalid_cache_retries_entity_fetch(monkeypatch, helper, bad_claims):
+    from app.pipeline import wikidata_existence as existence
+
+    cached = {"id": "Q123", "claims": bad_claims, "descriptions": {}}
+    valid = {"id": "Q123", "claims": {}, "descriptions": {}}
+    monkeypatch.setattr(existence, "_PREFETCHED_ENTITIES", {(False, "Q123"): cached})
+    calls = []
+
+    def fetch(*args, **kwargs):
+        calls.append(True)
+        return {"entities": {"Q123": valid}}
+
+    monkeypatch.setattr(existence, "_fetch_json_throttled", fetch)
+    if helper == "p31":
+        assert existence.fetch_entity_p31(["Q123"], require_complete=True) == {"Q123": []}
+    else:
+        assert existence.fetch_entity_duplicate_metadata(["Q123"])["Q123"]["authors"] == []
+    assert calls == [True]
+
+
+@pytest.mark.parametrize("claims", [{}, []])
+@pytest.mark.parametrize("cached", [False, True])
+def test_empty_claims_are_known_for_p31_and_metadata(monkeypatch, claims, cached):
+    from app.pipeline import wikidata_existence as existence
+
+    entity = {"id": "Q123", "claims": claims, "descriptions": {}}
+    monkeypatch.setattr(
+        existence, "_PREFETCHED_ENTITIES", {(False, "Q123"): entity} if cached else {},
+    )
+    monkeypatch.setattr(
+        existence, "_fetch_json_throttled", lambda *a, **kw: {"entities": {"Q123": entity}},
+    )
+    assert existence.fetch_entity_p31(["Q123"]) == {"Q123": []}
+    assert existence.fetch_entity_duplicate_metadata(["Q123"])["Q123"]["author_qids"] == []
+
+
+@pytest.mark.parametrize("claims", [None, "absent", "bad", [1]])
+@pytest.mark.parametrize("cached", [False, True])
+def test_duplicate_metadata_omits_incomplete_claims(monkeypatch, claims, cached):
+    from app.pipeline import wikidata_existence as existence
+
+    entity = {"id": "Q123", "descriptions": {}}
+    if claims != "absent":
+        entity["claims"] = claims
+    monkeypatch.setattr(
+        existence, "_PREFETCHED_ENTITIES", {(False, "Q123"): entity} if cached else {},
+    )
+    monkeypatch.setattr(
+        existence, "_fetch_json_throttled", lambda *a, **kw: {"entities": {"Q123": entity}},
+    )
+    assert existence.fetch_entity_duplicate_metadata(["Q123"]) == {}

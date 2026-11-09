@@ -160,6 +160,42 @@ def test_505_contents_retain_source_and_folio_evidence() -> None:
     }]
 
 
+def test_contents_with_shared_source_text_keep_distinct_titles_and_folios() -> None:
+    from app.pipeline.marc_ingest import prepare_record_for_pipeline
+
+    record = {
+        "245$a": "כתב יד",
+        "contents": [
+            {"title": "ספר הדרושים", "source_field": "505", "source_text": "shared",
+             "folio_range": "א-ב"},
+            {"title": "ספר הדרושים", "source_field": "505", "source_text": "shared",
+             "folio_range": "ג-ד"},
+            {"title": "ספר הכונות", "source_field": "505", "source_text": "shared"},
+        ],
+    }
+    prepared = prepare_record_for_pipeline(record)
+    assert {(c["title"], c.get("folio_range")) for c in prepared["contents"]} == {
+        ("ספר הדרושים", "א-ב"), ("ספר הדרושים", "ג-ד"), ("ספר הכונות", None),
+    }
+
+
+def test_contents_with_shared_source_keep_conflicting_identity_evidence() -> None:
+    from app.pipeline.marc_ingest import prepare_record_for_pipeline
+
+    record = {
+        "245$a": "כתב יד",
+        "contents": [
+            {"title": "ספר הדרושים", "source_field": "505", "source_text": "shared",
+             "folio_range": "א-ב", "author": author, "wikidata_qid": qid}
+            for author, qid in (("מחבר ראשון", "Q123456"), ("מחבר שני", "Q789012"))
+        ],
+    }
+    prepared = prepare_record_for_pipeline(record)
+    assert {(c["author"], c["wikidata_qid"]) for c in prepared["contents"]} == {
+        ("מחבר ראשון", "Q123456"), ("מחבר שני", "Q789012"),
+    }
+
+
 def test_stale_persisted_500_candidates_are_reparsed() -> None:
     from app.pipeline.marc_ingest import prepare_record_for_pipeline
 
