@@ -3,7 +3,7 @@ from typing import Literal
 import unicodedata
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-POLICY_VERSION = 'reference-first-v3'
+POLICY_VERSION = 'reference-first-v4'
 STRONG_IDS = {'P214', 'P8189', 'P244', 'P227', 'P213', 'P268', 'P3959'}
 
 
@@ -29,19 +29,6 @@ def preserve_checked_plan_action(action, observation, qid, remote_revision, stat
     if action == 'create' and observation == 'absent':
         return {'action': 'create', 'statement_indices': indices,
             'reason': 'The checked Plan permits this new item.'}
-    if (
-        action == 'update'
-        and observation == 'present_owned'
-        and qid
-        and remote_revision is not None
-    ):
-        return {
-            'action': 'update_existing',
-            'qid': qid,
-            'remote_revision': remote_revision,
-            'statement_indices': indices,
-            'reason': 'The checked Plan permits this owned-item update.',
-        }
     if action == 'skip' and qid and remote_revision is not None:
         return {'action': 'reuse_existing', 'qid': qid, 'remote_revision': remote_revision,
             'statement_indices': [], 'reason': 'The checked Plan reuses this existing item.'}
@@ -78,37 +65,8 @@ def same_work_and_author(document, remote):
     return bool(titles & remote_titles and authors & remote_authors)
 
 
-def shared_p3959(document, remote):
-    """The P3959 catalog control numbers our record and the target share exactly.
-
-    The control number is minted by our catalog feed and is globally unique,
-    so an equal pair proves the target is project-owned manuscript data
-    (the F1 ownership override). No prefix or fuzzy compare: absence is not
-    identity.
-    """
-    matches = set()
-    for statement in document.get('statements') or []:
-        prop = statement.get('property') or statement.get('property_id')
-        value = str(statement.get('value') or '').strip()
-        if prop != 'P3959' or not value:
-            continue
-        for claim in (remote or {}).get('claims', {}).get('P3959', []):
-            other = claim.get('mainsnak', {}).get('datavalue', {}).get('value')
-            if str(other).strip() == value:
-                matches.add(value)
-    return matches
-
-
 def route_blocked_target(document, remote, entity_type):
-    """Deterministic routing for a blocked item the drawer flow never reached.
-
-    Returns 'update_existing' for project-owned manuscript data (exact
-    P3959 identity), 'judge' when the target shares a verifiable identifier
-    and the AI dual judge must decide, and 'defer' when nothing verifiable
-    is shared. The sweep never accepts a community item implicitly.
-    """
-    if entity_type == 'manuscript' and shared_p3959(document, remote):
-        return 'update_existing'
+    """Route shared identifiers to identity review, never to an update."""
     if shared_identifiers(document, remote):
         return 'judge'
     return 'defer'

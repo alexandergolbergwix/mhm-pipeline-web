@@ -2,10 +2,29 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from app.publication.types import JsonValue, PublicationEntity, TargetRef
+
+
+def validate_publication_references(document: object) -> None:
+    from converter.wikidata.quickstatements import validate_source_references  # noqa: PLC0415
+
+    if not isinstance(document, dict):
+        raise ValueError("A publication entity document must be an object")
+    for field_name in ("statements", "claims", "deferred_statements"):
+        if field_name not in document:
+            continue
+        rows = document[field_name]
+        if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+            raise ValueError(f"{field_name} must be a list of objects")
+        for row in rows:
+            validate_source_references(
+                row.get("references", []), row.get("reference_blocks", []),
+                allow_local=field_name == "deferred_statements", require_proven_blocks=True,
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +103,7 @@ class GatewayWriteRequest:
     intent_id: str
     request_key: str
     mutation: GatewayMutation
+    authorize_send: Callable[[], Awaitable[bool]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,6 +265,8 @@ class FakeWikidataGateway:
         )
 
     async def write(self, request: GatewayWriteRequest) -> WriteOutcome:
+        if request.authorize_send is None or not await request.authorize_send():
+            return WriteOutcome.blocked("The Execution approval or Plan changed before the write")
         self._write_calls.append(request)
         outcomes = self._write_outcomes.get(request.mutation.entity_key)
         if outcomes:

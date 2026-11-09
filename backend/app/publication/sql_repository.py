@@ -290,7 +290,7 @@ class SqlAlchemyPublicationRepository:
         await self._session.flush()
 
     async def get_publication(self, publication_id: str) -> PublicationRecord:
-        row = await self._session.get(PublicationRow, _uuid(publication_id))
+        row = await self._session.get(PublicationRow, _uuid(publication_id), populate_existing=True)
         if row is None:
             raise PublicationNotFoundError(publication_id)
         return self._publication_record(row)
@@ -385,8 +385,11 @@ class SqlAlchemyPublicationRepository:
         row.approved_count = approval_set.approved_count
         row.rejected_count = approval_set.rejected_count
         row.sealed_at = datetime.now(UTC)
-        publication_row = await self._publication_row(publication.publication_id)
-        self._apply_publication(publication_row, publication)
+        await self._session.execute(
+            update(PublicationRow).where(PublicationRow.id == _uuid(publication.publication_id))
+            .values(state=publication.state, latest_approval_set_id=_uuid(approval_set.approval_set_id),
+                latest_plan_id=None)
+        )
         await self._session.flush()
 
     async def get_approval_set(self, approval_set_id: str) -> ApprovalSetRecord:
@@ -512,8 +515,16 @@ class SqlAlchemyPublicationRepository:
                 expires_at=receipt.expires_at,
             )
         )
-        publication_row = await self._publication_row(publication.publication_id)
-        self._apply_publication(publication_row, publication)
+        result = await self._session.execute(
+            update(PublicationRow).where(
+                PublicationRow.id == _uuid(publication.publication_id),
+                PublicationRow.latest_approval_set_id == _uuid(plan.approval_set_id),
+                PublicationRow.latest_release_id == _uuid(plan.release_id),
+            ).values(state=publication.state, latest_plan_id=_uuid(plan.plan_id))
+            .returning(PublicationRow.id)
+        )
+        if result.scalar_one_or_none() is None:
+            raise ValueError("The Approval Set changed during the dry-run")
         await self._session.flush()
 
     async def get_plan(self, plan_id: str) -> PlanRecord:
@@ -674,6 +685,17 @@ class SqlAlchemyPublicationRepository:
         publication: PublicationRecord,
         execution: ExecutionRecord,
     ) -> None:
+        plan = await self.get_plan(execution.plan_id)
+        result = await self._session.execute(
+            update(PublicationRow).where(
+                PublicationRow.id == _uuid(publication.publication_id),
+                PublicationRow.latest_plan_id == _uuid(plan.plan_id),
+                PublicationRow.latest_approval_set_id == _uuid(plan.approval_set_id),
+            ).values(state=publication.state)
+            .returning(PublicationRow.id)
+        )
+        if result.scalar_one_or_none() is None:
+            raise ValueError("The Approval Set or Plan changed before execution")
         self._session.add(
             ExecutionRow(
                 id=_uuid(execution.execution_id),
@@ -691,9 +713,11 @@ class SqlAlchemyPublicationRepository:
                 blocked_count=execution.blocked_count,
             )
         )
-        publication_row = await self._publication_row(publication.publication_id)
-        self._apply_publication(publication_row, publication)
         await self._session.flush()
+        await self._session.execute(
+            update(PublicationRow).where(PublicationRow.id == _uuid(publication.publication_id))
+            .values(latest_execution_id=_uuid(execution.execution_id))
+        )
         execution_uuid = _uuid(execution.execution_id)
         ordinal = func.row_number().over(order_by=PlanActionRow.entity_key)
         await self._session.execute(
@@ -731,7 +755,7 @@ class SqlAlchemyPublicationRepository:
         await self._session.commit()
 
     async def get_execution(self, execution_id: str) -> ExecutionRecord:
-        row = await self._session.get(ExecutionRow, _uuid(execution_id))
+        row = await self._session.get(ExecutionRow, _uuid(execution_id), populate_existing=True)
         if row is None:
             raise LookupError(execution_id)
         return self._execution_record(row)
@@ -910,8 +934,13 @@ class SqlAlchemyPublicationRepository:
         row.pre_send_retryable_count = execution.pre_send_retryable_count
         row.outcome_unknown_count = execution.outcome_unknown_count
         row.blocked_count = execution.blocked_count
-        publication_row = await self._publication_row(publication.publication_id)
-        self._apply_publication(publication_row, publication)
+        await self._session.execute(
+            update(PublicationRow).where(
+                PublicationRow.id == _uuid(publication.publication_id),
+                PublicationRow.latest_execution_id == _uuid(execution.execution_id),
+                PublicationRow.latest_plan_id == _uuid(execution.plan_id),
+            ).values(state=publication.state)
+        )
         await self._session.commit()
 
     async def summarize_write_intents(

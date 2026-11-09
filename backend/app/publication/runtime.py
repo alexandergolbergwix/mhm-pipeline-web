@@ -224,13 +224,21 @@ def _local_references(item: Mapping[str, object]) -> tuple[str, ...]:
     return tuple(sorted(references))
 
 
-def _resolve_statement_references(value: object, qids: Mapping[str, str]) -> object:
+def _resolve_statement_references(
+    value: object, qids: Mapping[str, str], verified: Mapping[str, str],
+) -> object:
     if isinstance(value, str) and value.startswith("__LOCAL:"):
-        return qids.get(value.removeprefix("__LOCAL:"), value)
+        key = value.removeprefix("__LOCAL:")
+        if key in verified:
+            return {"id": verified[key], "value_namespace": "local", "value_local_id": key}
+        return qids.get(key, value)
     if isinstance(value, list):
-        return [_resolve_statement_references(entry, qids) for entry in value]
+        return [_resolve_statement_references(entry, qids, verified) for entry in value]
     if isinstance(value, Mapping):
-        return {key: _resolve_statement_references(entry, qids) for key, entry in value.items()}
+        return {
+            key: _resolve_statement_references(entry, qids, verified)
+            for key, entry in value.items()
+        }
     return value
 
 
@@ -283,7 +291,7 @@ class StudioCacheProjectionSource(ProjectionSource):
         metadata = await self._cache_metadata(run_id, source, approved_only)
         if metadata is None:
             raise PublicationSourceError(
-                "Build the selected Wikidata Studio source before preparation"
+                "Rebuild the selected Wikidata Studio source from source data with skip cache before preparation"
             )
         input_fingerprint, built_at = metadata
         return SourceSnapshotRef(
@@ -301,39 +309,60 @@ class StudioCacheProjectionSource(ProjectionSource):
             raise PublicationSourceError("The requested publication profile is unsupported")
         run_id, source, approved_only = _snapshot_parts(source_snapshot.snapshot_id)
         metadata = await self._cache_metadata(run_id, source, approved_only)
-        if metadata is None or metadata[0] != source_snapshot.digest:
+        if (metadata is None or metadata[0] != source_snapshot.digest
+                or _aware(metadata[1]).isoformat() != source_snapshot.revision):
             raise PublicationSourceError("The selected Studio source changed before preparation")
-        # Ledger fallback for existing_qid: after a phase-1 execution the
-        # global ledger maps local_id → created QID, so a phase-2 release
-        # resolves __LOCAL: references into real links. The build's own
-        # existing_qid still wins (same precedence as the row-view merge).
+        # Test ledger QIDs take precedence over production Studio QIDs.
         from app.pipeline.wikidata_qid_ledger import (  # noqa: PLC0415
             ledger_key_for_item,
+            ledger_namespace,
             load_global_ledger,
+            lookup_ledger_qid,
         )
 
         ledger = await load_global_ledger(
             self._session,
             is_test=self.ledger_is_test,
         )
+        namespace = ledger_namespace(is_test=self.ledger_is_test)
+        is_test_ledger = namespace == "wikidata-test"
 
         def _ledger_qid(item: Mapping[str, object]) -> str:
-            if item.get("existing_qid"):
-                return str(item["existing_qid"])
             try:
-                key = ledger_key_for_item(item)
+                key = ledger_key_for_item(item, namespace)
             except Exception:
                 return ""
-            return str(ledger.get(key) or "")
+            return str(lookup_ledger_qid(ledger, key) or "")
 
         qids: dict[str, str] = {}
+        verified_local: dict[str, str] = {}
         entity_keys: set[str] = set()
+        author_targets: list[dict[str, object]] = []
         async for target in self._stream_items(run_id, source, approved_only, source_snapshot.digest):
             target = self.automatic_documents.get(_item_entity_key(target), target)
             entity_keys.add(_item_entity_key(target))
-            qid = _ledger_qid(target).strip()
+            statements = target.get("statements", [])
+            if not isinstance(statements, list):
+                raise PublicationSourceError("statements must be a list")
+            author_targets.append({
+                "local_id": _item_entity_key(target), "entity_type": _item_entity_type(target),
+                "statements": [{"property": "P50", "value": statement.get("value")}
+                               for statement in statements if isinstance(statement, dict)
+                               and (statement.get("property") or statement.get("property_id")) == "P50"
+                               and (statement.get("references") or statement.get("reference_blocks"))],
+            })
+            qid = (_ledger_qid(target) if is_test_ledger else
+                str(target.get("existing_qid") or _ledger_qid(target))).strip()
             if _QID.fullmatch(qid) and not _has_blocking_item_issue(target):
                 qids[_item_entity_key(target)] = qid
+                if is_test_ledger:
+                    verified_local[_item_entity_key(target)] = qid
+        from app.pipeline.wikidata_local_refs import ensure_sourced_authors_resolvable  # noqa: PLC0415
+
+        try:
+            ensure_sourced_authors_resolvable(author_targets)
+        except ValueError as exc:
+            raise PublicationSourceError(str(exc)) from exc
         if not set(self.reference_only) <= entity_keys:
             raise PublicationSourceError("A reference-only item is absent from the current source")
         for key, reference in self.reference_only.items():
@@ -342,13 +371,24 @@ class StudioCacheProjectionSource(ProjectionSource):
                 raise PublicationSourceError("The reference-only QID conflicts with the current source")
             qids[key] = qid
         page: list[PublicationEntityInput] = []
+        asserted_qids: dict[str, str] = {}
         async for item in self._stream_items(
             run_id,
             source,
             approved_only,
             source_snapshot.digest,
         ):
+            original = item
             item = self.automatic_documents.get(_item_entity_key(item), item)
+            if _item_entity_type(original) == "work" and any(
+                (field in original) != (field in item) or original.get(field) != item.get(field)
+                for field in ("records", "work_candidate_evidence")
+            ):
+                raise PublicationSourceError(
+                    "Automatic projection cannot replace work source evidence"
+                )
+            if _item_entity_type(original) != _item_entity_type(item):
+                raise PublicationSourceError("Automatic projection cannot change an entity type")
             if self.automatic_documents and item.get("publication_deferred"):
                 continue
             if _has_blocking_item_issue(item):
@@ -356,10 +396,36 @@ class StudioCacheProjectionSource(ProjectionSource):
                     "The selected Studio source contains blocking validation issues"
                 )
             item = dict(item)
-            if not item.get("existing_qid"):
-                ledger_qid = _ledger_qid(item)
-                if _QID.fullmatch(ledger_qid):
-                    item["existing_qid"] = ledger_qid
+            from converter.wikidata.quickstatements import (  # noqa: PLC0415
+                reference_data, validate_source_references,
+            )
+
+            for field in ("statements", "deferred_statements"):
+                rows = item.get(field, [])
+                if not isinstance(rows, list):
+                    raise PublicationSourceError(f"{field} must be a list")
+                normalized = []
+                for row in rows:
+                    if not isinstance(row, dict):
+                        raise PublicationSourceError(f"{field} must contain objects")
+                    try:
+                        references, blocks = reference_data(
+                            row.get("references", []), row.get("reference_blocks", []),
+                        )
+                        validate_source_references(
+                            references, blocks, allow_local=True, require_proven_blocks=True,
+                        )
+                    except ValueError as exc:
+                        raise PublicationSourceError(str(exc)) from exc
+                    normalized.append({**row, "references": references} if blocks else row)
+                if field in item:
+                    item[field] = normalized
+            item.pop("publication_target_qid", None)
+            ledger_qid = _ledger_qid(item)
+            if _QID.fullmatch(ledger_qid) and (is_test_ledger or not item.get("existing_qid")):
+                item["existing_qid"] = ledger_qid
+                if is_test_ledger:
+                    item["publication_target_qid"] = {"site": "test.wikidata.org", "qid": ledger_qid}
             if not self.automatic_documents:
                 item.pop("publication_reference_only", None)
                 item.pop("publication_deferred", None)
@@ -368,7 +434,16 @@ class StudioCacheProjectionSource(ProjectionSource):
             if reference is not None:
                 item["publication_reference_only"] = reference
                 item["existing_qid"] = reference["qid"]
-            item["statements"] = _resolve_statement_references(item.get("statements", []), qids)
+            item.pop("publication_local_targets", None)
+            local_targets = {
+                key: {"site": "test.wikidata.org", "qid": verified_local[key]}
+                for key in _local_references(item) if key in verified_local
+            }
+            item["statements"] = _resolve_statement_references(
+                item.get("statements", []), qids, verified_local,
+            )
+            if local_targets:
+                item["publication_local_targets"] = local_targets
             if profile.version == "1-nodes":
                 kept: list[Mapping[str, object]] = []
                 deferred = list(item.get("deferred_statements") or [])
@@ -380,13 +455,23 @@ class StudioCacheProjectionSource(ProjectionSource):
                         kept.append(statement)
                 item["statements"] = kept
                 item["deferred_statements"] = deferred
+            assertions = () if item.get("publication_deferred") else _identity_assertions(item)
+            for assertion in assertions:
+                if not assertion.startswith("wikidata:"):
+                    continue
+                previous_type = asserted_qids.get(assertion)
+                if previous_type is not None and "work" in {previous_type, _item_entity_type(item)}:
+                    raise PublicationSourceError(
+                        "Duplicate work QIDs require source identity review before preparation"
+                    )
+                asserted_qids[assertion] = _item_entity_type(item)
             page.append(
                 PublicationEntityInput(
                     entity_key=_item_entity_key(item),
                     entity_type=_item_entity_type(item),
                     document=cast("dict[str, object]", dict(item)),
                     evidence_refs=_evidence_refs(item),
-                    identity_assertions=() if item.get("publication_deferred") else _identity_assertions(item),
+                    identity_assertions=assertions,
                     local_references=_local_references(item),
                 )
             )
@@ -396,7 +481,8 @@ class StudioCacheProjectionSource(ProjectionSource):
         if page:
             yield tuple(page)
         final_metadata = await self._cache_metadata(run_id, source, approved_only)
-        if final_metadata is None or final_metadata[0] != source_snapshot.digest:
+        if (final_metadata is None or final_metadata[0] != source_snapshot.digest
+                or _aware(final_metadata[1]).isoformat() != source_snapshot.revision):
             raise PublicationSourceError(
                 "The selected Studio source changed during preparation"
             )
@@ -412,7 +498,8 @@ class StudioCacheProjectionSource(ProjectionSource):
         if str(snapshot_run_id) != run_id:
             return False
         metadata = await self._cache_metadata(snapshot_run_id, source, approved_only)
-        return metadata is not None and metadata[0] == source_snapshot.digest
+        return (metadata is not None and metadata[0] == source_snapshot.digest
+                and _aware(metadata[1]).isoformat() == source_snapshot.revision)
 
     async def _cache_metadata(
         self,
@@ -420,11 +507,12 @@ class StudioCacheProjectionSource(ProjectionSource):
         source: str,
         approved_only: bool,
     ) -> tuple[str, datetime] | None:
-        return (
+        metadata = (
             await self._session.execute(
                 select(
                     WikidataStudioCache.input_fingerprint,
                     WikidataStudioCache.built_at,
+                    WikidataStudioCache.summary,
                 ).where(
                     WikidataStudioCache.run_id == run_id,
                     WikidataStudioCache.source == source,
@@ -432,6 +520,16 @@ class StudioCacheProjectionSource(ProjectionSource):
                 )
             )
         ).one_or_none()
+        if metadata is None:
+            return None
+        from app.routers.wikidata_studio import _studio_cache_is_current  # noqa: PLC0415
+
+        if not await _studio_cache_is_current(
+            self._session, run_id, source=source, approved_only=approved_only,
+            fingerprint=metadata[0], summary=metadata[2],
+        ):
+            return None
+        return metadata[0], metadata[1]
 
     async def _stream_items(
         self,

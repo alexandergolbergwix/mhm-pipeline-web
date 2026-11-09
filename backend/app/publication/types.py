@@ -121,9 +121,7 @@ class DryRunCommand:
     foreign_qid_consents: tuple[ForeignQidConsent, ...] = ()
     force_refresh: bool = False
     # Parent-plan observations a derived release may reuse by entity key.
-    # Only 'absent' observations are honoured regardless of digest — that
-    # status describes the remote target, not our content — and the write
-    # preflight re-verifies identity fail-closed before any CREATE.
+    # Only unchanged foreign observations may be reused.
     observation_seed: dict[str, PlanActionRecord] = field(default_factory=dict)
     kind: Literal["dry_run"] = field(default="dry_run", init=False)
 

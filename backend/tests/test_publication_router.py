@@ -31,6 +31,27 @@ def _canonical_item(local_id: str, label: str) -> dict[str, object]:
 
 
 async def _add_canonical_cache(db_session, run_id, *, items=None) -> None:
+    from app.models.hmo_canonical_entity import HmoCanonicalEntity
+    from app.pipeline.hmo_canonical import normalize_live_entity
+    from app.pipeline.hmo_canonical_wikidata import canonical_wikidata_fingerprint
+    from app.pipeline.wikidata_studio_batches import compute_build_fingerprint_streamed
+    from app.routers.wikidata_studio import _studio_items_digest
+
+    snapshot = {
+        "local_id": "fixture-work", "source_uri": "https://example.org/fixture-work",
+        "wikibase_id": "Q123", "entity_type": "F1_Work",
+        "labels": {"en": "Fixture work"}, "control_numbers": ["990001"],
+    }
+    db_session.add(HmoCanonicalEntity(
+        run_id=run_id, local_id=snapshot["local_id"], source_uri=snapshot["source_uri"],
+        wikibase_id="Q123", entity_type="F1_Work", source_fingerprint="f" * 64,
+        snapshot=snapshot,
+    ))
+    await db_session.flush()
+    enrichment = await compute_build_fingerprint_streamed(db_session, run_id, approved_only=True)
+    fingerprint = canonical_wikidata_fingerprint(
+        [normalize_live_entity(snapshot)], enrichment_fingerprint=enrichment,
+    )
     cached_items = items or [
         _canonical_item("work:2", "Work 2"),
         _canonical_item("work:1", "Work 1"),
@@ -40,7 +61,7 @@ async def _add_canonical_cache(db_session, run_id, *, items=None) -> None:
             run_id=run_id,
             approved_only=True,
             source="canonical",
-            input_fingerprint="a" * 64,
+            input_fingerprint=fingerprint,
             result_items=cached_items,
             quickstatements="",
             summary={
@@ -49,6 +70,8 @@ async def _add_canonical_cache(db_session, run_id, *, items=None) -> None:
                 "persons": 0,
                 "works": len(cached_items),
                 "statements": len(cached_items),
+                "source_items_sha256": _studio_items_digest(cached_items),
+                "overrides_applied": True,
             },
             approved_match_count=0,
             pending_match_count=0,
@@ -199,6 +222,43 @@ async def test_release_resolves_local_connections_to_existing_targets(sample_run
     result = next(item for item in projected if item.entity_key == "work:1")
     assert result.document["statements"][-1]["value"] == "Q123"
     assert result.local_references == ()
+
+
+@pytest.mark.asyncio
+async def test_test_ledger_qid_is_sealed_as_test_target(sample_run, db_session):
+    from app.pipeline.wikidata_qid_ledger import record_ledger_mapping
+    from app.publication import ProfileRef
+    from app.publication.runtime import StudioCacheProjectionSource
+    from app.publication.wikidata_gateway import CurrentWikidataBoundary
+    from tests.unit.test_wikidata_publication_gateway import _ReadbackUploader
+
+    item = _canonical_item("work:ledger", "Work")
+    item["records"] = ["990000000000000001"]
+    item["work_candidate_evidence"] = [{"accepted": True, "source_field": "245"}]
+    item["existing_qid"] = "Q123"
+    item["publication_target_qid"] = {"site": "test.wikidata.org", "qid": "Q123"}
+    untrusted = _canonical_item("work:untrusted", "Untrusted work")
+    untrusted["records"] = ["990000000000000001"]
+    untrusted["work_candidate_evidence"] = [{"accepted": True, "source_field": "245"}]
+    untrusted["existing_qid"] = "Q567"
+    untrusted["publication_target_qid"] = {"site": "test.wikidata.org", "qid": "Q567"}
+    await _add_canonical_cache(db_session, sample_run["run_id"], items=[item, untrusted])
+    await record_ledger_mapping(db_session, "wikidata-test:work:work:ledger", "Q9001")
+    source = StudioCacheProjectionSource(db_session)
+    source.ledger_is_test = True
+    snapshot = await source.current_snapshot(run_id=sample_run["run_id"], source="canonical", approved_only=True)
+    projected = [item async for page in source.project(snapshot, ProfileRef("mhm-wikidata", "1")) for item in page]
+    by_key = {entity.entity_key: entity for entity in projected}
+    assert by_key["work:ledger"].document["existing_qid"] == "Q9001"
+    assert by_key["work:ledger"].document["publication_target_qid"] == {"site": "test.wikidata.org", "qid": "Q9001"}
+    assert "publication_target_qid" not in by_key["work:untrusted"].document
+    uploader = _ReadbackUploader()
+    uploader._is_test = True
+    observations = await CurrentWikidataBoundary(uploader=uploader).reconcile_batch(tuple(projected))
+    observation = next(row for row in observations if row.entity_key == "work:ledger")
+    assert observation.status == "unknown"
+    assert "P31" in (observation.detail or "")
+    assert next(row for row in observations if row.entity_key == "work:untrusted").status == "unknown"
 
 
 @pytest.mark.asyncio
@@ -1251,7 +1311,7 @@ async def test_automatic_evidence_uses_only_the_items_source_records(sample_run,
 
 
 @pytest.mark.asyncio
-async def test_blocked_sweep_stamps_p3959_updates_and_defers_unverifiable_matches(
+async def test_blocked_sweep_reviews_p3959_matches_without_foreign_updates(
     sample_run, db_session, monkeypatch,
 ):
     import httpx
@@ -1281,12 +1341,8 @@ async def test_blocked_sweep_stamps_p3959_updates_and_defers_unverifiable_matche
             observations = []
             for entity in entities:
                 qid = entity.document.get('existing_qid') or target_qids[entity.entity_key]
-                if entity.document.get('existing_qid'):
-                    observations.append(TargetObservation.present_owned(
-                        entity.entity_key, qid=qid, remote_revision=7, fingerprint='remote'))
-                else:
-                    observations.append(TargetObservation.present_foreign(
-                        entity.entity_key, qid=qid, remote_revision=7, fingerprint='remote'))
+                observations.append(TargetObservation.present_foreign(
+                    entity.entity_key, qid=qid, remote_revision=7, fingerprint='remote'))
             return tuple(observations)
 
         async def fetch_entity(self, qid):
@@ -1322,7 +1378,7 @@ async def test_blocked_sweep_stamps_p3959_updates_and_defers_unverifiable_matche
     real_client = httpx.AsyncClient
     monkeypatch.setattr(httpx, 'AsyncClient', lambda **kwargs: real_client(**kwargs,
         transport=httpx.MockTransport(lambda request: httpx.Response(200,
-            text='Primary catalogue: identifier 123. Works and authors.'))))
+            text='Primary catalogue: identifier 123 and 990000533850205171. Works and authors.'))))
     monkeypatch.setenv('GEMINI_API_KEY', 'fixture-ai-key')
     monkeypatch.setattr('app.pipeline.run_job_service.spawn_job', lambda _job_id: None)
     monkeypatch.setattr('app.publication.wikidata_gateway.CurrentWikidataBoundaryFactory.open', open_boundary)
@@ -1391,22 +1447,23 @@ async def test_blocked_sweep_stamps_p3959_updates_and_defers_unverifiable_matche
     report = saved['report']
     statuses = {row['entity_key']: row for row in report['items']}
     assert set(statuses) == {'manuscript:1', 'person:2', 'person:3'}
-    assert statuses['manuscript:1']['status'] == 'update_existing'
+    assert statuses['manuscript:1']['status'] == 'reuse_existing'
     assert statuses['manuscript:1']['qid'] == 'Q134619072'
     assert statuses['person:2']['status'] == 'deferred'
     assert statuses['person:2']['reason'] == ('A live-wiki item exists but shares no '
         'verifiable identifier; curator review required.')
     assert statuses['person:3']['status'] == 'reuse_existing'
-    assert judge_calls == [('person:3', 'assessment'), ('person:3', 'independent_verification')]
+    assert set(judge_calls) == {
+        ('manuscript:1', 'assessment'), ('manuscript:1', 'independent_verification'),
+        ('person:3', 'assessment'), ('person:3', 'independent_verification'),
+    }
     assert any('Sweeping 3 blocked items: 2 re-routed, 1 deferred.' in str(event.get('message'))
         for event in progress_events)
 
     result = (await client.post(
         f"/api/runs/{run_id}/wikidata-publications/{report['result_publication_id']}/read",
         json={'query': {'type': 'summary'}})).json()['publication']
-    # The deferred person leaves the subset Release entirely (Studio keeps it
-    # for curator follow-up); the plan covers only the stamped update and the
-    # reference-only reuse.
-    assert result['plan']['action_counts'] == {'create': 0, 'update': 1, 'skip': 1, 'blocked': 0}
+    # Foreign items are reference-only; the deferred person stays in Studio.
+    assert result['plan']['action_counts'] == {'create': 0, 'update': 0, 'skip': 2, 'blocked': 0}
     assert result['current_release']['entity_count'] == 2
     assert result['dry_run_receipt']['status'] == 'valid'

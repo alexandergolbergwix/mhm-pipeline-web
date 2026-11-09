@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Literal, Protocol
 
@@ -493,7 +493,11 @@ class InMemoryPublicationRepository:
         approval_set: ApprovalSetRecord,
     ) -> None:
         self._approval_sets[approval_set.approval_set_id] = approval_set
-        self._publications[publication.publication_id] = publication
+        current = self._publications[publication.publication_id]
+        self._publications[publication.publication_id] = replace(
+            current, state=publication.state,
+            latest_approval_set_id=approval_set.approval_set_id, latest_plan_id=None,
+        )
         self._approval_keys[(publication.publication_id, approval_set.idempotency_key)] = (
             approval_set.approval_set_id
         )
@@ -549,6 +553,9 @@ class InMemoryPublicationRepository:
         publication: PublicationRecord,
         plan: PlanRecord,
     ) -> None:
+        current = self._publications[publication.publication_id]
+        if current.latest_approval_set_id != plan.approval_set_id:
+            raise ValueError("The Approval Set changed during the dry-run")
         self._plans[plan.plan_id] = plan
         self._publications[publication.publication_id] = publication
         self._plan_keys[(publication.publication_id, plan.idempotency_key)] = plan.plan_id
@@ -645,6 +652,11 @@ class InMemoryPublicationRepository:
         publication: PublicationRecord,
         execution: ExecutionRecord,
     ) -> None:
+        current = self._publications[publication.publication_id]
+        plan = self._plans[execution.plan_id]
+        if (current.latest_plan_id != plan.plan_id
+            or current.latest_approval_set_id != plan.approval_set_id):
+            raise ValueError("The Approval Set or Plan changed before execution")
         self._publications[publication.publication_id] = publication
         self._executions[execution.execution_id] = execution
         self._execution_keys[(publication.publication_id, execution.idempotency_key)] = (
@@ -776,7 +788,9 @@ class InMemoryPublicationRepository:
         publication: PublicationRecord,
         execution: ExecutionRecord,
     ) -> None:
-        self._publications[publication.publication_id] = publication
+        current = self._publications[publication.publication_id]
+        if current.latest_plan_id == execution.plan_id:
+            self._publications[publication.publication_id] = replace(current, state=publication.state)
         self._executions[execution.execution_id] = execution
 
     async def summarize_write_intents(

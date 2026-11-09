@@ -86,7 +86,9 @@ async def test_absent_observations_expire_once_the_plan_executes() -> None:
         state="dry_run_ready",
         latest_release_id="release-1",
         idempotency_key="prepare-1",
+        latest_approval_set_id="approval-1",
     )
+    await repository.begin_prepare(publication, "release-1")
     await repository.begin_plan("plan-1")
     await repository.add_plan_actions("plan-1", (
         PlanActionRecord(

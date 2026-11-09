@@ -21,6 +21,7 @@ from app.publication.digests import (
     canonical_digest,
     entity_digest,
     freeze_json,
+    thaw_json,
 )
 from app.publication.gateway import (
     GatewayRecoveryRequest,
@@ -29,6 +30,7 @@ from app.publication.gateway import (
     WikidataGateway,
     WikidataGatewaySession,
     WriteOutcome,
+    validate_publication_references,
 )
 from app.publication.repository import (
     ApprovalDecisionRecord,
@@ -399,6 +401,11 @@ class PublicationModule:
             raise BlockingFindingsError(
                 "The Release has cross-entity findings that require correction"
             )
+        if command.decision == "approve":
+            await self._validate_release_references(
+                release.release_id,
+                None if command.selection.mode == "all" else set(command.selection.entity_keys),
+            )
 
         approval_set_id = str(uuid.uuid4())
         await self._repository.begin_approval(approval_set_id)
@@ -462,6 +469,7 @@ class PublicationModule:
             publication,
             state="reviewed",
             latest_approval_set_id=approval_set_id,
+            latest_plan_id=None,
         )
         await self._repository.complete_approval(reviewed_publication, approval_set)
         return OperationRef(
@@ -470,6 +478,21 @@ class PublicationModule:
             resource_type="approval_set",
             resource_id=approval_set_id,
         )
+
+    async def _validate_release_references(
+        self, release_id: str, selected_keys: set[str] | None = None,
+    ) -> None:
+        after: str | None = None
+        while True:
+            entities, has_more = await self._repository.page_release_entities(
+                release_id, after=after, limit=1_000,
+            )
+            for entity in entities:
+                if selected_keys is None or entity.entity_key in selected_keys:
+                    validate_publication_references(thaw_json(entity.document))
+            if not has_more:
+                break
+            after = entities[-1].entity_key
 
     async def _dry_run(
         self,
@@ -481,6 +504,8 @@ class PublicationModule:
             idempotency_key=command.idempotency_key,
         )
         if prior is not None:
+            if prior.receipt.passed:
+                await self._validate_release_references(prior.release_id)
             return OperationRef(
                 operation_id=str(uuid.uuid4()),
                 publication_id=publication_id,
@@ -526,21 +551,14 @@ class PublicationModule:
             },
         )
         counts = {"create": 0, "update": 0, "skip": 0, "block": 0}
-        # Observation reuse: a re-check after a one-item fix must not
-        # re-reconcile the whole corpus (~1850 WDQS lookups ≈ 30 min,
-        # 2026-10-13). Reuse the previous sealed plan's observation for an
-        # entity whose digest is unchanged; force_refresh bypasses.
+        # Reuse only foreign observations for unchanged entities. Recheck
+        # absence and legacy ownership before issuing a new plan.
         prior_observations: dict[str, PlanActionRecord] = {}
         if not command.force_refresh:
             prior_observations = await self._repository.previous_plan_observations(
                 publication_id,
             )
-        # A derived subset release (automatic resolution) is a NEW publication
-        # with no sealed plan of its own: seed it with the parent plan's
-        # observations. Only 'absent' is honoured regardless of digest — that
-        # status describes the remote target, not our content, and the write
-        # preflight re-verifies identity fail-closed before any CREATE
-        # (2026-10-15: every 'Resolve with AI' retry re-reconciled 1847 items).
+        # A derived release may supply parent observations under the same rules.
         for seed_key, seed_record in (command.observation_seed or {}).items():
             prior_observations.setdefault(seed_key, seed_record)
         after: str | None = None
@@ -551,19 +569,27 @@ class PublicationModule:
                 limit=50,
             )
             await self._repository.checkpoint()
-            active_entities = tuple(entity for entity in entities if not (isinstance(entity.document, Mapping) and entity.document.get("publication_deferred")))
+            invalid_references = {}
+            for entity in entities:
+                try:
+                    validate_publication_references(thaw_json(entity.document))
+                except (TypeError, ValueError) as exc:
+                    invalid_references[entity.entity_key] = str(exc)
+            active_entities = tuple(
+                entity for entity in entities
+                if entity.entity_key not in invalid_references
+                and not (isinstance(entity.document, Mapping)
+                         and entity.document.get("publication_deferred"))
+            )
             reusable = {
                 entity.entity_key: prior_observations[entity.entity_key]
                 for entity in active_entities
                 if entity.entity_key in prior_observations
-                and (
-                    prior_observations[entity.entity_key].observation_status == "absent"
-                    or (
-                        prior_observations[entity.entity_key].entity_digest
-                        == entity.entity_digest
-                        and prior_observations[entity.entity_key].observation_status != "unknown"
-                    )
-                )
+                and entity.entity_type != "work"
+                and prior_observations[entity.entity_key].entity_digest == entity.entity_digest
+                and prior_observations[entity.entity_key].observation_status == "present_foreign"
+                and not (isinstance(entity.document, Mapping) and entity.document.get("existing_qid"))
+                and not any(value.startswith("wikidata:") for value in entity.identity_assertions)
             }
             fresh_entities = tuple(
                 entity for entity in active_entities if entity.entity_key not in reusable
@@ -626,6 +652,8 @@ class PublicationModule:
                     consent_matches = (
                         observation.status == "present_foreign"
                         and consent is not None
+                        and bool(observation.qid)
+                        and observation.remote_revision is not None
                         and consent.qid == observation.qid
                         and consent.remote_revision == observation.remote_revision
                         and consent.entity_digest == entity.entity_digest
@@ -672,6 +700,14 @@ class PublicationModule:
                     target_fingerprint = None
                     reconcile_method = None
                     detail = "Deferred by automatic policy: " + str(entity.document["publication_deferred"])
+                if entity.entity_key in invalid_references:
+                    action_name = "block"
+                    allow_foreign_update = False
+                    target_qid = None
+                    target_revision = None
+                    target_fingerprint = None
+                    reconcile_method = None
+                    detail = "Invalid reference: " + invalid_references[entity.entity_key]
                 action = PlanActionRecord(
                     plan_id=plan_id,
                     entity_key=entity.entity_key,
@@ -795,6 +831,8 @@ class PublicationModule:
         if command.plan_id != publication.latest_plan_id:
             raise StaleDigestError("The publish command does not target the current Plan")
         plan = await self._repository.get_plan(command.plan_id)
+        if plan.approval_set_id != publication.latest_approval_set_id:
+            raise StaleDigestError("The Plan does not use the current Approval Set")
         receipt = plan.receipt
         if command.dry_run_receipt_id != receipt.receipt_id:
             raise StaleDigestError("The Dry-run Receipt is not current")
@@ -804,6 +842,7 @@ class PublicationModule:
             raise ValueError("The Dry-run Receipt did not pass all gates")
         if receipt.expires_at <= self._clock():
             raise ValueError("The Dry-run Receipt expired")
+        await self._validate_release_references(plan.release_id)
 
         execution_id = str(uuid.uuid4())
         execution = ExecutionRecord(
@@ -843,6 +882,10 @@ class PublicationModule:
             raise StaleDigestError("The Execution belongs to another Publication")
         if execution.status == "cancelled":
             raise CancelledExecutionError("A cancelled Execution cannot resume")
+        plan = await self._repository.get_plan(execution.plan_id)
+        if (publication.latest_plan_id != plan.plan_id
+            or publication.latest_approval_set_id != plan.approval_set_id):
+            raise StaleDigestError("The Execution does not use the current Approval Set and Plan")
         if execution.status == "succeeded":
             return OperationRef(
                 operation_id=str(uuid.uuid4()),
@@ -850,6 +893,13 @@ class PublicationModule:
                 resource_type="execution",
                 resource_id=execution.execution_id,
             )
+        if not await self._projection_source.is_current(
+            publication.run_id, publication.source_snapshot,
+        ):
+            await self._repository.complete_execution(
+                replace(publication, state="publishing"), replace(execution, status="paused"),
+            )
+            raise StaleDigestError("The Source Snapshot is no longer current")
         running = replace(execution, status="running")
         await self._repository.complete_execution(
             replace(publication, state="publishing"),
@@ -910,12 +960,19 @@ class PublicationModule:
             current = await self._repository.get_execution(execution.execution_id)
             if current.status == "cancelled":
                 return
+            if not await self._projection_source.is_current(
+                publication.run_id, publication.source_snapshot,
+            ):
+                await self._repository.complete_execution(
+                    replace(publication, state="publishing"), replace(current, status="paused"),
+                )
+                raise StaleDigestError("The Source Snapshot is no longer current")
             actions = await self._repository.claim_execution_actions(
                 execution.execution_id,
                 worker_id=worker_id,
                 now=self._clock(),
-                lease_duration=timedelta(minutes=5),
-                limit=50,
+                lease_duration=timedelta(minutes=30),
+                limit=1,
                 exclude_entity_keys=deferred_entity_keys,
             )
             if not actions:
@@ -983,6 +1040,10 @@ class PublicationModule:
             current = await self._repository.get_execution(execution.execution_id)
             if current.status == "cancelled":
                 return
+            publication = await self._repository.get_publication(execution.publication_id)
+            if (publication.latest_plan_id != plan.plan_id
+                or publication.latest_approval_set_id != plan.approval_set_id):
+                raise StaleDigestError("The Execution approval or Plan changed")
             entity = entities_by_key[action.entity_key]
             mutation = await session.compile_mutation(
                 entity,
@@ -1042,12 +1103,30 @@ class PublicationModule:
                 state="in_flight",
             )
             await self._repository.add_write_intent(intent)
+
+            async def authorize_send() -> bool:
+                try:
+                    current_execution = await self._repository.get_execution(execution.execution_id)
+                    current_publication = await self._repository.get_publication(execution.publication_id)
+                    return (
+                        current_execution.status == "running"
+                        and current_publication.latest_execution_id == execution.execution_id
+                        and current_publication.latest_plan_id == plan.plan_id
+                        and current_publication.latest_approval_set_id == plan.approval_set_id
+                        and await self._projection_source.is_current(
+                            current_publication.run_id, current_publication.source_snapshot,
+                        )
+                    )
+                finally:
+                    await self._repository.checkpoint()
+
             try:
                 outcome = await session.write(
                     GatewayWriteRequest(
                         intent_id=intent.intent_id,
                         request_key=intent.request_key,
                         mutation=mutation,
+                        authorize_send=authorize_send,
                     )
                 )
             except Exception as exc:  # noqa: BLE001

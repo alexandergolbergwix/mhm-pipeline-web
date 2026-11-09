@@ -55,6 +55,95 @@ def test_publication_migration_chains_from_the_current_head() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sql_dry_run_cannot_restore_approval_after_rejection(db_session, sample_run) -> None:
+    entity = PublicationEntityInput(entity_key="manuscript:1", entity_type="manuscript",
+        document={"labels": {"en": "Manuscript"}})
+    gateway = FakeWikidataGateway(observations={
+        "manuscript:1": TargetObservation.absent("manuscript:1"),
+    })
+    module = PublicationModule(
+        projection_source=StaticProjectionSource({"snapshot-race": (entity,)}),
+        repository=SqlAlchemyPublicationRepository(db_session), gateway=gateway,
+    )
+    prepared_op = await module.prepare(PrepareRequest(
+        run_id=str(sample_run["run_id"]),
+        source_snapshot=SourceSnapshotRef("snapshot-race", "v1", "9" * 64),
+        profile=ProfileRef("mhm-wikidata", "1"),
+        target=TargetRef("www.wikidata.org", "production"),
+        actor_id=str(sample_run["user_id"]), idempotency_key="prepare-race",
+    ))
+    prepared = await module.read(SummaryQuery(prepared_op.publication_id))
+    def review(decision, key):
+        return ReviewCommand(release_id=prepared.release_id,
+            expected_release_digest=prepared.release_digest, selection=EntitySelection.all(),
+            decision=decision, actor_id="curator", reason="Review", idempotency_key=key)
+    await module.advance(prepared.publication_id, review("approve", "approve"))
+    approved = await module.read(SummaryQuery(prepared.publication_id))
+    original = gateway.reconcile_batch
+    async def reject_during_reconcile(entities):
+        await module.advance(prepared.publication_id, review("reject", "reject"))
+        await db_session.commit()
+        return await original(entities)
+    gateway.reconcile_batch = reject_during_reconcile
+    with pytest.raises(ValueError, match="Approval Set changed"):
+        await module.advance(prepared.publication_id, DryRunCommand(
+            approval_set_id=approved.approval_set_id or "",
+            expected_approval_digest=approved.approval_digest or "", credential_ref="credential",
+            actor_id="curator", idempotency_key="dry-run-race"))
+    await db_session.rollback()
+    current = await module.read(SummaryQuery(prepared.publication_id))
+    assert current.rejected_count == 1
+    assert current.plan_id is None
+    assert gateway.write_calls == ()
+
+
+@pytest.mark.asyncio
+async def test_sql_rejection_during_preflight_stops_send(db_session, sample_run) -> None:
+    from app.publication.wikidata_gateway import _SafeWikidataGatewaySession
+
+    entity = PublicationEntityInput(entity_key="manuscript:1", entity_type="manuscript", document={})
+    gateway = FakeWikidataGateway(observations={"manuscript:1": TargetObservation.absent("manuscript:1")})
+    module = PublicationModule(projection_source=StaticProjectionSource({"snapshot-race": (entity,)}),
+        repository=SqlAlchemyPublicationRepository(db_session), gateway=gateway)
+    prepared_op = await module.prepare(PrepareRequest(run_id=str(sample_run["run_id"]),
+        source_snapshot=SourceSnapshotRef("snapshot-race", "v1", "9" * 64),
+        profile=ProfileRef("mhm-wikidata", "1"), target=TargetRef("www.wikidata.org", "production"),
+        actor_id=str(sample_run["user_id"]), idempotency_key="prepare-send-race"))
+    prepared = await module.read(SummaryQuery(prepared_op.publication_id))
+    def review(decision, key):
+        return ReviewCommand(release_id=prepared.release_id, expected_release_digest=prepared.release_digest,
+            selection=EntitySelection.all(), decision=decision, actor_id="curator",
+            reason="Review", idempotency_key=key)
+    await module.advance(prepared.publication_id, review("approve", "approve"))
+    approved = await module.read(SummaryQuery(prepared.publication_id))
+    await module.advance(prepared.publication_id, DryRunCommand(
+        approval_set_id=approved.approval_set_id or "", expected_approval_digest=approved.approval_digest or "",
+        credential_ref="credential", actor_id="curator", idempotency_key="dry-run"))
+    planned = await module.read(SummaryQuery(prepared.publication_id))
+    execution = await module.advance(prepared.publication_id, PublishCommand(
+        plan_id=planned.plan_id or "", dry_run_receipt_id=planned.dry_run_receipt_id or "",
+        expected_receipt_digest=planned.dry_run_receipt_digest or "", credential_ref="credential",
+        actor_id="curator", idempotency_key="publish"))
+    class Boundary:
+        calls = 0
+        async def reconcile_batch(self, entities):
+            await module.advance(prepared.publication_id, review("reject", "reject"))
+            await db_session.commit()
+            return (TargetObservation.absent(entities[0].entity_key),)
+        async def write_once(self, request):
+            self.calls += 1
+            return "Q42"
+    boundary = Boundary()
+    gateway.write = _SafeWikidataGatewaySession(boundary).write
+    await module.advance(prepared.publication_id, ResumeCommand(
+        execution_id=execution.resource_id, credential_ref="credential", actor_id="worker", idempotency_key="resume"))
+    current = await module.read(SummaryQuery(prepared.publication_id))
+    assert boundary.calls == 0
+    assert current.rejected_count == 1
+    assert current.plan_id is None
+
+
+@pytest.mark.asyncio
 async def test_sql_repository_persists_the_publication_lifecycle(
     db_session,
     sample_run,

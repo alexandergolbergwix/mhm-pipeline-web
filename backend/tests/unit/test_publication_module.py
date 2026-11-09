@@ -341,6 +341,224 @@ async def test_dry_run_reconciles_and_creates_a_receipt_without_writes() -> None
 
 
 @pytest.mark.asyncio
+async def test_new_rejection_invalidates_previous_plan_and_queued_execution() -> None:
+    gateway = FakeWikidataGateway(observations={
+        "manuscript:1": TargetObservation.absent("manuscript:1"),
+    })
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={"snapshot-7": (
+            PublicationEntityInput(entity_key="manuscript:1", entity_type="manuscript",
+                document={"labels": {"en": "Manuscript"}}),
+        )}, gateway=gateway,
+        clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+    operation = await module.prepare(_prepare_request())
+    prepared = await module.read(SummaryQuery(operation.publication_id))
+    def review(decision: str, key: str) -> ReviewCommand:
+        return ReviewCommand(release_id=prepared.release_id,
+            expected_release_digest=prepared.release_digest, selection=EntitySelection.all(),
+            decision=decision, actor_id="curator-1", reason="Review.", idempotency_key=key)
+    await module.advance(prepared.publication_id, review("approve", "approve"))
+    approved = await module.read(SummaryQuery(prepared.publication_id))
+    await module.advance(prepared.publication_id, DryRunCommand(
+        approval_set_id=approved.approval_set_id or "",
+        expected_approval_digest=approved.approval_digest or "", credential_ref="credential",
+        actor_id="curator-1", idempotency_key="dry-run"))
+    planned = await module.read(SummaryQuery(prepared.publication_id))
+    command = PublishCommand(plan_id=planned.plan_id or "",
+        dry_run_receipt_id=planned.dry_run_receipt_id or "",
+        expected_receipt_digest=planned.dry_run_receipt_digest or "",
+        credential_ref="credential", actor_id="curator-1", idempotency_key="publish")
+    execution = await module.advance(prepared.publication_id, command)
+    await module.advance(prepared.publication_id, review("reject", "reject"))
+    rejected = await module.read(SummaryQuery(prepared.publication_id))
+    assert rejected.plan_id is None
+    with pytest.raises(StaleDigestError):
+        await module.advance(prepared.publication_id, PublishCommand(
+            plan_id=command.plan_id, dry_run_receipt_id=command.dry_run_receipt_id,
+            expected_receipt_digest=command.expected_receipt_digest, credential_ref="credential",
+            actor_id="curator-1", idempotency_key="publish-again"))
+    with pytest.raises(StaleDigestError):
+        await module.advance(prepared.publication_id, ResumeCommand(
+            execution_id=execution.resource_id, credential_ref="credential",
+            actor_id="worker", idempotency_key="resume"))
+    assert gateway.write_calls == ()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["create", "update"])
+async def test_rejection_during_preflight_blocks_the_write(action: str) -> None:
+    from app.publication.wikidata_gateway import (
+        _SafeWikidataGatewaySession, RemoteEntitySnapshot,
+    )
+    gateway = FakeWikidataGateway(observations={
+        "manuscript:1": (TargetObservation.absent("manuscript:1") if action == "create"
+            else TargetObservation.present_owned("manuscript:1", qid="Q42", remote_revision=7)),
+    })
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={"snapshot-7": (PublicationEntityInput(
+            entity_key="manuscript:1", entity_type="manuscript",
+            document={"labels": {"en": "Manuscript"}},
+        ),)}, gateway=gateway, clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+    prepared_op = await module.prepare(_prepare_request())
+    prepared = await module.read(SummaryQuery(prepared_op.publication_id))
+    def review(decision, key):
+        return ReviewCommand(release_id=prepared.release_id,
+            expected_release_digest=prepared.release_digest, selection=EntitySelection.all(),
+            decision=decision, actor_id="curator-1", reason="Review", idempotency_key=key)
+    await module.advance(prepared.publication_id, review("approve", "approve"))
+    approved = await module.read(SummaryQuery(prepared.publication_id))
+    await module.advance(prepared.publication_id, DryRunCommand(
+        approval_set_id=approved.approval_set_id or "", expected_approval_digest=approved.approval_digest or "",
+        credential_ref="credential", actor_id="curator-1", idempotency_key="dry-run"))
+    planned = await module.read(SummaryQuery(prepared.publication_id))
+    execution = await module.advance(prepared.publication_id, PublishCommand(
+        plan_id=planned.plan_id or "", dry_run_receipt_id=planned.dry_run_receipt_id or "",
+        expected_receipt_digest=planned.dry_run_receipt_digest or "", credential_ref="credential",
+        actor_id="curator-1", idempotency_key="publish"))
+
+    class Boundary:
+        calls = 0
+        async def reconcile_batch(self, entities):
+            await module.advance(prepared.publication_id, review("reject", "reject"))
+            return (TargetObservation.absent(entities[0].entity_key),)
+        async def fetch_entity(self, qid):
+            await module.advance(prepared.publication_id, review("reject", "reject"))
+            return RemoteEntitySnapshot(qid=qid, revision=7, fingerprint="remote")
+        async def write_once(self, request):
+            self.calls += 1
+            return "Q42"
+        async def confirm_mutation(self, mutation, *, qid):
+            raise AssertionError("No write should be confirmed")
+    boundary = Boundary()
+    safe_session = _SafeWikidataGatewaySession(boundary)
+    gateway.write = safe_session.write
+    await module.advance(prepared.publication_id, ResumeCommand(
+        execution_id=execution.resource_id, credential_ref="credential",
+        actor_id="worker", idempotency_key="resume"))
+    assert boundary.calls == 0
+    assert (await module.read(SummaryQuery(prepared.publication_id))).rejected_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("when", ["before_resume", "before_send"])
+async def test_stale_source_blocks_queued_publication_writes(when: str) -> None:
+    current = {"snapshot-7": "4" * 64}
+    gateway = FakeWikidataGateway(observations={
+        "manuscript:1": TargetObservation.absent("manuscript:1"),
+    })
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={"snapshot-7": (PublicationEntityInput(
+            entity_key="manuscript:1", entity_type="manuscript", document={"labels": {"en": "Manuscript"}},
+        ),)}, current_source_digests=current, gateway=gateway,
+        clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+    op = await module.prepare(_prepare_request())
+    summary = await module.read(SummaryQuery(op.publication_id))
+    await module.advance(op.publication_id, ReviewCommand(
+        release_id=summary.release_id, expected_release_digest=summary.release_digest,
+        selection=EntitySelection.all(), decision="approve", actor_id="curator",
+        reason="Reviewed", idempotency_key="review",
+    ))
+    summary = await module.read(SummaryQuery(op.publication_id))
+    await module.advance(op.publication_id, DryRunCommand(
+        approval_set_id=summary.approval_set_id or "", expected_approval_digest=summary.approval_digest or "",
+        credential_ref="credential", actor_id="curator", idempotency_key="dry-run",
+    ))
+    summary = await module.read(SummaryQuery(op.publication_id))
+    execution = await module.advance(op.publication_id, PublishCommand(
+        plan_id=summary.plan_id or "", dry_run_receipt_id=summary.dry_run_receipt_id or "",
+        expected_receipt_digest=summary.dry_run_receipt_digest or "", credential_ref="credential",
+        actor_id="curator", idempotency_key="publish",
+    ))
+    resume = ResumeCommand(execution_id=execution.resource_id, credential_ref="credential",
+                           actor_id="worker", idempotency_key="resume")
+    if when == "before_resume":
+        current["snapshot-7"] = "5" * 64
+        with pytest.raises(StaleDigestError, match="Source Snapshot"):
+            await module.advance(op.publication_id, resume)
+    else:
+        original_write = gateway.write
+        async def stale_before_send(request):
+            current["snapshot-7"] = "5" * 64
+            return await original_write(request)
+        gateway.write = stale_before_send
+        with pytest.raises(StaleDigestError, match="Source Snapshot"):
+            await module.advance(op.publication_id, resume)
+    assert gateway.write_calls == ()
+    assert (await module.read(SummaryQuery(op.publication_id))).execution_status == "paused"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("consent_case", ["none", "qid", "revision", "digest", "valid"])
+async def test_foreign_p3959_requires_exact_consent_before_publish(consent_case: str) -> None:
+    gateway = FakeWikidataGateway(observations={
+        "manuscript:1": TargetObservation.present_foreign(
+            "manuscript:1", qid="Q200", remote_revision=91, method="p3959/shelfmark",
+        ),
+    })
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={"snapshot-7": (
+            PublicationEntityInput(
+                entity_key="manuscript:1", entity_type="manuscript",
+                document={"labels": {"en": "Manuscript"}, "existing_qid": "Q200",
+                    "accept_foreign_modify": True, "accepted_foreign_qid": "Q200",
+                    "statements": [{"property": "P3959", "value": "9900001"}]},
+            ),
+        )},
+        gateway=gateway,
+        clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+    operation = await module.prepare(_prepare_request())
+    prepared = await module.read(SummaryQuery(operation.publication_id))
+    await module.advance(prepared.publication_id, ReviewCommand(
+        release_id=prepared.release_id, expected_release_digest=prepared.release_digest,
+        selection=EntitySelection.all(), decision="approve", actor_id="curator-1",
+        reason="Review the release.", idempotency_key="review",
+    ))
+    reviewed = await module.read(SummaryQuery(prepared.publication_id))
+    entity = (await module.read(EntityPageQuery(
+        publication_id=prepared.publication_id, release_id=prepared.release_id,
+    ))).items[0]
+    consent = ForeignQidConsent(
+        entity_key=entity.entity_key,
+        qid="Q201" if consent_case == "qid" else "Q200",
+        remote_revision=90 if consent_case == "revision" else 91,
+        entity_digest="0" * 64 if consent_case == "digest" else entity.entity_digest,
+    )
+    await module.advance(prepared.publication_id, DryRunCommand(
+        approval_set_id=reviewed.approval_set_id or "",
+        expected_approval_digest=reviewed.approval_digest or "",
+        credential_ref="credential:wikidata:curator-1", actor_id="curator-1",
+        idempotency_key="dry-run", foreign_qid_consents=() if consent_case == "none" else (consent,),
+    ))
+    plan = await module.read(SummaryQuery(prepared.publication_id))
+    publish = PublishCommand(
+        plan_id=plan.plan_id or "", dry_run_receipt_id=plan.dry_run_receipt_id or "",
+        expected_receipt_digest=plan.dry_run_receipt_digest or "",
+        credential_ref="credential:wikidata:curator-1", actor_id="curator-1",
+        idempotency_key="publish",
+    )
+    if consent_case != "valid":
+        assert plan.plan_blocked_count == 1
+        with pytest.raises(ValueError, match="did not pass"):
+            await module.advance(prepared.publication_id, publish)
+        assert gateway.write_calls == ()
+        return
+    assert plan.plan_update_count == 1
+    execution = await module.advance(prepared.publication_id, publish)
+    await module.advance(prepared.publication_id, ResumeCommand(
+        execution_id=execution.resource_id, credential_ref="credential:wikidata:curator-1",
+        actor_id="worker", idempotency_key="resume",
+    ))
+    assert len(gateway.write_calls) == 1
+    assert gateway.write_calls[0].mutation.target_qid == "Q200"
+    assert gateway.write_calls[0].mutation.expected_revision == 91
+    assert gateway.write_calls[0].mutation.allow_foreign_update
+
+
+@pytest.mark.asyncio
 async def test_publish_resumes_from_the_durable_write_journal() -> None:
     gateway = FakeWikidataGateway(
         observations={
@@ -821,9 +1039,10 @@ async def test_reference_only_item_never_becomes_a_write(observation):
 
 
 @pytest.mark.asyncio
-async def test_dry_run_observation_seed_skips_unchanged_reconciliation() -> None:
+async def test_dry_run_rechecks_seeded_absence() -> None:
     gateway = FakeWikidataGateway(
         observations={
+            "manuscript:1": TargetObservation.absent("manuscript:1"),
             "work:2": TargetObservation.present_foreign(
                 "work:2",
                 qid="Q200",
@@ -891,10 +1110,51 @@ async def test_dry_run_observation_seed_skips_unchanged_reconciliation() -> None
     )
     summary = await module.read(SummaryQuery(prepared.publication_id))
     assert operation.resource_type == "plan"
-    # The seeded absent observation produced a create without a lookup.
-    assert gateway.reconcile_sizes == [1]
+    assert gateway.reconcile_sizes == [2]
     assert summary.plan_create_count == 1
     assert summary.plan_blocked_count == 1
+
+
+@pytest.mark.asyncio
+async def test_dry_run_rechecks_legacy_owned_observation() -> None:
+    gateway = FakeWikidataGateway(observations={
+        "manuscript:1": TargetObservation.present_foreign(
+            "manuscript:1", qid="Q200", remote_revision=91, method="p3959/shelfmark",
+        ),
+    })
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={"snapshot-7": (
+            PublicationEntityInput(entity_key="manuscript:1", entity_type="manuscript",
+                document={"statements": [{"property": "P3959", "value": "9900001"}]}),
+        )}, gateway=gateway,
+    )
+    operation = await module.prepare(_prepare_request())
+    prepared = await module.read(SummaryQuery(operation.publication_id))
+    await module.advance(prepared.publication_id, ReviewCommand(
+        release_id=prepared.release_id, expected_release_digest=prepared.release_digest,
+        selection=EntitySelection.all(), decision="approve", actor_id="curator-1",
+        reason="Review the release.", idempotency_key="review",
+    ))
+    reviewed = await module.read(SummaryQuery(prepared.publication_id))
+    entity = (await module.read(EntityPageQuery(
+        publication_id=prepared.publication_id, release_id=prepared.release_id,
+    ))).items[0]
+    seed = PlanActionRecord(
+        plan_id="legacy-plan", entity_key=entity.entity_key, entity_digest=entity.entity_digest,
+        action="update", observation_status="present_owned", target_qid="Q200",
+        target_fingerprint="remote", target_revision=91, allow_foreign_update=False,
+        detail=None, reconcile_method="p3959/shelfmark",
+    )
+    await module.advance(prepared.publication_id, DryRunCommand(
+        approval_set_id=reviewed.approval_set_id or "",
+        expected_approval_digest=reviewed.approval_digest or "",
+        credential_ref="credential:wikidata:curator-1", actor_id="curator-1",
+        idempotency_key="dry-run", observation_seed={entity.entity_key: seed},
+    ))
+    plan = await module.read(SummaryQuery(prepared.publication_id))
+    assert gateway.reconcile_sizes == [1]
+    assert plan.plan_blocked_count == 1
+    assert gateway.write_calls == ()
 
 
 @pytest.mark.asyncio
@@ -974,8 +1234,8 @@ async def test_dry_run_reuses_observations_across_sibling_releases() -> None:
     assert gateway.reconcile_sizes == [2]
     second = await _approve_and_check("release-two")
     assert second == "plan"
-    # Same run, unchanged digests: no second reconciliation round.
-    assert gateway.reconcile_sizes == [2]
+    # Work observations made before the source-identity gate need a fresh check.
+    assert gateway.reconcile_sizes == [2, 2]
 
 
 @pytest.mark.asyncio
@@ -1144,4 +1404,4 @@ async def test_dry_run_stamps_reconcile_method_on_plan_actions() -> None:
     reused = await repository.previous_plan_observations(prepared.publication_id)
     assert reused["manuscript:1"].reconcile_method == "p3959/shelfmark"
     assert reused["work:2"].reconcile_method == "label+author"
-    assert gateway.reconcile_sizes == [2]
+    assert gateway.reconcile_sizes == [2, 2]
