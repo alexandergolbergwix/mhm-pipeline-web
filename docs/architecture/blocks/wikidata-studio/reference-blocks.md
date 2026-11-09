@@ -81,7 +81,8 @@ when a calendar is explicit. Unsupported or unremapped reference snaks block the
 item rather than being discarded. Test remapping may create test stubs.
 
 `audit_test_wikidata_upload.py` adds `test_reference_blocks_unverified` when a
-written test item has native references. It does not certify live source blocks
+written test item has native references. It adds `invalid_studio_references:*` when a
+reference block fails the same validation as the upload. It does not certify live source blocks
 from a test write. The current frontend `Snak` type and legacy statement view use the
 flat `references` field and do not display block boundaries. A snak count is not
 a source count. Review the JSON or remote claims for source grouping.

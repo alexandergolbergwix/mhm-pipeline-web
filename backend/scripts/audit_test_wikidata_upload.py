@@ -121,16 +121,21 @@ def unresolved_local_refs(statements: list[Any]) -> list[str]:
         if isinstance(stmt, dict):
             extra.extend(stmt.get("qualifiers") or [])
             extra.extend(stmt.get("references") or [])
+            blocks = stmt.get("reference_blocks") or []
         else:
             extra.extend(getattr(stmt, "qualifiers", None) or [])
             extra.extend(getattr(stmt, "references", None) or [])
+            blocks = getattr(stmt, "reference_blocks", None) or []
+        for block in blocks:
+            if isinstance(block, list):
+                extra.extend(block)
         for snak in extra:
             if not isinstance(snak, dict):
                 continue
             sval = str(snak.get("value") or "")
             if sval.startswith("__LOCAL:"):
                 hits.append(sval)
-    return hits
+    return list(dict.fromkeys(hits))
 
 
 def native_identifier_pids(item: Any) -> list[str]:
@@ -215,14 +220,18 @@ def load_studio_items(conn, run_id: str) -> dict[str, dict[str, Any]]:
 def native_from_studio(raw: dict[str, Any]):
     from converter.wikidata.item_models import WikidataItem, WikidataStatement
     from converter.wikidata.property_mapping import PRECISION_YEAR
+    from converter.wikidata.quickstatements import statement_reference_kwargs
 
     stmts: list[WikidataStatement] = []
-    for s in raw.get("statements") or []:
+    statements = raw.get("statements", [])
+    if not isinstance(statements, list):
+        raise ValueError("statements must be a list of objects")
+    for s in statements:
         if not isinstance(s, dict):
-            continue
+            raise ValueError("statements must be a list of objects")
         pid = str(s.get("property_id") or s.get("property") or "").strip()
         if not pid:
-            continue
+            raise ValueError("A statement requires a property ID")
         precision = s.get("precision")
         try:
             precision_i = int(precision) if precision is not None else PRECISION_YEAR
@@ -234,7 +243,7 @@ def native_from_studio(raw: dict[str, Any]):
                 value=s.get("value"),
                 value_type=str(s.get("value_type") or "string"),
                 qualifiers=list(s.get("qualifiers") or []),
-                references=list(s.get("references") or []),
+                **statement_reference_kwargs(s, WikidataStatement),
                 precision=precision_i,
                 language=str(s.get("language") or "he"),
                 unit=str(s.get("unit") or ""),
@@ -315,7 +324,12 @@ def audit_one(
     elif status == "skipped":
         warnings.append("skipped_not_written")
 
-    native = native_from_studio(studio) if studio else None
+    native = None
+    if studio:
+        try:
+            native = native_from_studio(studio)
+        except (TypeError, ValueError) as exc:
+            blockers.append(f"invalid_studio_references:{exc}")
     if studio is None:
         blockers.append("missing_studio_cache_row")
 
@@ -325,7 +339,21 @@ def audit_one(
     local_refs: list[str] = []
     skip_for_live = False
     if native is not None:
+        from converter.wikidata.quickstatements import validate_source_references
+
         native_stmt_n = len(native.statements or [])
+        has_references = False
+        for statement in native.statements:
+            try:
+                validate_source_references(
+                    statement.references, statement.reference_blocks,
+                    allow_local=True, require_proven_blocks=True,
+                )
+            except ValueError as exc:
+                blockers.append(f"invalid_studio_references:{exc}")
+            has_references |= bool(statement.references or statement.reference_blocks)
+        if has_references and status in WRITTEN:
+            blockers.append("test_reference_blocks_unverified")
         issues = validate_item(native)
         validator_errors = [i.code for i in issues if i.severity == "error"]
         validator_warnings = [i.code for i in issues if i.severity == "warning"]
