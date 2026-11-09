@@ -47,6 +47,7 @@ export interface StudioItem {
   upload_at?: string | null;
   ai_verdict?: AiVerdict | null;
   ai_verdict_at?: string | null;
+  rebuild_required?: boolean;
   source_uri?: string | null;
   hmo_wikibase_id?: string | null;
   projection_source?: "hmo_wikibase" | "legacy" | string | null;

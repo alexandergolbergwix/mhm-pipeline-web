@@ -17,7 +17,7 @@ import {WikidataUploadSteps} from "@/components/wikidata/WikidataUploadSteps";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {useVerifyJob} from "@/hooks/useVerifyJob";
-import {isJobActive, useRunJobs} from "@/stores/runJobs";
+import {isJobActive, selectActiveJob, useRunJobs} from "@/stores/runJobs";
 import {UploadResultSummary} from "@/utils/wikidataUploadOutcomes";
 import {fetchVerifySessionWithJobFallback} from "@/utils/fetchVerifySession";
 import {
@@ -77,6 +77,10 @@ const TARGET_OPTIONS: Array<{
     hint: "Write to wikidata.org (Settings → Wikidata live bot password; the saved credential is released with this request).",
   },
 ];
+
+function isNormalUpload(job: RunJobSnapshot): boolean {
+  return job.params.owner_only === undefined || job.params.owner_only === false;
+}
 
 export function WikidataUploadPanel({
   runId,
@@ -143,11 +147,14 @@ export function WikidataUploadPanel({
   });
 
   const upsertJob = useRunJobs((s) => s.upsertJob);
+  const jobsRecord = useRunJobs((s) => s.jobs);
+  const anyActiveUpload = selectActiveJob(jobsRecord, runId, "wikidata_upload");
 
   const {activeJob, setTrackedJobId, ensureJobPolling} = useRunJobAttachment(
     runId,
     "wikidata_upload",
     (j) => {
+      if (j.params.owner_only === true) return;
       setJob(j);
       if (isJobActive(j.status)) {
         onUploadJobActive?.(j.id);
@@ -209,6 +216,7 @@ export function WikidataUploadPanel({
         });
       }
     },
+    {acceptJob: isNormalUpload},
   );
 
   const doUpload = useCallback(async () => {
@@ -231,21 +239,19 @@ export function WikidataUploadPanel({
         item_approved_only: uploadApprovedOnly,
         update_existing: updateExisting,
         ai_verified_only: aiVerifiedOnly,
-      }).catch(async (e) => {
-        if (e instanceof ApiError && e.status === 409) {
-          const {jobs} = await RunJobs.listForRun(runId, true);
-          const active = jobs.find((j) => j.kind === "wikidata_upload");
-          if (active) return active;
-        }
-        throw e;
       });
+      if (started.run_id !== runId || started.kind !== "wikidata_upload" || !isNormalUpload(started)) {
+        throw new Error("The returned job is not a normal Wikidata upload. Refresh before trying again.");
+      }
       upsertJob(started);
       setJob(started);
       setTrackedJobId(started.id);
       onUploadJobActive?.(started.id);
       ensureJobPolling();
     } catch (e) {
-      setError(e instanceof ApiError ? e.detail : String(e));
+      setError(e instanceof ApiError && e.status === 409
+        ? "Another Wikidata upload job is active. Wait for it to finish and try again."
+        : e instanceof ApiError ? e.detail : String(e));
       setBusy(false);
     }
   }, [
@@ -314,8 +320,8 @@ export function WikidataUploadPanel({
     }
   }, [preVerify, startPreVerify, doUpload]);
 
-  const liveJob = activeJob ?? job;
-  const jobRunning = liveJob?.status === "queued" || liveJob?.status === "running";
+  const liveJob = activeJob?.params.owner_only === true ? job : activeJob ?? job;
+  const jobRunning = anyActiveUpload != null || (liveJob != null && isJobActive(liveJob.status));
   const preVerifyRunning = verifyPhase === "pre" && verifyRunning;
   const canUpload = buildPresent && dryRun;
 

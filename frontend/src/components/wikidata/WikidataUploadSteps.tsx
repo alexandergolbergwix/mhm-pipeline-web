@@ -3,6 +3,7 @@ import {formatJobElapsed, formatJobEta} from "@/utils/formatJobEta";
 
 export interface WikidataUploadStepsProps {
   progress: RunJobProgress;
+  preview?: boolean;
 }
 
 const DEFAULT_STEPS = [
@@ -21,7 +22,7 @@ function statusLabel(status: string | undefined, index: number): string {
   return index === 0 ? "Waiting" : "Waiting for step 1";
 }
 
-export function WikidataUploadSteps({progress}: WikidataUploadStepsProps) {
+export function WikidataUploadSteps({progress, preview = false}: WikidataUploadStepsProps) {
   const steps = (progress.steps && progress.steps.length >= 2)
     ? progress.steps
     : DEFAULT_STEPS.map((meta, idx) => ({
@@ -44,7 +45,7 @@ export function WikidataUploadSteps({progress}: WikidataUploadStepsProps) {
           step.status === "done" ? 100 : 0
         );
         const running = step.status === "running";
-        const nowText = running
+        const nowText = preview ? statusLabel(step.status, idx) : running
           ? (step.current_label || progress.current_label || "Working…")
           : (step.current_label || statusLabel(step.status, idx));
         const unit = step.unit ? ` ${step.unit}` : "";
@@ -64,9 +65,9 @@ export function WikidataUploadSteps({progress}: WikidataUploadStepsProps) {
           >
             <div className="flex items-baseline justify-between gap-2">
               <p className="text-sm font-medium text-ink">
-                {step.label || DEFAULT_STEPS[idx]?.label}
+                {preview ? (idx === 0 ? "Step 1 - Check items" : "Step 2 - Check connections") : step.label || DEFAULT_STEPS[idx]?.label}
               </p>
-              <span className="muted text-xs shrink-0" title={STEP_COUNTS_TITLE}>
+              <span className="muted text-xs shrink-0" title={preview ? "Counts checked items and connections." : STEP_COUNTS_TITLE}>
                 {statusLabel(step.status, idx)}
                 {total > 0 ? ` · ${processed} / ${total}${unit}` : ""}
               </span>

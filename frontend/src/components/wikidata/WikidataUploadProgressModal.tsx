@@ -1,9 +1,11 @@
-import {useCallback, useEffect, useMemo, useRef} from "react";
+import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
+import {ApiError} from "@/api/client";
 import {RunJobs, type RunJobSnapshot} from "@/api/runJobs";
 import type {UploadOutcome, WikidataUploadTarget} from "@/api/wikidataStudio";
 import {Glass, GlassPill} from "@/components/glass";
 import {WikidataUploadSteps} from "@/components/wikidata/WikidataUploadSteps";
+import {OwnerPreviewLinks, type LinkOutcome} from "@/components/wikidata/WikidataOwnerPreview";
 import {isJobActive, useRunJobs} from "@/stores/runJobs";
 import {
   liveUploadOutcomeRows,
@@ -62,7 +64,7 @@ export function WikidataUploadProgressModal({
 }: WikidataUploadProgressModalProps) {
   const job = useRunJobs((s) => s.jobs[jobId] ?? null);
   const upsertJob = useRunJobs((s) => s.upsertJob);
-  const cancelJob = useRunJobs((s) => s.cancelJob);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const ensurePolling = useRunJobs((s) => s.ensurePolling);
   const stickyTargetRef = useRef<WikidataUploadTarget | "dry_run" | null>(null);
 
@@ -98,13 +100,21 @@ export function WikidataUploadProgressModal({
   }, [job?.progress, terminalOutcomes]);
 
   const dryRun = uploadTarget === "dry_run";
+  const ownerPreview = job?.params?.owner_only === true && dryRun;
+  const links = Array.isArray(job?.result?.link_outcomes) ? job.result.link_outcomes as LinkOutcome[] : [];
 
   const handleCancel = useCallback(async () => {
     if (!job || !isJobActive(job.status)) return;
-    const ok = window.confirm("Cancel this Wikidata upload job?");
+    const ok = window.confirm(ownerPreview ? "Cancel this owner-only preview?" : "Cancel this Wikidata upload job?");
     if (!ok) return;
-    await cancelJob(runId, jobId);
-  }, [job, cancelJob, runId, jobId]);
+    setCancelError(null);
+    try {
+      const snapshot = await RunJobs.cancel(runId, jobId);
+      upsertJob(snapshot);
+    } catch (caught) {
+      setCancelError(caught instanceof ApiError ? caught.detail : String(caught));
+    }
+  }, [job, upsertJob, runId, jobId, ownerPreview]);
 
   return (
     <div
@@ -115,9 +125,9 @@ export function WikidataUploadProgressModal({
       <Glass variant="modal" className="max-w-5xl w-full max-h-full overflow-auto p-6 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="kicker">Wikidata upload</div>
+            <div className="kicker">{ownerPreview ? "Owner-only preview" : "Wikidata upload"}</div>
             <h3 className="text-xl font-semibold flex flex-wrap items-center gap-2">
-              {TITLE_BY_TARGET[uploadTarget] ?? "Upload progress"}
+              {ownerPreview ? "Owner-only preview progress" : TITLE_BY_TARGET[uploadTarget] ?? "Upload progress"}
               <GlassPill
                 className="px-2 py-0.5 text-[10px]"
                 data-testid="wikidata-upload-progress-target-pill"
@@ -131,8 +141,10 @@ export function WikidataUploadProgressModal({
           </button>
         </div>
 
+        {ownerPreview && <p className="text-sm muted">This preview makes no live writes and does not record upload status.</p>}
+
         {job ? (
-          <WikidataUploadSteps progress={job.progress ?? {}} />
+          <WikidataUploadSteps progress={job.progress ?? {}} preview={ownerPreview} />
         ) : (
           <p className="muted text-sm">Loading job…</p>
         )}
@@ -140,6 +152,11 @@ export function WikidataUploadProgressModal({
         <UploadOutcomeCountStrip counts={counts} dryRun={dryRun} />
 
         <UploadOutcomeTable rows={rows} />
+
+        {ownerPreview && job?.result && <OwnerPreviewLinks links={links} />}
+
+        {job?.error && <p className="text-sm text-danger" role="alert">{job.error}</p>}
+        {cancelError && <p className="text-sm text-danger" role="alert">{cancelError}</p>}
 
         <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-white/5">
           {job && isJobActive(job.status) && (
@@ -149,7 +166,7 @@ export function WikidataUploadProgressModal({
               onClick={() => void handleCancel()}
               data-testid="wikidata-upload-modal-cancel"
             >
-              Cancel upload
+              {ownerPreview ? "Cancel preview" : "Cancel upload"}
             </button>
           )}
           <button type="button" className="button-primary text-sm" onClick={onClose}>

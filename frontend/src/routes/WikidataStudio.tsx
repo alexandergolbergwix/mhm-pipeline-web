@@ -117,6 +117,7 @@ export default function WikidataStudio() {
   } | null>(null);
   const [forceRebuild, setForceRebuild] = useState(false);
   const [cacheStale, setCacheStale] = useState(false);
+  const [rebuildRequired, setRebuildRequired] = useState(false);
   const [uploadApprovedOnly, setUploadApprovedOnly] = useState(false);
   const [buildProgress, setBuildProgress] = useState<string | null>(null);
 
@@ -161,6 +162,7 @@ export default function WikidataStudio() {
   async function refresh(opts?: {
     nextApprovedOnly?: boolean;
     nextForceRebuild?: boolean;
+    rebuild?: boolean;
     nextPage?: number;
   }) {
     if (!runId) return;
@@ -169,11 +171,11 @@ export default function WikidataStudio() {
     const pg    = opts?.nextPage ?? page;
     setLoading(true); setError(null); setBuildProgress(null);
     try {
-      if (force) {
+      if (opts?.rebuild || force) {
         setBuildProgress("Starting fresh build…");
         await waitForStudioBuild(
           runId,
-          {approvedOnly: flag, forceRebuild: true, source: projectionSource},
+          {approvedOnly: flag, forceRebuild: force, source: projectionSource},
           {onUpdate: (job) => { setBuildProgress(studioBuildProgressMessage(job)); }},
         );
       }
@@ -193,12 +195,17 @@ export default function WikidataStudio() {
         onProgress: (message) => { setBuildProgress(message); },
       }) as StudioBuild;
       setBuild(result);
+      setRebuildRequired(false);
       setCacheStale(Boolean(result.cache_stale));
       if (result.property_labels) {
         labelStore.seed(result.property_labels);
       }
     }
     catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.payload && typeof e.payload === "object"
+          && "code" in e.payload && e.payload.code === "studio_rebuild_required") {
+        setRebuildRequired(true);
+      }
       // A studio build conflict is the job, not a page error. The progress
       // widget stays on the page. A bare red sentence must not replace it.
       const runningId = e instanceof ApiError
@@ -367,6 +374,12 @@ export default function WikidataStudio() {
       <Layout>
         <Glass as="section" className="p-6 space-y-3">
           <p className="text-danger text-sm">{error}</p>
+          {rebuildRequired && (
+            <button className="button-ghost text-sm" disabled={loading || buildJobRunning}
+              onClick={() => { void refresh({rebuild: true, nextForceRebuild: true}); }}>
+              Build from source
+            </button>
+          )}
           {canonicalMissing && runId && (
             <CanonicalMissingHelp
               runId={runId}
@@ -497,7 +510,7 @@ export default function WikidataStudio() {
                 }`}>Approved only</button>
             </GlassPill>
             <button
-              onClick={() => refresh({nextForceRebuild: forceRebuild})}
+              onClick={() => refresh({nextForceRebuild: forceRebuild, rebuild: true})}
               disabled={loading || !!busy || buildJobRunning}
               className="button-ghost text-sm"
               data-testid="wikidata-studio-rebuild"

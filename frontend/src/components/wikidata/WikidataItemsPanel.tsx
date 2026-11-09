@@ -18,10 +18,12 @@ import {LoadingOverlay} from "@/components/LoadingOverlay";
 import {WikidataItemDetailDrawer} from "@/components/wikidata/WikidataItemDetailDrawer";
 import {WikidataItemTable} from "@/components/wikidata/WikidataItemTable";
 import {WikidataPublicationPanel} from "@/components/wikidata/WikidataPublicationPanel";
+import {WikidataOwnerPreview} from "@/components/wikidata/WikidataOwnerPreview";
 import {WikidataUploadPanel} from "@/components/wikidata/WikidataUploadPanel";
 import {WikidataUploadProgressModal} from "@/components/wikidata/WikidataUploadProgressModal";
 import {WikidataVerificationModal} from "@/components/wikidata/WikidataVerificationModal";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
+import {useAuth} from "@/stores/auth";
 import {isJobActive, selectActiveJob, useRunJobs} from "@/stores/runJobs";
 import {
   createThrottledProgressRefresh,
@@ -90,6 +92,7 @@ export function WikidataItemsPanel({
   const importRef = useRef<HTMLInputElement>(null);
   const labelStore = useLabelStore();
   const upsertJob = useRunJobs((s) => s.upsertJob);
+  const userId = useAuth((s) => s.user?.id);
 
   const autofixItemIds = useMemo(() => {
     const visible = new Set(filteredIds);
@@ -200,15 +203,15 @@ export function WikidataItemsPanel({
     ensureStudioBuildPolling();
   }, [conflictJobId, ensureStudioBuildPolling, setStudioBuildTrackedId]);
 
-  const refresh = useCallback(async (opts?: {nextForceRebuild?: boolean}) => {
+  const refresh = useCallback(async (opts?: {nextForceRebuild?: boolean; rebuild?: boolean}) => {
     const force = opts?.nextForceRebuild ?? forceRebuild;
-    if (force) {
+    if (opts?.rebuild || force) {
       setError(null);
       setBuildProgress("Starting fresh build…");
       try {
         const job = await ensureRunJob(runId, "wikidata_studio_build", {
           approved_only: approvedOnly,
-          force_rebuild: true,
+          force_rebuild: force,
           source,
         });
         upsertJob(job);
@@ -300,7 +303,14 @@ export function WikidataItemsPanel({
     };
     const openFromJob = (job: RunJobSnapshot) => {
       if (job.kind === "wikidata_upload") {
-        openUploadModal(job.id);
+        if (job.params.owner_only === true && (!userId || job.created_by !== userId
+          || job.params.dry_run !== true || job.params.upload_target !== "dry_run"
+          || job.params.update_existing !== true)) {
+          setError("The preview job creator or parameters could not be verified for this user.");
+        } else {
+          upsertJob(job);
+          openUploadModal(job.id);
+        }
       } else if (job.kind === "wikidata_verify") {
         setVerifyIds(undefined);
         setVerifyActionId(undefined);
@@ -314,7 +324,6 @@ export function WikidataItemsPanel({
       return;
     }
     void RunJobs.get(runId, deepLinkedJobId).then((job) => {
-      upsertJob(job);
       openFromJob(job);
     }).catch(() => {
       finishDeepLink();
@@ -455,7 +464,7 @@ export function WikidataItemsPanel({
             type="button"
             className="button-ghost text-sm"
             disabled={loading || (studioBuildJob != null && isJobActive(studioBuildJob.status))}
-            onClick={() => void refresh({nextForceRebuild: forceRebuild})}
+            onClick={() => void refresh({nextForceRebuild: forceRebuild, rebuild: true})}
           >
             {loading || (studioBuildJob != null && isJobActive(studioBuildJob.status))
               ? "Rebuilding…"
@@ -562,6 +571,15 @@ export function WikidataItemsPanel({
           }}
         />
       )}
+
+      <WikidataOwnerPreview
+        key={`${runId}:${source}:${approvedOnly}:${uploadApprovedOnly}`}
+        runId={runId}
+        source={source}
+        approvedOnly={approvedOnly}
+        itemApprovedOnly={uploadApprovedOnly}
+        buildPresent={buildPresent}
+      />
 
       {!publicationActive && (
         <WikidataUploadPanel

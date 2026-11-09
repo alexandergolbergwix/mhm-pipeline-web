@@ -89,7 +89,9 @@ export function WikidataItemDetailDrawer({
   const [compareOpen, setCompareOpen] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [pushMsg, setPushMsg] = useState<string | null>(null);
-  const [acceptForeign, setAcceptForeign] = useState(Boolean(item.accept_foreign_modify));
+  const [acceptedForeignQid, setAcceptedForeignQid] = useState(
+    item.accept_foreign_modify ? item.accepted_foreign_qid ?? null : null,
+  );
   const labelStore = useLabelStore();
 
   useEffect(() => {
@@ -108,7 +110,7 @@ export function WikidataItemDetailDrawer({
         setLabels({...(full.labels ?? {})});
         setDescriptions({...(full.descriptions ?? {})});
         setAliasesHe(full.aliases?.he ?? []);
-        setAcceptForeign(Boolean(full.accept_foreign_modify));
+        setAcceptedForeignQid(full.accept_foreign_modify ? full.accepted_foreign_qid ?? null : null);
         setExcluded(new Set());
       })
       .catch((e) => {
@@ -124,11 +126,12 @@ export function WikidataItemDetailDrawer({
 
   const statements = detailItem.statements ?? [];
   const wikidataQid = detailItem.existing_qid || null;
+  const acceptForeign = Boolean(wikidataQid && acceptedForeignQid === wikidataQid);
   const historyId = detailItem.local_id ?? "";
 
   useEffect(() => {
-    setAcceptForeign(Boolean(detailItem.accept_foreign_modify));
-  }, [detailItem.accept_foreign_modify, detailItem.local_id, detailItem.existing_qid]);
+    setAcceptedForeignQid(detailItem.accept_foreign_modify ? detailItem.accepted_foreign_qid ?? null : null);
+  }, [detailItem.accept_foreign_modify, detailItem.accepted_foreign_qid, detailItem.local_id, detailItem.existing_qid]);
 
   useEffect(() => {
     if (pinned) return;
@@ -144,14 +147,16 @@ export function WikidataItemDetailDrawer({
   }, [detailItem, statements, labelStore]);
 
   const save = useCallback(async (payload: ItemOverridePayload) => {
-    if (!item.local_id) return;
+    if (!item.local_id) return false;
     setSaving(true);
     setError(null);
     try {
       await Studio.patchItemOverride(runId, item.local_id, payload);
       onSaved();
+      return true;
     } catch (e) {
       setError(e instanceof ApiError ? e.detail : String(e));
+      return false;
     } finally {
       setSaving(false);
     }
@@ -251,11 +256,11 @@ export function WikidataItemDetailDrawer({
   const toggleAcceptForeign = useCallback(async () => {
     if (!item.local_id || !wikidataQid) return;
     const next = !acceptForeign;
-    setAcceptForeign(next);
-    await save({
+    const saved = await save({
       accept_foreign_modify: next,
       accepted_foreign_qid: next ? wikidataQid : null,
     });
+    if (saved) setAcceptedForeignQid(next ? wikidataQid : null);
   }, [acceptForeign, item.local_id, save, wikidataQid]);
 
   const clearOverride = useCallback(async () => {

@@ -3,6 +3,7 @@ import {useCallback, useEffect, useMemo, useState} from "react";
 import type {StudioItem} from "@/api/wikidataStudio";
 import {ColumnFilterPopup} from "@/components/extraction/ColumnFilterPopup";
 import {CuratorTableScroll} from "@/components/CuratorTableScroll";
+import {GlassPill} from "@/components/glass";
 import {UploadOutcomeBadge} from "@/components/shared/UploadOutcomeBadge";
 import {ItemValidatorBadge} from "@/components/wikidata/ItemValidatorBadge";
 import {WikidataItemAiVerdictBadge} from "@/components/wikidata/WikidataItemAiVerdictBadge";
@@ -211,6 +212,15 @@ export function WikidataItemTable({
                   <td className="px-3 py-2 kicker">{item.entity_type ?? "—"}</td>
                   <td className="px-3 py-2" data-testid={`wikidata-item-data-status-${id}`}>
                     <WikidataItemDataStatusBadge item={item} />
+                    {item.rebuild_required === true && (
+                      <GlassPill
+                        className="ml-2 px-2 py-0.5 text-[10px] kicker text-warn"
+                        title="A curator edit is newer than the Studio build. Rebuild to apply it."
+                        data-testid={`wikidata-item-rebuild-required-${id}`}
+                      >
+                        Rebuild required
+                      </GlassPill>
+                    )}
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">{item.existing_qid ?? "—"}</td>
                   <td className="px-3 py-2 font-mono text-xs">{item.statement_count ?? item.statements?.length ?? 0}</td>
