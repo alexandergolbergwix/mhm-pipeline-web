@@ -3425,6 +3425,7 @@ def _slice_items(
 async def _build_native_items(
     db: AsyncSession, run_id: uuid.UUID, auth: AuthContext,
     *, approved_only: bool, source: str = "canonical", adopt_probe: bool = True,
+    freshness_timeout_seconds: float | None = None,
 ) -> list[Any]:
     """Return native WikidataItem objects for upload — same set as the Studio table.
 
@@ -3447,6 +3448,7 @@ async def _build_native_items(
     if cached is None or not await _studio_cache_is_current(
         db, run_id, source=source, approved_only=approved_only,
         fingerprint=cached.input_fingerprint, summary=cached.summary,
+        timeout_seconds=freshness_timeout_seconds,
     ):
         raise HTTPException(status_code=409, detail="Rebuild the Studio source from source data with skip cache before upload.")
 

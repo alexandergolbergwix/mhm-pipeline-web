@@ -506,12 +506,17 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
         auth = SimpleNamespace(user=SimpleNamespace(id=job.created_by))
 
         from app.routers.wikidata_studio import (  # noqa: PLC0415
+            STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
             _build_native_items,
             _get_studio_cache_row,
         )
 
         studio_cache = await _get_studio_cache_row(db, run_id, approved_only, source)
-        build_options = {"approved_only": approved_only, "source": source}
+        build_options = {
+            "approved_only": approved_only,
+            "source": source,
+            "freshness_timeout_seconds": STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
+        }
         if owner_only:
             build_options["adopt_probe"] = False
         native = await _build_native_items(db, run_id, auth, **build_options)
@@ -1642,7 +1647,10 @@ async def load_wikidata_upload_item_ids(
     serial job's scope rules (approved_only / item_approved_only / source /
     local_ids) so the shards cover exactly the serial step-1 scope.
     """
-    from app.routers.wikidata_studio import _build_native_items  # noqa: PLC0415
+    from app.routers.wikidata_studio import (  # noqa: PLC0415
+        STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
+        _build_native_items,
+    )
     from converter.wikidata.uploader import sort_items_for_upload  # noqa: PLC0415
 
     async with session_scope() as db:
@@ -1665,6 +1673,7 @@ async def load_wikidata_upload_item_ids(
         auth = SimpleNamespace(user=SimpleNamespace(id=job.created_by))
         native = await _build_native_items(
             db, job.run_id, auth, approved_only=approved_only, source=source,
+            freshness_timeout_seconds=STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
         )
         override_rows = (
             await db.execute(
@@ -1724,6 +1733,7 @@ async def run_wikidata_upload_shard(
     shard fan-out, not from in-shard concurrency.
     """
     from app.routers.wikidata_studio import (  # noqa: PLC0415
+        STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
         _build_native_items,
         _get_studio_cache_row,
     )
@@ -1759,6 +1769,7 @@ async def run_wikidata_upload_shard(
                 studio_cache = await _get_studio_cache_row(db, run_id, approved_only, source)
                 native = await _build_native_items(
                     db, run_id, auth, approved_only=approved_only, source=source,
+                    freshness_timeout_seconds=STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
                 )
                 if studio_cache is None:
                     raise StudioSourceChangedError(run_id)
