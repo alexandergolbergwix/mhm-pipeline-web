@@ -1,4 +1,9 @@
+import {useEffect, useRef, useState} from "react";
+
 import {GlassPill} from "@/components/glass";
+
+/** The loading overlay never blocks the screen longer than this. */
+const AUTO_HIDE_AFTER_MS = 8_000;
 
 function ProgressBar() {
   return (
@@ -27,7 +32,11 @@ export function LoadingPanel({
   );
 }
 
-/** Frosted overlay for content that is still loading underneath. */
+/** Frosted overlay for content that is still loading underneath.
+ *
+ *  The overlay auto-hides after {@link AUTO_HIDE_AFTER_MS} so a long build
+ *  never blocks the review screen; the load continues and progress stays in
+ *  the inline job widget and the job tray. */
 export function LoadingOverlay({
   message,
   detail,
@@ -43,6 +52,20 @@ export function LoadingOverlay({
   onDismiss?: () => void;
   dismissLabel?: string;
 }) {
+  const [timedOut, setTimedOut] = useState(false);
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setTimedOut(true);
+      dismissRef.current?.();
+    }, AUTO_HIDE_AFTER_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (timedOut) return null;
+
   return (
     <div
       className={`absolute inset-0 z-20 flex items-center justify-center

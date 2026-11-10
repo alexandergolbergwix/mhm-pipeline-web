@@ -64,6 +64,13 @@ export default function WikidataStudio() {
   const [build, setBuild] = useState<StudioBuild | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // The first-load build panel is replaced by the inline job progress after
+  // this long; the review screen must not sit behind a spinner for minutes.
+  const [bootPanelCapped, setBootPanelCapped] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setBootPanelCapped(true), 8_000);
+    return () => window.clearTimeout(timer);
+  }, []);
   const [approvedOnly, setApprovedOnly] = useState(true);
   const [projectionSource, setProjectionSource] = useState<"legacy" | "canonical">("canonical");
 
@@ -395,15 +402,23 @@ export default function WikidataStudio() {
   if (!build) return (
     <Layout>
       <Glass className="p-6 space-y-3">
-        <LoadingPanel
-          title={loading ? "Building Wikidata items…" : "Loading Wikidata Studio…"}
-          detail={
-            buildProgress
-            ?? (loading
-              ? "Large runs can take a few minutes on first load while items are built and cached. Check the job tray (bottom-right) for progress."
-              : null)
-          }
-        />
+        {bootPanelCapped ? (
+          <p className="muted text-sm">
+            Building Wikidata items in the background. The review list appears
+            when the build finishes — live progress is in the job tray (bottom-right)
+            and below.
+          </p>
+        ) : (
+          <LoadingPanel
+            title={loading ? "Building Wikidata items…" : "Loading Wikidata Studio…"}
+            detail={
+              buildProgress
+              ?? (loading
+                ? "Large runs can take a few minutes on first load while items are built and cached. Check the job tray (bottom-right) for progress."
+                : null)
+            }
+          />
+        )}
         {studioBuildJob && (
           <JobProgressInline
             job={studioBuildJob}
