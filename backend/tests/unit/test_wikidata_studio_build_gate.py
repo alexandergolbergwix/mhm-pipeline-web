@@ -72,6 +72,7 @@ def _build_env():
             new=AsyncMock(return_value=[canonical_entity]),
         ),
         patch.object(router, "_get_studio_cache_row", new=AsyncMock(return_value=None)),
+        patch.object(router, "_canonical_build_stamp", new=AsyncMock(return_value=None)),
         patch.object(router, "_prewarm_transliterations", new=AsyncMock(return_value={})),
         patch.object(
             router.wikidata_studio, "build_items_for_run",

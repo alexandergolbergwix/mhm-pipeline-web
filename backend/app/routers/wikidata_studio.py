@@ -1678,21 +1678,13 @@ async def build_studio(
             detail={"code": "studio_rebuild_required", "message": "Rebuild the Studio source from source data with skip cache."},
         )
 
-    records, all_matches, entity_rows, override_rows = await _load_studio_build_rows(
-        db, run_id,
-    )
-    hmo_instance_qids = await wikidata_studio.hmo_instance_qids_for_run(
-        db, run_id, [r.control_number for r in records],
-    )
-
     await _release_read_transaction(db)
-    from starlette.concurrency import run_in_threadpool  # noqa: PLC0415
+    from app.pipeline.wikidata_studio_batches import compute_build_fingerprint_streamed  # noqa: PLC0415
 
     try:
         async with asyncio.timeout(_STUDIO_FRESHNESS_TIMEOUT_SECONDS):
-            fingerprint = await run_in_threadpool(
-                wikidata_studio.compute_build_fingerprint,
-                records, all_matches, entity_rows, override_rows, approved_only, hmo_instance_qids,
+            fingerprint = await compute_build_fingerprint_streamed(
+                db, run_id, approved_only=approved_only,
             )
             cache_fingerprint = (
                 await _canonical_fingerprint_for_check(
