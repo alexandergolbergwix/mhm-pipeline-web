@@ -29,7 +29,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, text
+from sqlalchemy import String, cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
@@ -391,6 +391,44 @@ async def _canonical_cache_fingerprint(
     )
 
 
+async def _canonical_stamp(db: AsyncSession, run_id: uuid.UUID) -> str:
+    """Return a cheap change marker for the canonical rows of one run.
+
+    The ORM bumps ``updated_at`` on every row update. Count and max id catch
+    inserts and deletes. ``max`` runs on the id cast to text, because Postgres
+    has no ``max(uuid)`` aggregate.
+    """
+    count, max_id, max_updated_at = (await db.execute(
+        select(
+            func.count(),
+            func.max(cast(HmoCanonicalEntity.id, String)),
+            func.max(HmoCanonicalEntity.updated_at),
+        ).where(HmoCanonicalEntity.run_id == run_id),
+    )).one()
+    updated = max_updated_at.isoformat() if max_updated_at is not None else ""
+    return f"{count}|{max_id or ''}|{updated}"
+
+
+async def _canonical_fingerprint_for_check(
+    db: AsyncSession, run_id: uuid.UUID, enrichment_fingerprint: str, summary: dict[str, Any],
+) -> str:
+    """Return the canonical fingerprint for the freshness check.
+
+    The stored fingerprint is reused only when the stored reuse key matches the
+    current stamp and enrichment fingerprint. A cache without the keys takes the
+    full recompute.
+    """
+    stamp_now = await _canonical_stamp(db, run_id)
+    stored_fingerprint = summary.get("canonical_reuse_fingerprint")
+    if (
+        summary.get("canonical_reuse_key") == f"{stamp_now}|{enrichment_fingerprint}"
+        and isinstance(stored_fingerprint, str)
+        and stored_fingerprint
+    ):
+        return stored_fingerprint
+    return await _canonical_cache_fingerprint(db, run_id, enrichment_fingerprint)
+
+
 def _update_studio_items_digest(digest: Any, item: dict[str, Any]) -> None:
     # The mining job may add advisory proposals after the build is stored.
     payload = json.dumps(
@@ -442,7 +480,7 @@ async def _check_studio_cache_current(
 
     current = await compute_build_fingerprint_streamed(db, run_id, approved_only=approved_only)
     if source == "canonical":
-        current = await _canonical_cache_fingerprint(db, run_id, current)
+        current = await _canonical_fingerprint_for_check(db, run_id, current, summary)
     if not current or fingerprint != current:
         return False
     postgres = db.bind is not None and db.bind.dialect.name == "postgresql"
@@ -1152,6 +1190,26 @@ async def execute_studio_build(
             watcher.cancel()
 
 
+async def _canonical_build_stamp(
+    db: AsyncSession, run_id: uuid.UUID, resume: dict[str, Any] | None,
+) -> str | None:
+    """Return the canonical stamp for this build attempt, or None.
+
+    The stamp must be read before the first canonical load of the attempt. A
+    stamp read after the load could hide a change made in between. A resumed
+    attempt that already loaded rows takes no stamp, so its cache uses the
+    full check.
+    """
+    if resume is not None and resume.get("canonical_fp"):
+        saved = resume.get("canonical_stamp")
+        return saved if isinstance(saved, str) and saved else None
+    if resume is not None and resume.get("entities"):
+        return None
+    stamp = await _canonical_stamp(db, run_id)
+    await _release_read_transaction(db)
+    return stamp
+
+
 async def _execute_studio_build(
     db: AsyncSession,
     *,
@@ -1195,6 +1253,7 @@ async def _execute_studio_build(
     )
 
     if source == "canonical":
+        canonical_stamp = await _canonical_build_stamp(db, run_id, resume)
         if resume is not None and resume.get("entities_complete"):
             stored_entities = resume.get("entities")
             canonical = list(stored_entities) if isinstance(stored_entities, list) else []
@@ -1226,6 +1285,8 @@ async def _execute_studio_build(
             canonical_fp = await run_in_threadpool(_fingerprint)
             if resume is not None:
                 resume["canonical_fp"] = canonical_fp
+                if canonical_stamp is not None:
+                    resume["canonical_stamp"] = canonical_stamp
         if (
             not force_rebuild
             and cached is not None
@@ -1361,6 +1422,9 @@ async def _execute_studio_build(
         )
         if progress_cb is not None:
             progress_cb(0, item_total, "saving items")
+        if canonical_stamp is not None:
+            summary["canonical_reuse_key"] = f"{canonical_stamp}|{enrichment_fp}"
+            summary["canonical_reuse_fingerprint"] = canonical_fp
         await _upsert_studio_cache(db, run_id=run_id, approved_only=approved_only, source=source, fingerprint=canonical_fp, items=items, quickstatements=result["quickstatements"], summary=summary, approved_match_count=0, pending_match_count=0, used_match_count=0, record_count=len(items), existing=cached)
         await _replace_item_rows(db, run_id, approved_only=approved_only, source=source, items=items)
         if progress_cb is not None:

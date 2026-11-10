@@ -58,6 +58,20 @@ returns 409 when the cache is not current, so a rebuild is needed before upload.
 - `backend/tests/unit/test_wikidata_row_rebuild_required.py` (merged and paged parity)
 - `backend/tests/test_wikidata_cache_freshness_gate.py`
 - `backend/tests/unit/test_wikidata_studio_sharding.py`
+- `backend/tests/unit/test_wikidata_canonical_reuse.py`
+
+## Canonical reuse stamp
+
+The canonical fingerprint re-projects every canonical entity. This took about 69 seconds for run `47e03437`. A stamp lets the check skip that work when the rows did not change.
+
+- `_canonical_stamp` reads one aggregate row: `count|max id|max updated_at` for the run.
+- The build reads the stamp before it loads the canonical rows. A resumed build that already loaded rows stores no stamp.
+- The build stores two summary keys: `canonical_reuse_key` is `<stamp>|<enrichment fingerprint>`, and `canonical_reuse_fingerprint` is the canonical fingerprint.
+- `_canonical_fingerprint_for_check` reuses the stored fingerprint only when the key matches the current stamp and enrichment fingerprint. Otherwise it runs the full recompute.
+
+Fail-safe: a cache without these keys takes the full recompute. The shard build path (`backend/app/pipeline/wikidata_studio_build_shard.py`) does not write the keys yet, so its caches always take the full recompute.
+
+Risk: a canonical row that changes without `updated_at` changing is missed. The ORM sets `updated_at` on every update, but raw SQL that skips the ORM can bypass it.
 
 ## Time budget
 
