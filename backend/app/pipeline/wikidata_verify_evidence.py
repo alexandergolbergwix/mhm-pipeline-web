@@ -13,7 +13,7 @@ import logging
 import re
 from typing import Any
 
-from app.pipeline.marc_verify_context import canonical_control_number
+from app.pipeline.marc_verify_context import canonical_control_number, index_marc_records
 from app.pipeline.wikidata_duplicate_probe import (
     duplicate_check_fallback,
     stamp_duplicate_check,
@@ -795,9 +795,11 @@ async def attach_live_value_labels(db_or_factory: Any, items: list[dict[str, Any
 def build_verify_evidence_pack(
     item: dict[str, Any],
     marc_records: list[dict[str, Any]],
+    *,
+    marc_index: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Shape every available evidence channel for one Studio item."""
-    marc = marc_context_for_wikidata_item(item, marc_records)
+    marc = marc_context_for_wikidata_item(item, marc_records, index=marc_index)
     authority = _partition_authority(_authority_rows(item))
     from_stmts = _statement_identifier_rows(item)
     hmo_qid = str(item.get("hmo_wikibase_id") or "").strip()
@@ -878,8 +880,9 @@ def enrich_items_with_verify_evidence(
     total = max(len(items), 1)
     if on_progress is not None:
         on_progress(0, total)
+    marc_index = index_marc_records(marc_records)
     for index, item in enumerate(items, start=1):
-        pack = build_verify_evidence_pack(item, marc_records)
+        pack = build_verify_evidence_pack(item, marc_records, marc_index=marc_index)
         item["verify_evidence"] = pack
         item["_marc_context"] = pack.get("marc") or {}
         # Rebuilding the pack would otherwise silently discard a probe answer

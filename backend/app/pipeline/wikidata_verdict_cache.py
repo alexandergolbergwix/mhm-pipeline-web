@@ -449,8 +449,11 @@ def attach_local_reference_targets(
 def marc_context_for_wikidata_item(
     item: dict[str, Any],
     marc_records: list[dict[str, Any]],
+    *,
+    index: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, str]:
-    index = index_marc_records(marc_records)
+    if index is None:
+        index = index_marc_records(marc_records)
     return marc_context_for_item(
         {"control_numbers": _record_ids(item), "record_ids": _record_ids(item)},
         index,
