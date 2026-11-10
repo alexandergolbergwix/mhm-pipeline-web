@@ -3256,7 +3256,7 @@ class WikidataUploader:
         )
 
         item = self._bind_prewarmed_statement_qids(item)
-        reference_issues = self._test_local_target_issues(item) + reference_write_issues_for_test_wiki(
+        reference_issues = self._test_local_target_issues(item, allow_unmapped_live=True) + reference_write_issues_for_test_wiki(
             item, verified_targets=self._verified_test_targets,
         )
         if reference_issues:
@@ -3266,10 +3266,21 @@ class WikidataUploader:
                 _validate_native_statement(stmt, is_test=self._is_test, allow_local=True)
             except ClaimBuildError as exc:
                 return item, WikiTestAdaptResult(skipped=exc.reasons)
+        try:
+            stats = self._ensure_test_maps_for_item(
+                normalize_item_quantity_units(item), allow_unmapped_live=True,
+            )
+        except ClaimBuildError as exc:
+            return item, WikiTestAdaptResult(skipped=exc.reasons)
+        item = self._bind_prewarmed_statement_qids(item)
+        reference_issues = self._test_local_target_issues(item) + reference_write_issues_for_test_wiki(
+            item, verified_targets=self._verified_test_targets,
+        )
+        if reference_issues:
+            return item, WikiTestAdaptResult(stats=stats, skipped=reference_issues)
         item = normalize_item_quantity_units(item)
         live_pids = collect_live_pids_with_types(item)
         live_qids = collect_live_qids(item)
-        stats = self._ensure_test_maps_for_item(item)
         unmapped = [
             f"{pid} ({value_type}) has no verified test property mapping"
             for pid, value_type in live_pids

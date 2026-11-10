@@ -73,7 +73,7 @@ def test_write_time_validation_still_rejects_plain_live_qid(uploader: WikidataUp
 
 
 def stub_adapt_maps(uploader: WikidataUploader, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _item: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _item, **_kwargs: WikiTestAdaptStats())
     monkeypatch.setattr(uploader, "_ensure_test_entity_exists_flags", lambda _qids: None)
 
 
@@ -132,3 +132,39 @@ def test_adapt_rejects_unmapped_plain_qualifier_qid(uploader: WikidataUploader, 
     _, outcome = uploader._adapt_item_for_test_wiki(item)
     assert outcome.skipped == ["P31 qualifier has an ambiguous wiki namespace"]
     assert "P31 qualifier has an ambiguous wiki namespace" in uploader._test_local_target_issues(item)
+
+
+def stub_live_qid_search_and_create(
+    uploader: WikidataUploader, monkeypatch: pytest.MonkeyPatch, *, created_qid: str | None,
+) -> None:
+    monkeypatch.setattr(uploader, "_wbsearchentities", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(uploader, "_create_test_item_stub", lambda *_args: created_qid)
+    monkeypatch.setattr(uploader, "_adopt_by_exact_label", lambda **_kwargs: None)
+    monkeypatch.setattr(uploader, "_item_usable_as_test_reference", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(uploader, "_ensure_test_entity_exists_flags", lambda _qids: None)
+
+
+def test_adapt_maps_unmapped_plain_live_qid_before_write_check(
+    uploader: WikidataUploader, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uploader._test_pid_map = {pid_map_key("P31", "item"): "P31"}
+    uploader._test_property_datatypes = {"P31": "wikibase-item"}
+    stub_live_qid_search_and_create(uploader, monkeypatch, created_qid="Q9999")
+    adapted, outcome = uploader._adapt_item_for_test_wiki(manuscript_with_instance_of("Q87167"))
+    assert "P31 item has an ambiguous wiki namespace" not in outcome.skipped
+    assert outcome.skipped == []
+    assert uploader._test_qid_map == {"Q87167": "Q9999"}
+    assert uploader._test_entity_exists["Q9999"] is True
+    assert adapted.statements[0].value == "Q9999"
+    assert outcome.stats.classes_remapped + outcome.stats.classes_created == 1
+
+
+def test_adapt_refuses_unmapped_plain_live_qid_when_mapping_fails(
+    uploader: WikidataUploader, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uploader._test_pid_map = {pid_map_key("P31", "item"): "P31"}
+    uploader._test_property_datatypes = {"P31": "wikibase-item"}
+    stub_live_qid_search_and_create(uploader, monkeypatch, created_qid=None)
+    _, outcome = uploader._adapt_item_for_test_wiki(manuscript_with_instance_of("Q87167"))
+    assert outcome.skipped
+    assert uploader._test_qid_map == {}
