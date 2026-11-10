@@ -3184,6 +3184,11 @@ class WikidataUploader:
                 issues = exc.reasons
             if issues:
                 logger.warning("Skipping test-map prewarm for %s: %s", item.local_id, "; ".join(issues[:12]))
+                logger.warning(
+                    "Prewarm gate values for %s: %s", item.local_id,
+                    [(stmt.property_id, type(stmt.value).__name__, repr(stmt.value)[:80], stmt.value_type)
+                     for stmt in item.statements if stmt.property_id in ("P31", "P195", "P361")][:6],
+                )
             else:
                 safe_items.append(item)
         if not safe_items:
