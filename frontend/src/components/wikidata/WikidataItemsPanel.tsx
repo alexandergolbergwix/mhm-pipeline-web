@@ -64,6 +64,22 @@ export function WikidataItemsPanel({
   onBuildLoaded,
 }: WikidataItemsPanelProps) {
   const [build, setBuild] = useState<StudioBuild | null>(null);
+  const [previewTotal, setPreviewTotal] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (build) return;
+    let cancelled = false;
+    Studio.status(runId, source, approvedOnly)
+      .then((status) => {
+        if (!cancelled && status.total_items != null) setPreviewTotal(status.total_items);
+      })
+      .catch((err: unknown) => {
+        console.warn("Studio status preview unavailable", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [build, runId, source, approvedOnly]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [buildProgress, setBuildProgress] = useState<string | null>(null);
@@ -458,7 +474,9 @@ export function WikidataItemsPanel({
           <h3 className="text-lg font-medium">Review records</h3>
           <p className="muted text-sm mt-1" data-testid="wikidata-review-status">
             {!build
-              ? "Loading Wikidata items…"
+              ? previewTotal != null
+                ? `${previewTotal} items · loading details…`
+                : "Loading Wikidata items…"
               : buildInProgress && build.summary.total_items === 0
                 ? "Build in progress — records appear here when the build finishes. Large runs take ~25–40 min; watch the steps below or in the job tray (bottom-right)."
                 : `${build.summary.total_items} items · ${build.approved_item_count} approved · ${attentionCount} need attention`}

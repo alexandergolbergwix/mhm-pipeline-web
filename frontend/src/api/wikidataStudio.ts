@@ -338,6 +338,13 @@ export const Studio = {
     return api.get<StudioBuild>(`/runs/${runId}/wikidata-studio?${qs.toString()}`);
   },
 
+  status: (runId: string, source: "legacy" | "canonical", approvedOnly: boolean) => {
+    const qs = new URLSearchParams({source, approved_only: approvedOnly ? "true" : "false"});
+    return api.get<{ready: boolean; total_items: number | null}>(
+      `/runs/${runId}/wikidata-studio/status?${qs.toString()}`,
+    );
+  },
+
   fetchItem: (
     runId: string,
     localId: string,

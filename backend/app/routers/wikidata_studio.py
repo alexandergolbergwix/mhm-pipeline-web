@@ -1616,6 +1616,21 @@ def _studio_response_from_cache(
     )
 
 
+@router.get("/{run_id}/wikidata-studio/status")
+async def studio_status(
+    run_id: uuid.UUID,
+    source: str = Query(default="canonical", pattern="^(legacy|canonical)$"),
+    approved_only: bool = Query(default=True),
+    auth: AuthContext = Depends(current_auth),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Cache-only counts for the first paint. No freshness check, no merge."""
+    await _lookup_run_with_access(db, run_id, auth)
+    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
+    total = cached.summary.get("total_items") if cached is not None and isinstance(cached.summary, dict) else None
+    return {"ready": isinstance(total, int), "total_items": total if isinstance(total, int) else None}
+
+
 @router.get("/{run_id}/wikidata-studio", response_model=StudioBuildResponse)
 async def build_studio(
     run_id: uuid.UUID,
