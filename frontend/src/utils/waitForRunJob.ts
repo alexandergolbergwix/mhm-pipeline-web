@@ -131,7 +131,7 @@ export async function waitForStudioBuild(
 export async function loadStudioBuild(
   runId: string,
   fetchBuild: () => Promise<unknown>,
-  opts?: {onProgress?: (message: string) => void},
+  opts?: {onProgress?: (message: string) => void; onJob?: (jobId: string) => void},
 ): Promise<unknown> {
   try {
     return await fetchBuild();
@@ -142,6 +142,9 @@ export async function loadStudioBuild(
       ?? studioBuildFailureJobId(e.detail, e.payload)
       ?? (await findActiveRunJob(runId, "wikidata_studio_build"))?.id;
     if (!jobId) throw e;
+    // The caller tracks the job so the mid-build progress shows instead of
+    // an empty table (frontend R30).
+    opts?.onJob?.(jobId);
     const existing = await RunJobs.get(runId, jobId);
     if (existing.status === "failed" || existing.status === "cancelled") {
       throw new ApiError(

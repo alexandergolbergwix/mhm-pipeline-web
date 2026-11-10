@@ -145,6 +145,11 @@ export function WikidataItemsPanel({
         onProgress: (message) => {
           if (!silent) setBuildProgress(message);
         },
+        onJob: (jobId) => {
+          // Track the running build so the panel shows "Build in progress"
+          // and live steps instead of an empty "0 items" table.
+          setConflictJobId(jobId);
+        },
       }) as StudioBuild;
       setBuild(result);
       if (result.property_labels) labelStore.seed(result.property_labels);
@@ -181,14 +186,28 @@ export function WikidataItemsPanel({
 
   const approveTableRefreshRef = useRef(createThrottledProgressRefresh());
 
+  // The build writes its cache row before the enrichment phases end, so a
+  // slow silent reload swaps in the new items while the table stays mounted
+  // (Rule R14). Existing items stay visible until the reload lands.
+  const buildTableRefreshRef = useRef(
+    createThrottledProgressRefresh({minMs: 60_000, minDelta: 500}),
+  );
+
   const {
     setTrackedJobId: setStudioBuildTrackedId,
     ensureJobPolling: ensureStudioBuildPolling,
   } = useRunJobAttachment(runId, "wikidata_studio_build", (j) => {
     setStudioBuildJob(j);
-    // Build caches the full corpus only at finish — mid-run reload would
-    // re-fetch the previous build. Refresh on terminal states below.
+    if (j.status === "running") {
+      // Update the visible items with the new data as the build progresses.
+      const processed = j.progress?.sub_processed ?? j.progress?.processed ?? 0;
+      if (buildTableRefreshRef.current.shouldRefresh(processed)) {
+        void loadItems({silent: true});
+      }
+      return;
+    }
     if (j.status === "succeeded") {
+      buildTableRefreshRef.current.reset();
       void loadItems();
     }
     if (j.status === "failed" || j.status === "cancelled") {

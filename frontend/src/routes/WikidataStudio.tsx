@@ -200,6 +200,10 @@ export default function WikidataStudio() {
       setBuildProgress(force ? "Loading items…" : "Checking cache…");
       let result = await loadStudioBuild(runId, fetchPage, {
         onProgress: (message) => { setBuildProgress(message); },
+        onJob: (jobId) => {
+          // Track the running build so live step progress shows on the page.
+          setStudioBuildTrackedId(jobId);
+        },
       }) as StudioBuild;
       setBuild(result);
       setRebuildRequired(false);

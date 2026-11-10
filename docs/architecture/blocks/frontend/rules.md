@@ -48,3 +48,19 @@
     falls back to one status line plus inline job progress. *Why:* a studio
     build could cover the review screen with "Loading Wikidata items…" for
     minutes while the current state was already loaded behind it (2026-11-10).
+30. **R30 — A running studio build MUST be tracked by the page that waits for
+    it.** `loadStudioBuild` reports the 409-resolved job id through `onJob`;
+    Wikidata Items (`conflictJobId`) and the studio route
+    (`setStudioBuildTrackedId`) attach to it. While the build runs and the
+    build has no items, the panel shows "Build in progress — records appear
+    here when the build finishes" plus `JobProgressInline` — never a bare
+    "0 items" table. *Why:* the 409-wait hid the job id from the panel, so a
+    first build looked like an empty dataset after the overlay cap (2026-11-10).
+31. **R31 — Visible studio items update in place while a build runs.** The
+    items panel silently re-fetches at most once a minute on build progress
+    ticks (`createThrottledProgressRefresh({minMs: 60_000, minDelta: 500})`)
+    and swaps the rows in place — the table never unmounts (Rule R14). The
+    build writes its cache row before the enrichment phases end, so the new
+    data lands mid-run; previously loaded items stay visible until then.
+    *Why:* a rebuild showed an empty "0 items" panel with no live update
+    until the very end (2026-11-10).
