@@ -20,6 +20,7 @@ Exempt:
 
 from __future__ import annotations
 
+import re
 import secrets
 from collections.abc import Awaitable, Callable
 
@@ -43,8 +44,17 @@ _EXEMPT_PREFIXES: tuple[str, ...] = (
 )
 
 
+# Modal's completion webhook (Rule W-237) authenticates with a bearer token,
+# not a browser cookie. The route itself rejects any request without the token.
+_MODAL_EVENT_PATH = re.compile(
+    r"^/api/runs/[0-9a-f-]{36}/jobs/[0-9a-f-]{36}/modal-event$"
+)
+
+
 def _is_exempt_path(path: str) -> bool:
     if path in _EXEMPT_PATHS:
+        return True
+    if _MODAL_EVENT_PATH.match(path):
         return True
     return any(path.startswith(prefix) for prefix in _EXEMPT_PREFIXES)
 
