@@ -3159,6 +3159,11 @@ class WikidataUploader:
                     stats.classes_created += 1
                 else:
                     stats.classes_remapped += 1
+                continue
+            logger.warning(
+                "Test-wiki mapping failed for %s (gloss %r): search hits %d, stub created %s",
+                live_qid, gloss, len(hits or []), bool(created),
+            )
 
         return stats
 
