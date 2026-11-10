@@ -110,7 +110,7 @@ async def test_sharded_deferred_json_keeps_test_and_live_qid_distinct(
         def ensure_authenticated(self):
             self._authenticated_user = "test-user"
 
-        def _ensure_test_maps_for_item(self, item):
+        def _ensure_test_maps_for_item(self, item, *, allow_unmapped_live=False):
             return WikiTestAdaptStats()
 
     instances = []

@@ -36,7 +36,7 @@ def _test_uploader(monkeypatch, source_qids):
         for (_pid, kind), target in mappings.items()
     }
     uploader._test_entity_exists = {qid: True for qid in source_qids.values()}
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     monkeypatch.setattr(uploader, "_ensure_test_property_datatypes", lambda _: None)
     monkeypatch.setattr(uploader, "_ensure_test_entity_exists_flags", lambda _: None)
     return uploader

@@ -472,7 +472,7 @@ def test_test_wiki_preserves_local_namespace_even_on_numeric_collision(monkeypat
     uploader._test_qid_map = {"Q900": "Q999"}
     uploader._test_property_datatypes = {"P571": "string", "P248": "wikibase-item", "P50": "wikibase-item"}
     uploader._test_entity_exists = {"Q900": True, "Q999": True}
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     adapted, result = uploader._adapt_item_for_test_wiki(item)
     assert not result.skipped
     for view in (adapted.statements[0].references, adapted.statements[0].reference_blocks[0]):
@@ -486,7 +486,7 @@ def test_test_wiki_rejects_unknown_live_qid_and_unknown_local_qid(monkeypatch: p
     uploader._test_pid_map = {pid_map_key("P571", "string"): "P571", pid_map_key("P248", "item"): "P248"}
     uploader._test_property_datatypes = {"P571": "string", "P248": "wikibase-item"}
     uploader._test_entity_exists = {"Q900": True}
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     monkeypatch.setattr(uploader, "_ensure_test_entity_exists_flags", lambda _: None)
     live = WikidataItem(statements=[_statement("P571", "x", "string", [[
         {"property": "P248", "value": "http://www.wikidata.org/entity/Q900", "type": "item"},
@@ -561,7 +561,7 @@ def test_in_memory_local_and_explicit_live_collision_write_correct_qids(monkeypa
     uploader._test_entity_exists = {"Q900": True, "Q999": True}
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
     monkeypatch.setattr(uploader, "_init_wbi", lambda: None)
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     monkeypatch.setattr(uploader, "_rate_limit", lambda: None)
     monkeypatch.setattr(uploader, "_assert_modifiable", lambda *args, **kwargs: None)
     built: list[object] = []
@@ -677,7 +677,7 @@ def test_fresh_nli_reference_provenance_survives_json_and_remaps(monkeypatch: py
     uploader._test_property_datatypes = {"P31": "wikibase-item", "P571": "string", "P248": "wikibase-item", "P3959": "external-id",
                                          "P854": "url", "P813": "time"}
     uploader._test_entity_exists = {"Q900": True, "Q901": True, "Q902": True}
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     instance = WikidataStatement("P31", {"id": "Q87167", "value_namespace": "wikidata"}, "item")
     mapped, result = uploader._adapt_item_for_test_wiki(WikidataItem(statements=[instance, restored]))
     assert not result.skipped
@@ -734,7 +734,7 @@ def test_local_test_reference_json_requires_exact_test_ledger_proof(monkeypatch:
     uploader._test_qid_map = {"Q900": "Q901"}
     uploader._test_property_datatypes = {"P571": "string", "P248": "wikibase-item"}
     uploader._test_entity_exists = {"Q900": True, "Q901": True}
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     mapped, result = uploader._adapt_item_for_test_wiki(WikidataItem(statements=[restored]))
     assert not result.skipped
     claim = uploader._build_claim(mapped.statements[0])
@@ -802,7 +802,7 @@ def test_explicit_live_main_qid_maps_despite_untrusted_same_number(monkeypatch: 
     uploader._test_entity_exists = {"Q901": True}
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
     monkeypatch.setattr(uploader, "_init_wbi", lambda: None)
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     monkeypatch.setattr(uploader, "_rate_limit", lambda: None)
     monkeypatch.setattr(uploader, "_assert_modifiable", lambda *args, **kwargs: None)
     built: list[object] = []
@@ -841,7 +841,7 @@ def test_test_local_mainsnak_provenance_survives_json_and_requires_ledger(monkey
     uploader._test_pid_map = {pid_map_key("P50", "item"): "P50"}
     uploader._test_property_datatypes = {"P50": "wikibase-item"}
     uploader._test_entity_exists = {"Q900": True, "Q901": True}
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     mapped, result = uploader._adapt_item_for_test_wiki(item)
     assert not result.skipped
     assert uploader._build_claim(mapped.statements[0]).get_json()["mainsnak"]["datavalue"]["value"]["id"] == "Q900"
@@ -870,7 +870,7 @@ def test_quantity_unit_collision_maps_once_and_survives_json(monkeypatch: pytest
     uploader._test_pid_map = {pid_map_key("P2048", "quantity"): "P2048"}
     uploader._test_property_datatypes = {"P2048": "quantity"}
     uploader._test_entity_exists = {"Q900": True, "Q901": True}
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     item = WikidataItem(statements=[WikidataStatement("P2048", "12", "quantity", unit="mm")])
     mapped, result = uploader._adapt_item_for_test_wiki(item)
     assert not result.skipped

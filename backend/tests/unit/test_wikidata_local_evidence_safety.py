@@ -195,7 +195,7 @@ def test_test_ledger_collision_does_not_confuse_live_and_local_qids(monkeypatch)
     uploader._test_pid_map = {pid_map_key(pid, "item"): pid for pid in ("P50", "P248", "P3831")}
     uploader._test_property_datatypes = {pid: "wikibase-item" for pid in ("P50", "P248", "P3831")}
     uploader._test_entity_exists = {"Q900": True, "Q999": True}
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     monkeypatch.setattr(uploader, "_ensure_test_entity_exists_flags", lambda _: None)
     mapped, adaptation = uploader._adapt_item_for_test_wiki(
         WikidataItem(local_id="work", entity_type="work", statements=[resolved]),

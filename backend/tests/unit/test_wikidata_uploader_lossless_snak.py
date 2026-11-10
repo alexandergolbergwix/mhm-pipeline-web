@@ -74,7 +74,7 @@ def test_test_wiki_wbi_preserves_verified_item_qualifier_after_remap(monkeypatch
     uploader._test_pid_map = {pid_map_key("P217", "string"): "P217", pid_map_key("P1480", "item"): "P1480"}
     uploader._test_property_datatypes = {"P217": "string", "P1480": "wikibase-item"}
     uploader._test_entity_exists = {"Q901": True}
-    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _: WikiTestAdaptStats())
+    monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     item = WikidataItem(statements=[WikidataStatement("P217", "MS 1", "string", qualifiers=[
         {"property": "P1480", "value": "Q900", "type": "item", "value_namespace": "wikidata"},
     ])])
