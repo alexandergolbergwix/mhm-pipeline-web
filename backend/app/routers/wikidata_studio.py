@@ -1695,7 +1695,10 @@ async def build_studio(
                 records, all_matches, entity_rows, override_rows, approved_only, hmo_instance_qids,
             )
             cache_fingerprint = (
-                await _canonical_cache_fingerprint(db, run_id, fingerprint, release_read_transaction=True)
+                await _canonical_fingerprint_for_check(
+                    db, run_id, fingerprint,
+                    cached.summary if isinstance(cached.summary, dict) else {},
+                )
                 if source == "canonical"
                 else fingerprint
             )
