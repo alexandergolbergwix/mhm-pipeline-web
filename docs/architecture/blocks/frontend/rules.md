@@ -38,3 +38,13 @@
     The current `Snak` type and legacy statement view use `references`, not
     `reference_blocks`. The displayed count is a snak count, not a source count.
     *Why:* flattening loses the boundaries between distinct sources.
+29. **R29 — A loading overlay MUST NOT block the screen longer than 8 seconds.**
+    `LoadingOverlay` auto-hides after `AUTO_HIDE_AFTER_MS` (8 s) and calls
+    `onDismiss`; the previously loaded state stays visible while the fetch or
+    build continues, and progress remains in `JobProgressInline` and the job
+    tray. This applies to every usage (Wikidata Studio items panel, the studio
+    route's "Updating Wikidata items…" overlay, Stage RDF). The studio's
+    first-load `LoadingPanel` in `WikidataStudio.tsx` follows the same cap and
+    falls back to one status line plus inline job progress. *Why:* a studio
+    build could cover the review screen with "Loading Wikidata items…" for
+    minutes while the current state was already loaded behind it (2026-11-10).
