@@ -95,6 +95,11 @@ Holder and runtime QIDs that are missing from `QID_LABELS` still stub
 whose live English label already exists with the wrong datatype CREATEs
 `{label} (MHM {datatype})`. Item CREATE label conflicts UPDATE our test Q
 or uniquify the English description (Rule W-189).
+Before a test-wiki write, the upload job tags each plain live item value
+(statement value or qualifier value, types `item` / `wikibase-item`) as the
+explicit `https://www.wikidata.org/entity/Qn` form. The uploader accepts only
+that form at the write gate and maps it to the test QID. Bare reference QIDs
+are not tagged and stay refused. Live writes are not changed.
 After remap, leftover snaks whose datatype or
 target still cannot exist on test.wikidata.org **refuse the item**
 (`blocked`) — they are not stripped so a partial CREATE can succeed

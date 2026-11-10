@@ -62,7 +62,7 @@
 | `backend/app/routers/wikidata_studio.py` (`_build_native_items`, `studio_dict_to_native_item`) | Upload natives from Studio cache (W-181); cache-miss rebuild fallback |
 | `backend/app/pipeline/wikidata_existence.py` | Action API `wbgetentities` alive check + labels + ownership classify + QID-bound foreign accept |
 | `docs/wikidata-data-access.md` | Wikidata:Data_access API map + MHM write-policy matrix (Rule W-99) |
-| `backend/app/pipeline/wikidata_upload_job.py` | Two-pass upload job; owner-only binds exact ledger targets to selected-run manuscripts and runs serially without partitioning local references (W-303) |
+| `backend/app/pipeline/wikidata_upload_job.py` | Two-pass upload job; owner-only binds exact ledger targets to selected-run manuscripts and runs serially without partitioning local references (W-303); test-wiki writes tag plain live item values as explicit wikidata.org URLs (`_tag_explicit_live_items`) |
 | `backend/app/pipeline/wikidata_actions.py` | Prefab AI-agent actions (`audit_wikidata_item`, `autofix_from_wikidata`) for the eval-agent verify modal |
 | `backend/app/pipeline/wikidata_autofix_apply.py` | Merge high-confidence AI fixes into override PATCH fragments |
 | `backend/app/pipeline/wikidata_entity_compare.py` | Fetch live Wikidata entity + build Studio-vs-live diff rows |

@@ -34,6 +34,7 @@ from app.pipeline.run_job_service import (
 )
 from app.pipeline.wikidata_qid_ledger import ledger_key_for_item
 from app.services.wikibase_audit import WikibaseAuditContext
+from converter.wikidata.item_models import WikidataItem
 
 logger = logging.getLogger(__name__)
 
@@ -338,6 +339,48 @@ def _test_ledger_conflicts(native: list[Any], ledger: dict[str, str]) -> bool:
         and wikidata_studio.local_id_for_item(item) not in known
         for item in native
     )
+
+
+_EXPLICIT_LIVE_VALUE_TYPES = frozenset({"item", "wikibase-item"})
+_PLAIN_LIVE_QID = re.compile(r"Q[1-9][0-9]*")
+
+
+def _explicit_live_qid_form(value_type: object, value: object) -> str | None:
+    """Return the wikidata.org entity URL for a plain live item QID, else None."""
+    if str(value_type or "").strip().lower() not in _EXPLICIT_LIVE_VALUE_TYPES:
+        return None
+    if type(value) is not str or _PLAIN_LIVE_QID.fullmatch(value) is None:
+        return None
+    return f"https://www.wikidata.org/entity/{value}"
+
+
+def _tag_explicit_live_qualifier(qual: object) -> object:
+    if not isinstance(qual, dict) or qual.get("value_namespace") not in (None, "wikidata"):
+        return qual
+    value_type = qual.get("value_type") or qual.get("type") or qual.get("datatype")
+    tagged = _explicit_live_qid_form(value_type, qual.get("value"))
+    return qual if tagged is None else {**qual, "value": tagged}
+
+
+def _tag_explicit_live_items(item: WikidataItem, *, is_test: bool) -> WikidataItem:
+    """Tag plain live item values as explicit wikidata.org URLs for test-wiki writes.
+
+    The uploader refuses bare Q-ids on test.wikidata.org (Rule W-186) and accepts
+    the explicit URL form. The prewarm and rewrite steps then map it to the test QID.
+    Live writes return the item unchanged.
+    """
+    if not is_test:
+        return item
+    statements = [
+        replace(
+            stmt,
+            value=_explicit_live_qid_form(stmt.value_type, stmt.value) or stmt.value,
+            qualifiers=[_tag_explicit_live_qualifier(q) for q in stmt.qualifiers]
+            if isinstance(stmt.qualifiers, list) else stmt.qualifiers,
+        )
+        for stmt in item.statements
+    ]
+    return replace(item, statements=statements)
 
 
 async def _persist_test_outcomes(
@@ -1120,6 +1163,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 item_for_write = (
                     replace(item, existing_qid=created_qids.get(local_id)) if mode.is_test else item
                 )
+                item_for_write = _tag_explicit_live_items(item_for_write, is_test=mode.is_test)
                 write_item, deferred = partition_unresolved_local(item_for_write, created_qids)
             if deferred:
                 deferred_by_local_id[local_id] = deferred
@@ -1951,6 +1995,7 @@ async def run_wikidata_upload_shard(
                 item_for_write = (
                     replace(item, existing_qid=created_qids.get(local_id)) if mode.is_test else item
                 )
+                item_for_write = _tag_explicit_live_items(item_for_write, is_test=mode.is_test)
                 write_item, deferred_locals = partition_unresolved_local(
                     item_for_write, created_qids,
                 )
