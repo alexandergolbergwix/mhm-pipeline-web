@@ -226,7 +226,7 @@ export interface StudioPageParams {
 }
 
 /** Backend caps ``limit`` at 500 on ``GET /wikidata-studio/items/page``. */
-export const STUDIO_MAX_PAGE_SIZE = 500;
+export const STUDIO_MAX_PAGE_SIZE = 100;
 
 export interface StudioPage {
   run_id: string;

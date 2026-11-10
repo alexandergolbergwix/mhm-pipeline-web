@@ -276,6 +276,20 @@ _LIST_VIEW_DROP_KEYS = frozenset({
     "verify_evidence",
     "_marc_context",
     "wikidata_live",
+    # Item-level bulk fields the review list never reads (Rule W-131) —
+    # they made one 500-row page reach ~8 MB and the response truncate.
+    "_llm_proposals",
+    "record_ids",
+    "records",
+    "duplicate_probe",
+    "deferred_connections",
+    "work_candidates",
+    "existing_claims",
+    "claims",
+    "proposals",
+    "notes",
+    "evidence",
+    "sources",
 })
 
 

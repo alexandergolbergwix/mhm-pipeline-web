@@ -64,3 +64,10 @@
     data lands mid-run; previously loaded items stay visible until then.
     *Why:* a rebuild showed an empty "0 items" panel with no live update
     until the very end (2026-11-10).
+32. **R32 — Studio list pages stay small (Rule W-131).** `fetchAllStudioItems`
+    walks `wikidata-studio/items/page` in chunks of `STUDIO_MAX_PAGE_SIZE`
+    (100) trimmed rows (`trim_studio_list_item` drops the item-level bulk
+    fields the list never reads). Never raise the chunk size without
+    measuring the serialized page. *Why:* 500-row chunks of untrimmed rows
+    reached ~8 MB, the response truncated mid-JSON, and the review table
+    showed "Unterminated string in JSON" with no data (2026-11-10).
