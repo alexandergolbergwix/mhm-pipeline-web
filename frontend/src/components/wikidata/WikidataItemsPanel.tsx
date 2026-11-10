@@ -457,9 +457,11 @@ export function WikidataItemsPanel({
           <div className="kicker">Wikidata Items</div>
           <h3 className="text-lg font-medium">Review records</h3>
           <p className="muted text-sm mt-1" data-testid="wikidata-review-status">
-            {buildInProgress && (build?.summary.total_items ?? 0) === 0
-              ? "Build in progress — records appear here when the build finishes. Large runs take ~25–40 min; watch the steps below or in the job tray (bottom-right)."
-              : `${build?.summary.total_items ?? 0} items · ${build?.approved_item_count ?? 0} approved · ${attentionCount} need attention`}
+            {!build
+              ? "Loading Wikidata items…"
+              : buildInProgress && build.summary.total_items === 0
+                ? "Build in progress — records appear here when the build finishes. Large runs take ~25–40 min; watch the steps below or in the job tray (bottom-right)."
+                : `${build.summary.total_items} items · ${build.approved_item_count} approved · ${attentionCount} need attention`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2" data-testid="wikidata-item-lifecycle-bar">
