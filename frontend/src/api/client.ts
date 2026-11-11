@@ -14,6 +14,50 @@ export class ApiError extends Error {
   }
 }
 
+/** Wait before retry 1, 2 and 3 of a failed read. Total extra wait: about 7 s. */
+export const RETRY_DELAYS_MS: readonly number[] = [1_000, 2_000, 4_000];
+
+/** Gateway statuses that a read request may safely repeat (Heroku H12 → 503). */
+const RETRYABLE_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
+function isRepeatSafe(method: string): boolean {
+  const m = method.toUpperCase();
+  return m === "GET" || m === "HEAD";
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isAbort(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
+
+/**
+ * ``fetch`` with automatic retry for network failures ("Failed to fetch")
+ * and gateway errors (502/503/504). Only GET and HEAD retry. A write that
+ * failed on the network may still have reached the server, so it is never
+ * repeated here. Each retry waits longer, with jitter.
+ */
+export async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  method: string,
+  delays: readonly number[] = RETRY_DELAYS_MS,
+): Promise<Response> {
+  const budget = isRepeatSafe(method) ? delays : [];
+  for (let attempt = 0; ; attempt += 1) {
+    const last = attempt >= budget.length;
+    try {
+      const res = await fetch(url, init);
+      if (last || !RETRYABLE_STATUSES.has(res.status)) return res;
+    } catch (err) {
+      if (last || isAbort(err)) throw err;
+    }
+    await wait(budget[attempt] * (0.75 + Math.random() * 0.5));
+  }
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -39,13 +83,13 @@ async function request<T>(
     const csrf = _readCookie("mhm_csrf");
     if (csrf) headers["X-CSRF-Token"] = csrf;
   }
-  const res = await fetch(`/api${path}`, {
+  const res = await fetchWithRetry(`/api${path}`, {
     method,
     credentials: "include",
     cache:       "no-store",
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  }, method);
   if (!res.ok) {
     let detail = res.statusText;
     let payload: unknown = null;
