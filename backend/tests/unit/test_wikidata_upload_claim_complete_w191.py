@@ -273,6 +273,58 @@ def test_owned_item_label_conflict_preserves_its_existing_label() -> None:
     assert "תכלאל" in current["item"].aliases["he"]
 
 
+def test_owned_work_label_conflict_preserves_its_existing_label() -> None:
+    from types import SimpleNamespace
+
+    from wikibaseintegrator.wbi_exceptions import MWApiError
+
+    from converter.wikidata.uploader import WikidataUploader
+
+    uploader = WikidataUploader(
+        token="Fixture@Bot:not-a-credential", is_test=False, allow_live=True,
+    )
+    uploader._is_our_item_cache["Q123"] = True
+    uploader._existing_label_snapshot["Q123"] = {
+        "he": "דיואן (MS 990001062450205171)",
+    }
+    seen_labels: list[str] = []
+
+    class FakeWbiItem:
+        id = "Q123"
+
+        def write(self, **kwargs):
+            if current["item"].labels["he"] == "דיואן":
+                raise MWApiError({
+                    "code": "modification-failed",
+                    "info": 'Item [[Q141746840|Q141746840]] already has label "דיואן" '
+                    "associated with the same description text, using language code he.",
+                })
+            return self
+
+    current: dict[str, WikidataItem] = {}
+
+    def build(item: WikidataItem):
+        current["item"] = item
+        seen_labels.append(item.labels["he"])
+        return FakeWbiItem(), 1, ["P217"]
+
+    uploader._check_moratorium_for_live = lambda: None
+    uploader._init_wbi = lambda: SimpleNamespace()
+    uploader._assert_modifiable = lambda *args, **kwargs: None
+    uploader._bot_excluded = lambda qid: False
+    uploader._build_wbi_item = build
+    result = uploader.upload_item(WikidataItem(
+        entity_type="work", local_id="QDraft_Work___MS_990001062450205171",
+        existing_qid="Q123", labels={"he": "דיואן"},
+        descriptions={"en": "Literary work in manuscript 990001062450205171"},
+    ))
+    assert result.status == "updated"
+    assert seen_labels == [
+        "דיואן", "דיואן (MS 990001062450205171)",
+    ]
+    assert "דיואן" in current["item"].aliases["he"]
+
+
 def test_foreign_item_label_conflict_does_not_retry_a_mutation() -> None:
     from types import SimpleNamespace
 

@@ -1629,6 +1629,15 @@ class WikidataUploader:
             if not existing_claims:
                 return False
 
+            if _normalize_wbi_value_type(stmt.value_type) in ("somevalue", "novalue"):
+                # No datavalue to compare: use the identity the builder uses
+                # (snaktype plus qualifiers), so an existing claim is recognized.
+                built = self._build_claim(stmt)
+                return built is not None and any(
+                    _claim_identity(existing) == _claim_identity(built)
+                    for existing in existing_claims
+                )
+
             for existing in existing_claims:
                 existing_value = self._extract_claim_value(existing)
                 if native_value_matches_wiki(stmt, existing_value):
@@ -3847,7 +3856,7 @@ class WikidataUploader:
                         )
                         if (
                             item.existing_qid
-                            and item.entity_type == "manuscript"
+                            and item.entity_type in {"manuscript", "work"}
                             and not self._is_test
                             and conflict_language
                             and self._is_our_item_cache.get(str(item.existing_qid)) is True
