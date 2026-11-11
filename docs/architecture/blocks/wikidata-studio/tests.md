@@ -311,3 +311,6 @@ Any new external-write path or reconcile change MUST extend
 - W-308: `test_canonical_work_uri_author_scope.py` checks exact current-source URI
   proof and real graph title transforms. `test_marc_verify_context.py` checks
   that merged and single-record context cannot change nested source values.
+
+- W-309: `test_wikidata_row_fallback.py` checks warm-path SQL without corpus
+  payload columns, initial fallback, and missing builds with orphan rows.

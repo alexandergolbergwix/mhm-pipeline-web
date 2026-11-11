@@ -12,7 +12,8 @@ GitHub actions still require separate, specific permission.
 - The production health and readiness endpoints return success.
 - The supplied site session has the admin role.
 - The exact frontend build passed on Heroku with Node 20.20.2 and Vite 5.4.21.
-- The deployed Heroku release is v789 at `6e82382f`.
+- The deployed Heroku release is v791 at `d6536aef`.
+- The Modal runner uses the same source fix.
 - Production migration 0053 passed. The rejected field is non-null with a false default.
 - The Modal job runner uses the same committed backend.
 - The UI fix is live in v790. A fresh browser load shows all 2,414 review items without JSON errors.

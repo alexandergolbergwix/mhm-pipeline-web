@@ -3599,3 +3599,17 @@ It caused 81 false missing-language facts during the complete source audit.
 The local Wikidata measurement runs the same export quality gate as production.
 It must pass that gate before it emits a successful measurement report.
 The canonical salt is `hmo-wikidata-v23`.
+
+## Rule W-309 — Warm review pages cannot load the complete cache blob
+
+The review table used per-item SQL rows but its initialization still selected the full cache model.
+Each page therefore loaded the complete `result_items` JSONB and QuickStatements text.
+The small response did not prevent a large database read or memory use.
+
+`ensure_rows_backfilled` first selects only the matching cache ID.
+It preserves the approved-build fallback for an all-matches scope without its own cache.
+It returns the existing row count without any corpus payload read.
+Only an initial backfill selects `result_items`.
+A missing cache remains an error even when orphan item rows exist.
+A cache that disappears before the backfill also remains an error.
+The SQL regression test rejects a warm-path query with either bulk payload column.

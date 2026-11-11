@@ -8,6 +8,8 @@ The owner history summary has 118,911 bytes for 52 jobs.
 The previous complete response had 15,813,287 bytes.
 The API client now includes JSON decode in one bounded GET retry budget.
 A write still has one attempt.
+The final warm-page fix also avoids a complete corpus read for each page.
+Its SQL regression and related checks passed 25 tests.
 
 The deployment at v789 applied migration `0053_extraction_rejection`.
 The Modal runner received the same committed backend.
@@ -61,7 +63,10 @@ Heroku verified the manifest's production frontend dependencies.
 
 ## Remaining operations
 
-Deploy the final source-boundary fix to Heroku and Modal.
+Heroku release v791 uses `d6536aef`. The Modal runner uses the same commit.
+The production frontend build and health checks passed.
 Complete the fresh production rebuild and check its stored output.
 Retain foreign targets and unresolved work identities for explicit curator review.
-Do not infer a missing ledger mapping from a title.
+The ledger conflict is explicit: Q134926101 and Q141754492 both have P3959 `990001680850205171`.
+A fresh live read confirms both targets and no redirect.
+No ledger repair occurred. The curator must resolve that duplicate identity.

@@ -58,3 +58,41 @@ async def test_missing_build_for_a_run_still_raises(approved_build, db_session):
         await ensure_rows_backfilled(
             db_session, uuid.uuid4(), approved_only=False, source="canonical",
         )
+
+
+@pytest.mark.asyncio
+async def test_existing_rows_do_not_load_the_corpus_blob(approved_build, db_session):
+    from sqlalchemy import event
+
+    from app.pipeline.wikidata_item_row_views import ensure_rows_backfilled
+
+    await ensure_rows_backfilled(db_session, approved_build, source="canonical")
+    statements = []
+
+    def capture(_connection, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        assert await ensure_rows_backfilled(db_session, approved_build, source="canonical") == 1
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert statements
+    assert not any("result_items" in sql or "quickstatements" in sql for sql in statements)
+
+
+@pytest.mark.asyncio
+async def test_orphan_rows_do_not_replace_a_missing_build(approved_build, db_session):
+    from sqlalchemy import delete
+
+    from app.models.wikidata_studio_cache import WikidataStudioCache
+    from app.pipeline.wikidata_item_row_views import ensure_rows_backfilled
+
+    await ensure_rows_backfilled(db_session, approved_build, source="canonical")
+    await db_session.execute(delete(WikidataStudioCache).where(
+        WikidataStudioCache.run_id == approved_build,
+    ))
+    await db_session.commit()
+    with pytest.raises(LookupError):
+        await ensure_rows_backfilled(db_session, approved_build, source="canonical")

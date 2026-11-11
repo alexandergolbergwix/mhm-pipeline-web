@@ -81,3 +81,8 @@
     Include body decode in the existing GET retry budget.
     Never repeat a write after an incomplete response.
     *Why:* a 15.8 MB job list accompanied the screenshot's JSON errors.
+
+35. **R35 — Small responses also require bounded server reads (W-309).**
+    A warm Studio page checks the cache ID without the complete cache payload.
+    Only an initial backfill can read the full item blob.
+    *Why:* the previous page initialization loaded the corpus for every chunk.

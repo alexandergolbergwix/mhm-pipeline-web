@@ -178,33 +178,33 @@ async def ensure_rows_backfilled(
 
     Returns the row count for the build key. A missing cache row is a
     :class:`LookupError` — callers answer 409 (no build exists). The
-    all-matches scope (``approved_only=False``) never gets its own build
-    cache: it falls back to the approved build's blob, so the review
-    table's "All matches" pill works without a second corpus build.
+    all-matches scope (``approved_only=False``) can fall back to the
+    approved build's blob when it has no cache. Existing per-item rows
+    require only the cache ID; the blob is read only for a backfill.
     """
     from app.models.wikidata_studio_cache import WikidataStudioCache  # noqa: PLC0415
     from app.pipeline.hmo_canonical_wikidata import filter_public_wikidata_items  # noqa: PLC0415
 
-    cache_row = (
+    cache_id = (
         await db.execute(
-            select(WikidataStudioCache).where(
+            select(WikidataStudioCache.id).where(
                 WikidataStudioCache.run_id == run_id,
                 WikidataStudioCache.approved_only == approved_only,
                 WikidataStudioCache.source == source,
             )
         )
     ).scalar_one_or_none()
-    if cache_row is None and not approved_only:
-        cache_row = (
+    if cache_id is None and not approved_only:
+        cache_id = (
             await db.execute(
-                select(WikidataStudioCache).where(
+                select(WikidataStudioCache.id).where(
                     WikidataStudioCache.run_id == run_id,
                     WikidataStudioCache.approved_only.is_(True),
                     WikidataStudioCache.source == source,
                 )
             )
         ).scalar_one_or_none()
-    if cache_row is None:
+    if cache_id is None:
         raise LookupError(f"No Wikidata Studio build exists for run {run_id}.")
 
     count = int(await db.scalar(
@@ -217,9 +217,12 @@ async def ensure_rows_backfilled(
     if count:
         return count
 
-    items = filter_public_wikidata_items(
-        cache_row.result_items or [], source=source,
-    )
+    cached_items = await db.scalar(select(WikidataStudioCache.result_items).where(
+        WikidataStudioCache.id == cache_id,
+    ))
+    if cached_items is None:
+        raise LookupError(f"No Wikidata Studio build exists for run {run_id}.")
+    items = filter_public_wikidata_items(cached_items or [], source=source)
     return await replace_wikidata_item_rows(
         db, run_id, approved_only=approved_only, source=source, items=items,
     )

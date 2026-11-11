@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-308)
+## Architectural rules (W-1…W-309)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -135,6 +135,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-306** — GET retries include JSON body decode within one bounded budget. Owner preview restores summaries first and fetches one result; `include_result=false` defers result JSONB — see [jobs-and-progress.md](docs/architecture/rules/jobs-and-progress.md).
 - **W-307** — Exact historical repairs persist the full intent before one revision-bound POST. Recheck current MARC, owner, and complete live state. Unknown server outcomes stop the batch as uncertain — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-308** — Corroborate author-qualified local work URIs against current MARC and the exact graph title transforms. Keep source context immutable. Local measurements run the production quality gate; canonical salt `hmo-wikidata-v23` — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-309** — A warm Studio page checks the cache ID without loading the corpus JSON. Only an initial backfill reads `result_items`; a missing build still fails closed — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-273** — Research Assistant prompt gate: every user prompt passes the local scope router AND the TypeSafe Jev model check (jev-1.13.0) before any LLM call, enforced at both the Heroku dispatch and the Modal entries (dev-stub-only gating left production ungated); all retrieved text incl. MARC notes passes the quarantine; a provider 402 humanizes and retries once on the fallback model — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
 - **W-274** — Remote-agent run contract: every research-agent run emits exactly one terminal event with a machine code (`model_quota_exhausted`, `gate_refused`, `stream_ended`, `deadline_exceeded`), the SSE bridge only synthesizes a terminal when none arrived and never with a look-alike message; a run journal (research_agent_run_journal + `/research-agent/runs/{id}/debug`) records gate→dispatch→terminal; fact/count questions are answered deterministically from the DB (no LLM); the model layer is QUBRID-ONLY with a 402 circuit breaker (2026-10-17: a Modal ModuleNotFoundError surfaced as "stopped responding" and duplicated user rows) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
 - **W-162** — Every PID a projection can emit has a channel row; "unsupported" names its cause

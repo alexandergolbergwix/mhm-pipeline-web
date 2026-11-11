@@ -59,6 +59,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Gila audit completion](gila-audit-completion.md) — source-qualified claims,
   the accepted model, and the full-run review report (W-296).
 - [Gila audit risks](gila-audit-risks.md) — open work-identity, folio, and historical reference-data gaps.
+- [Review page reads](review-pages.md) — cache metadata and bounded SQL reads (W-309).
 - [Canonical source identity](canonical-source-identity.md) — current-source author proof and exact graph title forms (W-308).
 - [Historical repairs](historical-repairs.md) — authorized exact writes and durable receipts (W-307).
 - [Gila source fidelity](gila-source-fidelity.md) — occurrence identity, source scope, per-fact comparisons, and guarded historical proposals.
