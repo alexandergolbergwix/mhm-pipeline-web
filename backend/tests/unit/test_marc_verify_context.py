@@ -9,6 +9,28 @@ from app.pipeline.marc_verify_context import (
 )
 
 
+def test_merged_context_does_not_change_any_source_record() -> None:
+  from copy import deepcopy
+
+  records = [
+      {"_control_number": "990001", "languages": ["heb"], "authors": [{"name": "First"}]},
+      {"_control_number": "990002", "languages": ["lat"], "authors": [{"name": "Second"}]},
+  ]
+  before = deepcopy(records)
+  merged = merge_marc_records(records, primary=records[0])
+  assert records == before
+  merged["authors"][0]["name"] = "Changed primary"
+  merged["authors"][1]["name"] = "Changed secondary"
+  assert records == before
+
+
+def test_single_record_context_has_no_nested_source_alias() -> None:
+  record = {"_control_number": "990001", "languages": ["heb"]}
+  merged = merge_marc_records([record])
+  merged["languages"].append("lat")
+  assert record["languages"] == ["heb"]
+
+
 def test_merge_marc_records_unions_authors() -> None:
   rec_a = {
       "_control_number": "990000403370205171",

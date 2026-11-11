@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from copy import deepcopy
 from typing import Any
 
 from sqlalchemy import func, select
@@ -118,8 +119,8 @@ def merge_marc_records(
     if not records:
         return {}
     if len(records) == 1:
-        return dict(records[0])
-    base = dict(primary or records[0])
+        return deepcopy(records[0])
+    base = deepcopy(primary or records[0])
     for rec in records:
         for key, value in rec.items():
             if key in _LIST_MERGE_KEYS and isinstance(value, list):
@@ -129,11 +130,11 @@ def merge_marc_records(
                     base[key] = existing
                 for item in value:
                     if item not in existing:
-                        existing.append(item)
+                        existing.append(deepcopy(item))
             elif key in _SCALAR_KEYS:
                 continue
             elif key != "_control_number" and key not in base:
-                base[key] = value
+                base[key] = deepcopy(value)
     return base
 
 

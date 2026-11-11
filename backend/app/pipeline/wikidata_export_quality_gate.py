@@ -206,9 +206,6 @@ def _work_missing_author_claim_errors(
         canonical_control_number,
         index_marc_records,
     )
-    from converter.wikidata.content_projection import (  # noqa: PLC0415
-        structured_work_attribution,
-    )
     from converter.wikidata.item_builder import (  # noqa: PLC0415
         _clean_work_title,
     )
@@ -229,6 +226,10 @@ def _work_missing_author_claim_errors(
         record: dict[str, Any],
         wanted_title: str,
     ) -> bool:
+        from converter.wikidata.content_projection import (  # noqa: PLC0415
+            structured_work_attribution,
+        )
+
         for content in record.get("contents") or []:
             entry = content if isinstance(content, dict) else {"title": content}
             attribution = structured_work_attribution(entry)

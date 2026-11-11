@@ -89,6 +89,8 @@ This mode skips the AI judge and provider-key lookup. It includes known QIDs,
 three review classes, catalog-status notes, and recent per-item upload outcomes.
 `--audit-live-snapshot PATH` accepts a `wbgetentities` JSON and adds work review
 proposals with revision, claim IDs, and source control numbers.
+The Wikidata build must pass the production export quality gate before the report can succeed.
+The gate checks native items, serialized items, and current MARC source context.
 The report performs no live repair and always leaves `corrected_qids` empty.
 Use `--audit-projection canonical` to compare the final canonical path.
 That mode reads durable HMO snapshots and curator overrides without a cache write.

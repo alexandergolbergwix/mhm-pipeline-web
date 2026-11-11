@@ -307,3 +307,7 @@ Any new external-write path or reconcile change MUST extend
 
 - W-307: `test_wikidata_gila_execution.py` checks source rejection, exact intent,
   ownership, stale revisions, one POST, unknown API errors, and complete readback.
+
+- W-308: `test_canonical_work_uri_author_scope.py` checks exact current-source URI
+  proof and real graph title transforms. `test_marc_verify_context.py` checks
+  that merged and single-record context cannot change nested source values.

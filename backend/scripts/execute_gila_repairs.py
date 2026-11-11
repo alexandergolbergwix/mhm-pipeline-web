@@ -63,7 +63,7 @@ async def run(args: argparse.Namespace, cookie: str) -> int:
     from app.routers.runs import _lookup_run_with_access
     from app.routers.wikidata_studio import _unwrap_user_secret
     from app.services.wikibase_audit import WikibaseAuditContext, record_wikibase_write
-    from converter.wikidata.uploader import WikidataUploader
+    from converter.wikidata.uploader import UnauthorisedModificationError, WikidataUploader
 
     run_id = uuid.UUID(args.run_id)
     async with session_scope() as db:
@@ -222,15 +222,28 @@ async def run(args: argparse.Namespace, cookie: str) -> int:
                 colophons[qid] = str(text)
     proposals = build_gila_repair_proposals(entities, colophons_by_qid=colophons)
     ready = []
+    ready_proposals = []
+    blocked = []
     for proposal in proposals:
-        receipt = await execute_repair(
-            proposal,
-            gateway,
-            authorized_qids=authorized,
-            source_check=source_check,
-            journal=journal,
-        )
+        try:
+            receipt = await execute_repair(
+                proposal,
+                gateway,
+                authorized_qids=authorized,
+                source_check=source_check,
+                journal=journal,
+            )
+        except (ValueError, UnauthorisedModificationError) as error:
+            failure = {
+                "qid": proposal["qid"],
+                "status": "blocked",
+                "error_type": type(error).__name__,
+            }
+            blocked.append(failure)
+            print(json.dumps(failure), flush=True)
+            continue
         ready.append(receipt)
+        ready_proposals.append(proposal)
         print_receipt(receipt)
     write_json(
         Path(args.plan),
@@ -240,12 +253,20 @@ async def run(args: argparse.Namespace, cookie: str) -> int:
             "project_id": str(project_id),
             "source_sha256": {cn: digest(raw) for cn, raw in sources.items()},
             "authorized_qids": sorted(authorized),
-            "proposals": proposals,
+            "proposals": ready_proposals,
             "preflight": ready,
+            "blocked": blocked,
         },
     )
     print(
-        json.dumps({"ready": len(ready), "already_clean": len(authorized) - len(ready)}), flush=True
+        json.dumps(
+            {
+                "ready": len(ready),
+                "blocked": len(blocked),
+                "already_clean": len(authorized) - len(proposals),
+            }
+        ),
+        flush=True,
     )
     return 0
 

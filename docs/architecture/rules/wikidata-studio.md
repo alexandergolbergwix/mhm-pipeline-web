@@ -3543,7 +3543,7 @@ The earlier selected-field audit could miss these defects despite zero reported 
    Preserve `rejected` through the API, events, cache fingerprints, imports, exports, and history.
    Auto-approve cannot replace rejection. Old unapproved rows remain pending after migration 0053.
 
-Versions: `source-aware-works-v21` and `hmo-wikidata-v22`.
+W-305 introduced `source-aware-works-v21` and `hmo-wikidata-v22`. W-308 advances the canonical salt.
 Implementation and operator limits:
 [Gila source fidelity](../blocks/wikidata-studio/gila-source-fidelity.md).
 Regressions: `test_gila_full_path_regressions.py`, `test_wikidata_gila_facts.py`,
@@ -3574,3 +3574,28 @@ An unknown API error, transport failure after send, or unexpected result produce
 Either outcome stops the batch.
 A pending or uncertain durable intent prevents a blind resend.
 A lost local plan does not erase the durable exact intent.
+
+## Rule W-308 — Preserve author-qualified source identities and immutable MARC context
+
+The first fresh production rebuild rejected 12 canonical works without author claims.
+Each work had an author-qualified local URI and several linked source records.
+The projection combined the same-title records and lost each distinct source author.
+
+The projection regenerates the complete local URI from current MARC title and author.
+It uses the exact title forms from the graph producer: sanitized, shortened, and manuscript-scoped.
+It also supports the raw title form in older snapshots.
+The URI alone does not prove an author or a public QID.
+A corroborated work retains only its matching source records.
+Its source evidence and P2093 retain the author from those records.
+An uncorroborated author-qualified URI cannot create a work.
+An authorless title with the word `by` keeps its existing path.
+
+`merge_marc_records` copies nested source values before it combines context.
+The result must not share mutable source values from either input.
+This also applies to a single-record context.
+The old shallow copy added other records' languages to the first source record.
+It caused 81 false missing-language facts during the complete source audit.
+
+The local Wikidata measurement runs the same export quality gate as production.
+It must pass that gate before it emits a successful measurement report.
+The canonical salt is `hmo-wikidata-v23`.

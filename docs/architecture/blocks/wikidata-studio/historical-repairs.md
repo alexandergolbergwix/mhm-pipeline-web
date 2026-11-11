@@ -28,3 +28,7 @@ A previous pending or uncertain audit prevents a resend.
 The result operations are `verified`, `blocked`, or `uncertain`.
 The local receipt duplicates this durable evidence.
 The executor does not restore a missing ledger mapping or resolve a mixed work.
+
+Preflight records each blocked QID separately and saves only ready proposals.
+Its summary keeps blocked QIDs separate from already-clean QIDs.
+Apply still stops after the first non-verified result.

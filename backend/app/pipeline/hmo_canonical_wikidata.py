@@ -382,7 +382,7 @@ def canonical_wikidata_fingerprint(
     # fails: 62-claim spam drowned P31 in the judge prompt).
     # v17 — sole-content-work author fallback and colophon label stripping
     # (Rule W-300); canonical rows built before them must not revalidate.
-    salt = "hmo-wikidata-v22:"  # Source occurrences, script wording, and catalogue semantics.
+    salt = "hmo-wikidata-v23:"  # Corroborate author-qualified work URIs against current MARC.
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -836,6 +836,13 @@ def native_items_from_hmo(
 
     for index, entity in enumerate(materialized, start=1):
         wd_type = _wikidata_entity_type(entity) or ""
+        uri_sources = (
+            _corroborated_work_uri_sources(entity, context)
+            if wd_type == "work" and context is not None else None
+        )
+        if uri_sources == []:
+            _tick(index)
+            continue
         assert wd_type in PUBLIC_WIKIDATA_ENTITY_TYPES
         existing_qid = _accepted_wikidata_qid(entity)
         if wd_type == "work" and not existing_qid:
@@ -877,6 +884,13 @@ def native_items_from_hmo(
         work_evidence = _reject_fabricated_245_evidence(
             work_evidence, context, entity,
         )
+        if uri_sources:
+            source_names = {cn: name for cn, _record, name in uri_sources}
+            for evidence in work_evidence:
+                name = source_names.get(str(evidence.get("source_record_id") or ""))
+                if name:
+                    evidence["author_name"] = name
+                    evidence["identity_evidence"] = "source_uri_title_author"
         # Fail closed: a person with no source record is a name-only ghost
         # (minted from a bare mention) — no claim, no MARC presence; the
         # judge's "empty MARC context forces no" was correct every time
@@ -905,7 +919,8 @@ def native_items_from_hmo(
             existing_qid=existing_qid,
             entity_type=wd_type,
             local_id=entity.local_id,
-            records=identity_records_for(entity, wd_type),
+            records=sorted({cn for cn, _record, _name in uri_sources})
+            if uri_sources else identity_records_for(entity, wd_type),
             authority_evidence=[
                 evidence for evidence in entity.authority_evidence
                 if evidence.get("accepted") is True
@@ -956,6 +971,27 @@ def _append_context_work_author(
     statements: list[WikidataStatement],
 ) -> None:
     """Carry an approved primary anchor-record author onto a canonical work (W-201/W-206)."""
+    uri_sources = _corroborated_work_uri_sources(entity, context)
+    if uri_sources is not None:
+        if not uri_sources or any(
+            statement.property_id in {P_AUTHOR, P_AUTHOR_NAME_STRING} for statement in statements
+        ):
+            return
+        from converter.wikidata.item_builder import _normalise_label  # noqa: PLC0415
+
+        names = {_normalise_label(name).casefold() for _cn, _record, name in uri_sources}
+        if len(names) != 1:
+            return
+        statement = WikidataStatement(
+            P_AUTHOR_NAME_STRING, uri_sources[0][2], "string",
+            references=nli_reference(uri_sources[0][0]),
+        )
+        for cn, _record, name in uri_sources[1:]:
+            merge_statement_references(statement, WikidataStatement(
+                P_AUTHOR_NAME_STRING, name, "string", references=nli_reference(cn),
+            ))
+        statements.append(statement)
+        return
     if len({canonical_control_number(cn) for cn in entity.control_numbers if cn}) != 1:
         return
     control_number = identity_control_number(entity)
@@ -3050,6 +3086,59 @@ def _marc_record_for_entity(
     return dict(record) if record else None
 
 
+def _corroborated_work_uri_sources(
+    entity: CanonicalHmoEntity,
+    context: CanonicalStudioContext,
+) -> list[tuple[str, dict[str, object], str]] | None:
+    """Corroborate a local author-qualified URI with current source title and author."""
+    from converter.transformer.uri_generator import UriGenerator  # noqa: PLC0415
+    from converter.rdf.rdf_helpers import (  # noqa: PLC0415
+        disambiguate_work_label, sanitize_work_title, shorten_isbd_label,
+    )
+    from converter.wikidata.content_projection import (  # noqa: PLC0415
+        _content_author,
+        structured_work_attribution,
+    )
+
+    generator = UriGenerator()
+    source_uri = str(entity.source_uri or "")
+    if not source_uri.startswith(f"{generator.namespace}Work_") or "_by_" not in source_uri:
+        return None
+    titles = _work_title_candidates(entity)
+    if any(str(generator.work_uri(title)) == source_uri for title in titles):
+        return None
+    matches: dict[tuple[str, str], tuple[str, dict[str, object], str]] = {}
+    for raw_cn in entity.control_numbers:
+        cn = canonical_control_number(raw_cn)
+        record = context.marc_by_cn.get(cn)
+        if not record:
+            continue
+        pairs: list[tuple[str, str]] = []
+        main_title = str(record.get("title") or "")
+        for author in record.get("authors") or []:
+            if isinstance(author, Mapping):
+                role = str(author.get("role") or "author").casefold()
+                if role not in {"author", "attributed author", "presumed author"}:
+                    continue
+                name = str(author.get("name") or author.get("heading") or "")
+            else:
+                name = str(author or "")
+            pairs.append((main_title, name))
+        for content in record.get("contents") or []:
+            if not isinstance(content, dict) or content.get("rejected") is True:
+                continue
+            attribution = structured_work_attribution(content)
+            pairs.append((attribution.title, _content_author(record, attribution, content) or ""))
+        for title, name in pairs:
+            sanitized = sanitize_work_title(title) or title
+            shortened = shorten_isbd_label(sanitized)
+            forms = {title, shortened, disambiguate_work_label(shortened, cn) or shortened}
+            if (name.strip() and any(_titles_match(title, candidate) for candidate in titles)
+                    and any(str(generator.work_uri(form, name)) == source_uri for form in forms)):
+                matches[(cn, name)] = (cn, dict(record), name)
+    return [matches[key] for key in sorted(matches)]
+
+
 def _work_identity_record(
     entity: CanonicalHmoEntity,
     context: CanonicalStudioContext | None,
@@ -3070,6 +3159,10 @@ def _work_identity_record(
     """
     if context is None:
         return "", None
+
+    uri_sources = _corroborated_work_uri_sources(entity, context)
+    if uri_sources is not None:
+        return (uri_sources[0][0], uri_sources[0][1]) if uri_sources else ("", None)
 
     identity_cn = identity_control_number(entity)
     if identity_cn:

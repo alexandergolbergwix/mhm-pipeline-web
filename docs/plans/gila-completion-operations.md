@@ -15,7 +15,13 @@ GitHub actions still require separate, specific permission.
 - The deployed Heroku release is v789 at `6e82382f`.
 - Production migration 0053 passed. The rejected field is non-null with a false default.
 - The Modal job runner uses the same committed backend.
-- The additional UI fix has local regression checks. Its production verification remains open.
+- The UI fix is live in v790. A fresh browser load shows all 2,414 review items without JSON errors.
+- The preview summary has 118,911 bytes for 52 jobs, down from 15,813,287 bytes.
+- All 48 eligible manuscript repairs passed complete readback checks.
+- Fourteen foreign-owned manuscripts remain blocked.
+- The first fresh production rebuild stopped on 12 canonical author gaps.
+- The final local build resolves those gaps and passes the production export gate.
+- The complete source check retains 10,518 facts with zero unexplained losses.
 
 ## Sequence
 

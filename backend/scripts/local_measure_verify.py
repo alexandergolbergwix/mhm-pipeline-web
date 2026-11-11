@@ -377,7 +377,7 @@ class WikidataChannel(Channel):
             approved_matches=approved_matches,
             entities_by_cn=entities_by_cn,
             hmo_instance_qids=hmo_instance_qids,
-            return_native=self.audit_projection == "canonical",
+            return_native=True,
         )
         (scratch / "marc_records.json").write_text(
             json.dumps(marc_records, ensure_ascii=False), encoding="utf-8"
@@ -406,10 +406,19 @@ class WikidataChannel(Channel):
                 [normalize_live_entity(snapshot) for snapshot in canonical_snapshots],
                 context=context, reconcile=False, overrides=overrides,
                 legacy_native_items=built.get("native_items") or [],
+                return_native=True,
             )
         items = list(built.get("items") or [])
         (scratch / "final_items.json").write_text(
             json.dumps(items, ensure_ascii=False), encoding="utf-8"
+        )
+        from app.pipeline.wikidata_export_quality_gate import assert_wikidata_export_quality
+
+        await asyncio.to_thread(
+            assert_wikidata_export_quality,
+            built.get("native_items") or [],
+            serialised_items=items,
+            marc_records=marc_records,
         )
         for it in items:
             it.setdefault("local_id", wikidata_studio.local_id_for_item(it))

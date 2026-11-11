@@ -6,7 +6,8 @@ Baseline: `29b2cf632ec2aae02682bb00d697b055d1a19a20`.
 
 The local implementation preserves source identity, occurrence scope, wording, and references.
 It produces explicit review cases and guarded historical proposals.
-The task performs no production database, cache, or Wikidata writes.
+This initial implementation phase performed no production database, cache, or Wikidata writes.
+The later [operations receipt](gila-live-completion-2026-11-11.md) records the authorized deployment and exact repairs.
 
 ## Implemented behavior
 

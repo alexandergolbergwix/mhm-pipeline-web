@@ -88,7 +88,7 @@ It disables reconciliation and performs no production cache write.
 It fails if canonical snapshots are absent instead of substituting a legacy result.
 The report exports fact comparisons, stage traces, historical proposals, and work partition reviews separately.
 The legacy mode remains available for comparison. Neither mode produces a corrected-QID receipt.
-Current versions: `source-aware-works-v21` and `hmo-wikidata-v22`.
+Current versions: `source-aware-works-v21` and `hmo-wikidata-v23`.
 
 Explicit extraction rejection requires migration `0053_extraction_rejection`.
 See [the review-state contract](../extraction/rejection.md).
