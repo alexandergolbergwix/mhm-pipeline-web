@@ -1,6 +1,7 @@
 # Gila operations and UI receipt
 
-The UI fix is live in Heroku release v790 at `e0e831eb`.
+The UI fix is live in Heroku release v792 at `394e6705`.
+The first payload fix shipped in v790 at `e0e831eb`.
 The production frontend passed TypeScript and Vite 5.4.21.
 A fresh Chrome reload shows all 2,414 review items and an enabled preview button.
 The page shows no JSON parse error.
@@ -63,9 +64,21 @@ Heroku verified the manifest's production frontend dependencies.
 
 ## Remaining operations
 
-Heroku release v791 uses `d6536aef`. The Modal runner uses the same commit.
+Heroku release v792 uses `394e6705`.
+The Modal runner contains the source fix and the repair executor.
 The production frontend build and health checks passed.
-Complete the fresh production rebuild and check its stored output.
+The approved-items rebuild completed with 2,409 items.
+The first All matches rebuild stopped on a database pool timeout.
+The separate retry completed with 2,409 items.
+Both cache records have a fresh timestamp and a source digest.
+The [page receipt](data/gila-ui-read-verification-2026-11-11.json) verifies both scope modes.
+Each mode returned 2,409 unique items across 25 pages without a JSON decode error.
+The largest page had 251,321 bytes.
+The warm API probe returned 100 rows per page in 2.08, 1.64, and 1.58 seconds.
+The Mac is locked, so the final browser screenshot could not proceed.
+The earlier browser screenshot proves the deployed JSON fix.
+A complete public snapshot refresh stopped on HTTP 429.
+The audit retains its original snapshot time and the exact repair receipts.
 Retain foreign targets and unresolved work identities for explicit curator review.
 The ledger conflict is explicit: Q134926101 and Q141754492 both have P3959 `990001680850205171`.
 A fresh live read confirms both targets and no redirect.

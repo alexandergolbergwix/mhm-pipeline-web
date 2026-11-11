@@ -1,0 +1,23 @@
+{
+  "release": "v792",
+  "backend_commit": "394e6705",
+  "run_id": "47e03437-09f2-4d6b-aea7-89fe79d76198",
+  "approved_job": "37720c85-7053-4539-8430-b946ac88cba4",
+  "all_matches_job": "155d1c28-dfdd-44b6-8dd8-7a8993bc8058",
+  "verified_at": "2026-11-11T17:55:43.928476+00:00",
+  "pages": {
+    "approved": {
+      "total": 2409,
+      "loaded": 2409,
+      "pages": 25,
+      "max_bytes": 251321
+    },
+    "all": {
+      "total": 2409,
+      "loaded": 2409,
+      "pages": 25,
+      "max_bytes": 251321
+    }
+  },
+  "decode_errors": 0
+}

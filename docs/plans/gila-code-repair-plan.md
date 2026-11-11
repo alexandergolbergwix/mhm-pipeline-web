@@ -1,8 +1,8 @@
 # Gila audit code repair plan
 
 Date: 11 November 2026.
-Status: local implementation and historical review batches complete on `codex/gila-code-repair`.
-Deployment and live corrections remain separate actions.
+Status: code and deployment complete on `codex/gila-code-repair`; both production scopes now have 2,409 fresh items.
+The exact executor verified 48 owned manuscript repairs. Foreign targets and unresolved work identities remain in review.
 
 ## Implementation progress
 
@@ -13,11 +13,12 @@ Deployment and live corrections remain separate actions.
 - The canonical author path uses the verified authority matcher.
 - The final corpus contains 897 manuscripts and 10,518 expected source facts.
 - The final comparison has zero unexplained source-fact losses and zero validation-error items.
-- The backend unit suite passed 2,240 tests. The integration and cache suites passed 92 tests.
-- Two frontend behavior tests passed with local cached dependencies. The exact dependency build remains unverified.
+- The final web unit suite passed 3,479 tests. Seven pre-existing failures also fail in an isolated committed snapshot.
+- Nine frontend retry tests passed with cached dependencies. Heroku passed the exact production frontend build.
 - Migration 0053, architecture rules, per-fact exports, and revision-bound historical proposals are present.
 - Source uncertainty, unresolved local targets, and historical live repairs remain explicit review cases.
 - See [the implementation receipt](../audits/gila-code-implementation-2026-11-11.md) for evidence and limits.
+- The [operations receipt](../audits/gila-live-completion-2026-11-11.md) records deployment, live revisions, UI proof, and remaining review cases.
 
 The objective is to remove every reproducible code defect from Gila's audit and prevent the defects from recurring.
 The code must preserve source meaning, source scope, uncertainty, and references through the final upload payload.

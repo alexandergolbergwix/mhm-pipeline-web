@@ -6,16 +6,17 @@ GitHub actions still require separate, specific permission.
 
 ## Current evidence
 
-- The local backend unit suite passed 2,240 tests.
+- The final web unit suite passed 3,479 tests. Seven pre-existing failures also fail in an isolated committed snapshot.
 - The integration and cache suites passed 92 tests.
 - The full source audit has zero unexplained losses across 897 records.
 - The production health and readiness endpoints return success.
 - The supplied site session has the admin role.
 - The exact frontend build passed on Heroku with Node 20.20.2 and Vite 5.4.21.
-- The deployed Heroku release is v791 at `d6536aef`.
+- The deployed Heroku release is v792 at `394e6705`.
+- Release v791 at `d6536aef` contains the source-boundary fix.
 - The Modal runner uses the same source fix.
 - Production migration 0053 passed. The rejected field is non-null with a false default.
-- The Modal job runner uses the same committed backend.
+- The Modal job runner contains all source and repair fixes at `d6536aef`.
 - The UI fix is live in v790. A fresh browser load shows all 2,414 review items without JSON errors.
 - The preview summary has 118,911 bytes for 52 jobs, down from 15,813,287 bytes.
 - All 48 eligible manuscript repairs passed complete readback checks.
@@ -50,4 +51,15 @@ The site session values remain in process memory and do not enter files or logs.
 The current diff maps to extraction, RDF, Wikidata Studio, frontend, export/history, and deployment.
 The architecture pages describe the changed fields, source contracts, migration, and tests.
 The final audit corrected the stale W-304 pointer in `global-rules.md`.
-The root instructions and README now point to W-305.
+The root instructions and README now point to W-309.
+
+## Final production checks
+
+The approved-items rebuild completed with 2,409 items.
+The first All matches rebuild stopped on a database pool timeout.
+The separate retry completed with 2,409 items.
+Both cache records have a fresh timestamp and a source digest.
+Each mode passed all 25 API pages with 2,409 unique items and no JSON decode error.
+The warm API probe completed three 100-row pages within 2.08 seconds per page.
+The audit retains the original live snapshot after HTTP 429 stopped a complete refresh.
+Exact write receipts remain the evidence for the 48 live repairs.
