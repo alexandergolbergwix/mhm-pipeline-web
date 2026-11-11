@@ -1257,3 +1257,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   Request the bounded upload history without results.
   Fetch one selected job and check its owner and preview mode again.
   *Why:* complete historical results can prevent the preview from display.
+
+- **R160 — Historical repair execution follows W-307.** Persist the exact intent
+  before the POST. Recheck current MARC and the owner. Stop after uncertainty.
+  *Why:* a local proposal cannot prove a remote correction or a safe resend.

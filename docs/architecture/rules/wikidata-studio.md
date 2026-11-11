@@ -3548,3 +3548,29 @@ Implementation and operator limits:
 [Gila source fidelity](../blocks/wikidata-studio/gila-source-fidelity.md).
 Regressions: `test_gila_full_path_regressions.py`, `test_wikidata_gila_facts.py`,
 `test_wikidata_gila_repairs.py`, and `test_hmo_canonical_wikidata.py`.
+
+## Rule W-307 — Exact historical repairs require durable intent and complete proof
+
+The historical audit proposes exact reference and colophon repairs.
+A proposal alone does not authorize a write.
+The separate executor requires an authorized QID set and the actor's normal credential.
+The executor checks the current owner without foreign consent.
+It binds each manuscript to one current source record through P3959.
+It checks the reviewed source hash before each attempt.
+It re-derives every colophon change from current raw MARC.
+
+Before the POST, the executor persists the full proposal, proposal hash, source evidence,
+QID, entity digest, and revision in `wikibase_cloud_writes`.
+The audit channel is `wikidata_repair`.
+The intent operation is `repair_intent`.
+The executor then reads and checks the live revision, source, and owner again.
+It sends only exact changed claims through one `wbeditentity` POST with `baserevid`.
+The transport disables redirects and rejects a session adapter with retries.
+
+A corrected receipt requires the returned revision and a complete entity comparison.
+The comparison retains duplicate counts, ranks, qualifiers, references, and metadata.
+Known pre-write API rejections produce `blocked`.
+An unknown API error, transport failure after send, or unexpected result produces `uncertain`.
+Either outcome stops the batch.
+A pending or uncertain durable intent prevents a blind resend.
+A lost local plan does not erase the durable exact intent.

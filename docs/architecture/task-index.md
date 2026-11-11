@@ -22,6 +22,7 @@
 | Change upload ownership / foreign-modify accept | [wikidata-studio guards](blocks/wikidata-studio/guards-and-upload.md) + Rule W-99 |
 | Preview or change owner-only manuscript updates | [owner-only upload](blocks/wikidata-studio/owner-only-upload.md) + Rule W-303; dry-run needs a live credential and is not authorization |
 | Diagnose reference grouping, old caches, or test-wiki reference writes | [reference blocks](blocks/wikidata-studio/reference-blocks.md) + Rule W-304 |
+| Apply authorized exact historical repairs | [historical repairs](blocks/wikidata-studio/historical-repairs.md) + Rule W-307 |
 | Audit Gila source facts or prepare historical repair proposals | [Gila source fidelity](blocks/wikidata-studio/gila-source-fidelity.md) + Rule W-305; canonical measurement is read-only |
 | Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |
 | Change MARC 500/505 work candidates or Studio item counts | [extraction ingest](blocks/extraction/ingest.md) + [Wikidata Studio R22](blocks/wikidata-studio/rules.md) |

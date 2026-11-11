@@ -304,3 +304,6 @@ Any new external-write path or reconcile change MUST extend
 - W-305: `test_wikidata_gila_repairs.py` checks exact reference proposals,
   revision/digest changes, uncertain prior outcomes, and source-bound colophon
   rank, language, and folio checks. It performs no remote write.
+
+- W-307: `test_wikidata_gila_execution.py` checks source rejection, exact intent,
+  ownership, stale revisions, one POST, unknown API errors, and complete readback.

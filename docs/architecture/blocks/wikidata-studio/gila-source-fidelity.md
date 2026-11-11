@@ -64,6 +64,7 @@ The retained and removed statements must have the same language, datatype, rank,
 A deprecated retained statement or an invalid folio cannot support removal.
 The retained colophon receives every distinct reference from the duplicate statement.
 
+The separate [executor](historical-repairs.md) requires authorization and records exact write receipts.
 Each proposal binds the QID, revision, entity digest, and claim IDs.
 Validation rejects changed evidence, an applied or uncertain prior write, or unsupported claim changes.
 It does not grant ownership, curator approval, or permission to write.
