@@ -281,6 +281,31 @@ def test_serialise_job_omits_session_snapshot_by_default() -> None:
 
 
 @pytest.mark.asyncio
+async def test_job_summary_list_omits_bulk_results_and_keeps_detail(db_session, sample_run) -> None:
+    job = RunJob(
+        project_id=sample_run["project_id"], run_id=sample_run["run_id"],
+        created_by=sample_run["user_id"], kind=JOB_KIND_WIKIDATA_UPLOAD,
+        status="succeeded", params={"owner_only": True},
+        progress={"processed": 2414, "outcomes": [{"message": "x" * 10000}], "phase": "done"},
+        result={"outcomes": [{"qid": "Q123", "message": "x" * 10000}]},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    job_id = job.id
+    response = await sample_run["client"].get(
+        f"/api/runs/{sample_run['run_id']}/jobs?kind=wikidata_upload&limit=100&include_result=false",
+    )
+    assert response.status_code == 200
+    listed = response.json()["jobs"][0]
+    assert listed["result"] is None
+    assert listed["params"] == {"owner_only": True}
+    assert listed["progress"] == {"processed": 2414, "phase": "done"}
+    assert len(response.content) < 2000
+    detail = await sample_run["client"].get(f"/api/runs/{sample_run['run_id']}/jobs/{job_id}")
+    assert detail.json()["result"]["outcomes"][0]["qid"] == "Q123"
+
+
+@pytest.mark.asyncio
 async def test_finish_job_never_resurrects_terminal_row(db_session, sample_run) -> None:
     """W-244: the stale reap may mark a running row failed while its
     executor is still computing; a late writer finishing afterwards must

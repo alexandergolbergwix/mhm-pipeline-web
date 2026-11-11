@@ -677,3 +677,21 @@ connection. The engine cap stays for web requests. The 120-second idle
 transaction limit stays: the build commits that transaction before the long
 work, and an idle transaction must not pin a pooled connection for a day.
 Tests: `tests/unit/test_wikidata_studio_build_job.py`.
+
+## Rule W-306 — Bound preview payloads and retry incomplete GET bodies
+
+The Wikidata Studio screenshot showed two JSON parse errors and an empty table.
+The owner preview requested 100 complete upload jobs.
+A fresh response contained 15,813,287 bytes for 52 jobs.
+The first item page returned valid JSON with 100 trimmed rows.
+
+`WikidataOwnerPreview` requests job summaries with `include_result=false`.
+The API defers `RunJob.result` and removes bulk detail from progress in this mode.
+The preview then fetches only the selected job and checks its owner and mode again.
+Other callers retain the previous detail contract.
+
+The API client uses one retry budget for fetch, gateway status, and JSON decode.
+GET and HEAD can use four attempts.
+A write has one attempt, including when its response contains incomplete JSON.
+An exhausted JSON decode produces a plain error message.
+An abort or ordinary API error stops the request immediately.

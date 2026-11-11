@@ -45,14 +45,31 @@ export async function fetchWithRetry(
   method: string,
   delays: readonly number[] = RETRY_DELAYS_MS,
 ): Promise<Response> {
+  return readWithRetry(url, init, method, async (response) => response, delays);
+}
+
+async function readWithRetry<T>(
+  url: string,
+  init: RequestInit,
+  method: string,
+  read: (response: Response) => Promise<T>,
+  delays: readonly number[] = RETRY_DELAYS_MS,
+): Promise<T> {
   const budget = isRepeatSafe(method) ? delays : [];
   for (let attempt = 0; ; attempt += 1) {
     const last = attempt >= budget.length;
     try {
       const res = await fetch(url, init);
-      if (last || !RETRYABLE_STATUSES.has(res.status)) return res;
+      if (last || !RETRYABLE_STATUSES.has(res.status)) return await read(res);
+      await res.body?.cancel();
     } catch (err) {
-      if (last || isAbort(err)) throw err;
+      if (isAbort(err) || err instanceof ApiError) throw err;
+      if (last) {
+        if (err instanceof SyntaxError) {
+          throw new ApiError(502, "The server returned incomplete JSON. Reload the page to try again.");
+        }
+        throw err;
+      }
     }
     await wait(budget[attempt] * (0.75 + Math.random() * 0.5));
   }
@@ -83,54 +100,55 @@ async function request<T>(
     const csrf = _readCookie("mhm_csrf");
     if (csrf) headers["X-CSRF-Token"] = csrf;
   }
-  const res = await fetchWithRetry(`/api${path}`, {
+  return readWithRetry(`/api${path}`, {
     method,
     credentials: "include",
     cache:       "no-store",
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  }, method);
-  if (!res.ok) {
-    let detail = res.statusText;
-    let payload: unknown = null;
-    try {
-      const data = (await res.json()) as {detail?: unknown};
-      payload = data?.detail ?? null;
-      detail = coerceErrorDetail(data?.detail, res.statusText);
-    } catch {
-      /* response wasn't JSON — keep statusText */
+  }, method, async (res) => {
+    if (!res.ok) {
+      let detail = res.statusText;
+      let payload: unknown = null;
+      try {
+        const data = (await res.json()) as {detail?: unknown};
+        payload = data?.detail ?? null;
+        detail = coerceErrorDetail(data?.detail, res.statusText);
+      } catch {
+        /* response wasn't JSON — keep statusText */
+      }
+      throw new ApiError(res.status, detail, payload);
     }
-    throw new ApiError(res.status, detail, payload);
-  }
-  if (res.status === 204) return undefined as T;
-  // Guard against the FastAPI SPA-fallback "200 HTML" pathology: if a
-  // backend route is misregistered OR the browser served a stale
-  // cached SPA index for this URL (we've seen Vite proxy hiccups do
-  // this), FastAPI / Vite return index.html with 200 + text/html.
-  // Without this check the SDK would throw a confusing "Unexpected
-  // token '<'" deep inside JSON.parse.
-  //
-  // Recovery: text/html on an API URL almost always means the user's
-  // session expired (cookie auth bounced through the SPA fallback)
-  // OR the browser cached an old fallback response. We force a hard
-  // navigate to /login so the SPA re-authenticates, which clears
-  // both states without the user having to debug their browser cache.
-  const contentType = res.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    if (typeof window !== "undefined" &&
-        !window.location.pathname.startsWith("/login")) {
-      // Push the user to /login. Their session probably expired or
-      // their browser cached the SPA fallback for this API URL.
-      window.location.assign("/login?next=" + encodeURIComponent(
-        window.location.pathname + window.location.search,
-      ));
+    if (res.status === 204) return undefined as T;
+    // Guard against the FastAPI SPA-fallback "200 HTML" pathology: if a
+    // backend route is misregistered OR the browser served a stale
+    // cached SPA index for this URL (we've seen Vite proxy hiccups do
+    // this), FastAPI / Vite return index.html with 200 + text/html.
+    // Without this check the SDK would throw a confusing "Unexpected
+    // token '<'" deep inside JSON.parse.
+    //
+    // Recovery: text/html on an API URL almost always means the user's
+    // session expired (cookie auth bounced through the SPA fallback)
+    // OR the browser cached an old fallback response. We force a hard
+    // navigate to /login so the SPA re-authenticates, which clears
+    // both states without the user having to debug their browser cache.
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      if (typeof window !== "undefined" &&
+          !window.location.pathname.startsWith("/login")) {
+        // Push the user to /login. Their session probably expired or
+        // their browser cached the SPA fallback for this API URL.
+        window.location.assign("/login?next=" + encodeURIComponent(
+          window.location.pathname + window.location.search,
+        ));
+      }
+      throw new ApiError(
+        401,
+        "Session expired or stale browser cache. Reloading to log in…",
+      );
     }
-    throw new ApiError(
-      401,
-      "Session expired or stale browser cache. Reloading to log in…",
-    );
-  }
-  return (await res.json()) as T;
+    return (await res.json()) as T;
+  });
 }
 
 

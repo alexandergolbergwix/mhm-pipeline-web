@@ -11,8 +11,11 @@ GitHub actions still require separate, specific permission.
 - The full source audit has zero unexplained losses across 897 records.
 - The production health and readiness endpoints return success.
 - The supplied site session has the admin role.
-- Local package registry connections fail. The production build must verify the exact frontend.
-- The deployed Heroku release is v788 at `2873b5b9`.
+- The exact frontend build passed on Heroku with Node 20.20.2 and Vite 5.4.21.
+- The deployed Heroku release is v789 at `6e82382f`.
+- Production migration 0053 passed. The rejected field is non-null with a false default.
+- The Modal job runner uses the same committed backend.
+- The additional UI fix has local regression checks. Its production verification remains open.
 
 ## Sequence
 

@@ -64,6 +64,32 @@ describe("api client retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("retries a truncated JSON body within the same GET budget", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response('{"items":[{"label":"cut', {headers: {"content-type": "application/json"}}))
+      .mockResolvedValueOnce(jsonResponse(503))
+      .mockResolvedValueOnce(jsonResponse(200, {items: ["complete"]}));
+    const promise = api.get("/runs/r1/wikidata-studio/items/page");
+    const assertion = expect(promise).resolves.toEqual({items: ["complete"]});
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports incomplete JSON after four GET attempts", async () => {
+    fetchMock.mockImplementation(async () => new Response('{"items":', {headers: {"content-type": "application/json"}}));
+    const assertion = expect(api.get("/runs/r1/jobs")).rejects.toThrow("The server returned incomplete JSON");
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("never repeats a POST after an incomplete JSON response", async () => {
+    fetchMock.mockResolvedValue(new Response('{"id":', {headers: {"content-type": "application/json"}}));
+    await expect(api.post("/runs/r1/jobs", {})).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not retry when the caller aborts", async () => {
     fetchMock.mockRejectedValue(new DOMException("aborted", "AbortError"));
     await expect(fetchWithRetry("/api/x", {}, "GET")).rejects.toThrow("aborted");

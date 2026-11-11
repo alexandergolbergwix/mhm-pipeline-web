@@ -51,3 +51,6 @@ The tests use HTTP substitutes and make no Wikidata writes.
 `frontend/e2e/wikidata-complete-scope.spec.ts` checks complete review scopes (W-215).
 It uses paginated HTTP fixtures with 236 and 736 items.
 It checks AI filter counts, approval counts, and the item IDs in verification requests.
+
+- `apiClientRetry.spec.ts` checks incomplete GET recovery, the shared four-attempt
+  budget, and one POST attempt after an incomplete response (W-306).

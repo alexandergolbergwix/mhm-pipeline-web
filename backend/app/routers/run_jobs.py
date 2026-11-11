@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from app.auth.session import AuthContext, current_auth
 from app.db import get_session
@@ -58,11 +59,14 @@ async def list_run_jobs(
     active: bool = Query(False),
     kind: str | None = Query(None, max_length=48),
     limit: int | None = Query(None, ge=1, le=100),
+    include_result: bool = Query(True),
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, list[dict[str, Any]]]:
     await _lookup_run_with_access(db, run_id, auth, write=False)
     q = select(RunJob).where(RunJob.run_id == run_id)
+    if not include_result:
+        q = q.options(defer(RunJob.result))
     if active:
         q = q.where(RunJob.status.in_(tuple(ACTIVE_JOB_STATUSES)))
     if kind:
@@ -72,7 +76,7 @@ async def list_run_jobs(
         q = q.limit(limit)
     rows = (await db.execute(q)).scalars().all()
     # List payloads omit session_snapshot by default (Rule W-130).
-    return {"jobs": [serialise_job(j) for j in rows]}
+    return {"jobs": [serialise_job(j, include_result=include_result) for j in rows]}
 
 
 @router.post("/runs/{run_id}/jobs", status_code=status.HTTP_201_CREATED)

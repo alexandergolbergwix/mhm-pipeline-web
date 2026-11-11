@@ -60,14 +60,16 @@ export function WikidataOwnerPreview({runId, source, approvedOnly, itemApprovedO
     }
     let cancelled = false;
     setRestoring(true);
-    void RunJobs.listForRun(runId, false, {kind: "wikidata_upload", limit: 100}).then(({jobs}) => {
+    void RunJobs.listForRun(runId, false, {kind: "wikidata_upload", limit: 100, includeResult: false}).then(async ({jobs}) => {
       if (cancelled) return;
       const latest = jobs.find(acceptJob);
       if (!latest) return;
-      setJob(latest);
-      upsertJob(latest);
-      if (isJobActive(latest.status)) {
-        setTrackedJobId(latest.id);
+      const detail = await RunJobs.get(runId, latest.id);
+      if (cancelled || !acceptJob(detail)) return;
+      setJob(detail);
+      upsertJob(detail);
+      if (isJobActive(detail.status)) {
+        setTrackedJobId(detail.id);
         ensureJobPolling();
       }
     }).catch((caught: unknown) => {

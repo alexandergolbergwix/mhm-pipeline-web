@@ -74,3 +74,10 @@
 33. **R33 — Preserve explicit extraction rejection (W-305).** The drawer and
     bulk Reject action transmit `rejected=true`. The entity fingerprint includes
     rejection. *Why:* a pending entity and a rejected entity require different review behavior.
+
+34. **R34 — Preview restore and JSON retries remain bounded (W-306).**
+    Request job summaries first, then one selected result.
+    Check the returned detail against the current user and preview mode.
+    Include body decode in the existing GET retry budget.
+    Never repeat a write after an incomplete response.
+    *Why:* a 15.8 MB job list accompanied the screenshot's JSON errors.

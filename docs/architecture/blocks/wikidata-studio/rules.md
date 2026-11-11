@@ -1252,3 +1252,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   Bind each proposal to the exact revision and digest. A local pass cannot close
   a live defect or authorize a write.
   *Why:* the 897-record audit exposed losses beyond the earlier selected checks.
+
+- **R159 — Owner preview restores summaries before detail (W-306).**
+  Request the bounded upload history without results.
+  Fetch one selected job and check its owner and preview mode again.
+  *Why:* complete historical results can prevent the preview from display.

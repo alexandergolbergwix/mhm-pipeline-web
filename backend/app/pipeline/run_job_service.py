@@ -1248,6 +1248,7 @@ def serialise_job(
     job: RunJob,
     *,
     include_session_snapshot: bool = False,
+    include_result: bool = True,
 ) -> dict[str, Any]:
     """Serialize a job for the API.
 
@@ -1258,7 +1259,11 @@ def serialise_job(
     the slim snapshot for session hydration.
     """
     progress = job.progress or {}
-    result = job.result
+    result = job.result if include_result else None
+    if not include_result:
+        progress = {key: value for key, value in progress.items()
+                    if key not in {"outcomes", "link_outcomes", "session_snapshot", "report",
+                                   "recent_item_outcomes", "item_outcome"}}
     if job.kind == JOB_KIND_WIKIDATA_PUBLICATION_AI_REVIEW:
         progress = {key: value for key, value in progress.items() if key != "report"}
         result = {key: value for key, value in result.items() if key != "report"} if isinstance(result, dict) else result

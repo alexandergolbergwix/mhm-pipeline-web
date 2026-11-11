@@ -209,12 +209,13 @@ export const RunJobs = {
   listForRun: (
     runId: string,
     active = false,
-    opts?: {kind?: string; limit?: number},
+    opts?: {kind?: string; limit?: number; includeResult?: boolean},
   ) => {
     const qs = new URLSearchParams();
     if (active) qs.set("active", "true");
     if (opts?.kind) qs.set("kind", opts.kind);
     if (opts?.limit != null) qs.set("limit", String(opts.limit));
+    if (opts?.includeResult === false) qs.set("include_result", "false");
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return api.get<{jobs: RunJobSnapshot[]}>(`/runs/${runId}/jobs${suffix}`);
   },

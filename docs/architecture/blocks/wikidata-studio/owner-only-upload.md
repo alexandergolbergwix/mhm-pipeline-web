@@ -94,3 +94,6 @@ Failed or cancelled preview results can be incomplete. The UI does not offer
 an owner-only live action; API clients can explicitly request `live`.
 
 Tests: [Wikidata Studio tests](tests.md) list the owner-only suites and limits.
+
+The preview restores upload history with `include_result=false` (W-306).
+It then fetches the selected job detail and checks the owner and mode again.

@@ -86,3 +86,6 @@
 | `backend/tests/test_run_job_params_wikidata_verify.py` | `wikidata_verify` enqueue avoids the slow Studio scope; worker errors and Kimi’s non-Gemini credential path are pinned |
 | `backend/tests/unit/test_verify_job_progress.py` | Mid-run counters only; terminal slim snapshot (R20 / W-128) |
 | `backend/tests/unit/test_verify_job_progress_throttle.py` | Slim snapshot strips evidence; mid-run omits snapshot (R20 / W-128) |
+
+- W-306: `test_job_summary_list_omits_bulk_results_and_keeps_detail` in
+  `backend/tests/test_run_jobs.py` checks the summary endpoint and selected detail.
