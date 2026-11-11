@@ -522,3 +522,23 @@ def test_test_stub_timeout_does_not_fall_back_to_another_create(
     with pytest.raises(RuntimeError, match="outcome unknown"):
         up._wbeditentity_new(new="property", data={})
     assert calls == ["post"]
+
+
+def test_first_revision_author_wins_when_usercontribs_omits_the_item(
+    uploader: WikidataUploader, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(uploader, "_get_authenticated_user", lambda: "Alexander Goldberg IL")
+    monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Alexander Goldberg IL")
+    monkeypatch.setattr(uploader, "_user_created_via_contribs", lambda qid, user: False)
+    monkeypatch.setattr(uploader, "_item_exists_on_wikidata_sparql", lambda qid: True)
+    assert uploader._is_our_item("Q141747357") is True
+
+
+def test_foreign_first_revision_author_is_still_refused(
+    uploader: WikidataUploader, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(uploader, "_get_authenticated_user", lambda: "Alexander Goldberg IL")
+    monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Lapon-Kandelshein Essi")
+    monkeypatch.setattr(uploader, "_user_created_via_contribs", lambda qid, user: True)
+    monkeypatch.setattr(uploader, "_item_exists_on_wikidata_sparql", lambda qid: True)
+    assert uploader._is_our_item("Q141175543") is False

@@ -2307,7 +2307,6 @@ class WikidataUploader:
             return
         api_url = _TEST_API if self._is_test else _WIKIDATA_API
         created_by_me: set[str] = set()
-        complete = False
         try:
             import requests  # noqa: PLC0415
 
@@ -2342,7 +2341,6 @@ class WikidataUploader:
                             created_by_me.add(title)
                 cont = body.get("continue")
                 if not isinstance(cont, dict) or not cont.get("uccontinue"):
-                    complete = True
                     break
                 params["uccontinue"] = str(cont["uccontinue"])
         except Exception as exc:  # noqa: BLE001
@@ -2357,14 +2355,15 @@ class WikidataUploader:
                 and "missing" not in ent
                 and (ent.get("claims") or ent.get("labels"))
             )
+            # A missing contribution is not proof of foreign creation. Only a
+            # confirmed first-revision author sets the cache; other items are
+            # decided per item by the first-revision check.
             if (
                 qid in created_by_me
                 and has_triples
                 and self._get_first_revision_author(qid) == auth_user
             ):
                 self._is_our_item_cache[qid] = True
-            elif complete and qid not in created_by_me:
-                self._is_our_item_cache[qid] = False
 
     def share_caches_from(self, other: WikidataUploader) -> None:
         """Share ownership and prefetched-entity caches across shard slot uploaders."""
@@ -2558,16 +2557,14 @@ class WikidataUploader:
         # channel #2, refuse — the two cannot disagree on a well-formed
         # page. ``None`` means the contribs call failed (network blip):
         # we accept that only because channel #2 already agreed.
-        contribs_ok = self._user_created_via_contribs(qid, auth_user)
-        if contribs_ok is False:
-            logger.warning(
-                "SAFETY: Cross-check disagreement on %s — revisions API "
-                "reports '%s' as creator but list=usercontribs shows no "
-                "page-creation edit for that user. Refusing (fail-closed).",
+        # list=usercontribs omits many older page creations, so a miss here
+        # is logged only. The first-revision author above decides ownership.
+        if self._user_created_via_contribs(qid, auth_user) is False:
+            logger.info(
+                "Ownership cross-check: list=usercontribs omits %s for '%s'; "
+                "first-revision author confirms ownership.",
                 qid, auth_user,
             )
-            self._is_our_item_cache[qid] = False
-            return False
 
         # ── Channel #4: SPARQL existence check ─────────────────────────
         #
