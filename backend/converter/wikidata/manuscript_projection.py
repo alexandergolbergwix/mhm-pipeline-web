@@ -501,6 +501,10 @@ class ManuscriptProjectionMixin:
                     property_id=P_SCRIPT_STYLE,
                     value=SCRIPT_TYPE_TO_QID[str(script_type)],
                     value_type="item",
+                    qualifiers=[{
+                        "property": P_OBJECT_NAMED_AS,
+                        "value": str(record["script_type_source"]), "type": "string",
+                    }] if record.get("script_type_source") else [],
                     references=ref,
                 )
             )
@@ -511,6 +515,10 @@ class ManuscriptProjectionMixin:
                     property_id=P_SCRIPT_STYLE,
                     value=SCRIPT_MODE_TO_QID[str(script_mode)],
                     value_type="item",
+                    qualifiers=[{
+                        "property": P_OBJECT_NAMED_AS,
+                        "value": str(record["script_mode_source"]), "type": "string",
+                    }] if record.get("script_mode_source") else [],
                     references=ref,
                 )
             )
@@ -822,14 +830,22 @@ class ManuscriptProjectionMixin:
                 )
 
         # ── Catalog references ───────────────────────────────────
+        from converter.wikidata.catalog_references import (
+            catalog_reference_code,
+            catalog_reference_qid,
+        )
+
         for cat_ref in record.get("catalog_references") or []:
-            cat_name = cat_ref.get("catalog", "") if isinstance(cat_ref, dict) else str(cat_ref)
-            if cat_name:
+            code = catalog_reference_code(cat_ref)
+            catalog_qid = catalog_reference_qid(cat_ref)
+            if code:
                 item.statements.append(
                     WikidataStatement(
                         property_id=P_CATALOG_CODE,
-                        value=str(cat_name),
+                        value=code,
                         value_type="string",
+                        qualifiers=[{"property": "P972", "value": catalog_qid, "type": "item"}]
+                        if catalog_qid else [],
                         references=ref,
                     )
                 )
@@ -1035,6 +1051,13 @@ class ManuscriptProjectionMixin:
 
         # ── Related places → P7153 (significant place) ──────────
         for place_entry in record.get("related_places") or []:
+            if not isinstance(place_entry, dict) or str(
+                place_entry.get("role") or ""
+            ).casefold() not in {
+                "place of attestation",
+                "attestation place",
+            }:
+                continue
             place_name = _marc_entry_label(place_entry, keys=("place", "name", "term"))
             if not place_name:
                 continue
@@ -1051,10 +1074,6 @@ class ManuscriptProjectionMixin:
                         property_id=P_SIGNIFICANT_PLACE,
                         value=qid,
                         value_type="item",
-                        # P7153 constraint requires P3831 (object of statement
-                        # has role) qualifier. MARC 751 "related place" is a
-                        # place of attestation (Q127695525), not provenance
-                        # custody history (Q1773840).
                         qualifiers=[
                             {
                                 "property": P_OBJECT_HAS_ROLE,
@@ -1140,7 +1159,15 @@ class ManuscriptProjectionMixin:
             ).strip()
             if not _QID_RE.match(explicit_qid):
                 explicit_qid = ""
-            rw_qid = explicit_qid or self._work_qid_for_record_title(record, rw_title)
+            rw_author = next(
+                (
+                    str(rw_dict.get(key) or "").strip()
+                    for key in ("author", "author_name", "work_author")
+                    if str(rw_dict.get(key) or "").strip()
+                ),
+                None,
+            ) or self._work_author_for_record_title(record, rw_title)
+            rw_qid = explicit_qid or self._work_qid_for_record_title(record, rw_title, rw_author)
             # RELATED_WORKS often carries bare "Bible"/"תנ״ך" on piyyut MSS —
             # run the same specificity ladder as contents (export-34 / W-173).
             rw_qid = refine_exemplar_work_qid(
@@ -1179,14 +1206,6 @@ class ManuscriptProjectionMixin:
                 continue
             # Accepted without a known QID only when curator-approved on the
             # related-work row — still stamp evidence on the local work.
-            rw_author = next(
-                (
-                    str(rw_dict.get(key) or "").strip()
-                    for key in ("author", "author_name", "work_author")
-                    if str(rw_dict.get(key) or "").strip()
-                ),
-                None,
-            ) or self._work_author_for_record_title(record, decision.title)
             rw_item = self._get_or_create_work(decision.title, rw_author, record)
             if evidence not in rw_item.work_candidate_evidence:
                 rw_item.work_candidate_evidence.append(evidence)

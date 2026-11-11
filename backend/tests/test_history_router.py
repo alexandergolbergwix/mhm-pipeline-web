@@ -482,7 +482,7 @@ class TestRevert:
         e1 = _seed_event(
             project_id=project_id, actor_id=user.id,
             entity_type="extraction_entity", entity_id=entity_id,
-            rev_no=1, op="create", state={"approved": False},
+            rev_no=1, op="create", state={"approved": False, "rejected": True},
         )
         db_session.add(e1)
         await db_session.flush()
@@ -527,6 +527,7 @@ class TestRevert:
         # (approved=False).
         await db_session.refresh(approval)
         assert approval.approved is False
+        assert approval.rejected is True
 
     @pytest.mark.asyncio
     async def test_revert_requires_editor_role(

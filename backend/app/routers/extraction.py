@@ -453,18 +453,27 @@ async def _unwrap_user_huggingface_key(
 
 
 from datetime import datetime, timezone  # noqa: E402
+from typing import Self  # noqa: E402
 
-from pydantic import BaseModel, Field, field_validator  # noqa: E402
+from pydantic import BaseModel, Field, field_validator, model_validator  # noqa: E402
 from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: E402
+
+from app.models.extraction_approval import extraction_review_values  # noqa: E402
 
 
 class EntityEdit(BaseModel):
     """Patch payload for one extraction-approval row."""
 
     approved:       bool | None = None
+    rejected:       bool | None = None
     override_type:  str | None = Field(default=None, max_length=64)
     override_role:  str | None = Field(default=None, max_length=64)
     override_text:  str | None = Field(default=None, max_length=512)
+
+    @model_validator(mode="after")
+    def _review_choice(self) -> Self:
+        extraction_review_values(self.approved, self.rejected)
+        return self
 
     @field_validator("override_type", "override_role", "override_text")
     @classmethod
@@ -480,6 +489,12 @@ class BulkApprovePayload(BaseModel):
 
     entity_ids: list[str] = Field(..., min_length=1)
     approved:   bool      = True
+    rejected: bool | None = None
+
+    @model_validator(mode="after")
+    def _review_choice(self) -> Self:
+        extraction_review_values(self.approved, self.rejected)
+        return self
 
 
 class AutoApprovePayload(BaseModel):
@@ -552,6 +567,7 @@ async def _emit_extraction_event(
         op_kind = OP_PATCH if has_history else OP_CREATE
         new_state = {
             "approved":       bool(row.approved),
+            "rejected":       bool(row.rejected),
             "override_type":  row.override_type,
             "override_role":  row.override_role,
             "override_text":  row.override_text,
@@ -731,7 +747,7 @@ async def _build_unfiltered_entities_bundle(
             **ent,
             "approval_row_id":  str(a.id) if a else None,
             "approved":         bool(a.approved) if a else False,
-            "rejected":         False,
+            "rejected":         bool(a.rejected) if a else False,
             "override_type":    (a.override_type if a else None),
             "override_role":    (a.override_role if a else None),
             "override_text":    (a.override_text if a else None),
@@ -1133,23 +1149,24 @@ async def patch_entity(
         or payload.override_role is not None
     )
     now = datetime.now(timezone.utc)
+    review_values = extraction_review_values(payload.approved, payload.rejected)
+    insert_review = {"approved": False, "rejected": False, **review_values}
     stmt = pg_insert(ExtractionApproval).values(
         run_id=run_id, control_number=cn, source=src, text=text,
         start=start, end=end,
         type=pred_type, role=pred_role,
         confidence=pred_conf, model_confidence=pred_mconf,
-        approved=bool(payload.approved) if payload.approved is not None else False,
-        approved_by=auth.user.id if payload.approved else None,
-        approved_at=now if payload.approved else None,
+        **insert_review,
+        approved_by=auth.user.id if insert_review["approved"] else None,
+        approved_at=now if insert_review["approved"] else None,
         override_type=payload.override_type,
         override_role=payload.override_role,
         override_text=payload.override_text,
     )
-    update_cols: dict = {}
-    if payload.approved is not None:
-        update_cols["approved"]    = bool(payload.approved)
-        update_cols["approved_by"] = auth.user.id if payload.approved else None
-        update_cols["approved_at"] = now if payload.approved else None
+    update_cols: dict = dict(review_values)
+    if "approved" in review_values:
+        update_cols["approved_by"] = auth.user.id if review_values["approved"] else None
+        update_cols["approved_at"] = now if review_values["approved"] else None
     if payload.override_type is not None:
         update_cols["override_type"] = payload.override_type or None
     if payload.override_role is not None:
@@ -1205,6 +1222,7 @@ async def patch_entity(
         "type":           eff_type,
         "role":           eff_role,
         "approved":       bool(row.approved),
+        "rejected":       bool(row.rejected),
         "override_type":  row.override_type,
         "override_role":  row.override_role,
         "override_text":  row.override_text,
@@ -1260,6 +1278,7 @@ async def bulk_approve_entities(
             "confidence":      ent_snap.get("confidence"),
             "model_confidence": ent_snap.get("model_confidence"),
             "approved":        payload.approved,
+            "rejected":        bool(payload.rejected),
             "approved_by":     auth.user.id if payload.approved else None,
             "approved_at":     now if payload.approved else None,
         })
@@ -1271,6 +1290,8 @@ async def bulk_approve_entities(
         constraint="uq_extraction_approval_key",
         set_={
             "approved":     stmt.excluded.approved,
+            "rejected":     stmt.excluded.rejected,
+            "updated_at":   now,
             "approved_by":  stmt.excluded.approved_by,
             "approved_at":  stmt.excluded.approved_at,
         },
@@ -1305,7 +1326,7 @@ async def _auto_approve_eligible(
     bundle = await _build_unfiltered_entities_bundle(db, run_id)
     eligible: list[dict] = []
     for ent in bundle["out"]:
-        if ent.get("approved"):
+        if ent.get("approved") or ent.get("rejected"):
             continue
         if payload.sources and ent["source"] not in payload.sources:
             continue
@@ -1372,21 +1393,25 @@ async def auto_approve_entities(
             "confidence":       ent.get("confidence"),
             "model_confidence": ent.get("model_confidence"),
             "approved":         True,
+            "rejected":         False,
             "approved_by":      auth.user.id,
             "approved_at":      now,
         }
         for ent in eligible
     ]
 
+    touched = []
     if rows_to_insert:
         stmt = pg_insert(ExtractionApproval).values(rows_to_insert)
         stmt = stmt.on_conflict_do_update(
             constraint="uq_extraction_approval_key",
             set_={
                 "approved":     stmt.excluded.approved,
+                "rejected":     False,
                 "approved_by":  stmt.excluded.approved_by,
                 "approved_at":  stmt.excluded.approved_at,
             },
+            where=ExtractionApproval.rejected.is_(False),
         ).returning(ExtractionApproval)
         touched = (await db.execute(stmt)).scalars().all()
         for row in touched:
@@ -1399,4 +1424,4 @@ async def auto_approve_entities(
             )
         await db.commit()
 
-    return {"matched": len(eligible), "approved": len(rows_to_insert)}
+    return {"matched": len(eligible), "approved": len(touched)}

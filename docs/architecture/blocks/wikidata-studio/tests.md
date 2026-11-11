@@ -292,6 +292,15 @@ Any new external-write path or reconcile change MUST extend
 - `test_wikidata_upload_claim_complete_w191.py` also pins retry behavior for
   owned/foreign label collisions, removal of an equal description, and the
   unidentifiable create-conflict response.
-- `backend/tests/unit/test_wikidata_studio_works.py::test_repeated_work_folios_survive_ingest` covers 505, 500, mixed sources, and repeated preparation. It does not test final P1574 claims; title-only projection can still lose a second folio (W-302).
+- `backend/tests/unit/test_wikidata_studio_works.py::test_repeated_work_folios_survive_ingest` covers 505, 500, mixed sources, and repeated preparation. W-305 adds final P1574 coverage in `test_gila_full_path_regressions.py`.
 - `backend/tests/unit/test_wikidata_upload_job_progress.py` checks the actual pass-2 target. `frontend/e2e/wikidata-item-drawer.spec.ts` checks QID-bound approval display and the successful save payload (W-302); it does not test a failed save.
 - `backend/tests/unit/test_publication_module.py::test_rejection_during_preflight_blocks_the_write` covers CREATE and UPDATE rejection during remote preflight. `test_wikidata_upload_guards.py::test_live_foreign_write_rechecks_persisted_approval_after_prepare` covers revoked, changed, missing, and unavailable approval. `test_wikidata_upload_job_progress.py` covers revocation before the database check in regular and sharded paths. These tests do not prove atomicity between a local approval change and a Wikidata write.
+
+- W-305: `test_gila_full_path_regressions.py` covers distinct authors and folios,
+  approved-target author scope, main-work retention, public QID conflicts,
+  script wording, catalogue semantics, and deferred person/place scope.
+- W-305: `test_wikidata_gila_facts.py` checks final and live facts, exact known
+  work targets, author review, live review state, and source-evidence cases.
+- W-305: `test_wikidata_gila_repairs.py` checks exact reference proposals,
+  revision/digest changes, uncertain prior outcomes, and source-bound colophon
+  rank, language, and folio checks. It performs no remote write.

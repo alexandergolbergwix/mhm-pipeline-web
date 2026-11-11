@@ -22,6 +22,7 @@
 | Change upload ownership / foreign-modify accept | [wikidata-studio guards](blocks/wikidata-studio/guards-and-upload.md) + Rule W-99 |
 | Preview or change owner-only manuscript updates | [owner-only upload](blocks/wikidata-studio/owner-only-upload.md) + Rule W-303; dry-run needs a live credential and is not authorization |
 | Diagnose reference grouping, old caches, or test-wiki reference writes | [reference blocks](blocks/wikidata-studio/reference-blocks.md) + Rule W-304 |
+| Audit Gila source facts or prepare historical repair proposals | [Gila source fidelity](blocks/wikidata-studio/gila-source-fidelity.md) + Rule W-305; canonical measurement is read-only |
 | Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |
 | Change MARC 500/505 work candidates or Studio item counts | [extraction ingest](blocks/extraction/ingest.md) + [Wikidata Studio R22](blocks/wikidata-studio/rules.md) |
 | Touch Wikibase Cloud items/schema | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) — schema AI verify: eval-agent [R17](blocks/eval-agent/rules.md), Rule W-47 |
@@ -66,3 +67,4 @@
 | Resolve a full Publication with AI and automatic deferral | [Automatic resolution](blocks/wikidata-studio/automatic-resolution.md) + W-224 |
 | Change corpus maps, SPARQL console, or Research Assistant tools | [research](blocks/research/README.md) + [agent.md](blocks/research/agent.md) + Rules W-228 / W-229 / W-230 / W-231 |
 | Recover a Publication upload that stays running after a worker failure | [Publication](blocks/wikidata-studio/production-publication.md) + W-227; inspect the execution job and resume the paused Execution |
+| Change extraction approval or rejection | [Explicit rejection](blocks/extraction/rejection.md) + [versioning and export](blocks/versioning-export/README.md) + W-305 |

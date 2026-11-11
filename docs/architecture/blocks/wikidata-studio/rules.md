@@ -1242,3 +1242,13 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   Test wiki requires verified namespace and remapping evidence. See
   [reference blocks](reference-blocks.md) for lower-level and UI limitations.
   *Why:* flat snaks cannot establish which source supplied each statement.
+
+- **R158 — Preserve source identity and expose each unverified fact (W-305).**
+  Work occurrences retain author and folio scope. Approved targets cannot override
+  a source author conflict. Canonical aliases cannot redirect one legacy identity
+  to several targets or erase a conflicting public QID. Preserve script wording,
+  separate catalogue codes from prose, and defer uncertain person/place roles.
+  Historical proposals preserve rank, language, source blocks, and valid scope.
+  Bind each proposal to the exact revision and digest. A local pass cannot close
+  a live defect or authorize a write.
+  *Why:* the 897-record audit exposed losses beyond the earlier selected checks.

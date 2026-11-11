@@ -2,6 +2,9 @@
 
 > Up: [Wikidata Studio](README.md) · Rules W-294/W-296
 
+The [11 November implementation receipt](../../../audits/gila-code-implementation-2026-11-11.md) records the current local code and corpus checks.
+The historical measurements below retain their original dates. Live correction remains a separate operation.
+
 ## Accepted model
 
 The user chose separate physical manuscripts and written works on 2026-11-05.
@@ -50,8 +53,8 @@ reconstructed reliably; safety gates require a rebuild from source.
 Reference-only changes count as updates, so the exists path does not skip them.
 The local migration does not prove that live references were corrected.
 
-The current legacy build schema is `source-aware-works-v19`.
-The current canonical fingerprint salt is `hmo-wikidata-v21` (W-304).
+The current legacy build schema is `source-aware-works-v21`.
+The current canonical fingerprint salt is `hmo-wikidata-v22` (W-305).
 W-296 originally used `source-aware-works-v13` and `hmo-wikidata-v16`.
 Port shared converter changes upstream before the next full desktop sync.
 
@@ -76,6 +79,9 @@ For multi-author work items, the report retains the revision, claim IDs, source
 control numbers, and source authors as a `review_source_partition` proposal.
 Multiple authors can be legitimate; this proposal requires source review.
 The report never performs a repair or declares a QID corrected.
+Use `--audit-projection canonical` for the final canonical path.
+The report now includes per-fact comparisons and non-executable historical proposals.
+See [Gila source fidelity](gila-source-fidelity.md) for contracts and limits.
 
 ## Full-corpus receipt: upload `24802798-dd95-4973-8ec8-32138f459e8f`
 

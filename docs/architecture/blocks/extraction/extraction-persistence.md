@@ -43,7 +43,7 @@ snapshotted into the `exists_in` JSONB column. The DB is the durable store;
 `ExtractionApproval` is content-addressed by
 `(run_id, control_number, source, text, start, end)`, so re-running
 extraction re-attaches existing curator decisions. Curator fields:
-`approved/approved_by/approved_at`, `override_text/override_type/override_role`
+`approved/rejected/approved_by/approved_at`, `override_text/override_type/override_role`
 (effective values = override ?? prediction; downstream stages read the
 effective values), `ai_verdict` + `ai_verdict_at` (written by the NER verify
 flow, Rule W-17), `exists_in`. `PATCH /entities/{entity_id}` upserts one row;
@@ -65,4 +65,4 @@ casefolded, punctuation-collapsed strings; note-sourced keys (`notes`,
 predicate over unapproved entities — `sources`, `types`, `not_roles`,
 `min_confidence` (against `model_confidence`), `require_ai_pass`,
 `respect_ai_fail`. Preview and apply share the same function so counts never
-diverge.
+diverge. Rejected entities remain excluded. See [explicit rejection](rejection.md).

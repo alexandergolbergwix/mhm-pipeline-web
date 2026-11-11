@@ -27,7 +27,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint,
+    Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -41,6 +41,7 @@ class ExtractionApproval(Base):
 
     __tablename__ = "extraction_approvals"
     __table_args__ = (
+        CheckConstraint("NOT (approved AND rejected)", name="ck_extraction_review_exclusive"),
         UniqueConstraint(
             "run_id", "control_number", "source", "text", "start", "end",
             name="uq_extraction_approval_key",
@@ -80,6 +81,9 @@ class ExtractionApproval(Base):
 
     # ── Approval state ─────────────────────────────────────────────────
     approved:       Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    rejected: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     approved_by:    Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
@@ -115,3 +119,14 @@ class ExtractionApproval(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+def extraction_review_values(approved: bool | None, rejected: bool | None) -> dict[str, bool]:
+    """A false approval alone is pending, not an explicit rejection."""
+    if approved is True and rejected is True:
+        raise ValueError("An entity cannot be both approved and rejected.")
+    if rejected is True:
+        return {"approved": False, "rejected": True}
+    if approved is not None:
+        return {"approved": approved, "rejected": False}
+    return {"rejected": False} if rejected is False else {}

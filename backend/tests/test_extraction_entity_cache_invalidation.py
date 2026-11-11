@@ -42,7 +42,7 @@ async def extraction_entity(db_session, sample_run):
 class TestSanitiseStaleAiVerdict:
     def test_matching_cache_key_is_kept(self, extraction_entity) -> None:
         ext = extraction_entity["entity"]
-        fp = ner_verdict_input_fingerprint(ext)
+        fp = ner_verdict_input_fingerprint(ext, judge_model="gemini-3.5-flash")
         ent = {
             "control_number": ext.control_number,
             "source": ext.source,

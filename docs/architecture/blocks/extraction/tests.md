@@ -2,6 +2,9 @@
 
 > Up: [AI Extraction](README.md)
 
+- `backend/tests/test_extraction_rejection.py` verifies rejection, import/export, cache changes, and exclusion from auto-approve.
+- `frontend/tests/unit/extractionRejection.spec.ts` verifies request payloads and a rejected-only change on the next poll.
+
 - `backend/tests/unit/test_marc_ingest_ner_inputs.py` — subfield collapse → NER inputs
 - `backend/tests/unit/test_colophon_structured.py`, `test_notes_work_extraction.py`, `test_editorial_extraction.py` — colophon year/scribe, anchored/quoted work mentions, stale-derived cleanup, editor notes
 - `backend/tests/test_provenance_events_ingest.py` — 541/583 provenance events (Rule W-32)
@@ -18,3 +21,5 @@
 
 - `scripts.audit_mapping_coverage` is the scale check for the full MARC corpus:
   it asserts zero normalization errors and zero unmapped non-empty tags.
+- `backend/tests/unit/test_gila_full_path_regressions.py` verifies raw script
+  wording, source folios, catalogue semantics, and content scope through the builder (W-305).

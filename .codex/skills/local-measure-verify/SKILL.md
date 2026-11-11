@@ -90,6 +90,12 @@ three review classes, catalog-status notes, and recent per-item upload outcomes.
 `--audit-live-snapshot PATH` accepts a `wbgetentities` JSON and adds work review
 proposals with revision, claim IDs, and source control numbers.
 The report performs no live repair and always leaves `corrected_qids` empty.
+Use `--audit-projection canonical` to compare the final canonical path.
+That mode reads durable HMO snapshots and curator overrides without a cache write.
+It fails when canonical snapshots are absent instead of using a legacy substitute.
+The output also contains `gila_source_facts.json`, `gila_historical_repairs.json`,
+and `gila_work_partition_reviews.json`. Historical proposals require separate review,
+authorization, and fresh live evidence; they are not executable write payloads.
 See `docs/architecture/blocks/wikidata-studio/gila-audit-completion.md`.
 
 ## Extending to a new channel

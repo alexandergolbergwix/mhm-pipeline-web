@@ -11,6 +11,16 @@ import pytest
 from app.routers.wikidata_studio import _fetch_wikidata_verify_items
 
 
+@pytest.fixture(autouse=True)
+def isolate_live_reads(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_duplicate_probe.attach_duplicate_evidence", AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_verify_evidence.attach_live_value_labels", AsyncMock(return_value=0),
+    )
+
+
 def _fake_session() -> MagicMock:
     """A fake AsyncSession whose `rollback()` can be awaited (Rule W-40)."""
     session = MagicMock()
@@ -133,10 +143,6 @@ async def test_verify_fetch_applies_curator_overrides_before_fingerprinting() ->
             "app.routers.wikidata_studio.attach_local_reference_targets",
             lambda items, catalog=None: items,
         ),
-        patch(
-            "app.routers.wikidata_studio.record_ids_for_wikidata_item",
-            return_value=["990000000000000001"],
-        ),
     ):
         items, _marc = await _fetch_wikidata_verify_items(
             db, run_id, auth,
@@ -180,10 +186,6 @@ async def test_verify_fetch_applies_curator_overrides_before_fingerprinting() ->
         patch(
             "app.routers.wikidata_studio.attach_local_reference_targets",
             lambda items, catalog=None: items,
-        ),
-        patch(
-            "app.routers.wikidata_studio.record_ids_for_wikidata_item",
-            return_value=["990000000000000001"],
         ),
     ):
         items, _marc = await _fetch_wikidata_verify_items(
@@ -232,10 +234,6 @@ async def test_verify_fetch_skips_non_public_entity_types() -> None:
             "app.routers.wikidata_studio.attach_local_reference_targets",
             lambda items, catalog=None: items,
         ),
-        patch(
-            "app.routers.wikidata_studio.record_ids_for_wikidata_item",
-            return_value=[],
-        ),
     ):
         items, _marc = await _fetch_wikidata_verify_items(
             db, run_id, auth,
@@ -275,10 +273,6 @@ async def test_verify_fetch_rebuilds_without_reconcile_when_cache_empty() -> Non
         patch(
             "app.routers.wikidata_studio.attach_local_reference_targets",
             lambda items, catalog=None: items,
-        ),
-        patch(
-            "app.routers.wikidata_studio.record_ids_for_wikidata_item",
-            return_value=[],
         ),
     ):
         items, _marc = await _fetch_wikidata_verify_items(

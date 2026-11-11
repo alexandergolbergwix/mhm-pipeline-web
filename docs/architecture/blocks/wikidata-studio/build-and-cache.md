@@ -31,7 +31,7 @@ item instead of the static slug), then computes
   frontend R15/W-106).
 
 The build schema is part of the fingerprint. The current schema is
-`source-aware-works-v19`. It retains Rule W-294's MARC 942 shelfmark labels,
+`source-aware-works-v21`. It retains Rule W-294's MARC 942 shelfmark labels,
 manuscript codex P31, homonymous work separation, Ktiv P361, and
 500/740/581/957/title-page projection. The cache check also treats a cached
 person carrying an ERROR-level `NO_IDENTIFIER` issue as
@@ -47,8 +47,9 @@ identity, and physical-form evidence (W-296). Its canonical salt was
 Schema v14 (Rule W-300) strips colophon field labels (957/590/500) at ingest
 and limits the record-author fallback to the main 245 work or the record's
 sole content work. Schema v15 retains distinct source folios at ingest (W-302).
-The current canonical salt is `hmo-wikidata-v21`; projection can still lose a
-repeated title's second folio. W-304 covers explicit source blocks and fresh
+The current canonical salt is `hmo-wikidata-v22`. W-305 preserves repeated
+title/author/folio occurrences and rejects ambiguous work aliases.
+W-304 covers explicit source blocks and fresh
 reference namespace markers. Old flat multi-snak reference data is stale and
 must be rebuilt from source; see [reference blocks](reference-blocks.md).
 
@@ -185,7 +186,7 @@ also runs the legacy MARC/authority builder (`build_items_for_run`,
 (P571/P1071/P407/P1574/P217/P195/…, person dates/VIAF/Mazal, work P50)
 are unioned. The build fingerprint includes the MARC/authority enrichment
 fingerprint so either input invalidates the cache. The current canonical salt
-is `hmo-wikidata-v21`.
+is `hmo-wikidata-v22`.
 Summary flag: `legacy_enriched`; `projection_source` becomes
 `hmo_wikibase+marc` when enrichment applied.
 

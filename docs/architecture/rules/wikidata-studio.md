@@ -3490,8 +3490,9 @@ that risk; it does not prove that historical live claims have been corrected.
    live-ready on that evidence alone. The frontend flat view does not show
    source block boundaries. A test write or an export is not a live receipt.
 
-The current build schema is `source-aware-works-v19`; the canonical salt is
-`hmo-wikidata-v21`. Code and limitations: [reference blocks](../blocks/wikidata-studio/reference-blocks.md).
+W-304 introduced build schema `source-aware-works-v19` and canonical salt
+`hmo-wikidata-v21`. W-305 advances those versions. Code and limitations:
+[reference blocks](../blocks/wikidata-studio/reference-blocks.md).
 Regression suites include `test_wikidata_reference_blocks.py`,
 `test_wikidata_shard_reference_merge.py`, `test_wikidata_reference_block_transport.py`,
 `test_wikidata_fresh_source_blocks.py`, `test_wikidata_reference_marker_safety.py`,
@@ -3499,3 +3500,51 @@ Regression suites include `test_wikidata_reference_blocks.py`,
 `test_wikidata_uploader_reference_blocks.py`, and
 `test_wikidata_section_reference_overrides.py`. These local tests do not prove
 a deployment, live write, or full historical repair.
+
+## Rule W-305 — Preserve source identities and expose local and live differences
+
+The 11 November 2026 audit compared 897 source records with live Wikidata.
+It found missing component links, historical mixed works, and repeated references.
+New regressions also exposed author-blind target reuse and main-work suppression.
+The earlier selected-field audit could miss these defects despite zero reported transfer failures.
+
+1. A contained-work occurrence includes title, author, and folio scope.
+   Approved targets require compatible source author evidence.
+   A same-title component cannot suppress a main work by another author.
+   Preserve `source_title` in P1932 before label cleanup. Keep narrative exclusions as source evidence.
+   Named commentaries and anchored Latin main works retain their supported source identity.
+2. Canonical merge cannot erase a conflicting public QID or redirect one
+   legacy work to several canonical identities. Safe local author evidence survives.
+   The canonical author path applies the verified authority matcher.
+3. Preserve raw 958 script terms beside normalized classes and in P1932.
+   Preserve 942 catalogue names and codes separately. A prose 581 citation is not P528.
+   Retain unresolved bibliography in source evidence instead of an invented source entity.
+4. Component genre and person roles retain their scope.
+   Defer a sender or recipient when the passage cannot be identified unambiguously.
+   A generic related place does not establish manuscript attestation or custody.
+5. The source-fact report compares final native and optional live claims.
+   It checks verified target QIDs, available author evidence, source scope, and qualified meaning.
+   Unresolved identities and local targets require explicit review.
+   A correct local fact does not close a live gap or a live identity conflict.
+   Value presence and source provenance have separate results. Missing or ambiguous references require review.
+6. Historical proposals bind the QID, revision, full entity digest, and exact claims.
+   Reference repair preserves each distinct source block and every other claim field.
+   A duplicate colophon requires source text, active retained scope, equal language,
+   equal datatype, equal rank, and valid folio values. Preserve all distinct references.
+7. These proposals perform no writes and grant no ownership or approval.
+   Validation rejects stale evidence and applied or uncertain prior outcomes.
+   Historical work partitions remain explicit review proposals.
+   A missing builder property does not authorize a historical claim deletion.
+8. Canonical measurement reads durable HMO snapshots and current source context.
+   It fails when those snapshots are absent, uses no production cache write,
+   and exports separate fact, historical-proposal, and work-review artifacts.
+   A corrected-QID receipt still requires a separate write and a fresh live comparison.
+9. Explicit extraction rejection differs from pending approval.
+   Preserve `rejected` through the API, events, cache fingerprints, imports, exports, and history.
+   Auto-approve cannot replace rejection. Old unapproved rows remain pending after migration 0053.
+
+Versions: `source-aware-works-v21` and `hmo-wikidata-v22`.
+Implementation and operator limits:
+[Gila source fidelity](../blocks/wikidata-studio/gila-source-fidelity.md).
+Regressions: `test_gila_full_path_regressions.py`, `test_wikidata_gila_facts.py`,
+`test_wikidata_gila_repairs.py`, and `test_hmo_canonical_wikidata.py`.

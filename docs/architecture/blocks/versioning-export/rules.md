@@ -45,3 +45,6 @@
     reference nodes. Never stream a partial graph. *Why:* a partial TTL file
     looks valid but drops claims silently. See
     [TTL statement export](ttl-statement-export.md).
+13. **R13 — Preserve explicit extraction rejection (W-305).** Section import,
+    section/project export, and history retain `rejected` beside `approved`.
+    Reject contradictory states. *Why:* an event and its durable row must express the same decision.

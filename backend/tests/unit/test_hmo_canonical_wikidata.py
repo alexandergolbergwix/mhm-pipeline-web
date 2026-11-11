@@ -46,6 +46,83 @@ def _manuscript_entity(**extra: object):
     return normalize_live_entity(base)
 
 
+def test_final_canonical_payload_preserves_specific_script_source_wording() -> None:
+    from converter.wikidata.item_builder import WikidataItemBuilder
+
+    context = canonical_studio_context(marc_records=[{
+        "001": "990001", "245$a": "אגרת סוכה", "958$a": "קראית-אשכנזית",
+    }])
+    legacy = WikidataItemBuilder().build_all(list(context.marc_by_cn.values()))
+    result = build_canonical_studio_result(
+        [_manuscript_entity()], context=context, reconcile=False, legacy_native_items=legacy,
+    )
+    manuscript = next(item for item in result["items"] if item["entity_type"] == "manuscript")
+    assert any(s["property"] == "P9302" and any(
+        q.get("property") == "P1932" and q.get("value") == "קראית-אשכנזית" for q in s["qualifiers"]
+    ) for s in manuscript["statements"])
+
+
+def test_final_canonical_payload_does_not_restore_prose_as_a_catalogue_code() -> None:
+    from converter.wikidata.item_builder import WikidataItemBuilder
+
+    citation = "Weisz, Katalog, Budapest, 1906, page 123."
+    context = canonical_studio_context(
+        marc_records=[{"001": "990001", "245$a": "דרושים", "581$a": citation}]
+    )
+    manuscript = _manuscript_entity(claims=[{
+        "wikidata_property": "P528", "property_id": "P528", "value": citation, "datatype": "string",
+    }])
+    legacy = WikidataItemBuilder().build_all(list(context.marc_by_cn.values()))
+    result = build_canonical_studio_result(
+        [manuscript], context=context, reconcile=False, legacy_native_items=legacy,
+    )
+    projected = next(item for item in result["items"] if item["entity_type"] == "manuscript")
+    assert not [s for s in projected["statements"] if s["property"] == "P528"]
+
+
+def test_pending_author_approval_does_not_authorize_discard_of_sourced_claim() -> None:
+    import pytest
+    from app.pipeline.hmo_canonical_wikidata import (
+        CanonicalStudioContext,
+        _sanitize_work_authors_against_context,
+    )
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
+    from converter.wikidata.property_mapping import nli_reference
+
+    work = WikidataItem(
+        local_id="pending-work",
+        entity_type="work",
+        records=["990001"],
+        labels={"he": "ספר אהרן"},
+        statements=[
+            WikidataStatement(
+                property_id="P50",
+                value="Q42",
+                value_type="item",
+                references=nli_reference("990001"),
+            ),
+        ],
+    )
+    context = CanonicalStudioContext(
+        marc_by_cn={
+            "990001": {
+                "title": "ספר אהרן",
+                "authors": [{"name": "אהרן בן יצחק"}],
+                "marc_authority_matches": [
+                    {
+                        "name": "אהרן בן יצחק",
+                        "role": "author",
+                        "wikidata_qid": "Q42",
+                        "approved": False,
+                    }
+                ],
+            }
+        }
+    )
+    with pytest.raises(ValueError, match="AUTHOR_EVIDENCE_UNVERIFIED"):
+        _sanitize_work_authors_against_context([work], context)
+
+
 def test_wikidata_projection_filters_unaccepted_evidence_and_maps_entity_type() -> None:
     entity = _person_entity(
         authority_evidence=[
@@ -83,12 +160,11 @@ def test_assembly_meter_names_each_pass_without_moving_backwards() -> None:
 
 
 def test_shared_shelfmark_labels_keep_the_catalog_id() -> None:
-    from converter.wikidata.item_models import WikidataItem, WikidataStatement
-
     from app.pipeline.hmo_canonical_wikidata import (
         CanonicalStudioContext,
         _disambiguate_shared_manuscript_labels,
     )
+    from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
     def manuscript(local_id: str, cn: str) -> WikidataItem:
         return WikidataItem(
@@ -115,12 +191,11 @@ def test_shared_shelfmark_labels_keep_the_catalog_id() -> None:
 
 
 def test_a_work_keeps_the_record_author_when_the_title_matches() -> None:
-    from converter.wikidata.item_models import WikidataItem
-
     from app.pipeline.hmo_canonical_wikidata import (
         CanonicalStudioContext,
         _sanitize_work_authors_against_context,
     )
+    from converter.wikidata.item_models import WikidataItem
 
     work = WikidataItem(
         local_id="QDraft_Work",

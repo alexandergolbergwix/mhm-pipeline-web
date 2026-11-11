@@ -23,6 +23,7 @@ classifies each candidate against the MARC record itself. Approved entities
   - [Extraction stream, persistence, and approvals](extraction-persistence.md) — SSE stream, `_bulk_persist_entities`, Exists-in model, auto-approve
   - [Review UI](review-ui.md) — the 11-capability curator surface (Rule W-16)
 - [Rules](rules.md)
+- [Explicit rejection](rejection.md) — durable review states, migration, API, and exports
 - [Skills](skills.md)
 - [Tests pinning this block](tests.md)
 

@@ -71,3 +71,6 @@
     measuring the serialized page. *Why:* 500-row chunks of untrimmed rows
     reached ~8 MB, the response truncated mid-JSON, and the review table
     showed "Unterminated string in JSON" with no data (2026-11-10).
+33. **R33 — Preserve explicit extraction rejection (W-305).** The drawer and
+    bulk Reject action transmit `rejected=true`. The entity fingerprint includes
+    rejection. *Why:* a pending entity and a rejected entity require different review behavior.

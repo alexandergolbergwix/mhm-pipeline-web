@@ -473,8 +473,13 @@ async def _apply_revert_to_read_model(
         except ValueError:
             return
         values: dict[str, Any] = {}
-        if "approved" in target_state:
-            values["approved"] = bool(target_state.get("approved", False))
+        if "approved" in target_state or "rejected" in target_state:
+            from app.models.extraction_approval import extraction_review_values
+
+            values.update(extraction_review_values(
+                bool(target_state["approved"]) if "approved" in target_state else None,
+                bool(target_state["rejected"]) if "rejected" in target_state else None,
+            ))
         if "override_type" in target_state:
             values["override_type"] = target_state.get("override_type")
         if "override_role" in target_state:

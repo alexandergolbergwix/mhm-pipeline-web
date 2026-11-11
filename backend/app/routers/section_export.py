@@ -86,7 +86,7 @@ _EXTRACTION_JSON_FIELDS = [
     "id", "control_number", "source", "text", "start", "end",
     "type", "role", "confidence", "model_confidence",
     "override_text", "override_type", "override_role",
-    "approved", "approved_at",
+    "approved", "rejected", "approved_at",
     "ai_verdict_overall", "ai_verdict_reasoning",
     "created_at", "updated_at",
 ]
@@ -114,6 +114,7 @@ def _extraction_row(r: ExtractionApproval) -> dict[str, Any]:
         "override_type": r.override_type,
         "override_role": r.override_role,
         "approved": r.approved,
+        "rejected": bool(r.rejected),
         "approved_at": r.approved_at,
         "ai_verdict_overall": verdict.get("overall"),
         "ai_verdict_reasoning": verdict.get("reasoning"),

@@ -18,7 +18,8 @@ JSON export/import surfaces at project level and per pipeline section.
 - [Key files](key-files.md) — every module, model, router, and job
 - [How it works](how-it-works.md) — event flow, hot/cold snapshot tiers,
   revert semantics, history API, export, import
-- [Rules](rules.md) — R1–R12 invariants
+- [Rules](rules.md) — R1–R13 invariants
+- [Explicit extraction rejection](../extraction/rejection.md) — decision fields in events, imports, exports, and reverts
 - [TTL statement export](ttl-statement-export.md) — `pq:` qualifiers, reference nodes, best-rank `wdt:`, and 422 on unrepresentable input
 - [Skills](skills.md) — add a versioned entity type, extend the export
   bundle, add a section import, run the backfill, verify scheduler jobs

@@ -297,6 +297,7 @@ async def export_project(
                 "override_role": r.override_role,
                 "override_text": r.override_text,
                 "approved": r.approved,
+                "rejected": r.rejected,
                 "approved_by_email": email_map.get(r.approved_by) if r.approved_by else None,
                 "approved_at": r.approved_at,
                 "ai_verdict": (

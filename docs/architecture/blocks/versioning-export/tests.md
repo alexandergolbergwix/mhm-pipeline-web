@@ -8,4 +8,5 @@
 - `backend/tests/test_snapshot_prune_jobs.py` — slot snapshotting, anchor preservation, 1000-cap
 - `backend/tests/test_export_router.py` — bundle / snapshots / history exports + entity_types filter
 - `backend/tests/test_section_export_router.py`, `test_section_import_router.py` — per-section round-trips
+- `backend/tests/test_extraction_rejection.py` — rejected import/export and legacy import compatibility
 - `frontend/e2e/history-timeline.spec.ts` — timeline UI click paths

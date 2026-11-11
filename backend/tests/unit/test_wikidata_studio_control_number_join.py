@@ -46,7 +46,11 @@ async def test_quoted_authority_and_entity_keys_join_clean_marc_control_number()
 
     assert result["summary"]["manuscripts"] == 1
     assert result["summary"]["persons"] == 1
-    assert result["summary"]["works"] == 1
+    assert result["summary"]["works"] == 2
+    main_work = next(
+        item for item in result["items"] if item.get("labels", {}).get("he") == "כתב יד לדוגמה"
+    )
+    assert any(statement["property_id"] == "P50" for statement in main_work["statements"])
     person = next(item for item in result["items"] if item["entity_type"] == "person")
     assert person["records"] == [control_number]
     assert any(statement["property_id"] == "P8189" for statement in person["statements"])

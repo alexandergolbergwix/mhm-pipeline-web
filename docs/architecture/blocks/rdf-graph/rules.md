@@ -196,3 +196,6 @@ gate — Gaza Q47492, Akka Q2626422, Ukraine Q212, Pińczów Q275592, Szydłów
 Q787968, Mainz Q1720 and more went to review with no identity claim, and
 the label-collision rule then flagged their items. The local rebuild with
 the fix emits all 21 `owl:sameAs` identities (was 10).
+27. **R27 — Source titles and narrative evidence survive preparation (W-305).**
+    `parse_contents_entry` retains `source_title`. Named-work extraction retains
+    excluded narrative passages as evidence. *Why:* label cleanup must not destroy the source wording or create works from quoted places.

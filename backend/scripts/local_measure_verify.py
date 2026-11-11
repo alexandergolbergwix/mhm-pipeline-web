@@ -82,14 +82,13 @@ _REPO = _BACKEND.parent
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-from sqlalchemy import select  # noqa: E402
-
 from app.db import session_scope  # noqa: E402
 from app.pipeline.agent_runner import _python_for, locate_eval_agent  # noqa: E402
 from app.pipeline.marc_verify_context import (  # noqa: E402
     attach_marc_context,
     load_run_marc_records,
 )
+from sqlalchemy import select  # noqa: E402
 
 DEFAULT_RUN_ID = "48ba6c13-115c-4763-bff1-c08b9031b518"
 DEFAULT_TIER_MODEL = "moonshotai/Kimi-K2.5"
@@ -163,6 +162,7 @@ class HmoChannel(Channel):
         from app.models.extraction_approval import ExtractionApproval
         from app.models.run import AuthorityMatch, RdfTripleOverride, RunRecord
         from app.pipeline import hmo_item_build
+        from app.pipeline.hmo_export_quality_gate import assert_export_quality
         from app.pipeline.hmo_item_shacl import build_shacl_report_for_items
         from app.pipeline.rdf_build import (
             RdfBuildOptions,
@@ -173,8 +173,8 @@ class HmoChannel(Channel):
             HmoWikibaseExporter,
             resolve_against_mappings,
         )
-        from app.pipeline.hmo_export_quality_gate import assert_export_quality
         from fastapi.concurrency import run_in_threadpool
+        from sqlalchemy.orm import defer
 
         async with session_scope() as db:
             records = (await db.execute(
@@ -190,6 +190,7 @@ class HmoChannel(Channel):
             ner_rows = (await db.execute(
                 select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
                 .where(ExtractionApproval.approved.is_(True))
+                .options(defer(ExtractionApproval.rejected))
             )).scalars().all()
             overrides_rows = (await db.execute(
                 select(RdfTripleOverride).where(RdfTripleOverride.run_id == run_id)
@@ -270,11 +271,16 @@ class WikidataChannel(Channel):
     name = "wikidata"
     evaluator = "wikidata_item"
     items_filename = "wikidata_items.json"
+    audit_projection = "legacy"
 
     async def build_measurement(self, run_id, scratch):
         from app.models.extraction_approval import ExtractionApproval
+        from app.models.hmo_canonical_entity import HmoCanonicalEntity
+        from app.models.item_override import WikidataItemOverride
         from app.models.run import AuthorityMatch, RunRecord
         from app.pipeline import wikidata_studio
+        from sqlalchemy import inspect, text
+        from sqlalchemy.orm import defer
 
         async with session_scope() as db:
             records = (await db.execute(
@@ -287,10 +293,30 @@ class WikidataChannel(Channel):
                 select(AuthorityMatch).where(AuthorityMatch.run_id == run_id)
                 .where(AuthorityMatch.approved.is_(True))
             )).scalars().all()
-            ner_rows = (await db.execute(
-                select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
-                .where(ExtractionApproval.approved.is_(True))
-            )).scalars().all()
+            rejection_column_exists = True
+            if db.get_bind().dialect.name == "postgresql":
+                rejection_column_exists = bool(await db.scalar(text(
+                    "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+                    "WHERE table_schema = current_schema() AND table_name = 'extraction_approvals' "
+                    "AND column_name = 'rejected')"
+                )))
+            ner_query = select(ExtractionApproval).where(ExtractionApproval.run_id == run_id)
+            if not rejection_column_exists:
+                ner_query = ner_query.options(defer(ExtractionApproval.rejected))
+            all_ner_rows = (await db.execute(ner_query)).scalars().all()
+            rejected_ids = {row.id for row in all_ner_rows
+                            if inspect(row).attrs.rejected.loaded_value is True}
+            self.extraction_review_summary = {
+                "approved": sum(bool(row.approved) for row in all_ner_rows),
+                "rejected": len(rejected_ids),
+                "pending": sum(
+                    not row.approved and row.id not in rejected_ids for row in all_ner_rows
+                ),
+                "basis": "explicit_rejection_column"
+                if rejection_column_exists
+                else "legacy_schema_pending_compatibility",
+            }
+            ner_rows = [row for row in all_ner_rows if row.approved and row.id not in rejected_ids]
             marc_records = [dict(r.marc) for r in records]
             approved_matches = [{
                 "id": str(m.id),
@@ -324,14 +350,67 @@ class WikidataChannel(Channel):
                 run_id,
                 [str(record.control_number) for record in records],
             )
+            canonical_snapshots = []
+            overrides = {}
+            if self.audit_projection == "canonical":
+                canonical_snapshots = list((await db.execute(
+                    select(HmoCanonicalEntity.snapshot).where(HmoCanonicalEntity.run_id == run_id)
+                    .order_by(HmoCanonicalEntity.id),
+                )).scalars().all())
+                override_rows = (await db.execute(select(WikidataItemOverride).where(
+                    WikidataItemOverride.run_id == run_id,
+                ))).scalars().all()
+                overrides = {
+                    row.local_id: {
+                        "labels": row.labels,
+                        "descriptions": row.descriptions,
+                        "aliases": row.aliases,
+                        "add_statements": row.add_statements,
+                        "remove_statements": row.remove_statements,
+                        "statement_edits": row.statement_edits,
+                    }
+                    for row in override_rows
+                }
 
         built = await wikidata_studio.build_items_for_run(
             marc_records=marc_records,
             approved_matches=approved_matches,
             entities_by_cn=entities_by_cn,
             hmo_instance_qids=hmo_instance_qids,
+            return_native=self.audit_projection == "canonical",
         )
+        (scratch / "marc_records.json").write_text(
+            json.dumps(marc_records, ensure_ascii=False), encoding="utf-8"
+        )
+        (scratch / "legacy_items.json").write_text(
+            json.dumps(built.get("items") or [], ensure_ascii=False), encoding="utf-8"
+        )
+        if self.audit_projection == "canonical":
+            if not canonical_snapshots:
+                raise SystemExit(
+                    "No canonical snapshots exist for this run; "
+                    "a legacy build cannot certify the canonical path."
+                )
+            from app.pipeline.hmo_canonical import normalize_live_entity
+            from app.pipeline.hmo_canonical_wikidata import (
+                build_canonical_studio_result,
+                canonical_studio_context,
+            )
+
+            context = canonical_studio_context(
+                marc_records=marc_records,
+                approved_matches=approved_matches,
+                entities_by_cn=entities_by_cn,
+            )
+            built = build_canonical_studio_result(
+                [normalize_live_entity(snapshot) for snapshot in canonical_snapshots],
+                context=context, reconcile=False, overrides=overrides,
+                legacy_native_items=built.get("native_items") or [],
+            )
         items = list(built.get("items") or [])
+        (scratch / "final_items.json").write_text(
+            json.dumps(items, ensure_ascii=False), encoding="utf-8"
+        )
         for it in items:
             it.setdefault("local_id", wikidata_studio.local_id_for_item(it))
         print(f"[build] Wikidata items: {len(items)} entities")
@@ -428,12 +507,16 @@ async def _async_main(args: argparse.Namespace) -> int:
         raise SystemExit("DATABASE_URL is required (Heroku prod or local .env).")
     if args.gila_audit and args.channel != "wikidata":
         raise SystemExit("--gila-audit requires --channel wikidata.")
+    if getattr(args, "audit_projection", "legacy") != "legacy" and not args.gila_audit:
+        raise SystemExit("--audit-projection canonical requires --gila-audit.")
     if not args.gila_audit:
         env_name, key = _resolve_tier_key(args.tier_model)
         if not key:
             raise SystemExit(f"missing {env_name} for tier model {args.tier_model}")
 
     channel = CHANNELS[args.channel]()
+    if args.gila_audit:
+        channel.audit_projection = getattr(args, "audit_projection", "legacy")
     run_id = uuid.UUID(args.run_id)
     out_dir = Path(args.output_dir).expanduser().resolve() / f"{args.channel}-{run_id}"
     scratch = out_dir / "build"
@@ -486,7 +569,7 @@ async def _async_main(args: argparse.Namespace) -> int:
                         "status": outcome.get("status"), "qid": outcome.get("qid"),
                     }
         report["run_id"] = str(run_id)
-        report["projection_source"] = "legacy"
+        report["projection_source"] = getattr(channel, "audit_projection", "legacy")
         report["generated_at"] = datetime.now(UTC).isoformat()
         report["validation_error_items"] = sum(
             any(issue.get("severity") == "error" for issue in item.get("validation_issues", []))
@@ -494,8 +577,38 @@ async def _async_main(args: argparse.Namespace) -> int:
         )
         report["upload_outcomes_basis"] = "latest_outcome_per_local_id_in_last_ten_succeeded_jobs"
         report["upload_outcomes"] = list(latest_outcomes.values())
+        report["extraction_review_summary"] = getattr(channel, "extraction_review_summary", {})
+        from app.pipeline.wikidata_gila_facts import compare_gila_source_facts
+
+        legacy_path = scratch / "legacy_items.json"
+        legacy_facts = compare_gila_source_facts(
+            marc_records, json.loads(legacy_path.read_text(encoding="utf-8")),
+        ) if legacy_path.exists() else {"facts": []}
+        legacy_by_id = {fact["fact_id"]: fact for fact in legacy_facts["facts"]}
+        local_by_cn = {row["control_number"]: row.get("local_id") for row in report["records"]}
+        for fact in report["fact_comparison"]["facts"]:
+            outcome = latest_outcomes.get(str(local_by_cn.get(fact["control_number"]) or ""))
+            fact["stage_trace"] = {
+                "prepared_source": "present",
+                "legacy_proposal": (legacy_by_id.get(fact["fact_id"]) or {}).get(
+                    "proposal_status", "not_checked"
+                ),
+                "final_projection": fact["proposal_status"],
+                "projection_source": report["projection_source"],
+                "cache": "not_used_in_read_only_measurement",
+                "live_claim": fact["live_status"],
+                "last_manuscript_upload_outcome": outcome or {},
+            }
         path = out_dir / "gila_builder_audit.json"
         path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        for key, filename in (
+            ("fact_comparison", "gila_source_facts.json"),
+            ("historical_repair_proposals", "gila_historical_repairs.json"),
+            ("work_repair_proposals", "gila_work_partition_reviews.json"),
+        ):
+            (out_dir / filename).write_text(
+                json.dumps(report[key], ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         print(json.dumps({"mode": report["mode"], "records": report["record_count"],
                           "checked_qids": len(report["checked_qids"]),
                           "case_counts": report["case_counts"],
@@ -612,6 +725,12 @@ def main() -> None:
                    help="write a full-run source audit without an AI judge or live writes")
     p.add_argument("--audit-live-snapshot", default=None,
                    help="optional wbgetentities JSON for source-specific work repair proposals")
+    p.add_argument(
+        "--audit-projection",
+        choices=("legacy", "canonical"),
+        default="legacy",
+        help="choose the final measurement path; canonical requires durable HMO snapshots",
+    )
     p.add_argument("--baseline-export", default=None,
                    help="export JSON of the prior verify (for scope + before/after)")
     p.add_argument("--local-id", action="append", default=None, help="repeatable")

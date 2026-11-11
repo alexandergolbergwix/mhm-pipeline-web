@@ -73,13 +73,20 @@ def parse_contents_entry(raw: str) -> dict[str, Any]:
         )
         return {
             "title": title,
+            "source_title": match.group("title").strip(),
             "folio_range": folio_clean,
             "sequence": int(match.group("seq")),
             "raw": text,
         }
 
     title = clean_marc_label(text, strip_ms_scope=True, strip_enum_prefix=True)
-    return {"title": title, "folio_range": None, "sequence": None, "raw": text}
+    return {
+        "title": title,
+        "source_title": text,
+        "folio_range": None,
+        "sequence": None,
+        "raw": text,
+    }
 
 
 def _normalize_marc_isbd_quotes(text: str) -> str:

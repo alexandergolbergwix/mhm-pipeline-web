@@ -1309,16 +1309,18 @@ _FOLIO_PREFIX_RE = re.compile(
 )
 
 
-def _is_noise_work_title(title: str) -> bool:
+def _is_noise_work_title(title: str, *, allow_latin: bool = False) -> bool:
     if not title:
         return True
     stripped = title.strip()
     if _FOLIO_RANGE_RE.match(stripped):
         return True
     heb_count = sum(1 for c in stripped if "א" <= c <= "ת")
-    if heb_count < 2:
+    if heb_count < 2 and not (allow_latin and len(re.findall(r"[A-Za-z]", stripped)) >= 3):
         return True
-    if _NOISE_DESCRIPTION_RE.search(stripped):
+    if _NOISE_DESCRIPTION_RE.search(stripped) and not re.match(
+        r"^(?:פרוש|פירוש|ביאור|הגהות\s+על)\s+", stripped,
+    ):
         return True
     return False
 

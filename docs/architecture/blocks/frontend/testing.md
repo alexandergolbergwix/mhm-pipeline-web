@@ -2,6 +2,8 @@
 
 > Up: [Frontend](README.md)
 
+`frontend/tests/unit/extractionRejection.spec.ts` checks explicit Reject payloads and rejected-only changes on a poll.
+
 **Testing.** Three layers (`docs/testing.md`):
 
 1. **Vitest + RTL** (`frontend/tests/unit/`, jsdom, `tests/setup.ts` shims

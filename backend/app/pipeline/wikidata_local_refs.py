@@ -362,6 +362,48 @@ def drop_redundant_unknown_text_exemplars(items: list[WikidataItem]) -> int:
                 continue
             has_stated_as = _has_title_qualifier(statement)
             if specific or not has_stated_as:
+                title = next(
+                    (
+                        str(q.get("value") or "")
+                        for q in statement.qualifiers or []
+                        if q.get("property") == "P1932"
+                    ),
+                    "",
+                )
+                folio = next(
+                    (
+                        str(q.get("value") or "")
+                        for q in statement.qualifiers or []
+                        if q.get("property") == "P958"
+                    ),
+                    "",
+                )
+                matching = [
+                    row
+                    for row in item.work_candidate_evidence or []
+                    if str(row.get("title") or "").strip().rstrip(" .,;:/-")
+                    == title.strip().rstrip(" .,;:/-")
+                    and str(row.get("folio_range") or "") == folio
+                ]
+                if not matching:
+                    evidence = {
+                        "title": title,
+                        "raw_title": title,
+                        "folio_range": folio,
+                        "accepted": True,
+                        "source_field": "projection",
+                    }
+                    item.work_candidate_evidence.append(evidence)
+                    matching = [evidence]
+                for evidence in matching:
+                    evidence.update(
+                        {
+                            "projection_status": "deferred",
+                            "projection_reason": "unknown_text_superseded_by_specific_exemplar"
+                            if specific
+                            else "unknown_text_without_source_title",
+                        }
+                    )
                 dropped += 1
                 continue
             kept.append(statement)

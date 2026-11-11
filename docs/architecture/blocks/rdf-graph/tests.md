@@ -2,6 +2,8 @@
 
 > Up: [RDF / HMO-Ontology Graph Build](README.md)
 
+- `backend/tests/unit/test_gila_full_path_regressions.py` — source title wording, narrative exclusions, and valid main works (W-305)
+
 - `backend/tests/unit/test_rdf_build.py` — build core + evidence-backed MARC 505 work restoration
 - `backend/tests/unit/test_rdf_build_streaming.py` — streaming/resume build core (`_run_mapper_sync`)
 - `backend/tests/unit/test_rdf_build_batches.py` — batch-build (R23): keyset loader pages + approved-only loads, batched-vs-single-shot equivalence, batched resume, `plan_rdf_shards`, shard runner, sharded orchestration end-to-end, keyset `/rdf/nodes` store pages

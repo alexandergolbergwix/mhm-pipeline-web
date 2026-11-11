@@ -16,7 +16,6 @@ from converter.wikidata.property_mapping import (
     Q_LATIN_SCRIPT,
     Q_MANUSCRIPT,
     Q_MANUSCRIPT_CODEX,
-    Q_PLACE_OF_ATTESTATION,
     Q_SCROLL,
     Q_SENDER_ROLE,
     Q_TITLE_PAGE,
@@ -277,12 +276,8 @@ def test_point7_exact_year_has_no_circa_and_preserves_hebrew_date_and_places_and
     })
     ms_hizzuk = WikidataItemBuilder().build_manuscript_item(rec_hizzuk)
     assert [s.value for s in _statements(ms_hizzuk, "P1071")] == ["Q22690"]
-    p7153 = _statements(ms_hizzuk, "P7153")
-    assert {s.value for s in p7153} == {"Q1055", "Q849109"}
-    for s in p7153:
-        assert s.qualifiers == [
-            {"property": "P3831", "value": Q_PLACE_OF_ATTESTATION, "type": "item"},
-        ]
+    assert not _statements(ms_hizzuk, "P7153")
+    assert rec_hizzuk["related_places"]
 
     rec_derushim = prepare_record_for_pipeline({
         "001": '"990001915930205171"',
@@ -309,9 +304,10 @@ def test_point8_subjects_bibliography_581_colophon_folio_and_title_page_p1684() 
     assert {s.value for s in _statements(ms, "P921")} == {
         "Q60797", "Q5421977", "Q1123131",
     }
-    assert [s.value for s in _statements(ms, "P528")] == [
+    assert not _statements(ms, "P528")
+    assert rec["catalog_references"][0]["text"] == (
         'Marx, A. "The polemical Manuscripts in the library of the JTS" (New York 1929), p. 52.'
-    ]
+    )
     inscriptions = _statements(ms, "P1684")
     roles = {
         next(q["value"] for q in s.qualifiers if q.get("property") == "P3831"): s

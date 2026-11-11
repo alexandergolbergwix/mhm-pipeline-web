@@ -81,6 +81,14 @@ def _structured_text(value: object) -> str:
     return ""
 
 
+def source_work_title(entry: dict[str, object]) -> str:
+    source_entry = {**entry, "title": entry.get("source_title") or entry.get("title")}
+    title = structured_work_attribution(source_entry).title.replace('""', '"').strip()
+    if len(title) > 1 and title[0] == title[-1] and title[0] in {'"', "'", "״"}:
+        title = title[1:-1].strip()
+    return title
+
+
 def structured_work_attribution(
     entry: dict[str, Any],
 ) -> StructuredWorkAttribution:
@@ -148,11 +156,20 @@ def _entry_author(entry: dict[str, object]) -> str | None:
 
 def _work_genre_qid(entry: dict[str, object]) -> str | None:
     genre = entry.get("genre")
+    if str(entry.get("source_field") or "") in {"500", "505"} and re.match(
+        r"^(?:העתק מן הכתב ששלח|אגרת מאת|איגרת מאת|מכתב מאת)\s", str(entry.get("title") or ""),
+    ):
+        genre = "Letters"
     if not isinstance(genre, str) or not genre.strip():
         return None
     from converter.wikidata.marc_subject_resolve import resolve_genre_qid  # noqa: PLC0415
 
     return resolve_genre_qid(genre, allow_network=False)
+
+
+def letter_content_occurrences(record: dict[str, object]) -> list[dict[str, object]]:
+    return [entry for entry in record.get("contents") or []
+            if isinstance(entry, dict) and _work_genre_qid(entry) == "Q133492"]
 
 
 def _content_genre_qids(record: dict[str, object]) -> set[str]:
@@ -227,7 +244,7 @@ def _record_projects_main_work(record: dict[str, object]) -> bool:
     """
     title = _clean_work_title(str(record.get("title") or ""))
     author_name = _record_author(record) or ""
-    if not title or not author_name or _is_noise_work_title(title):
+    if not title or not author_name or _is_noise_work_title(title, allow_latin=True):
         return False
     decision = assess_work_candidate(
         title,
@@ -247,36 +264,87 @@ def _entry_work_qid(entry: dict[str, object]) -> str | None:
     return None
 
 
+def _source_work_authors(record: dict[str, object], title: str) -> set[str]:
+    names = {
+        _work_title_key(attribution.author_name or "")
+        for content in record.get("contents") or []
+        if isinstance(content, dict)
+        and _work_title_key((attribution := structured_work_attribution(content)).title)
+        == _work_title_key(title)
+        and attribution.author_name
+    }
+    if _work_title_key(record.get("title")) == _work_title_key(title) and (
+        author := _record_author(record)
+    ):
+        names.add(_work_title_key(author))
+    return names
+
+
+def _work_match_author_compatible(
+    record: dict[str, object], title: str, author_name: str | None, match: dict[str, object],
+) -> bool:
+    payload = match.get("payload")
+    payload = payload if isinstance(payload, dict) else {}
+    matched_author = _structured_text(
+        match.get("author_name")
+        or match.get("author")
+        or payload.get("author_name")
+        or payload.get("author")
+    )
+    if matched_author:
+        return bool(author_name and _work_title_key(matched_author) == _work_title_key(author_name))
+    return len(_source_work_authors(record, title)) <= 1
+
+
+def _approved_work_matches(
+    record: dict[str, object], title: str, author_name: str | None
+) -> list[dict[str, object]]:
+    return [
+        match
+        for match in record.get("marc_authority_matches") or []
+        if isinstance(match, dict)
+        and match.get("approved") is not False
+        and str(match.get("role") or "").strip().casefold().replace("_", " ")
+        in {"contained work", "work", "exemplar of", "related work"}
+        and _work_title_key(match.get("name") or match.get("matched_name"))
+        == _work_title_key(title)
+        and _work_match_author_compatible(record, title, author_name, match)
+    ]
+
+
 def _work_qid_for_record_title(
     record: dict[str, object],
     title: str,
+    author_name: str | None = None,
 ) -> str | None:
     """Find an exact approved or structured work QID for a record title."""
     target = _work_title_key(title)
+    candidates: set[str] = set()
     for content in record.get("contents") or []:
         entry = content if isinstance(content, dict) else {"title": str(content)}
         attribution = structured_work_attribution(entry)
         if _work_title_key(attribution.title) == target:
+            if not _work_match_author_compatible(
+                record, title, author_name, {"author_name": attribution.author_name}
+            ):
+                continue
             qid = _entry_work_qid(entry)
             if qid:
-                return qid
-    for match in record.get("marc_authority_matches") or []:
-        if not isinstance(match, dict) or match.get("approved") is False:
-            continue
-        role = str(match.get("role") or "").strip().casefold().replace("_", " ")
-        if role not in {"contained work", "work", "exemplar of", "related work"}:
-            continue
-        match_title = match.get("name") or match.get("matched_name") or ""
-        if _work_title_key(match_title) != target:
-            continue
+                candidates.add(qid)
+    for match in _approved_work_matches(record, title, author_name):
         payload = match.get("payload")
         qid = _safe_work_qid(
             match.get("wikidata_qid")
             or (payload.get("wikidata_qid") if isinstance(payload, dict) else ""),
         )
         if qid:
-            return qid
-    return known_work_qid_for_title(title)
+            candidates.add(qid)
+    if candidates:
+        return next(iter(candidates)) if len(candidates) == 1 else None
+    return (
+        known_work_qid_for_title(title) if len(_source_work_authors(record, title)) <= 1 else None
+    )
+
 
 def _exemplar_qualifiers(
     *,
@@ -310,8 +378,9 @@ class ContentProjectionMixin:
         self,
         record: dict[str, object],
         title: str,
+        author_name: str | None = None,
     ) -> str | None:
-        return _work_qid_for_record_title(record, title)
+        return _work_qid_for_record_title(record, title, author_name)
 
     def _work_author_for_record_title(
         self,
@@ -320,11 +389,16 @@ class ContentProjectionMixin:
     ) -> str | None:
         """Find an author attached to the exact work title in the record."""
         target = _work_title_key(title)
+        authors: set[str] = set()
         for content in record.get("contents") or []:
             entry = content if isinstance(content, dict) else {"title": str(content)}
             attribution = structured_work_attribution(entry)
             if _work_title_key(attribution.title) == target:
-                return _content_author(record, attribution, entry)
+                author = _content_author(record, attribution, entry)
+                if author:
+                    authors.add(author)
+        if authors:
+            return next(iter(authors)) if len(authors) == 1 else None
 
         entities = [
             entity for entity in record.get("entities") or []
@@ -350,31 +424,7 @@ class ContentProjectionMixin:
     ) -> None:
         """Add P1574 only for source-backed, identifiable contained works."""
         seen_works: set[str] = set()
-        seen_occurrences: set[tuple[str, str]] = set()
-        approved_work_titles: set[str] = set()
-        approved_work_qids: dict[str, str] = {}
-        for match in record.get("marc_authority_matches") or []:
-            if not isinstance(match, dict):
-                continue
-            if not bool(match.get("approved", True)):
-                continue
-            match_role = str(match.get("role") or "").strip().lower().replace("_", " ")
-            if match_role not in {
-                "contained work", "work", "exemplar of", "related work",
-            }:
-                continue
-            match_title = _work_title_key(
-                match.get("name") or match.get("matched_name") or ""
-            )
-            if not match_title:
-                continue
-            approved_work_titles.add(match_title)
-            qid = _safe_work_qid(
-                match.get("wikidata_qid")
-                or (match.get("payload") or {}).get("wikidata_qid")
-            )
-            if qid:
-                approved_work_qids[match_title] = qid
+        seen_occurrences: set[tuple[str, str, str]] = set()
 
         def remember_evidence(target: WikidataItem, evidence: dict[str, object]) -> None:
             if evidence not in target.work_candidate_evidence:
@@ -387,17 +437,14 @@ class ContentProjectionMixin:
             candidate_title = attribution.title
             embedded_author = _content_author(record, attribution, entry)
             cleaned = _clean_work_title(candidate_title)
-            work_key = _work_title_key(cleaned)
             work_qid = (
                 _entry_work_qid(entry)
-                or approved_work_qids.get(work_key)
-                or known_work_qid_for_title(cleaned)
-                or known_work_qid_for_title(raw_title)
+                or self._work_qid_for_record_title(record, cleaned or raw_title, embedded_author)
             )
             work_qid = refine_exemplar_work_qid(
                 work_qid, title=cleaned or raw_title, record=record,
             )
-            approved = work_key in approved_work_titles
+            approved = bool(_approved_work_matches(record, cleaned or raw_title, embedded_author))
             decision = assess_work_candidate(
                 candidate_title,
                 source_field=entry.get("source_field") or "505",
@@ -420,13 +467,15 @@ class ContentProjectionMixin:
             remember_evidence(item, evidence)
             work_title = decision.title
             key = work_title.casefold()
-            occurrence = (key, str(decision.folio_range or ""))
+            occurrence = (
+                key, _work_title_key(embedded_author or ""), str(decision.folio_range or ""),
+            )
             if not decision.accepted or not work_title or occurrence in seen_occurrences:
                 continue
             seen_occurrences.add(occurrence)
             seen_works.add(key)
 
-            named_as = work_title or cleaned or raw_title
+            named_as = source_work_title(entry) or work_title or cleaned or raw_title
             if work_qid:
                 local_work = self._find_work_for_title(work_title, embedded_author, record)
                 if local_work is not None:
@@ -497,6 +546,11 @@ class ContentProjectionMixin:
                             references=ref,
                         )
                     )
+                else:
+                    evidence.update({
+                        "projection_status": "deferred",
+                        "projection_reason": "unknown_text_blocked_by_existing_exemplar",
+                    })
 
         entities = record.get("entities") or []
         cont_entities = [
@@ -510,12 +564,21 @@ class ContentProjectionMixin:
             raw = str(work.get("text") or "").strip().strip(_QUOTE_CHARS + ".")
             work_title, embedded_author = _split_work_title_author(raw)
             work_title = _clean_work_title(work_title)
-            work_qid = (
-                self._work_qid_for_record_title(record, work_title)
-                or approved_work_qids.get(_work_title_key(work_title))
-            )
+            folio_range = ""
+            for folio in folios:
+                if abs(int(folio.get("end") or 0) - int(work.get("start") or 0)) < 3:
+                    folio_range = str(folio.get("text") or "").strip(":")
+                    break
+            author_name = embedded_author
+            for work_author in cont_entities:
+                if work_author.get("type") == "WORK_AUTHOR" and abs(
+                    int(work_author.get("start") or 0) - int(work.get("end") or 0)
+                ) < 20:
+                    author_name = str(work_author.get("text") or "").strip()
+                    break
             work_qid = refine_exemplar_work_qid(
-                work_qid, title=work_title or raw, record=record,
+                self._work_qid_for_record_title(record, work_title, author_name),
+                title=work_title or raw, record=record,
             )
             decision = assess_work_candidate(
                 work_title,
@@ -523,27 +586,25 @@ class ContentProjectionMixin:
                 approved=work.get("approved") is not False,
                 known_qid=work_qid,
                 candidate_kind="named_work",
+                folio_range=folio_range,
                 source_text=raw,
             )
             evidence = decision.evidence()
+            evidence.update({"source_start": work.get("start"), "source_end": work.get("end")})
+            if author_name:
+                evidence["author_name"] = author_name
+            elif len(_source_work_authors(record, work_title)) > 1:
+                evidence.update({"accepted": False, "reason": "ambiguous_source_work_author"})
+                remember_evidence(item, evidence)
+                continue
             remember_evidence(item, evidence)
             key = decision.title.casefold()
             if (
                 not decision.accepted
                 or not decision.title
                 or _is_noise_work_title(decision.title)
-                or key in seen_works
             ):
                 continue
-            seen_works.add(key)
-
-            folio_range = ""
-            for folio in folios:
-                if abs(int(folio.get("end") or 0) - int(work.get("start") or 0)) < 3:
-                    folio_range = str(folio.get("text") or "").strip(":")
-                    break
-
-            author_name = embedded_author
             if not author_name and (
                 _work_title_key(decision.title) == _work_title_key(record.get("title"))
                 or (
@@ -553,6 +614,15 @@ class ContentProjectionMixin:
                 )
             ):
                 author_name = _record_author(record)
+            work_qid = refine_exemplar_work_qid(
+                self._work_qid_for_record_title(record, decision.title, author_name),
+                title=decision.title, record=record,
+            )
+            occurrence = (key, _work_title_key(author_name or ""), folio_range)
+            if occurrence in seen_occurrences:
+                continue
+            seen_occurrences.add(occurrence)
+            seen_works.add(key)
             named_as = decision.title or work_title or raw
             if work_qid:
                 local_work = self._find_work_for_title(decision.title, author_name, record)
@@ -572,15 +642,6 @@ class ContentProjectionMixin:
                 )
                 continue
 
-            work_authors = [
-                entity for entity in cont_entities if entity.get("type") == "WORK_AUTHOR"
-            ]
-            for work_author in work_authors:
-                if abs(
-                    int(work_author.get("start") or 0) - int(work.get("end") or 0)
-                ) < 20:
-                    author_name = str(work_author.get("text") or "").strip()
-                    break
             work_item = self._get_or_create_work(decision.title, author_name, record)
             remember_evidence(work_item, evidence)
             item.statements.append(
@@ -602,11 +663,11 @@ class ContentProjectionMixin:
         # 500 work mentions (e.g. a treatise followed by supplementary notes).
         title = _clean_work_title(str(record.get("title") or ""))
         author_name = _record_author(record) or ""
+        main_identity = (title.casefold(), _work_title_key(author_name))
         if (
             title
             and author_name
-            and not _is_noise_work_title(title)
-            and title.casefold() not in seen_works
+            and not any(occurrence[:2] == main_identity for occurrence in seen_occurrences)
         ):
             decision = assess_work_candidate(
                 title,
@@ -616,8 +677,10 @@ class ContentProjectionMixin:
                 source_text=f"{title} — {author_name}",
             )
             evidence = decision.evidence()
+            if _is_noise_work_title(title, allow_latin=True):
+                evidence.update({"accepted": False, "reason": "catalogue_noise_title"})
             remember_evidence(item, evidence)
-            if decision.accepted and decision.title and decision.title.casefold() not in seen_works:
+            if evidence["accepted"] and decision.title:
                 seen_works.add(decision.title.casefold())
                 work_item = self._get_or_create_work(
                     decision.title, author_name, record
@@ -629,7 +692,9 @@ class ContentProjectionMixin:
                         value=f"__LOCAL:{work_item.local_id}",
                         value_type="item",
                         qualifiers=_exemplar_qualifiers(
-                            catalog_title=decision.title,
+                            catalog_title=str(record.get("title") or decision.title).replace(
+                                '""', '"'
+                            ),
                             presumably=True,
                         ),
                         references=ref,

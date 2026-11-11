@@ -174,6 +174,7 @@ export const ExtractionApprovals = {
       `${base(runId)}/${encodeURIComponent(entityId)}`,
       {
         approved:      patch.approved,
+        rejected:      patch.rejected,
         override_type: patch.type,
         override_role: patch.role,
         override_text: patch.text,
@@ -184,10 +185,12 @@ export const ExtractionApprovals = {
     runId: string,
     entityIds: string[],
     approved: boolean,
+    rejected = false,
   ): Promise<BulkApproveResult> =>
     api.post<BulkApproveResult>(`${base(runId)}/bulk-approve`, {
       entity_ids: entityIds,
       approved,
+      rejected,
     }),
 
   autoApprove: (

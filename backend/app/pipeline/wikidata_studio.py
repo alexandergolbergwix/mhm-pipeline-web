@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 # v14: colophon field labels (957/590/500) stripped at ingest and the
 # record-author fallback limited to the main or sole content work
 # (Rule W-300) — cached rows built before those fixes must not upload.
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v20"
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v21"
 
 
 def _fingerprint_hash(value: Any) -> str:

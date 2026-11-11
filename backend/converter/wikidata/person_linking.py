@@ -131,6 +131,46 @@ class PersonLinkingMixin:
             if pid == "P195":
                 return
 
+            occurrence_qualifiers: list[dict[str, str]] = []
+            if pid == P_SIGNIFICANT_PERSON and role_norm in {
+                "copied from",
+                "addressee",
+                "(ממנו)",
+                "(אליו)",
+                "ממנו",
+                "אליו",
+            }:
+                from converter.wikidata.content_projection import letter_content_occurrences
+
+                letters = letter_content_occurrences(record)
+                scopes = [
+                    entry
+                    for entry in letters
+                    if clean_name in str(entry.get("source_text") or entry.get("title") or "")
+                    and entry.get("folio_range")
+                ]
+                if letters and len(scopes) != 1:
+                    item.work_candidate_evidence.append(
+                        {
+                            "accepted": False,
+                            "candidate_kind": "person_role",
+                            "source_field": source_field,
+                            "source_record_id": str(record.get("_control_number") or ""),
+                            "source_text": name,
+                            "role": role_norm,
+                            "reason": "person_role_scope_unresolved",
+                        }
+                    )
+                    return
+                if scopes:
+                    occurrence_qualifiers.append(
+                        {
+                            "property": "P958",
+                            "value": str(scopes[0]["folio_range"]),
+                            "type": "string",
+                        }
+                    )
+
             person_item = self._get_or_create_person(name, viaf_uri, mazal_id, role, record)
             resolved_key = (person_item.local_id, role_norm)
             if resolved_key != claim_key and resolved_key in seen_person_keys:
@@ -164,7 +204,7 @@ class PersonLinkingMixin:
                 )
                 resolved_qid = None
 
-            role_qualifiers: list[dict[str, str]] = []
+            role_qualifiers: list[dict[str, str]] = occurrence_qualifiers
             if pid == P_SIGNIFICANT_PERSON:
                 role_qid = _SIGNIFICANT_PERSON_ROLE_QIDS.get(role_norm)
                 if role_qid:

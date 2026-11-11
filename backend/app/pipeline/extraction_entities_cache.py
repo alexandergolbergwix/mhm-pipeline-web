@@ -29,6 +29,7 @@ async def compute_entities_fingerprint(
                 ExtractionApproval.override_type,
                 ExtractionApproval.override_role,
                 ExtractionApproval.approved,
+                ExtractionApproval.rejected,
                 ExtractionApproval.ai_verdict,
                 ExtractionApproval.updated_at,
             ).where(ExtractionApproval.run_id == run_id)
@@ -41,6 +42,7 @@ async def compute_entities_fingerprint(
             "override_type": r.override_type,
             "override_role": r.override_role,
             "approved":      bool(r.approved),
+            "rejected":      bool(r.rejected),
             "ai_verdict":    r.ai_verdict,
             "updated_at":    r.updated_at.isoformat() if r.updated_at else None,
         }

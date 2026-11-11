@@ -4,12 +4,15 @@
 
 | File | Purpose |
 |---|---|
+| `backend/converter/wikidata/work_candidates.py` | Source eligibility, citation word boundaries, and explicit policy reasons |
+| `backend/app/pipeline/wikidata_local_refs.py` | Local target resolution and explicit evidence for deferred unknown-text occurrences |
 | `backend/app/pipeline/wikidata_studio.py` | Glue: DB rows → desktop builder input; fingerprint; override application; item serialisation + label enrichment; `local_id_for_item` |
 | `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); approved author recovery for canonical works (W-201); safe single-representation work author normalization (W-204); role-specific work-author sanitation with approved NER context (W-206 / W-209); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188); coalesce same-identity persons before export (W-213) |
 | `backend/converter/wikidata/property_mapping.py` | HMO link helpers (W-122), known-work aliases, time formatting, and `FreshSourceReference` constructors with live namespace evidence (W-304) |
 | `backend/converter/wikidata/item_models.py` | Native statements, explicit source reference blocks, semantic snak identity, and block merge validation (W-304) |
 | `backend/converter/wikidata/quickstatements.py` | Reference validation and QuickStatements block serialization; comments identify omitted unsafe statements (W-304) |
 | `backend/converter/wikidata/catalog_notes.py` | Shared filter for NLI workflow + scholarly catalog notes that must never become P1684 / P1922 (W-72 / W-122 / W-171 / W-172) |
+| `backend/converter/wikidata/catalog_references.py` | Separate explicit catalogue codes from bibliography text and validate catalogue QIDs (W-305) |
 | `backend/converter/wikidata/isbd_title.py` | ISBD `245` title/subtitle split (Rule W-171) |
 | `backend/converter/wikidata/work_link_specificity.py` | P1574 specificity ladder — megillah vs Bible/Tanakh; RELATED_WORKS alias must not defeat piyyut block (W-171 / W-173) |
 | `backend/converter/wikidata/hmo_wikidata_pq_mapper.py` | Project Wikibase / ontology → public Wikidata P/Q allowlist (Rule W-100); P1476/P1680/P1684 as monolingualtext (W-196) |
@@ -44,6 +47,8 @@
 | `backend/app/pipeline/marc_llm_extract.py` | Span-grounded tier-1 extraction of owner/place/material from MARC provenance prose; proposals only (Rule W-140) |
 | `backend/scripts/check_wikidata_export_quality.py` | Read-only compact audit of work identity, author, language, quote, validation, linked-QID handling, and export-field failures (W-199) |
 | `backend/app/pipeline/wikidata_gila_audit.py` | Source comparison, three review classes, catalog-status evidence, and revision/claim-scoped work review proposals (W-296) |
+| `backend/app/pipeline/wikidata_gila_facts.py` | Source fact comparison against final native and live claims, with distinct local and live review outcomes (W-305) |
+| `backend/app/pipeline/wikidata_gila_repairs.py` | Non-executable historical reference and colophon proposals with revision, digest, rank, language, scope, and source checks (W-305) |
 | `backend/scripts/local_measure_verify.py` | Read-only local build/verify; `--gila-audit` writes the full-run local proposal report without an AI judge (W-296) |
 | `backend/converter/wikidata/marc_field_map.py` | The MARC field → Wikidata target table (W-275): one deliberate fate per field — `map` / `evidence` / `out_of_model` — plus per-field and per-property coverage targets; source of the WP8 ledger |
 | `backend/scripts/marc_wikidata_coverage.py` | Coverage harness (W-275): parses a MARC TSV, joins claims by P3959 (`--projected` / `--claims` / `--live`), prints the per-field table against the targets, exits non-zero on regression or `--fail-below-target` |

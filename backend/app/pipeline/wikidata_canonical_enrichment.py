@@ -447,9 +447,21 @@ def merge_legacy_into_canonical(
             [item for item in legacy_items if _keep_merged_item(item)],
         )
 
+    from converter.wikidata.work_author_claims import promote_safe_work_author_claims
+
+    promote_safe_work_author_claims([*canonical_items, *legacy_items])
     legacy_ms = _index_manuscripts(legacy_items)
     legacy_persons = _index_persons(legacy_items)
     legacy_works = _index_works(legacy_items)
+    work_matches = {
+        id(item): _match_work(item, legacy_works)
+        for item in canonical_items if item.entity_type == "work"
+    }
+    match_groups: dict[int, list[WikidataItem]] = {}
+    for item in canonical_items:
+        hit = work_matches.get(id(item))
+        if hit is not None:
+            match_groups.setdefault(id(hit), []).append(item)
     used_legacy_ids: set[str] = set()
     local_id_aliases: dict[str, str] = {}
 
@@ -473,7 +485,16 @@ def merge_legacy_into_canonical(
         elif et == "person":
             legacy = _match_person(item, legacy_persons)
         elif et == "work":
-            legacy = _match_work(item, legacy_works)
+            legacy = work_matches.get(id(item))
+            if legacy is not None and len(match_groups[id(legacy)]) > 1:
+                group = match_groups[id(legacy)]
+                shared_qid = str(legacy.existing_qid or "").strip()
+                if not shared_qid or any(
+                    str(member.existing_qid or "").strip() != shared_qid
+                    or any(not _work_match_is_compatible(member, other) for other in group)
+                    for member in group
+                ):
+                    legacy = None
         if legacy is not None:
             used_legacy_ids.add(legacy.local_id or id(legacy).__repr__())
             candidate = _merge_pair(item, legacy)
@@ -484,7 +505,11 @@ def merge_legacy_into_canonical(
                 and canonical_local_id
                 and legacy_local_id != canonical_local_id
             ):
-                local_id_aliases[legacy_local_id] = canonical_local_id
+                # Equivalent public works use one stable local alias target.
+                previous = local_id_aliases.get(legacy_local_id)
+                local_id_aliases[legacy_local_id] = min(
+                    previous or canonical_local_id, canonical_local_id,
+                )
             if _keep_merged_item(candidate):
                 merged.append(candidate)
         else:
@@ -993,7 +1018,7 @@ def _union_work_evidence(
     rows_a = a if isinstance(a, list) else ([a] if isinstance(a, dict) and a else [])
     rows_b = b if isinstance(b, list) else ([b] if isinstance(b, dict) and b else [])
     out: list[dict[str, object]] = []
-    seen: set[tuple[str, str, str]] = set()
+    by_occurrence: dict[tuple[str, ...], dict[str, object]] = {}
     for row in list(rows_a) + list(rows_b):
         if not isinstance(row, dict):
             continue
@@ -1004,11 +1029,17 @@ def _union_work_evidence(
             str(row.get("title") or row.get("source_text") or ""),
             record_id,
             str(row.get("source_field") or ""),
+            str(row.get("folio_range") or ""),
+            str(row.get("author_name") or ""),
+            str(row.get("source_start") or ""),
+            str(row.get("source_end") or ""),
         )
-        if key in seen:
+        if key in by_occurrence:
+            by_occurrence[key].update(row)
             continue
-        seen.add(key)
-        out.append(dict(row))
+        evidence = dict(row)
+        by_occurrence[key] = evidence
+        out.append(evidence)
     return out
 
 
@@ -1267,6 +1298,39 @@ def _work_match_is_compatible(canonical: WikidataItem, legacy: WikidataItem) -> 
     each name records and name *disjoint* ones are different works. Recordless
     works still merge, because refusing would just mint a duplicate.
     """
+    from converter.wikidata.work_identity import work_identity_for_item
+
+    if (
+        canonical.existing_qid
+        and legacy.existing_qid
+        and canonical.existing_qid != legacy.existing_qid
+    ):
+        return False
+    canonical_identity = work_identity_for_item(canonical)
+    legacy_identity = work_identity_for_item(legacy)
+    if canonical_identity.author_names and legacy_identity.author_names:
+        if canonical_identity.author_names != legacy_identity.author_names:
+            return False
+    if canonical_identity.author_qids and legacy_identity.author_qids:
+        if canonical_identity.author_qids != legacy_identity.author_qids:
+            return False
+    canonical_targets = {str(s.value) for s in canonical.statements if s.property_id == "P50"}
+    legacy_targets = {str(s.value) for s in legacy.statements if s.property_id == "P50"}
+    if canonical_targets and legacy_targets and canonical_targets != legacy_targets:
+        return False
+    names_match = bool(canonical_identity.author_names & legacy_identity.author_names)
+    for identity, other, targets, other_targets in (
+        (canonical_identity, legacy_identity, canonical_targets, legacy_targets),
+        (legacy_identity, canonical_identity, legacy_targets, canonical_targets),
+    ):
+        if (identity.author_qids or identity.unresolved_authors) and other.author_names:
+            if not names_match and not (targets & other_targets):
+                return False
+    if (canonical_identity.source_scoped or legacy_identity.source_scoped) and (
+        not canonical_identity.source_records
+        or canonical_identity.source_records != legacy_identity.source_records
+    ):
+        return False
     if canonical.existing_qid and canonical.existing_qid == legacy.existing_qid:
         return True
     if canonical.local_id and canonical.local_id == legacy.local_id:
@@ -1283,9 +1347,12 @@ def _match_work(
     item: WikidataItem,
     index: dict[str, list[WikidataItem]],
 ) -> WikidataItem | None:
-    for key in _work_keys(item):
-        for hit in index.get(key, ()):
-            if key.startswith("label:") and not _work_match_is_compatible(item, hit):
-                continue
-            return hit
+    keys = sorted(_work_keys(item), key=lambda key: (key.startswith("label:"), key))
+    for strong in (True, False):
+        hits = {
+            id(hit): hit for key in keys if (not key.startswith("label:")) == strong
+            for hit in index.get(key, ()) if _work_match_is_compatible(item, hit)
+        }
+        if hits:
+            return next(iter(hits.values())) if len(hits) == 1 else None
     return None

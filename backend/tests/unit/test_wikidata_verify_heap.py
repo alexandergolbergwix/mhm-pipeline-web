@@ -56,10 +56,11 @@ async def test_load_run_marc_records_scoped_filters_quoted_control_numbers() -> 
     from sqlalchemy.ext.asyncio import AsyncSession
 
     db = MagicMock(spec=AsyncSession)
-    db.execute = AsyncMock(return_value=MagicMock(all=lambda: [
+    db.scalar = AsyncMock(return_value=2)
+    db.execute = AsyncMock(side_effect=[MagicMock(all=lambda: [
         ('"990000000000000099"', {"title": "כותרת"}),
         ("990000000000000002", {"title": "other"}),
-    ]))
+    ]), MagicMock(all=lambda: [])])
     rows = await load_run_marc_records_scoped(
         db,
         uuid.uuid4(),

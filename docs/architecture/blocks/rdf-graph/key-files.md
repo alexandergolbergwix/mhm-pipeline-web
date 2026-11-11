@@ -4,6 +4,7 @@
 
 | File | Purpose |
 |---|---|
+| `backend/converter/rdf/rdf_helpers.py` | Shared content parser; `source_title` retains the source wording before label cleanup |
 | `backend/app/pipeline/rdf_build.py` | Async wrapper around the mapper: `build_rdf_graph` (batch-source capable), `RdfBuildBatch`/`_MapperState` streaming core, `RdfBuildOptions`, `rdf_build_signature`, SHACL validation, Cytoscape JSON, `rdf_output_path_for_run`, `ensure_ttl_on_disk`, `upsert_rdf_artifact`, `normalise_matches` |
 | `backend/app/pipeline/rdf_build_batches.py` | Keyset-paginated build loader (R23): `iter_rdf_build_batches`, `load_record_slice`, `run_record_bounds`, `count_run_records`, `load_rdf_triple_overrides` |
 | `backend/app/pipeline/rdf_build_shard.py` | Distributed build (R24): `run_rdf_build_shard` (CN slice → Turtle chunk), `load_rdf_shard_plan`/`plan_rdf_shards`, `consume_rdf_shard_results` (ordered append + checkpoints), shared `persist_rdf_artifact_and_bust_caches` |

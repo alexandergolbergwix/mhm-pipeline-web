@@ -485,14 +485,33 @@ def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
                 str(entry.get("source_text") or ""),
                 str(entry.get("title") or "").strip().casefold(),
                 str(entry.get("folio_range") or "").strip(),
-                str(entry.get("author") or entry.get("author_name")
-                    or entry.get("work_author") or entry.get("responsibility")
-                    or entry.get("statement_of_responsibility") or "").strip().casefold(),
-                str(entry.get("wikidata_id") or entry.get("wikidata_qid")
-                    or entry.get("existing_qid") or "").strip(),
+                str(
+                    entry.get("author")
+                    or entry.get("author_name")
+                    or entry.get("work_author")
+                    or entry.get("responsibility")
+                    or entry.get("statement_of_responsibility")
+                    or ""
+                )
+                .strip()
+                .casefold(),
+                str(
+                    entry.get("wikidata_id")
+                    or entry.get("wikidata_qid")
+                    or entry.get("existing_qid")
+                    or ""
+                ).strip(),
             )
             previous = by_source.get(source)
-            score = int(entry.get("candidate_kind") == "named_work") * 2 + int(bool(entry.get("folio_range")))
+            if (
+                previous is not None
+                and entry.get("source_title")
+                and not previous.get("source_title")
+            ):
+                previous["source_title"] = entry["source_title"]
+            score = int(entry.get("candidate_kind") == "named_work") * 2 + int(
+                bool(entry.get("folio_range"))
+            )
             previous_score = (
                 int(previous.get("candidate_kind") == "named_work") * 2
                 + int(bool(previous.get("folio_range")))
@@ -833,14 +852,18 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
 
     record.pop("script_type", None)
     record.pop("script_mode", None)
+    record.pop("script_type_source", None)
+    record.pop("script_mode_source", None)
     for piece in _split_multi(_str(record.get("958$a"))):
         mapped = _script_token(piece, SCRIPT_TYPES)
         if mapped and not record.get("script_type"):
             record["script_type"] = mapped
+            record["script_type_source"] = piece
     for piece in _split_multi(_str(record.get("958$b"))):
         mapped = _script_token(piece, SCRIPT_MODES)
         if mapped and not record.get("script_mode"):
             record["script_mode"] = mapped
+            record["script_mode_source"] = piece
 
     # ── Colophon text (590$a + 957$a + keyword-detected 500$a) ─────
     # Some catalogues file the colophon as a 590$a local note; NLI uses a
@@ -944,7 +967,7 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     )
 
     contents: list[dict[str, Any]] = list(record.get("contents") or [])
-    for chunk in _split_multi(_str(record.get("505$a"))):
+    for chunk in _split_multi(str(record.get("505$a") or "")):
         for raw_title in chunk.split("--"):
             parsed = parse_contents_entry(raw_title.strip().strip(".,;:"))
             title = parsed["title"]
@@ -952,6 +975,7 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
                 continue
             entry: dict[str, Any] = {
                 "title": title,
+                "source_title": parsed.get("source_title") or title,
                 "source_field": "505",
                 "candidate_kind": "named_work",
                 "source_text": parsed.get("raw") or raw_title,
@@ -1122,7 +1146,8 @@ _INSERTED_SERMON_RE = _re.compile(
 def _extract_work_mentions(record: dict[str, Any]) -> None:
     """Extract named works from semantically anchored MARC 500 notes."""
     record.pop("work_mentions", None)
-    raw_500a = _str(record.get("500$a"))
+    record.pop("non_work_content_evidence", None)
+    raw_500a = _unwrap_marc_value(str(record.get("500$a") or ""))
     candidates = [part.strip() for part in raw_500a.split("|") if part.strip()]
 
     from converter.rdf.rdf_helpers import (  # noqa: PLC0415
@@ -1131,6 +1156,7 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
     )
 
     work_mentions: list[dict[str, str]] = []
+    non_work_evidence: list[dict[str, str]] = []
     seen_titles: set[str] = set()
     seen_folios: set[tuple[str, str]] = set()
     for note in candidates:
@@ -1145,6 +1171,13 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
                     "source_text": note.strip(), "genre": "Sermons", "identity_scope": "record",
                 })
         folio_match = _FOLIO_PREFIXED_500_RE.match(note.strip())
+        if folio_match and _re.search(r'מגיע\s+עד\s*["״]+\s*ערך\s', folio_match.group("body")):
+            non_work_evidence.append({
+                "source_field": "500", "source_text": note,
+                "folio_range": folio_match.group("folio").strip(),
+                "reason": "entry_boundary_not_separate_work",
+            })
+            folio_match = None
         if folio_match:
             folio_range = folio_match.group("folio").strip()
             body = folio_match.group("body").strip()
@@ -1164,6 +1197,7 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
                 seen_folios.add((key, folio_range))
                 work_mentions.append({
                     "title": title,
+                    "source_title": raw.strip(),
                     "source_field": "500",
                     "candidate_kind": "named_work",
                     "folio_range": folio_range,
@@ -1171,11 +1205,19 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
                 })
         for match in _WORK_MENTION_TRIGGERS.finditer(note):
             raw_titles = match.group("titles").strip()
+            if _re.match(r"^(?:מקומות\b|עדות\s+על\b|כמה\s+ציורים\b)", raw_titles):
+                non_work_evidence.append({
+                    "source_field": "500", "source_text": match.group(0),
+                    "reason": "place_person_or_drawing_narrative_not_work",
+                })
+                continue
             quoted = _quoted_work_titles(raw_titles)
             raw_candidates = list(quoted)
             if quoted:
                 prefix = raw_titles.split('"', 1)[0].strip(" ,;:")
-                if _re.match(rf"(?:{_WORK_HEAD_PATTERN})\b", prefix):
+                if prefix not in _WORK_TITLE_HEADS and _re.match(
+                    rf"(?:{_WORK_HEAD_PATTERN})\b", prefix
+                ):
                     raw_candidates.insert(0, prefix)
             else:
                 raw_candidates = _unquoted_work_titles(raw_titles)
@@ -1189,12 +1231,15 @@ def _extract_work_mentions(record: dict[str, Any]) -> None:
                 seen_titles.add(key)
                 work_mentions.append({
                     "title": title,
+                    "source_title": raw.strip(),
                     "source_field": "500",
                     "candidate_kind": "named_work",
                     "source_text": match.group(0).strip(),
                 })
     if work_mentions:
         record["work_mentions"] = work_mentions
+    if non_work_evidence:
+        record["non_work_content_evidence"] = non_work_evidence
 
 
 _EDITOR_IN_RE = _re.compile(
@@ -1453,10 +1498,13 @@ def _extract_942_holdings(record: dict[str, Any]) -> None:
         for ref_row in catalog_refs_942:
             cat_str = f"{ref_row['catalog']}: {ref_row['number']}"
             if not any(
-                (r.get("catalog") if isinstance(r, dict) else str(r)) == cat_str
+                ((r.get("text") or r.get("catalog")) if isinstance(r, dict) else str(r)) == cat_str
                 for r in existing_refs
             ):
-                existing_refs.append({"catalog": cat_str})
+                existing_refs.append({
+                    "catalog": ref_row["catalog"], "number": ref_row["number"],
+                    "text": cat_str, "source_field": "942",
+                })
         record["catalog_references"] = existing_refs
 
     microfilm_numbers = [
@@ -1512,7 +1560,7 @@ def _extract_581_catalog_references(record: dict[str, Any]) -> None:
     for val in vals:
         clean = val.strip().replace('""', '"')
         if clean and clean not in existing:
-            refs.append({"catalog": clean, "source_field": "581"})
+            refs.append({"catalog": clean, "text": clean, "source_field": "581"})
             existing.add(clean)
     if refs:
         record["catalog_references"] = refs
@@ -1769,6 +1817,7 @@ def _merge_work_mentions_into_contents(record: dict[str, Any]) -> None:
             continue
         row_out = {
             "title": title,
+            "source_title": str(wm.get("source_title") or wm.get("title") or ""),
             "source_field": str(wm.get("source_field") or "500"),
             "candidate_kind": str(wm.get("candidate_kind") or "named_work"),
             "source_text": str(wm.get("source_text") or ""),

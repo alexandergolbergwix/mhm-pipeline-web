@@ -677,7 +677,7 @@ export default function StageExtraction() {
               onRejectSelected={async () => {
                 if (selectedIds.size === 0) return;
                 await ExtractionApprovals.bulkApprove(
-                  runId, Array.from(selectedIds), false,
+                  runId, Array.from(selectedIds), false, true,
                 );
                 await refreshEntities();
               }}

@@ -63,6 +63,7 @@ function entitiesFingerprint(entities: Entity[]): string {
   return `${entities.length}:${entities.map((e) => [
     e.id,
     e.approved,
+    e.rejected,
     e.override_text ?? "",
     e.override_type ?? "",
     e.override_role ?? "",

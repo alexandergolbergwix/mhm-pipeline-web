@@ -16,7 +16,9 @@
 | `backend/app/pipeline/extraction_actions.py` | Prefab AI-verify actions (`audit_ner_extraction`, `check_ner_genre`) — no free-text goals |
 | `backend/app/pipeline/marc_structured_index.py` | `MarcStructuredIndex.classify()` — grounded / wrong_field / novel / unknown Exists-in classification |
 | `backend/app/routers/extraction.py` | SSE start-stream, results/status, entities list, MARC source, PATCH entity, bulk-approve, auto-approve preview/apply, `_bulk_persist_entities` |
-| `backend/app/models/extraction_approval.py` | `ExtractionApproval` row: content-addressed key, prediction snapshot, `override_*`, `approved*`, `ai_verdict`, `exists_in` JSONB |
+| `backend/app/models/extraction_approval.py` | Content-addressed prediction, overrides, exclusive approval/rejection, verdict, and source classification |
+| `backend/app/migrations/versions/0053_extraction_rejection.py` | Durable explicit rejection; old unapproved rows remain pending |
+| `backend/converter/rdf/rdf_helpers.py` | `parse_contents_entry` retains `source_title` before label cleanup |
 | `modal/modal_app.py` | Modal app `mhm-ner`: image with pre-baked weights, `MhmNer` class, `/extract` + `/health` + `/transliterate` ASGI endpoints |
 | `modal/README.md` | Deploy steps, pay-per-call economics, cold-start numbers |
 | `frontend/src/components/extraction/` | `EntityTable`, `EntityFilterChips`, `ColumnFilterPopup`, `EntityActionsBar`, `EntityEditModal`, `MarcSourceDrawer`, `NerVerificationModal`, `AiVerdictPill`, `EntityDetailDrawer` |

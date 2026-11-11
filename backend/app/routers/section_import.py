@@ -36,12 +36,12 @@ import io
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from pydantic import BaseModel, ValidationError, field_validator
+from pydantic import BaseModel, ValidationError, field_validator, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -165,6 +165,7 @@ class ExtractionImportRow(BaseModel):
     override_type: str | None = None
     override_role: str | None = None
     approved: bool = False
+    rejected: bool | None = None
 
     @field_validator("control_number", "source", "text", mode="before")
     @classmethod
@@ -190,6 +191,18 @@ class ExtractionImportRow(BaseModel):
     @classmethod
     def coerce_bool(cls, v: Any) -> bool:
         return _coerce_bool(v)
+
+    @field_validator("rejected", mode="before")
+    @classmethod
+    def coerce_rejected(cls, value: object) -> bool | None:
+        return None if value is None else _coerce_bool(value)
+
+    @model_validator(mode="after")
+    def validate_review(self) -> Self:
+        from app.models.extraction_approval import extraction_review_values
+
+        extraction_review_values(self.approved, self.rejected)
+        return self
 
 
 @router.post("/{run_id}/extraction/import", response_model=ImportResult)
@@ -244,6 +257,15 @@ async def import_extraction(
             "override_type": row.override_type,
             "override_role": row.override_role,
             "approved": row.approved,
+            "rejected": (
+                row.rejected
+                if row.rejected is not None
+                else False
+                if row.approved
+                else bool(existing.rejected)
+                if existing is not None
+                else False
+            ),
         }
 
         if existing is not None:
@@ -262,6 +284,7 @@ async def import_extraction(
                 "override_type": existing.override_type,
                 "override_role": existing.override_role,
                 "approved": existing.approved,
+                "rejected": bool(existing.rejected),
             }
             if current_state == new_state:
                 skipped += 1
@@ -287,6 +310,9 @@ async def import_extraction(
             existing.override_type = row.override_type
             existing.override_role = row.override_role
             existing.approved = row.approved
+            existing.rejected = new_state["rejected"]
+            existing.approved_by = auth.user.id if row.approved else None
+            existing.approved_at = datetime.now(UTC) if row.approved else None
         else:
             entity = ExtractionApproval(
                 run_id=run_id,
@@ -303,6 +329,7 @@ async def import_extraction(
                 override_type=row.override_type,
                 override_role=row.override_role,
                 approved=row.approved,
+                rejected=new_state["rejected"],
                 approved_by=auth.user.id if row.approved else None,
                 approved_at=datetime.now(timezone.utc) if row.approved else None,
             )

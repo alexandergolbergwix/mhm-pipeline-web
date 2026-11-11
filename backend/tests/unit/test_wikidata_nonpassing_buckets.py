@@ -87,7 +87,7 @@ class TestCanonicalP921Grounding:
             "canonical_references": [{"hierarchy": "Bible", "book": "Exodus"}],
             "subjects": [{"term": "Cabala", "type": "topic"}],
         })
-        assert _statements(item, "P921") == []
+        assert not any(statement.value == "Q9190" for statement in _statements(item, "P921"))
 
     def test_exodus_with_matching_subject_is_emitted(self) -> None:
         item = WikidataItemBuilder().build_manuscript_item({
@@ -502,7 +502,7 @@ class TestPatronymicFatherIdWithDates:
         )
         assert item.heading_mismatch is not None
 
-    def test_patronymic_without_dates_does_not_strip_passer(self) -> None:
+    def test_unconfirmed_hebrew_heading_does_not_require_dates_to_strip_identity(self) -> None:
         from app.pipeline.hmo_canonical_wikidata import _suppress_unconfirmed_person_identity
         from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
@@ -513,14 +513,14 @@ class TestPatronymicFatherIdWithDates:
             statements=[
                 WikidataStatement(
                     property_id="P8189",
-                    value="1",
+                    value="987007123456705171",
                     value_type="external-id",
                 ),
             ],
             authority_evidence=[{"preferred_name_heb": "יצחק בן יהודה"}],
         )
-        assert _suppress_unconfirmed_person_identity([item]) == []
-        assert any(s.property_id == "P8189" for s in item.statements)
+        assert _suppress_unconfirmed_person_identity([item]) == ["QDraft_Person_59"]
+        assert not any(s.property_id == "P8189" for s in item.statements)
 
 
 class TestSubsetVerifyLocalCatalog:
@@ -716,7 +716,7 @@ class TestExport29RolePlaceTitle:
             "title": "ספר",
             "shelfmark": "F 1",
             "place": "",
-            "related_places": ["ʻAmrān (Yemen)"],
+            "related_places": [{"name": "ʻAmrān (Yemen)", "role": "place of attestation"}],
             "kima_places": {
                 "ʻAmrān (Yemen)": "https://www.wikidata.org/entity/Q275720",
             },

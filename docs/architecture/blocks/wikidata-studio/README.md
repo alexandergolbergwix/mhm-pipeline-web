@@ -42,7 +42,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R157) and known gaps.
+- [Rules](rules.md) — the invariants (R1–R158) and known gaps.
 - [Reference blocks](reference-blocks.md) — source grouping, old-data gates, deferred links, test wiki, and export limits (W-304).
 - [Studio cache freshness](studio-cache-freshness.md) — build fingerprint, override application, and the Rebuild required badge.
 - [Upload write guards](upload-write-guards.md) — Studio source recheck before each bulk write, and the owned-item rule.
@@ -59,6 +59,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Gila audit completion](gila-audit-completion.md) — source-qualified claims,
   the accepted model, and the full-run review report (W-296).
 - [Gila audit risks](gila-audit-risks.md) — open work-identity, folio, and historical reference-data gaps.
+- [Gila source fidelity](gila-source-fidelity.md) — occurrence identity, source scope, per-fact comparisons, and guarded historical proposals.
 - [Tests](tests.md) — the test suites pinning this block.
 
 ## Related blocks

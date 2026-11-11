@@ -152,6 +152,7 @@ def test_505_contents_retain_source_and_folio_evidence() -> None:
     _collapse_marc_subfields(record)
     assert record["contents"] == [{
         "title": "ספר הדרושים",
+        "source_title": "ספר הדרושים",
         "source_field": "505",
         "candidate_kind": "named_work",
         "source_text": "1) דף א-ב : ספר הדרושים",

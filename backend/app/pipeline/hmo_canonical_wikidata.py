@@ -11,11 +11,6 @@ from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
-from app.pipeline.marc_verify_context import (
-    canonical_control_number,
-    primary_control_number_for,
-)
 from converter.authority.evidence import (
     evidence_row_ids,
     normalize_authority_id,
@@ -51,6 +46,12 @@ from converter.wikidata.property_mapping import (
     is_browseable_hmo_wikibase_url,
     nli_reference,
     resolve_hmo_bridge_url,
+)
+
+from app.pipeline.hmo_canonical import CanonicalHmoEntity, assert_canonical_entities
+from app.pipeline.marc_verify_context import (
+    canonical_control_number,
+    primary_control_number_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -231,8 +232,9 @@ def canonical_studio_context(
     entities_by_cn: Mapping[str, Iterable[Mapping[str, Any]]] | None = None,
 ) -> CanonicalStudioContext:
     """Build MARC context and attach approved authority and NER evidence."""
-    from app.pipeline.marc_ingest import prepare_record_for_pipeline  # noqa: PLC0415
     from converter.rdf.rdf_helpers import sanitize_work_title  # noqa: PLC0415
+
+    from app.pipeline.marc_ingest import prepare_record_for_pipeline  # noqa: PLC0415
 
     marc_by_cn: dict[str, dict[str, Any]] = {}
     for raw in marc_records or []:
@@ -380,7 +382,7 @@ def canonical_wikidata_fingerprint(
     # fails: 62-claim spam drowned P31 in the judge prompt).
     # v17 — sole-content-work author fallback and colophon label stripping
     # (Rule W-300); canonical rows built before them must not revalidate.
-    salt = "hmo-wikidata-v21:"  # Fresh references carry their live namespace.
+    salt = "hmo-wikidata-v22:"  # Source occurrences, script wording, and catalogue semantics.
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -1006,7 +1008,10 @@ def _append_context_work_author(
         ).strip()
         if not name:
             continue
-        qid = _public_author_qid(candidate.get("wikidata_qid"))
+        from converter.wikidata.work_projection import _find_work_author_match
+
+        verified_match = _find_work_author_match(name, record)
+        qid = _public_author_qid((verified_match or {}).get("wikidata_qid"))
         clean_author_name = _normalise_label(_strip_name_quotes(name)).rstrip(
             " .,;:/-",
         )
@@ -1047,6 +1052,8 @@ def _append_context_work_author(
                 property_id=P_AUTHOR if qid else P_AUTHOR_NAME_STRING,
                 value=qid or clean_author_name,
                 value_type="item" if qid else "string",
+                qualifiers=[{"property": "P1932", "value": clean_author_name, "type": "string"}]
+                if qid else [],
                 references=nli_reference(control_number),
             ),
         )
@@ -1207,7 +1214,10 @@ def _context_work_author_evidence(
             ).strip()
             if name:
                 names.setdefault(name_key(name), set()).add(source_cn)
-            qid = _public_author_qid(candidate.get("wikidata_qid"))
+            from converter.wikidata.work_projection import _find_work_author_match
+
+            verified_match = _find_work_author_match(name, record)
+            qid = _public_author_qid((verified_match or {}).get("wikidata_qid"))
             if qid and name:
                 qids.setdefault(qid, set()).add(source_cn)
     return names, qids
@@ -1644,6 +1654,9 @@ def build_canonical_studio_result(
     MARC/authority projection onto canonical items while keeping HMO
     ``local_id`` / bridge / ``existing_qid`` identity.
     """
+    from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
+    from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
+
     from app.pipeline import wikidata_studio  # noqa: PLC0415
     from app.pipeline.wikidata_canonical_enrichment import (  # noqa: PLC0415
         coalesce_person_items_by_strong_identity,
@@ -1653,8 +1666,6 @@ def build_canonical_studio_result(
         recover_person_identifiers_from_evidence,
     )
     from app.pipeline.wikidata_upload import _reconcile_sync  # noqa: PLC0415
-    from converter.wikidata.item_validator import validate_item  # noqa: PLC0415
-    from converter.wikidata.quickstatements import QuickStatementsExporter  # noqa: PLC0415
 
     materialized = list(entities)
     meter = _AssemblyProgress(
@@ -1700,10 +1711,11 @@ def build_canonical_studio_result(
                 wikidata_studio._apply_override(item, ov)
 
     if reconcile and native_items:
-        from app.pipeline.wikidata_upload import _make_reconciler  # noqa: PLC0415
         from converter.wikidata.reconciler import (  # noqa: PLC0415
             prewarm_reconciler_for_items,
         )
+
+        from app.pipeline.wikidata_upload import _make_reconciler  # noqa: PLC0415
 
         prewarm_reconciler_for_items(_make_reconciler(), native_items)
         for item, outcome in zip(native_items, _reconcile_sync(native_items), strict=True):
@@ -1786,7 +1798,9 @@ def build_canonical_studio_result(
     _sanitize_canonical_claims(native_items, context)
     _align_person_p1559_to_hebrew_label(native_items)
     _scrub_person_aliases(native_items)
-    from converter.wikidata.work_author_claims import promote_safe_work_author_claims  # noqa: PLC0415
+    from converter.wikidata.work_author_claims import (
+        promote_safe_work_author_claims,  # noqa: PLC0415
+    )
 
     promote_safe_work_author_claims(native_items)
     normalize_work_author_claims(native_items)
@@ -1939,11 +1953,12 @@ def _authority_match_conflicts(
     flags = set(match.get("guard_flags") or []) | set(payload.get("guard_flags") or [])
     if flags & _HARD_REJECT_AUTHORITY_FLAGS:
         return True
-    from app.pipeline.marc_date_sources import manuscript_production_year  # noqa: PLC0415
     from converter.authority.stage3_guards import (  # noqa: PLC0415
         evaluate_date_conflict,
         evaluate_modern_person_conflict,
     )
+
+    from app.pipeline.marc_date_sources import manuscript_production_year  # noqa: PLC0415
 
     ms_year = manuscript_production_year(dict(record))
     birth = match.get("birth_year") or payload.get("birth_year")
@@ -2322,10 +2337,13 @@ def _sanitize_canonical_claims(
 ) -> None:
     """Remove known broad subjects and unsupported canonical holder claims."""
     from converter.wikidata.catalog_notes import is_catalog_note_placeholder  # noqa: PLC0415
+    from converter.wikidata.catalog_references import catalog_reference_code, catalog_reference_text
+    from converter.wikidata.content_projection import letter_content_occurrences
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
     from converter.wikidata.manuscript_projection import (  # noqa: PLC0415
         _current_holder_names,
         _current_holder_qid,
+        _place_qid_for_label,
     )
     from converter.wikidata.marc_subject_resolve import (  # noqa: PLC0415
         canonical_reference_grounded_in_subjects,
@@ -2349,6 +2367,9 @@ def _sanitize_canonical_claims(
         holder_qid = None
         expected_script_qids: set[str] | None = None
         expected_instance_qids: set[str] | None = None
+        replaced_catalog_values: set[str] = set()
+        letter_occurrences = []
+        attestation_qids: set[str] = set()
         if record is not None:
             from converter.wikidata.item_builder import (  # noqa: PLC0415
                 SCRIPT_MODE_TO_QID,
@@ -2364,9 +2385,54 @@ def _sanitize_canonical_claims(
             sm = record.get("script_mode")
             if sm and str(sm) in SCRIPT_MODE_TO_QID:
                 expected_script_qids.add(SCRIPT_MODE_TO_QID[str(sm)])
+            replaced_catalog_values = {
+                catalog_reference_text(reference)
+                for reference in record.get("catalog_references") or []
+                if catalog_reference_text(reference) != catalog_reference_code(reference)
+            }
+            letter_occurrences = letter_content_occurrences(record)
+            attestation_qids = {
+                qid
+                for entry in record.get("related_places") or []
+                if isinstance(entry, dict)
+                and str(entry.get("role") or "").casefold()
+                in {
+                    "place of attestation",
+                    "attestation place",
+                }
+                and (
+                    qid := _place_qid_for_label(str(entry.get("name") or entry.get("place") or ""))
+                )
+            }
         for statement in item.statements or []:
             pid = str(statement.property_id or "")
             value = str(statement.value or "")
+            if pid == "P528" and value in replaced_catalog_values:
+                continue
+            if letter_occurrences:
+                if pid == "P136" and value == "Q133492":
+                    continue
+                if (
+                    pid == "P3342"
+                    and not any(q.get("property") == "P958" for q in statement.qualifiers)
+                    and any(
+                        q.get("property") == "P3831"
+                        and q.get("value") in {"Q10359183", "Q28008314"}
+                        for q in statement.qualifiers
+                    )
+                ):
+                    continue
+            if (
+                pid == "P7153"
+                and record is not None
+                and record.get("related_places")
+                and value not in attestation_qids
+                and any(
+                    q.get("property") == "P3831" and q.get("value") == "Q127695525"
+                    for q in statement.qualifiers
+                )
+            ):
+                continue
             if pid == "P921" and value in _BROAD_MAIN_SUBJECT_QIDS:
                 continue
             book = _BIBLE_BOOK_P921_QIDS.get(value)

@@ -14,7 +14,7 @@ _HEBREW_RE = re.compile(r"[\u0590-\u05ff]")
 _LATIN_RE = re.compile(r"[A-Za-z]")
 _BIBLIOGRAPHIC_FRAGMENT_RE = re.compile(
     r"(?:מהדורת|במהדורה|ירושלים|תל[־ -]?אביב|דפוס|עמ(?:וד)?[\s׳'\"]|"
-    r"סי(?:מן)?[\s׳'\"]|חלק\s+[א-ת]|כרך\s+[א-ת]|folio|edition|vol\.?\s|pp?\.?\s)",
+    r"\bסי(?:מן)?[\s׳'\"]|חלק\s+[א-ת]|כרך\s+[א-ת]|folio|edition|vol\.?\s|pp?\.?\s)",
     re.IGNORECASE,
 )
 _PROSE_PREFIX_RE = re.compile(
@@ -89,6 +89,16 @@ def assess_work_candidate(
 
     if not cleaned or len(re.sub(r"[^\w\u0590-\u05ff]", "", cleaned)) < 3:
         return decision(False, "empty_or_too_short")
+    if (
+        source in {"245", "100/245"}
+        and not known_qid
+        and (
+            cleaned.casefold()
+            in {"כתב יד", "כתבי יד", "קובץ", "קובץ כתבים", "manuscript", "miscellany"}
+            or re.fullmatch(r"(?:some\s+)?(?:hebrew\s+)?manuscript", cleaned, re.IGNORECASE)
+        )
+    ):
+        return decision(False, "generic_manuscript_title")
     if len(_FOLIO_TITLE_LETTER_RE.sub("", cleaned)) < 3 and _DIGIT_RE.search(cleaned):
         return decision(False, "folio_range_title")
     if is_descriptive_content_title(cleaned):

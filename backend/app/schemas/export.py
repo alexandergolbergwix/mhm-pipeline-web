@@ -75,6 +75,7 @@ class ExportExtractionEntity(BaseModel):
     override_role: str | None
     override_text: str | None
     approved: bool
+    rejected: bool = False
     approved_by_email: str | None
     approved_at: datetime | None
     ai_verdict: dict[str, Any] | None

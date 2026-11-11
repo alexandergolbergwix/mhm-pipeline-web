@@ -7,7 +7,10 @@ from collections.abc import Iterable, Mapping
 
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
+from app.pipeline.wikidata_gila_facts import compare_gila_source_facts
+from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals, entity_digest
 from converter.wikidata.catalog_notes import is_catalog_note_placeholder
+from converter.wikidata.catalog_references import catalog_reference_code, catalog_reference_text
 from converter.wikidata.item_builder import manuscript_en_label
 from converter.wikidata.work_identity import reference_control_numbers
 
@@ -48,6 +51,7 @@ def build_gila_audit_report(
     """Compare local proposals with sources; never report a live correction."""
     from converter.wikidata.content_projection import _work_title_key  # noqa: PLC0415
 
+    sources = list(marc_records)
     materialized = list(items)
     manuscripts: dict[str, Mapping[str, object]] = {}
     works_by_cn: dict[str, list[Mapping[str, object]]] = {}
@@ -69,7 +73,8 @@ def build_gila_audit_report(
     rows: list[dict[str, object]] = []
     totals: Counter[str] = Counter()
     source_authors: dict[str, list[str]] = {}
-    for raw in marc_records:
+    colophons_by_qid: dict[str, str] = {}
+    for raw in sources:
         record = prepare_record_for_pipeline(dict(raw))
         cn = canonical_control_number(record.get("_control_number"))
         if not cn:
@@ -157,6 +162,9 @@ def build_gila_audit_report(
 
         colophon = _text(record.get("colophon_text"))
         if colophon and not is_catalog_note_placeholder(colophon):
+            qid = (qids_by_cn or {}).get(cn)
+            if qid:
+                colophons_by_qid[qid] = str(record.get("colophon_text") or "").strip()
             transcriptions = [
                 s for s in _claims(item, "P1684") if _qualified(s, "P3831", "Q372474")
             ]
@@ -165,17 +173,31 @@ def build_gila_audit_report(
         elif colophon:
             case(8, "identity_or_scope_uncertain", "957/590", "catalog_prose_requires_review")
         for reference in _rows(record.get("catalog_references")):
-            catalog = _text(reference.get("catalog"))
+            catalog = _text(catalog_reference_code(reference))
             if catalog and catalog not in {_text(s.get("value")) for s in _claims(item, "P528")}:
                 case(8, "present_not_transferred", "581/942", "catalog_reference_absent")
+            elif not catalog and catalog_reference_text(reference):
+                case(
+                    8,
+                    "identity_or_scope_uncertain",
+                    "581/942",
+                    "bibliographic_source_identity_unresolved",
+                )
 
-        rows.append({
-            "control_number": cn, "qid": (qids_by_cn or {}).get(cn),
-            "local_id": item.get("local_id"), "status": "local_proposal",
-            "record_status_notes": list(record.get("record_status_notes") or []),
-            "source_extent_text": source_extent,
-            "cases": cases,
-        })
+        rows.append(
+            {
+                "control_number": cn,
+                "qid": (qids_by_cn or {}).get(cn),
+                "local_id": item.get("local_id"),
+                "status": "local_proposal",
+                "record_status_notes": list(record.get("record_status_notes") or []),
+                "source_extent_text": source_extent,
+                "catalog_references": [
+                    dict(reference) for reference in _rows(record.get("catalog_references"))
+                ],
+                "cases": cases,
+            }
+        )
 
     repair_proposals: list[dict[str, object]] = []
     for qid, raw_entity in (live_entities or {}).items():
@@ -203,12 +225,35 @@ def build_gila_audit_report(
             if isinstance(claim["source_control_numbers"], list)
             for cn in claim["source_control_numbers"]
         })
-        repair_proposals.append({
-            "qid": qid, "revision": raw_entity.get("lastrevid"),
-            "action": "review_source_partition", "claims": claim_rows,
-            "source_authors": {cn: source_authors.get(cn, []) for cn in controls},
-            "requires_review": True,
-        })
+        repair_proposals.append(
+            {
+                "qid": qid,
+                "revision": raw_entity.get("lastrevid"),
+                "action": "review_source_partition",
+                "claims": claim_rows,
+                "source_authors": {cn: source_authors.get(cn, []) for cn in controls},
+                "entity_sha256": entity_digest(raw_entity),
+                "source_partition_claims": [
+                    {
+                        "property": pid,
+                        "claim_id": claim.get("id"),
+                        "before": dict(claim),
+                        "source_control_numbers": sorted(
+                            reference_control_numbers(claim.get("references"))
+                        ),
+                    }
+                    for pid, claim_list in claims.items()
+                    for claim in _rows(claim_list)
+                ],
+                "requires_review": True,
+                "requires_authorization": True,
+                "requires_fresh_read": True,
+                "executable": False,
+            }
+        )
+    fact_comparison = compare_gila_source_facts(
+        sources, materialized, qids_by_cn=qids_by_cn, live_entities=live_entities,
+    )
     return {
         "mode": "read_only_local_proposal", "live_verified": False,
         "model_decision": "separate_physical_manuscripts_and_written_works",
@@ -217,6 +262,11 @@ def build_gila_audit_report(
         "records": rows,
         "checked_qids": sorted({str(row["qid"]) for row in rows if row["qid"]}),
         "corrected_qids": [], "work_repair_proposals": repair_proposals,
+        "fact_comparison": fact_comparison,
+        "historical_repair_proposals": build_gila_repair_proposals(
+            live_entities or {}, colophons_by_qid=colophons_by_qid,
+        ),
+        "completion_status": "incomplete_requires_review_or_live_receipts",
         "remaining_checks": [
             "verify_dates_places_languages_and_physical_scope",
             "confirm_work_identities_and_authority_links",
