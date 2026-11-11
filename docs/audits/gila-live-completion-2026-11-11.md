@@ -3,7 +3,7 @@
 The UI fix is live in Heroku release v792 at `394e6705`.
 The first payload fix shipped in v790 at `e0e831eb`.
 The production frontend passed TypeScript and Vite 5.4.21.
-A fresh Chrome reload shows all 2,414 review items and an enabled preview button.
+The latest Chrome reload shows all 2,409 review items and an enabled preview button.
 The page shows no JSON parse error.
 The owner history summary has 118,911 bytes for 52 jobs.
 The previous complete response had 15,813,287 bytes.
@@ -75,8 +75,9 @@ The [page receipt](data/gila-ui-read-verification-2026-11-11.json) verifies both
 Each mode returned 2,409 unique items across 25 pages without a JSON decode error.
 The largest page had 251,321 bytes.
 The warm API probe returned 100 rows per page in 2.08, 1.64, and 1.58 seconds.
-The Mac is locked, so the final browser screenshot could not proceed.
-The earlier browser screenshot proves the deployed JSON fix.
+The Mac initially blocked the final screenshot because it was locked.
+After the Mac unlocked, a fresh Chrome check confirmed the current table and enabled controls.
+The screenshot is `state/gila-live-audit-2026-11-11/ui-v792-chrome-verified.png`.
 A complete public snapshot refresh stopped on HTTP 429.
 The audit retains its original snapshot time and the exact repair receipts.
 Retain foreign targets and unresolved work identities for explicit curator review.
