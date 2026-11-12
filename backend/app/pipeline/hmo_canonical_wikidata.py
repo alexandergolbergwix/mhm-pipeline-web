@@ -1851,6 +1851,30 @@ def build_canonical_studio_result(
         resolve_local_references,
     )
 
+    from app.pipeline.wikidata_person_identity_choice import apply_choice, validate_incoming_scope  # noqa: PLC0415
+
+    applied_choices = set()
+    for index, item in enumerate(native_items):
+        choice = (overrides or {}).get(item.local_id, {}).get("person_identity_choice")
+        if not choice:
+            continue
+        if (overrides or {}).get(item.local_id, {}).get("approved") is not True:
+            raise ValueError("The source person choice no longer has current item approval.")
+        source_entity = entities_by_local_id.get(item.local_id)
+        if source_entity is None or context is None:
+            raise ValueError("The person choice has no current canonical source.")
+        chosen = apply_choice(
+            wikidata_studio.native_item_payload(item), choice,
+            source=source_entity.to_dict(), records=context.marc_by_cn,
+        )
+        native_items[index] = wikidata_studio.native_item_from_payload(chosen)
+        applied_choices.add(item.local_id)
+    expected_choices = {key for key, override in (overrides or {}).items()
+                        if override.get("person_identity_choice") and key in entities_by_local_id}
+    if expected_choices != applied_choices:
+        raise ValueError("A reviewed person identity disappeared from the canonical projection.")
+    validate_incoming_scope([wikidata_studio.native_item_payload(item) for item in native_items])
+
     local_ref_stats = resolve_local_references(
         native_items, on_progress=meter.observer(),
     )

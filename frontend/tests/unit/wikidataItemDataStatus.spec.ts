@@ -57,6 +57,17 @@ describe("Wikidata Studio data status", () => {
     })).toBe("failed");
   });
 
+  it("keeps a reviewed source person reference only after a new build", () => {
+    const item = {
+      existing_qid: "Q100", upload_outcome: "update",
+      authority_evidence: [{source: "wikidata_source_identity_choice", accepted: true,
+        reference_only: true, identifier: "Q100"}],
+    };
+    expect(resolveWikidataItemDataStatus(item)).toBe("reference_only");
+    expect(resolveWikidataItemDataStatus({...item, rebuild_required: true})).toBe("will_update");
+    expect(resolveWikidataItemDataStatus({...item, existing_qid: "Q20"})).toBe("updated");
+  });
+
   it("counts each record once across successful and blocked states", () => {
     const counts = countWikidataUploadStates([
       {existing_qid: "Q42", upload_outcome: "adopt", upload_message: "Updated Q42: +1 claims"},

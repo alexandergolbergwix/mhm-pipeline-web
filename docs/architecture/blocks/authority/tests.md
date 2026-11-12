@@ -21,3 +21,5 @@
 - `frontend/e2e/hmo-wikibase-items.spec.ts` — bare `/runs/:runId` bookmark immediately lands on HMO Studio (no Authority interstitial)
 
 - `backend/scripts/run_hmo_production_e2e.py` — read-only production audit for enrichment false-positive guards, live HMO read-back, canonical RDF, canonical Wikidata Studio, and legacy/canonical shadow differences
+
+- `test_authority_evidence.py` and `test_hmo_exporter_resolution.py` cover the declared NLI predicate and reject manuscript control numbers as authority identifiers (W-319).

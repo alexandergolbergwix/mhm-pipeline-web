@@ -38,3 +38,6 @@ upload-gate collisions (Rule W-109) — it MUST NOT call the 410 guard.
     coords) MUST flow into RDF/HMO claims, but ambiguous matches stay withheld
     in evidence. *Why:* richest entities without smart matching recreate the
     mass-false-positive failure mode.
+
+
+The shared normalizer accepts `external_identifier_nli` as NLI evidence (W-319). The graph exporter retains that evidence. Manuscript control numbers and NLI-as-VIAF remain invalid.

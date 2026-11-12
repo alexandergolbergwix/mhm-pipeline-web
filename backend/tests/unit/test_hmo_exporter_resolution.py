@@ -341,3 +341,16 @@ def test_ontology_index_declares_certain() -> None:
     assert str(HM.Certain) in index
     assert index[str(HM.Certain)].labels.get("en") == "Certain"
     assert index[str(HM.Certain)].labels.get("he") == "וודאי"
+
+
+def test_declared_nli_identifier_reaches_exported_authority_evidence() -> None:
+    graph = Graph()
+    person = HM.PersonNliEvidence
+    graph.add((person, RDF.type, HM.Person))
+    graph.add((person, HM.external_identifier_nli, Literal("987007507328605171")))
+    drafts = HmoWikibaseExporter().from_graph(graph)
+    assert len(drafts) == 1
+    assert drafts[0].authority_evidence == [{
+        "source": "external_identifier_nli", "identifier": "987007507328605171",
+        "kind": "mazal", "accepted": True,
+    }]

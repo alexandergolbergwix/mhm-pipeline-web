@@ -1249,3 +1249,15 @@ next commit (run 47e03437: "Approved 250, skipped 0, failed 0
 with a short-lived session per chunk; batch jobs under the small pool
 must release the connection between chunks. Tests:
 `backend/tests/test_studio_item_bulk_approve.py`.
+
+## Rule W-319 — Bulk HMO writes use curator overrides and preserve metadata
+
+On 12 November 2026, the bulk uploader read the base cache and omitted curator overrides.
+A source identity review could therefore differ from the next live upload.
+The bulk uploader must apply the editorial override before its scope and fingerprint checks.
+It must preserve the base cache to prevent cumulative add/remove edits.
+Resolved claims must retain rank, qualifiers, and complete reference blocks through the writer and datatype fallback.
+Unsupported metadata fails before a write.
+Time values retain their calendar and uncertainty fields.
+NLI authority evidence uses the declared `external_identifier_nli` term in the shared normalizer and graph exporter.
+An NLI authority identifier must never become a VIAF identifier.

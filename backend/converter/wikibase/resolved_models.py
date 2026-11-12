@@ -9,6 +9,7 @@ upload time).
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,18 +40,35 @@ class ResolvedClaim:
     property_id: str
     datatype: str
     value: Any
+    rank: str = "normal"
+    qualifiers: list[dict[str, Any]] = field(default_factory=list)
+    reference_blocks: list[list[dict[str, Any]]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.rank not in {"normal", "preferred", "deprecated"}:
+            raise ValueError("Unsupported HMO claim metadata rank.")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "property_id": self.property_id,
             "datatype": self.datatype,
-            "value": self.value,
+            "value": deepcopy(self.value),
         }
+        if self.rank != "normal":
+            result["rank"] = self.rank
+        if self.qualifiers:
+            result["qualifiers"] = deepcopy(self.qualifiers)
+        if self.reference_blocks:
+            result["reference_blocks"] = deepcopy(self.reference_blocks)
+        return result
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "ResolvedClaim":
         return ResolvedClaim(
-            property_id=data["property_id"], datatype=data["datatype"], value=data["value"],
+            property_id=data["property_id"], datatype=data["datatype"],
+            value=deepcopy(data["value"]), rank=data.get("rank", "normal"),
+            qualifiers=deepcopy(data.get("qualifiers") or []),
+            reference_blocks=deepcopy(data.get("reference_blocks") or []),
         )
 
 

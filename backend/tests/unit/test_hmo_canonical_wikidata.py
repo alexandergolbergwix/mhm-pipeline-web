@@ -1600,3 +1600,35 @@ def test_full_canonical_chain_has_no_legacy_authority_dependency() -> None:
     assert candidates[0]["hmo_wikibase_id"] == "Q1252"
     assert {"property": "P31", "value": "Q515", "value_type": "wikibase-item"} in native_wikidata_claims(entity)
     assert "LAST\tP31\tQ515" in quickstatements_from_canonical([entity])
+
+
+def test_final_projection_applies_source_choice_without_reusing_the_pooled_person():
+    from copy import deepcopy
+    from app.pipeline.wikidata_person_identity_choice import make_choice
+
+    cn = "990001028160205171"
+    source = _person_entity(
+        labels={"he": "סעדיה בן שלמה"}, control_numbers=[cn],
+        authority_evidence=[{"kind": "wikidata", "identifier": "Q20", "accepted": True},
+                            {"kind": "mazal", "identifier": "987007507328605171", "accepted": True}],
+        claims=[{"wikidata_property": "P8189", "property_id": "P8189",
+                 "value": "987007507328605171", "datatype": "external-id"}],
+    )
+    context = canonical_studio_context(marc_records=[{"001": cn, "700$a": "סעדיה בן שלמה"}])
+    baseline = build_canonical_studio_result([source], context=context, reconcile=False)["items"][0]
+    before = deepcopy(source.to_dict())
+    choice = make_choice(
+        baseline, source.to_dict(), context.marc_by_cn,
+        {"qid": "Q100", "authority_id": "987007507328605171", "unique": True,
+         "revision": 21, "entity_sha256": "b" * 64},
+        control_numbers=[cn], expected_qid=baseline["existing_qid"],
+        expected_fingerprint=source.source_fingerprint, approved=True,
+    )
+    result = build_canonical_studio_result(
+        [source], context=context, reconcile=False,
+        overrides={source.local_id: {"person_identity_choice": choice, "approved": True}},
+    )["items"][0]
+    assert result["existing_qid"] == "Q100"
+    assert result["records"] == [cn]
+    assert {s["property_id"] for s in result["statements"]} == {"P31", "P8189"}
+    assert source.to_dict() == before

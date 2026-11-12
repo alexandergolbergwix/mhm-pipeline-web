@@ -526,10 +526,11 @@ async def _apply_revert_to_read_model(
         values = {}
         for field in (
             "labels", "descriptions", "aliases",
-            "add_statements", "remove_statements", "statement_edits",
+            "add_statements", "remove_statements", "statement_edits", "person_identity_choice",
         ):
             if field in target_state:
                 values[field] = target_state[field]
+        values["person_identity_choice"] = target_state.get("person_identity_choice")
         if values:
             await db.execute(
                 update(WikidataItemOverride)

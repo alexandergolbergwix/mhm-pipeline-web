@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-318)
+## Architectural rules (W-1…W-320)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -145,6 +145,8 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-316** — Upload counts use durable receipts and separate AI review; terminal live jobs refresh the table once — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-317** — Source audits require source-specific proof for P50 identities and retain uncertainty in notes and structured parts — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-318** — A new review load stops an obsolete cursor walk after its current page; stale loads cannot consume the remaining pages — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-319** — Bulk HMO writes apply curator overrides and preserve claim metadata — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md).
+- **W-320** — Person identity choices bind exact source records and remain reference only — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 
 - **W-273** — Research Assistant prompt gate: every user prompt passes the local scope router AND the TypeSafe Jev model check (jev-1.13.0) before any LLM call, enforced at both the Heroku dispatch and the Modal entries (dev-stub-only gating left production ungated); all retrieved text incl. MARC notes passes the quarantine; a provider 402 humanizes and retries once on the fallback model — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
 - **W-274** — Remote-agent run contract: every research-agent run emits exactly one terminal event with a machine code (`model_quota_exhausted`, `gate_refused`, `stream_ended`, `deadline_exceeded`), the SSE bridge only synthesizes a terminal when none arrived and never with a look-alike message; a run journal (research_agent_run_journal + `/research-agent/runs/{id}/debug`) records gate→dispatch→terminal; fact/count questions are answered deterministically from the DB (no LLM); the model layer is QUBRID-ONLY with a 402 circuit breaker (2026-10-17: a Modal ModuleNotFoundError surfaced as "stopped responding" and duplicated user rows) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)

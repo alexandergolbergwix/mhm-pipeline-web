@@ -319,3 +319,5 @@ Any new external-write path or reconcile change MUST extend
 See [source repair safeguards](source-repair-safeguards.md) for W-311–W-314, the focused tests, and the source-only build procedure.
 
 The [upload counts and source resolution](upload-counts-and-resolution.md) page lists the W-315–W-318 regression suites.
+
+- `backend/tests/unit/test_wikidata_person_identity_choice.py` covers exact source identity, public ambiguity, stale proofs, source scope, namespace separation, and ledger isolation.

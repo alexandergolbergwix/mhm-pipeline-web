@@ -52,8 +52,9 @@ It does not reverse a patronymic or approve the other pooled records.
 ## Versioned target choice
 
 The current ItemOverridePayload has no target field.
-An ordinary override cannot safely replace the six old global associations.
-A new run-local choice must bind the actor, current native target, source fingerprint, exact authority ID, and source scope.
+The dedicated identity-choice endpoint stores the exact source proof in `person_identity_choice`.
+The [choice contract](../architecture/blocks/wikidata-studio/person-identity-choice.md) describes its guards.
+A run-local choice must bind the actor, current native target, source fingerprint, exact authority ID, and source scope.
 It must also bind the public target revision and complete entity digest.
 A source or target change must invalidate the choice.
 The event must precede the read-model change.
@@ -149,3 +150,79 @@ This primary evidence supports a new source-curator identity choice through the 
 It does not establish an old approval or authorize a direct public-person write.
 The operator must upload and read back the HMO source before the canonical Wikidata rebuild.
 The bounded proposal is `state/gila-resolution-2026-11-12/vital-canonical-identity-proposal.json`.
+
+## Smallest source-preserving proposal
+
+This section proposes code behavior; it does not record a live correction.
+The proposal needs no new database column.
+The current HMO override stores the claim choice and the project event stores the curator action.
+The normal HMO upload and read-back must preserve that choice before the canonical rebuild.
+
+The ontology declares `hm:external_identifier_nli` and the live schema exposes P82 as a string.
+The ontology distinguishes manuscript control numbers from `hm:mazal_id` authority identifiers.
+The live schema exposes P276 as a string and P84 as a URL.
+A fresh property search finds P296, `Mazal / NLI authority ID`, with datatype `external-id`.
+P296 has no live ontology-source claim; the normal schema map must confirm its ontology URI before use.
+The ontology declares no `hm:control_number` property and no source qualifier contract for identity choices.
+The mapper's `control_number` alias does not declare a schema property.
+
+Declare a narrow contract for P276 before the source repair.
+Each active P276 claim must hold one public QID and one or more P82 source control qualifiers.
+Each qualifier must contain an exact 990 control number from the current run and the reviewed source packet.
+The current source must attest the exact person name within that scope.
+Saadia permits only CN990001028160205171 and CN990035802410205171.
+CN990001147460205171 remains outside that scope because its patronymic reverses the names.
+Each other person permits only the one source record in the proposal.
+
+The normalizer must bind the live HMO revision, claim identity, canonical fingerprint, public QID, and active public identifier agreement.
+It must reject multiple active target choices, missing source qualifiers, unknown source records, stale proof, and conflicting public identifiers.
+It must require the current item approval and preserve the exact scope in the native item.
+Current Wikidata item approval is true on all six rows; HMO item approval remains unset.
+An old item approval alone does not establish a fresh identity choice.
+The normalizer must derive the new proof from the current live claim, not the old cached authority-evidence array.
+The resulting proof permits reference-only use of the public target.
+It does not permit a foreign public-person update.
+
+The current ResolvedClaim class drops qualifiers, rank, and reference blocks.
+The live read-back already preserves these fields.
+The upload path must preserve the same fields and fail closed on unsupported snaks.
+The bulk HMO upload must apply the same current claim overrides as the single-item path.
+The bulk read-back must derive current authority evidence from the actual live identity claims.
+The existing identifier-slot repair alone cannot supply an explicit public QID choice.
+The existing P276 claim alone cannot safely extend a choice to every pooled source record.
+
+The six live HMO items hold twelve false VIAF claims.
+Each item has its 987 NLI authority identifier in P272 and a matching false VIAF URL in P290.
+The normal HMO merge retains claims absent from the new payload.
+An override that omits these values therefore does not remove them from the live item.
+The repair needs exact claim removal with the saved GUID, expected value, and current revision guards.
+It must preserve other values and manual claims on those properties.
+Use the confirmed authority property for each 987 value and P82 qualifiers only for the 990 source scopes.
+If the operator uses P84, its URL must agree with the selected P276 QID.
+The public URL mapper currently omits that Wikidata URL; preserve this behavior to prevent a public self-link.
+
+The canonical choice must take precedence over a stale global ledger association.
+The six source choices must not overwrite the old global keys.
+The existing public upload outcome path can rewrite a global ledger row even for a skipped person.
+Exclude these reference-only person rows from public upload scope.
+The current corpus has zero incoming local references to all six person rows.
+Do not add a manuscript role or force a public upload for these rows.
+
+## Normal scoped repair sequence
+
+1. Implement the claim fidelity, bulk override, live-proof, source-scope, and ledger precedence guards.
+2. Run the offline boundary fixtures before any HMO edit.
+3. Recheck the six HMO revisions, twelve false claim GUIDs, public identifiers, and source scopes.
+4. Save a versioned HMO override for each reviewed person and exact source scope.
+5. Remove only the twelve proved false VIAF claims through the guarded HMO operation.
+6. Upload the six HMO items through the normal scoped job and read back each live item.
+7. Rebuild the canonical Wikidata items from the fresh HMO snapshots.
+8. Verify the six target QIDs, exact source scopes, reference-only policy, and unchanged global keys.
+9. Verify that the rebuild adds no manuscript role or public self-link.
+
+The exact six-case fixture is `state/gila-resolution-2026-11-12/hmo-identity-boundary-red-fixture.json`.
+Its synthetic after-state is not a live claim or an approval.
+The first offline baseline has eighteen failed checks across read-back identity, identifier normalization, and stale ledger precedence.
+The separate qualifier fixture also fails on the current ResolvedClaim round trip.
+Its script is `state/gila-resolution-2026-11-12/reproduce-hmo-qualified-choice-loss.py`.
+These failures identify the required code boundaries before the source repair.

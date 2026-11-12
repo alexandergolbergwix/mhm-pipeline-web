@@ -40,6 +40,8 @@ from app.db import session_scope
 from app.models.hmo_canonical_entity import HmoCanonicalEntity
 from app.models.hmo_item_write_fingerprint import HmoItemWriteFingerprint
 from app.models.hmo_studio_item_cache import HmoStudioItemCache
+from app.models.hmo_studio_item_override import HmoStudioItemOverride
+from app.pipeline.hmo_item_merge import apply_hmo_item_override
 from app.models.run import AuthorityMatch
 from app.models.wikibase_cloud_write import (
     CHANNEL_ITEM_UPLOAD,
@@ -216,6 +218,23 @@ async def upload_items_for_run(
         seen_local_ids[candidate] = 1
         deduped_entities.append(dataclasses.replace(entity, local_id=candidate))
     all_entities = deduped_entities
+
+    override_rows = (await db.execute(select(
+        HmoStudioItemOverride.local_id,
+        HmoStudioItemOverride.labels,
+        HmoStudioItemOverride.descriptions,
+        HmoStudioItemOverride.aliases,
+        HmoStudioItemOverride.add_statements,
+        HmoStudioItemOverride.remove_statements,
+        HmoStudioItemOverride.statement_edits,
+    ).where(HmoStudioItemOverride.run_id == run_id))).mappings().all()
+    overrides_by_id = {row["local_id"]: dict(row) for row in override_rows}
+    all_entities = [
+        ResolvedWikibaseEntity.from_dict(apply_hmo_item_override(
+            entity.to_dict(), overrides_by_id[entity.local_id],
+        )) if entity.local_id in overrides_by_id else entity
+        for entity in all_entities
+    ]
 
     scope: set[str] | None = None
     if local_ids is not None:
@@ -1413,7 +1432,7 @@ def _string_compatible_claim(claim: ResolvedClaim) -> ResolvedClaim:
             value = str(int(amount)) if amount.is_integer() else str(amount)
     else:
         return claim
-    return ResolvedClaim(claim.property_id, "string", value)
+    return dataclasses.replace(claim, datatype="string", value=value)
 
 
 # Scalar claim datatypes `_string_compatible_claim` can serialize as strings.
@@ -1636,7 +1655,7 @@ def _sanitize_url_claim(claim: ResolvedClaim) -> ResolvedClaim | None:
         return None
     if cleaned == claim.value:
         return claim
-    return ResolvedClaim(claim.property_id, claim.datatype, cleaned)
+    return dataclasses.replace(claim, value=cleaned)
 
 
 def _is_string_datatype_failure(message: str) -> bool:
@@ -1657,6 +1676,12 @@ def _is_string_datatype_failure(message: str) -> bool:
 
 
 def _build_wbi_claim(claim: ResolvedClaim) -> Any:
+    from app.pipeline.hmo_claim_metadata import apply_claim_metadata  # noqa: PLC0415
+
+    return apply_claim_metadata(claim, _build_wbi_value(claim), _build_wbi_value)
+
+
+def _build_wbi_value(claim: ResolvedClaim) -> Any:
     """Convert a JSON-safe :class:`ResolvedClaim` into a live
     ``wikibaseintegrator.datatypes`` claim object."""
     from wikibaseintegrator import datatypes  # noqa: PLC0415
@@ -1685,6 +1710,7 @@ def _build_wbi_claim(claim: ResolvedClaim) -> Any:
         v = claim.value
         return datatypes.Time(
             prop_nr=claim.property_id, time=v["time"], precision=v.get("precision", 9),
+            **{key: v[key] for key in ("before", "after", "timezone", "calendarmodel") if key in v},
         )
     if claim.datatype == "quantity":
         return datatypes.Quantity(prop_nr=claim.property_id, amount=claim.value["amount"])
@@ -1724,6 +1750,10 @@ def _payload_fingerprint(
             prepared.datatype,
             str(known_qids.get(str(value), value)),
         ])
+        metadata = {key: value for key, value in prepared.to_dict().items()
+                    if key in {"rank", "qualifiers", "reference_blocks"}}
+        if metadata:
+            payload[-1].append(json.dumps(metadata, sort_keys=True, ensure_ascii=False))
     blob = json.dumps(
         {
             "labels": dict(sorted(labels.items())),

@@ -265,6 +265,7 @@ def _authority_evidence_for_node(graph: Graph, subject: URIRef | BNode) -> list[
         HM.wikidata_id,
         HM.viaf_id,
         HM.external_uri_nli,
+        HM.external_identifier_nli,
         HM.authority_id,
         HM.mazal_id,
         HM.kima_id,

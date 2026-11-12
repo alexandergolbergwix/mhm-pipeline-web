@@ -76,3 +76,17 @@ def test_evidence_row_ids_reads_hmo_and_legacy_shapes() -> None:
         "wikidata": "Q1218",
     }
     assert evidence_row_ids({"kind": "viaf", "viaf_id": "123456789"}) == {"viaf": "123456789"}
+
+
+def test_declared_nli_identifier_retains_its_authority_namespace() -> None:
+    evidence = evidence_from_values([
+        ("external_identifier_nli", "987007507328605171"),
+    ])
+    assert [(row.kind, row.identifier, row.accepted) for row in evidence] == [
+        ("mazal", "987007507328605171", True),
+    ]
+    assert normalize_viaf_id("987007507328605171") is None
+
+
+def test_declared_nli_identifier_does_not_accept_a_manuscript_control_number() -> None:
+    assert evidence_from_values([("external_identifier_nli", "990001028160205171")]) == []

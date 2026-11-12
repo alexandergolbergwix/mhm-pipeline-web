@@ -1298,3 +1298,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 - **R169 — Stop obsolete cursor walks (W-318).** Check freshness before and
   after each page. Retain complete pages for the current load.
   *Why:* Old full-table reloads consumed connections after a newer load superseded them.
+
+170. **R170 — Source person choices remain scoped and reference only (W-320).** Require the exact canonical fingerprint, source identity hashes, and unique public identifier proof. Skip public person writes and global ledger changes. See [the choice contract](person-identity-choice.md).

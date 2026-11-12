@@ -58,3 +58,10 @@ It checks AI filter counts, approval counts, and the item IDs in verification re
 `wikidataItemDataStatus.spec.ts` checks receipt states and count totals. `wikidataReviewRefresh.spec.ts` checks terminal jobs and scope exclusions. `wikidata-studio.spec.ts` checks readable upload filters and header counts (W-316).
 
 `wikidataStudioPagination.spec.ts` checks that obsolete cursor walks stop and the current load retains all pages (W-318).
+
+The upload-count E2E case uses reduced motion. The case tests table state and avoids an unrelated GPU canvas on a small test dyno.
+
+The Wikidata fixture serves `/items/page` with cursor pages and server totals. The item-detail route must not catch that page endpoint.
+
+
+The count unit test covers a current source-scoped person choice as reference only. A stale build remains unconfirmed. The cursor fixture serves `/items/page` with a proper cursor response.

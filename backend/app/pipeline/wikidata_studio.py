@@ -102,6 +102,8 @@ def _fingerprint_override(override: Any) -> tuple[str, str, bool | None, str]:
             "remove_statements": override.remove_statements,
             "statement_edits": override.statement_edits,
             "accepted_foreign_qid": override.accepted_foreign_qid,
+            **({"person_identity_choice": override.person_identity_choice}
+               if getattr(override, "person_identity_choice", None) else {}),
         }),
     )
 

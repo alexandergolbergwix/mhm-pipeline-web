@@ -163,7 +163,7 @@ def evidence_from_values(
         if authority_id and "mazal" in source_key:
             candidates.append(AuthorityEvidence(source, authority_id, "mazal", True))
             continue
-        if authority_id and source_key in {"external_uri_nli", "authority_id"}:
+        if authority_id and source_key in {"external_uri_nli", "external_identifier_nli", "authority_id"}:
             # GraphBuilder historically stores Mazal references in these
             # generic fields.  The 987... namespace is the only safe
             # discriminator; arbitrary NLI/control numbers must abstain.

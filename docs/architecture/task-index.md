@@ -74,3 +74,6 @@
 | Repair source colophons, credited authors, or approved foreign manuscript ranks | [Source repair safeguards](blocks/wikidata-studio/source-repair-safeguards.md) + W-311–W-314 |
 
 | Correct upload counts or a lost second-pass relation | [Upload counts and source resolution](blocks/wikidata-studio/upload-counts-and-resolution.md) + W-315–W-317 |
+
+
+| Correct a pooled person target without a global key change | [Person identity choices](blocks/wikidata-studio/person-identity-choice.md) — W-320; exact source scope, reference-only use, normal versioned endpoint |

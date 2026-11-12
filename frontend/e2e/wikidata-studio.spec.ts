@@ -38,6 +38,7 @@ async function gotoStudio(page: import("@playwright/test").Page, mode: "modern" 
 
 test.describe("WikidataStudio page", () => {
   test("upload counts distinguish successful adoption, source review, and reference use", async ({page}) => {
+    await page.emulateMedia({reducedMotion: "reduce"});
     const build = makeBuildResponse({items: [
       makeStudioItem({
         local_id: "adopted", labels: {en: "Uploaded witness"}, existing_qid: "Q42", upload_outcome: "adopt",

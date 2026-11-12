@@ -48,3 +48,5 @@
 13. **R13 — Preserve explicit extraction rejection (W-305).** Section import,
     section/project export, and history retain `rejected` beside `approved`.
     Reject contradictory states. *Why:* an event and its durable row must express the same decision.
+
+14. **R14 — Person identity choices require a validated endpoint (W-320).** Store the full proof in the event and row together. Export it. Revert it explicitly, including a clear for pre-choice revisions. The next build must validate the proof against current source evidence.

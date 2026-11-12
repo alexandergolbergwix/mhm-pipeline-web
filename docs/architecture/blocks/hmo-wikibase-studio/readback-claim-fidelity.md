@@ -40,3 +40,23 @@ It raises an error and produces no partial claim.
 ## Tests
 
 - `backend/tests/unit/test_hmo_canonical_readback.py`
+
+## Write fidelity and curator overrides (W-319)
+
+`ResolvedClaim` retains optional rank, qualifiers, and separate reference blocks.
+`hmo_claim_metadata.py` validates metadata before the WBI writer receives it.
+The writer supports the same four metadata datatypes as the read-back.
+Time metadata retains uncertainty, timezone, precision, and calendar model.
+Scalar and URL datatype fallback retain all claim metadata.
+Nonempty metadata changes the payload fingerprint.
+Ordinary claims retain their previous fingerprint shape.
+
+The bulk uploader applies curator overrides before the upload scope and payload fingerprint.
+It selects the seven editorial columns without large AI verdict bodies.
+It leaves the base cache unchanged, so a later upload cannot apply an edit twice.
+The authority normalizer and graph exporter accept `external_identifier_nli` as NLI evidence.
+They reject manuscript control numbers as authority identifiers.
+They never treat an NLI authority identifier as VIAF.
+
+Tests: `test_hmo_claim_metadata.py`, `test_hmo_item_upload.py`,
+`test_authority_evidence.py`, and `test_hmo_exporter_resolution.py`.

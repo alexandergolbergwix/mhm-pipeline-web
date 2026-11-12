@@ -360,6 +360,7 @@ def _content_override_newer_than_build(row: WikidataItemOverride, built_at: date
     has_content = bool(
         row.labels or row.descriptions or row.aliases
         or row.add_statements or row.remove_statements or row.statement_edits
+        or getattr(row, "person_identity_choice", None)
     )
     return has_content and row.updated_at > built_at
 
@@ -412,6 +413,7 @@ def _merge_one_wikidata_item(
             ov_row.ai_verdict_at.isoformat()
             if ov_row and ov_row.ai_verdict_at else None
         ),
+        "person_identity_choice": getattr(ov_row, "person_identity_choice", None),
         "override_present": ov_row is not None,
         "override_id": str(ov_row.id) if ov_row else None,
         "rebuild_required": rebuild_required,

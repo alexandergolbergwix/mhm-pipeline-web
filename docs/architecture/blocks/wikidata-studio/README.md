@@ -87,3 +87,5 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Automatic resolution](automatic-resolution.md) — source checks, reuse, subset, and honest deferral.
 
 - [Foreign-block resolution](foreign-block-resolution.md) — identity evidence, reconcile-method stamping, the blocked-item sweep, and the accept drawer (W-270/W-302).
+
+- [Person identity choices](person-identity-choice.md) — exact source proof and reference-only targets (W-320).

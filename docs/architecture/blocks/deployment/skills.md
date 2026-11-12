@@ -89,3 +89,6 @@ Use `heroku releases --json` for release metadata.
 Select only the release version, status, description, and creation time before storage or display.
 
 The [complete connection payload](../wikidata-studio/upload-counts-and-resolution.md) also requires the committed backend on both Heroku and Modal (W-315).
+
+
+Migration `0054_person_identity_choice` must precede the source-choice endpoint. Deploy the committed Heroku and Modal code before a canonical rebuild with a person choice (W-320).

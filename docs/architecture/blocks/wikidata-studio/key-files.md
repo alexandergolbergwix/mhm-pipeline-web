@@ -127,3 +127,5 @@
 | `backend/app/migrations/versions/0051_plan_reconcile_method.py` | `publication_plan_actions.reconcile_method` — how the target was found (W-270) |
 
 | `backend/app/pipeline/wikidata_colophon_cleanup.py` | Source-exact colophon cleanup after overrides; complete reference blocks and unique scope (W-312) |
+
+- `backend/app/pipeline/wikidata_person_identity_choice.py` validates source-scoped public person proofs. Migration `0054_person_identity_choice` stores each reviewed proof.

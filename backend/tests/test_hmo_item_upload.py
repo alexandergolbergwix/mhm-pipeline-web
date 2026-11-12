@@ -1317,3 +1317,41 @@ def _no_live_property_probe(monkeypatch):
     monkeypatch.setattr(
         "app.pipeline.hmo_item_upload._fetch_live_property_datatypes", _noop,
     )
+
+
+@pytest.mark.asyncio
+async def test_bulk_upload_applies_curator_claim_edits_without_mutating_the_base_cache(
+    db_session,
+) -> None:
+    from app.models.hmo_studio_item_override import HmoStudioItemOverride
+
+    run_id = uuid.uuid4()
+    entity = ResolvedWikibaseEntity(
+        local_id="person-nli", labels={"en": "Source person"}, descriptions={},
+        source_uri="https://example.org/person-nli", class_qid="Q2",
+        claims=[ResolvedClaim("P272", "string", "987007507328605171")],
+    )
+    await _seed_cache(db_session, run_id, [entity])
+    db_session.add(HmoStudioItemOverride(
+        run_id=run_id, local_id=entity.local_id, labels={"en": "Reviewed person"},
+        remove_statements=[0], add_statements=[{
+            "property_id": "P82", "datatype": "string", "value": "987007507328605171",
+        }],
+    ))
+    await db_session.commit()
+    writer = _FakeWriter()
+    result = await pipeline.upload_items_for_run(
+        db_session, run_id, writer=writer, dry_run=False,
+    )
+    assert result.failed == 0
+    sent = writer.create_calls[0]
+    assert sent["labels"] == {"en": "Reviewed person"}
+    claims = {c.get_json()["mainsnak"]["property"]: c.get_json()["mainsnak"]
+              for c in sent["claims"]}
+    assert claims["P82"]["datavalue"]["value"] == "987007507328605171"
+    assert "P272" not in claims
+    cached = (await db_session.execute(select(HmoStudioItemCache).where(
+        HmoStudioItemCache.run_id == run_id,
+    ))).scalar_one()
+    assert cached.resolved_entities[0]["claims"] == entity.to_dict()["claims"]
+    assert cached.resolved_entities[0]["labels"] == entity.labels

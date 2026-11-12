@@ -1327,6 +1327,8 @@ async def _execute_studio_build(
                 "add_statements":    r.add_statements,
                 "remove_statements": r.remove_statements,
                 "statement_edits":   r.statement_edits,
+                "person_identity_choice": getattr(r, "person_identity_choice", None),
+                "approved": r.approved,
             }
             for r in override_rows
         }
@@ -1448,6 +1450,8 @@ async def _execute_studio_build(
             "add_statements":    r.add_statements,
             "remove_statements": r.remove_statements,
             "statement_edits":   r.statement_edits,
+            "person_identity_choice": getattr(r, "person_identity_choice", None),
+                "approved": r.approved,
         }
         for r in override_rows
     }
@@ -2016,6 +2020,8 @@ async def rebuild_selected_wikidata_items(
             "add_statements": r.add_statements,
             "remove_statements": r.remove_statements,
             "statement_edits": r.statement_edits,
+            "person_identity_choice": getattr(r, "person_identity_choice", None),
+                "approved": r.approved,
         }
         for r in override_rows
     }
@@ -2843,6 +2849,7 @@ class ItemOverrideResponse(BaseModel):
     add_statements: list[dict[str, Any]]
     remove_statements: list[int]
     statement_edits: dict[str, Any]
+    person_identity_choice: dict[str, Any] | None = None
     approved: bool | None = None
     accept_foreign_modify: bool | None = None
     accepted_foreign_qid: str | None = None
@@ -2983,6 +2990,7 @@ async def patch_item_override(
             "approved":          row.approved,
             "accept_foreign_modify": row.accept_foreign_modify,
             "accepted_foreign_qid": row.accepted_foreign_qid,
+            "person_identity_choice": row.person_identity_choice,
         }
         await apply_event(
             db,
@@ -3007,9 +3015,78 @@ async def patch_item_override(
         remove_statements=row.remove_statements or [],
         statement_edits=row.statement_edits or {},
         approved=row.approved,
+        person_identity_choice=row.person_identity_choice,
         accept_foreign_modify=row.accept_foreign_modify,
         accepted_foreign_qid=row.accepted_foreign_qid,
     )
+
+
+class PersonIdentityChoicePayload(BaseModel):
+    expected_source_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_current_qid: str | None = Field(default=None, pattern=r"^Q[1-9][0-9]*$")
+    target_qid: str = Field(pattern=r"^Q[1-9][0-9]*$")
+    control_numbers: list[str] = Field(min_length=1, max_length=100)
+
+
+@router.post("/{run_id}/wikidata-studio/items/{local_id:path}/identity-choice")
+async def choose_person_identity(
+    run_id: uuid.UUID, local_id: str, payload: PersonIdentityChoicePayload,
+    auth: AuthContext = Depends(current_auth), db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Save a reviewed reference-only identity without a global ledger change."""
+    from app.pipeline.marc_verify_context import load_run_marc_records_scoped  # noqa: PLC0415
+    from app.pipeline.wikidata_person_identity_choice import (  # noqa: PLC0415
+        PublicPersonTarget, authority_id, load_public_proofs, make_choice,
+    )
+
+    run = await _lookup_run_with_access(db, run_id, auth, write=True)
+    item = await _studio_item_from_cache(db, run_id, local_id, approved_only=True, source="canonical")
+    canonical = (await db.execute(select(HmoCanonicalEntity).where(
+        HmoCanonicalEntity.run_id == run_id, HmoCanonicalEntity.local_id == local_id,
+    ))).scalar_one_or_none()
+    row = (await db.execute(select(WikidataItemOverride).where(
+        WikidataItemOverride.run_id == run_id, WikidataItemOverride.local_id == local_id,
+    ).with_for_update())).scalar_one_or_none()
+    if item is None or canonical is None or row is None or row.approved is not True:
+        raise HTTPException(status_code=409, detail="The current canonical person needs item approval.")
+    if row.person_identity_choice:
+        raise HTTPException(status_code=409, detail="This person already has a source identity choice. Rebuild and review it first.")
+    try:
+        source = normalize_live_entity(canonical.snapshot).to_dict()
+        records = canonical_studio_context(marc_records=await load_run_marc_records_scoped(
+            db, run_id, set(payload.control_numbers),
+        )).marc_by_cn
+        public = await load_public_proofs([PublicPersonTarget(payload.target_qid, authority_id(item))])
+        choice = make_choice(
+            item, source, records, public[payload.target_qid],
+            control_numbers=payload.control_numbers, expected_qid=payload.expected_current_qid,
+            expected_fingerprint=payload.expected_source_fingerprint, approved=row.approved,
+        )
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    # Re-read the canonical row after the network proof. Fail if a source upload changed it.
+    current = (await db.execute(select(HmoCanonicalEntity.snapshot).where(
+        HmoCanonicalEntity.run_id == run_id, HmoCanonicalEntity.local_id == local_id,
+    ).with_for_update())).scalar_one()
+    if normalize_live_entity(current).source_fingerprint != choice["source_fingerprint"]:
+        raise HTTPException(status_code=409, detail="The canonical person changed during the public proof.")
+    state = {key: value for key, value in override_row_to_dict(row).items()
+             if key not in {"ai_verdict", "ai_verdict_at"}}
+    state["person_identity_choice"] = choice
+    has_history = (await db.execute(select(ProjectEvent.id).where(
+        ProjectEvent.entity_type == ENTITY_TYPE_WIKIDATA_OVERRIDE,
+        ProjectEvent.entity_id == str(row.id),
+    ).limit(1))).scalar_one_or_none() is not None
+    await apply_event(
+        db, project_id=run.project_id, entity_type=ENTITY_TYPE_WIKIDATA_OVERRIDE,
+        entity_id=str(row.id), op=OP_PATCH if has_history else OP_CREATE,
+        new_state=state, actor_id=auth.user.id,
+        message=f"choose source-scoped person identity ({local_id})",
+    )
+    row.person_identity_choice = choice
+    row.updated_by = auth.user.id
+    await db.commit()
+    return {"local_id": local_id, "person_identity_choice": choice, "rebuild_required": True}
 
 
 async def _studio_item_from_cache(

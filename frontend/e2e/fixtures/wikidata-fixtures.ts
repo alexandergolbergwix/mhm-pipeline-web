@@ -269,9 +269,30 @@ export async function installStudioMocks(
   });
 
   // Item override + push/reconcile/ai-fix routes
-  await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, (route) => {
+  await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, async (route) => {
     const url = route.request().url();
     const method = route.request().method();
+    const parsed = new URL(url);
+    if (method === "GET" && parsed.pathname.endsWith("/items/page")) {
+      const limit = Math.min(500, Math.max(1, Number(parsed.searchParams.get("limit")) || 25));
+      const cursor = parsed.searchParams.get("cursor") ?? "";
+      const offset = cursor.startsWith("mockcursor:") ? Number(cursor.slice(11)) || 0 : 0;
+      const items = build.items.slice(offset, offset + limit);
+      const next = offset + items.length;
+      const byType: Record<string, number> = {};
+      for (const item of build.items) byType[item.entity_type] = (byType[item.entity_type] ?? 0) + 1;
+      await route.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify({
+          run_id: TEST_RUN_ID, limit, total: build.items.length,
+          approved_count: build.approved_item_count, by_type: byType,
+          has_more: next < build.items.length,
+          next_cursor: next < build.items.length ? `mockcursor:${next}` : null,
+          items,
+        }),
+      });
+      return;
+    }
     const localId = decodeURIComponent(url.split("/items/")[1]?.split("?")[0]?.split("/")[0] ?? "");
 
     if (method === "GET" && localId && !url.includes("/export") && !url.includes("/validation-errors")) {

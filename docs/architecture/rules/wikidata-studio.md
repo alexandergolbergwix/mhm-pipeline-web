@@ -3729,3 +3729,22 @@ On 12 November 2026, an external Redis update restarted the Heroku web dyno.
 Concurrent old cursor walks continued through the remaining pages during recovery.
 The request queue exhausted the small connection pool and caused H12 timeouts.
 A late-response guard alone did not stop that obsolete work.
+
+## Rule W-320 — A person choice binds exact source identity and stays reference only
+
+The 12 November 2026 audit found six native persons with incorrect public targets.
+One pooled row contained 287 source records but only two exact source attestations.
+A replacement global QID would assign that person to unrelated records.
+
+Use the dedicated identity-choice endpoint and nullable `person_identity_choice` proof.
+Require current item approval, an exact source fingerprint, expected previous target,
+source name attestations, one NLI authority identifier, and a unique public human target.
+Store the public revision and digest beside hashes of the source identity fields.
+Record the event before the row change in the same transaction.
+The final canonical projection must check that proof and narrow the source scope.
+A missing chosen item, changed source, or out-of-scope local relation blocks the build.
+The uploader must skip the public person write and the global ledger change.
+Test mode must never target the chosen public QID.
+The UI must count a valid current choice as reference only.
+An earlier unknown write outcome still requires independent recovery.
+See [person identity choices](../blocks/wikidata-studio/person-identity-choice.md).

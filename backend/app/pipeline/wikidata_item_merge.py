@@ -81,6 +81,7 @@ def override_row_to_dict(row: Any) -> dict[str, Any]:
         "add_statements": list(row.add_statements or []),
         "remove_statements": list(row.remove_statements or []),
         "statement_edits": dict(row.statement_edits or {}),
+        "person_identity_choice": deepcopy(getattr(row, "person_identity_choice", None)),
         "approved": row.approved,
         "accept_foreign_modify": bool(row.accept_foreign_modify)
         if row.accept_foreign_modify is not None else False,

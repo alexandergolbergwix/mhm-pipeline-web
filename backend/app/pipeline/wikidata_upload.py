@@ -1090,6 +1090,10 @@ def _prepare_for_upload(
             local_id = _local_id(item, index)
             entity_type = getattr(item, "entity_type", "") or "other"
             existing_qid = getattr(item, "existing_qid", None)
+            from app.pipeline.wikidata_person_identity_choice import reference_choice  # noqa: PLC0415
+
+            if is_test and reference_choice(item):
+                existing_qid = None
             if index in skipped_person_indexes:
                 rows.append(PreparedItem(
                     item=item,
@@ -1132,6 +1136,18 @@ def _prepare_for_upload(
         existing = getattr(item, "existing_qid", None)
         method = "prebuilt" if existing else "none"
         adopt_candidate = False
+
+        from app.pipeline.wikidata_person_identity_choice import reference_choice  # noqa: PLC0415
+
+        if reference_choice(item):
+            prepared.append(PreparedItem(
+                item=item, local_id=local_id, label=label, entity_type=et,
+                existing_qid=None if is_test else existing, method="source_identity_choice",
+                blocked=False, block_status="skipped",
+                block_message="Source-scoped person identity is reference only; no person write.",
+                had_builder_qid=had_builder_qid,
+            ))
+            continue
 
         if quality_preflight is not None:
             decision = quality_preflight.decisions.get(local_id)
@@ -1408,7 +1424,9 @@ async def reconcile_single_item(
         _reconcile_sync_with_ledger, [item], ledger,
     )
     outcome = outcomes[0]
-    if record_ledger and outcome.existing_qid:
+    from app.pipeline.wikidata_person_identity_choice import reference_choice  # noqa: PLC0415
+
+    if record_ledger and outcome.existing_qid and not reference_choice(item):
         key = ledger_key_for_item(item)
         await record_ledger_mapping(
             db, key, outcome.existing_qid,
@@ -1430,6 +1448,15 @@ def _reconcile_sync_with_ledger(
         local_id = _local_id(item, i)
         label = _label(item)
         et = getattr(item, "entity_type", "") or "other"
+        from app.pipeline.wikidata_person_identity_choice import reference_choice  # noqa: PLC0415
+
+        if reference_choice(item):
+            out.append(ReconcileOutcome(
+                local_id=local_id, label=label, entity_type=et,
+                existing_qid=None if ns == "wikidata-test" else item.existing_qid, method="source_identity_choice",
+                message="The source-scoped person identity is reference only.",
+            ))
+            continue
         key = ledger_key_for_item(item, ns)
         ledger_qid = lookup_ledger_qid(ledger, key)
         if ledger_qid:
@@ -1544,7 +1571,9 @@ async def persist_upload_outcomes(
             and outcome.status in ("created", "adopted", "updated", "exists", "skipped")
         ):
             item = items_by_id.get(outcome.local_id)
-            if item is not None:
+            from app.pipeline.wikidata_person_identity_choice import reference_choice  # noqa: PLC0415
+
+            if item is not None and not reference_choice(item):
                 await record_ledger_mapping(
                     db,
                     ledger_key_for_item(item, ns),

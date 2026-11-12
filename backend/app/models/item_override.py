@@ -69,6 +69,8 @@ class WikidataItemOverride(Base):
         String(32), nullable=True, default=None,
     )
 
+    person_identity_choice: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
     ai_verdict: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     ai_verdict_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,

@@ -488,3 +488,5 @@ approved Q220 link — the curated identity read as an unconfirmed duplicate.
 path preserves built labels apart from whitespace; the drift check compares
 NFC-normalized forms with trailing whitespace removed. Downstream label
 cleaning must not remove built punctuation.
+
+73. **R73 — Bulk upload applies curator overrides before the fingerprint (W-319).** Preserve the base cache and all supported claim metadata. *Why:* the bulk writer previously omitted curator edits. See [claim fidelity](readback-claim-fidelity.md).

@@ -35,6 +35,10 @@ export function resolveWikidataItemDataStatus(item: StudioItem): WikidataItemDat
   if (outcome === "failed") {
     return /(?:write|CREATE) outcome unknown/i.test(message) ? "outcome_unknown" : "failed";
   }
+  if (!item.rebuild_required && item.authority_evidence?.some((entry) =>
+    entry.source === "wikidata_source_identity_choice" && entry.accepted === true &&
+    entry.reference_only === true && entry.identifier === item.existing_qid
+  )) return "reference_only";
   if (outcome === "blocked" || outcome === "would_block") return "needs_review";
   if ((outcome === "skip" || outcome === "skipped") && item.publishable !== false) {
     if (item.existing_qid || message.includes("Manuscripts may P1574 that QID")) {
