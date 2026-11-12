@@ -3686,7 +3686,7 @@ An `adopt` receipt proves an update only when its message confirms an update.
 An unchanged receipt can confirm a completed upload check.
 A reconcile-only adoption does not prove a successful upload.
 A blocked row needs source review, even when it has no QID.
-Reference-only rows and failed uploads have separate states.
+Reference-only rows, failed uploads, and unknown remote outcomes have separate states.
 Every row contributes to exactly one upload count.
 
 The table refreshes after a new terminal live upload or AI verify job.
@@ -3714,3 +3714,18 @@ Public work source scope comes from complete source references and explicit cont
 The 12 November 2026 audit found false flags from quote transport and provisional statuses.
 It also found catalogue notes among alleged missing standalone work links.
 The regression cases retain contrary authors, uncertain names, and ambiguous scopes as review cases.
+
+
+## Rule W-318 — A new review load stops an obsolete cursor walk
+
+`fetchAllStudioItems` must check `isCurrent` before and after each page request.
+A false result stops that cursor walk with `AbortError`.
+The current HTTP request can finish; the old load must request no later page.
+The component must reject old values, progress, and errors through the same request sequence.
+A run change, source change, or unmount invalidates the old sequence.
+The current load still reads every page and preserves the source parameters.
+
+On 12 November 2026, an external Redis update restarted the Heroku web dyno.
+Concurrent old cursor walks continued through the remaining pages during recovery.
+The request queue exhausted the small connection pool and caused H12 timeouts.
+A late-response guard alone did not stop that obsolete work.

@@ -2,7 +2,7 @@ import type {StudioItem} from "@/api/wikidataStudio";
 
 export type WikidataItemDataStatus =
   | "new" | "will_update" | "updated" | "local_only"
-  | "needs_review" | "reference_only" | "failed";
+  | "needs_review" | "reference_only" | "failed" | "outcome_unknown";
 
 export const WIKIDATA_DATA_STATUS_LABEL: Record<WikidataItemDataStatus, string> = {
   new: "not uploaded",
@@ -12,16 +12,17 @@ export const WIKIDATA_DATA_STATUS_LABEL: Record<WikidataItemDataStatus, string> 
   needs_review: "needs source review",
   reference_only: "reference only",
   failed: "upload failed",
+  outcome_unknown: "upload outcome unknown",
 };
 
 export const WIKIDATA_DATA_STATUS_ORDER: WikidataItemDataStatus[] = [
-  "updated", "reference_only", "needs_review", "failed", "will_update", "new", "local_only",
+  "updated", "reference_only", "needs_review", "outcome_unknown", "failed", "will_update", "new", "local_only",
 ];
 
 export function countWikidataUploadStates(items: StudioItem[]): Record<WikidataItemDataStatus, number> {
   const counts: Record<WikidataItemDataStatus, number> = {
     new: 0, will_update: 0, updated: 0, local_only: 0,
-    needs_review: 0, reference_only: 0, failed: 0,
+    needs_review: 0, reference_only: 0, failed: 0, outcome_unknown: 0,
   };
   for (const item of items) counts[resolveWikidataItemDataStatus(item)] += 1;
   return counts;
@@ -31,7 +32,9 @@ export function countWikidataUploadStates(items: StudioItem[]): Record<WikidataI
 export function resolveWikidataItemDataStatus(item: StudioItem): WikidataItemDataStatus {
   const outcome = item.upload_outcome ?? "";
   const message = item.upload_message ?? "";
-  if (outcome === "failed") return "failed";
+  if (outcome === "failed") {
+    return /(?:write|CREATE) outcome unknown/i.test(message) ? "outcome_unknown" : "failed";
+  }
   if (outcome === "blocked" || outcome === "would_block") return "needs_review";
   if ((outcome === "skip" || outcome === "skipped") && item.publishable !== false) {
     if (item.existing_qid || message.includes("Manuscripts may P1574 that QID")) {

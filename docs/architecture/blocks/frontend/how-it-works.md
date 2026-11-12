@@ -131,3 +131,5 @@ first (strict mode, `noUnusedLocals`/`noUnusedParameters`). Package
 manager is yarn, never npm.
 
 **Wikidata counts.** The review header separates upload receipts from AI review. The header and filter share one state resolver. A new terminal live job causes one silent reload. A request sequence prevents an old response from replacing a newer table. See [upload counts](../wikidata-studio/upload-counts-and-resolution.md).
+
+The review load also passes its request sequence to `fetchAllStudioItems`. The helper stops an obsolete cursor walk after its current page (W-318).

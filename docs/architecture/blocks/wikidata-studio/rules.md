@@ -1294,3 +1294,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 - **R168 — Bind P50 audit proof to the exact source (W-317).** Use one approved
   identity per control number and heading; preserve uncertain parts and names.
   *Why:* A name match alone cannot establish a public author identity.
+
+- **R169 — Stop obsolete cursor walks (W-318).** Check freshness before and
+  after each page. Retain complete pages for the current load.
+  *Why:* Old full-table reloads consumed connections after a newer load superseded them.

@@ -44,6 +44,13 @@ describe("Wikidata Studio data status", () => {
     })).toBe("will_update");
   });
 
+  it("does not call an unknown remote outcome a confirmed failure", () => {
+    expect(resolveWikidataItemDataStatus({
+      existing_qid: "Q42", upload_outcome: "failed",
+      upload_message: "Wikidata write outcome unknown; the request may have succeeded.",
+    })).toBe("outcome_unknown");
+  });
+
   it("exposes a failed upload", () => {
     expect(resolveWikidataItemDataStatus({
       existing_qid: "Q42", upload_outcome: "failed",

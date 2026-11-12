@@ -56,3 +56,5 @@ It checks AI filter counts, approval counts, and the item IDs in verification re
   budget, and one POST attempt after an incomplete response (W-306).
 
 `wikidataItemDataStatus.spec.ts` checks receipt states and count totals. `wikidataReviewRefresh.spec.ts` checks terminal jobs and scope exclusions. `wikidata-studio.spec.ts` checks readable upload filters and header counts (W-316).
+
+`wikidataStudioPagination.spec.ts` checks that obsolete cursor walks stop and the current load retains all pages (W-318).

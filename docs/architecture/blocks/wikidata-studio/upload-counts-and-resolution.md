@@ -1,6 +1,6 @@
 # Upload counts and source resolution
 
-> Up: [Wikidata Studio](README.md) · Rules W-315–W-317
+> Up: [Wikidata Studio](README.md) · Rules W-315–W-318
 
 ## Upload state
 
@@ -10,7 +10,9 @@ A successful `adopt` needs a message that confirms an update.
 A reconcile-only adoption remains unconfirmed.
 A blocked row needs source review, including a row without a QID.
 An intentional skip to an existing QID means reference-only use.
-A failed upload remains a failure.
+A confirmed failed upload remains a failure.
+An uncertain remote response has the separate state `upload outcome unknown`.
+That state requires a public read and history check before another write.
 A source with `rebuild_required` cannot receive current upload confirmation.
 The AI review count reports non-pass verdicts separately.
 
@@ -19,6 +21,9 @@ A new terminal live upload or AI verify job causes one silent table reload.
 The explicit upload target takes precedence over the legacy dry-run flag.
 Historical terminal rows do not cause a reload loop.
 The table rejects late responses from earlier loads.
+`fetchAllStudioItems` also checks the request sequence before and after each page.
+An obsolete load stops before it requests another page.
+The current HTTP request can finish.
 
 ## Complete connection payload
 
@@ -48,6 +53,7 @@ Structured part titles retain identity review until the parent identity is clear
 - `test_wikidata_gila_identity_audit.py` checks exact author proof and contrary cases.
 - `wikidataItemDataStatus.spec.ts` checks receipt states and count totals.
 - `wikidataReviewRefresh.spec.ts` checks terminal transitions and exact scopes.
+- `wikidataStudioPagination.spec.ts` checks obsolete loads and complete current pages.
 - `wikidata-studio.spec.ts` checks readable filter values and upload counts.
 
 ## Operator checks

@@ -88,3 +88,7 @@
     *Why:* the previous page initialization loaded the corpus for every chunk.
 
 36. **R36 — Keep upload and AI counts separate (W-316).** Use one upload state per row. Refresh after a new terminal live job. Reject late responses. *Why:* Old receipt names and stale tables caused false pending/new counts.
+
+37. **R37 — Stop obsolete cursor walks (W-318).** The request sequence must
+stop the old page chain after its current request. *Why:* A response guard
+alone still permits unnecessary requests and connection pressure.

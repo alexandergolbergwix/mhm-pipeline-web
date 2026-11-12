@@ -153,6 +153,7 @@ export function WikidataItemsPanel({
     () => countWikidataUploadStates(build?.items ?? []), [build?.items],
   );
   const loadSequenceRef = useRef(0);
+  useEffect(() => () => { loadSequenceRef.current += 1; }, [runId, source]);
 
   const loadItems = useCallback(async (opts?: {silent?: boolean}) => {
     const requestSequence = ++loadSequenceRef.current;
@@ -168,7 +169,7 @@ export function WikidataItemsPanel({
         source,
         forceRebuild: false,
         listView: true,
-      });
+      }, {isCurrent: () => requestSequence === loadSequenceRef.current});
       const result = await loadStudioBuild(runId, fetchItems, {
         onProgress: (message) => {
           if (!silent && requestSequence === loadSequenceRef.current) setBuildProgress(message);

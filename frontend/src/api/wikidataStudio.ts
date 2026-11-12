@@ -242,6 +242,7 @@ export interface StudioPage {
 export async function fetchAllStudioItems(
   runId: string,
   params: Omit<StudioBuildParams, "page" | "pageSize"> = {},
+  options: {isCurrent?: () => boolean} = {},
 ): Promise<StudioBuild> {
   // Cursor-paginated bulk load: walks opaque keyset cursors over the
   // per-item rows read model — never offsets, never the whole blob.
@@ -249,8 +250,15 @@ export async function fetchAllStudioItems(
   let cursor = "";
   let first: StudioPage | null = null;
   const allItems: StudioItem[] = [];
+  const requireCurrent = () => {
+    if (options.isCurrent?.() === false) {
+      throw new DOMException("A newer Studio load replaced this request.", "AbortError");
+    }
+  };
   while (true) {
+    requireCurrent();
     const chunk = await Studio.page(runId, {...params, cursor, limit: pageSize});
+    requireCurrent();
     if (!first) first = chunk;
     allItems.push(...chunk.items);
     if (!chunk.next_cursor || chunk.items.length === 0) break;
