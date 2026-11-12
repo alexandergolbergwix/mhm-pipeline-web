@@ -263,6 +263,8 @@ async def page_wikidata_items(
     approved_only: bool = True,
     source: str = "legacy",
     include_total: bool = True,
+    local_id: str | None = None,
+    full_item: bool = False,
 ) -> dict[str, Any]:
     """One cursor page of review-table items, entirely SQL-side.
 
@@ -292,6 +294,8 @@ async def page_wikidata_items(
         WikidataStudioItemRow.approved_only.is_(approved_only),
         WikidataStudioItemRow.source == source,
     ]
+    if local_id is not None:
+        conditions.append(WikidataStudioItemRow.local_id == local_id)
     if entity_type and entity_type != "all":
         conditions.append(WikidataStudioItemRow.entity_type == entity_type)
     needle = q.strip().lower()
@@ -372,7 +376,7 @@ async def page_wikidata_items(
             raw, ov_row=ov_row, ledger=ledger, latest_writes=latest_writes,
             overrides_applied=overrides_applied, rebuild_required=rebuild_required,
         )
-        items.append(trim_studio_list_item(merged))
+        items.append(merged if full_item else trim_studio_list_item(merged))
         last_sort = str(
             row.local_id if sort == "local_id" else row.label_sort,
         )

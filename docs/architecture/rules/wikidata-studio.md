@@ -3753,3 +3753,15 @@ The endpoint must use the same merged identity as the review table.
 Store a ledger-only visible QID separately from the original projection QID.
 Neither prior identity can authorize another arbitrary QID.
 The first guarded live choice exposed this difference and returned 409 before any mutation.
+
+## Rule W-321 — Single-item reads must not load the full Studio corpus
+
+On 12 November 2026, three person choices succeeded before a fourth request returned503.
+The old single-item helper loaded all2407 items and their verdict evidence.
+The web process exceeded its memory quota.
+Use an exact SQL row predicate for both the merged detail and raw choice source.
+Retain the full statement payload for that one item.
+Use the normal override, ledger, receipt, and verdict rules.
+Expose a small `reference_only` flag on table rows because the table omits authority evidence.
+An unknown POST requires a readback before any further mutation.
+A CSV export must use its attached MARC context instead of a new empty-record context.

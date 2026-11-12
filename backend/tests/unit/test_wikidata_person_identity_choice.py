@@ -264,3 +264,28 @@ def test_a_ledger_only_previous_target_keeps_its_separate_projection_basis():
     item["existing_qid"] = "Q999"
     with pytest.raises(ValueError):
         apply_choice(item, selected, source=source, records=records)
+
+
+@pytest.mark.asyncio
+async def test_single_item_read_uses_one_exact_sql_row(monkeypatch):
+    import uuid
+    from unittest.mock import AsyncMock
+
+    from app.pipeline import wikidata_item_row_views as rows
+    from app.pipeline import wikidata_item_views as views
+
+    db, run = object(), uuid.uuid4()
+    backfill = AsyncMock()
+    page = AsyncMock(return_value={"items": [{"local_id": "person1", "statements": []}]})
+    monkeypatch.setattr(rows, "ensure_rows_backfilled", backfill)
+    monkeypatch.setattr(rows, "page_wikidata_items", page)
+    monkeypatch.setattr(
+        views,
+        "fetch_merged_wikidata_items",
+        AsyncMock(side_effect=AssertionError("full corpus read")),
+    )
+    result = await views.fetch_merged_wikidata_item(db, run, "person1", source="canonical")
+    assert result == {"local_id": "person1", "statements": []}
+    assert page.await_args.kwargs["local_id"] == "person1"
+    assert page.await_args.kwargs["full_item"] is True
+    assert page.await_args.kwargs["limit"] == 1

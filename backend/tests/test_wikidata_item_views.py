@@ -522,3 +522,36 @@ async def test_cached_view_flags_content_override_newer_than_build(db_session) -
     assert len(items) == 1
     assert items[0]["rebuild_required"] is True
     assert items[0]["statements"] == []
+
+
+@pytest.mark.asyncio
+async def test_single_item_reads_existing_rows_without_the_corpus_blob(db_session):
+    from sqlalchemy import event
+    from app.models.wikidata_studio_item_row import WikidataStudioItemRow
+
+    run_id = uuid.uuid4()
+    db_session.add(WikidataStudioCache(
+        run_id=run_id, source="canonical", approved_only=True, input_fingerprint="f" * 64,
+        result_items=[], quickstatements="", summary={"total_items": 2},
+    ))
+    for local_id in ["chosen", "chosen-extra"]:
+        db_session.add(WikidataStudioItemRow(
+            run_id=run_id, source="canonical", approved_only=True, local_id=local_id,
+            payload={"local_id": local_id, "entity_type": "work", "labels": {"he": local_id},
+                     "statements": [{"property_id": "P31", "value": "Q47461344"}]},
+        ))
+    await db_session.commit()
+    statements = []
+
+    def trace(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", trace)
+    try:
+        result = await fetch_merged_wikidata_item(db_session, run_id, "chosen", source="canonical")
+    finally:
+        event.remove(engine, "before_cursor_execute", trace)
+    assert result["local_id"] == "chosen"
+    assert result["statements"][0]["value"] == "Q47461344"
+    assert not any("wikidata_studio_cache.result_items" in sql for sql in statements)

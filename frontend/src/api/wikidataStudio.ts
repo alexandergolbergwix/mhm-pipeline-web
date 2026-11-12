@@ -53,6 +53,7 @@ export interface StudioItem {
   projection_source?: "hmo_wikibase" | "legacy" | string | null;
   source_fingerprint?: string | null;
   publishable?: boolean;
+  reference_only?: boolean;
   authority_evidence?: Array<{
     source?: string; accepted?: boolean; reference_only?: boolean; identifier?: string;
   }>;

@@ -1300,3 +1300,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
   *Why:* Old full-table reloads consumed connections after a newer load superseded them.
 
 170. **R170 — Source person choices remain scoped and reference only (W-320).** Require the exact canonical fingerprint, source identity hashes, and unique public identifier proof. Skip public person writes and global ledger changes. See [the choice contract](person-identity-choice.md).
+
+171. **R171 — Single-item reads use exact SQL rows (W-321).** Keep the full detail payload for one local ID. Retain a small reference-only flag on the table. *Why:* a full-corpus detail read exceeded the web memory quota.

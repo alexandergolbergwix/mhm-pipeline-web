@@ -54,3 +54,13 @@ A reverted proof must still pass the current source checks before a build succee
 Tests: `test_wikidata_person_identity_choice.py` and
 `test_hmo_canonical_wikidata.py` cover source changes, patronymics, source scope,
 public ambiguity, reference blocks, both namespaces, and global ledger isolation.
+
+## Bounded item reads (W-321)
+
+Single-item reads use the SQL read-model with an exact local ID.
+The detail path retains statements and identity evidence for that one item.
+The raw choice path also selects one payload from the SQL read-model.
+Neither path reads the full cache blob when the item rows exist.
+Old builds can use the existing one-time row backfill.
+The table retains a small `reference_only` flag and omits the full private choice proof.
+The full detail and export retain the proof for exact outcome recovery.

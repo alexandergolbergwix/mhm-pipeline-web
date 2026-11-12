@@ -321,3 +321,5 @@ See [source repair safeguards](source-repair-safeguards.md) for W-311–W-314, t
 The [upload counts and source resolution](upload-counts-and-resolution.md) page lists the W-315–W-318 regression suites.
 
 - `backend/tests/unit/test_wikidata_person_identity_choice.py` covers exact source identity, public ambiguity, stale proofs, source scope, namespace separation, and ledger isolation.
+
+- `test_wikidata_item_views.py` proves that an exact single-item read avoids the corpus blob and a similarly named row. `test_wikidata_items_export_import.py` retains attached MARC context in CSV.

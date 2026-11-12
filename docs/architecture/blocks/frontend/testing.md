@@ -65,3 +65,5 @@ The Wikidata fixture serves `/items/page` with cursor pages and server totals. T
 
 
 The count unit test covers a current source-scoped person choice as reference only. A stale build remains unconfirmed. The cursor fixture serves `/items/page` with a proper cursor response.
+
+The upload-state unit test also accepts the bounded table `reference_only` flag. The table omits the full authority evidence and private choice proof (W-321).

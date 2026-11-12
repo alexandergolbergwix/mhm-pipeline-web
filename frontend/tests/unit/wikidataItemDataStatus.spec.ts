@@ -64,6 +64,7 @@ describe("Wikidata Studio data status", () => {
         reference_only: true, identifier: "Q100"}],
     };
     expect(resolveWikidataItemDataStatus(item)).toBe("reference_only");
+    expect(resolveWikidataItemDataStatus({existing_qid: "Q100", reference_only: true})).toBe("reference_only");
     expect(resolveWikidataItemDataStatus({...item, rebuild_required: true})).toBe("will_update");
     expect(resolveWikidataItemDataStatus({...item, existing_qid: "Q20"})).toBe("updated");
   });

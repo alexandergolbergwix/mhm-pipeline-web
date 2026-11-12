@@ -269,6 +269,7 @@ def item_label(item: dict[str, Any]) -> str:
 
 
 _LIST_VIEW_DROP_KEYS = frozenset({
+    "person_identity_choice",
     "statements",
     "authority_evidence",
     "work_candidate_evidence",
@@ -392,8 +393,11 @@ def _merge_one_wikidata_item(
         if ov_row and isinstance(ov_row.ai_verdict, dict)
         else None
     )
+    from app.pipeline.wikidata_person_identity_choice import reference_choice  # noqa: PLC0415
+
     row: dict[str, Any] = {
         **merged,
+        "reference_only": reference_choice(merged) is not None,
         "local_id": local_id,
         "existing_qid": existing_qid,
         "on_wikidata": on_wikidata,
@@ -434,10 +438,16 @@ async def fetch_merged_wikidata_item(
     approved_only: bool = True,
     source: str = "legacy",
 ) -> dict[str, Any] | None:
-    items = await fetch_merged_wikidata_items(
-        db, run_id, approved_only=approved_only, source=source,
+    from app.pipeline.wikidata_item_row_views import (  # noqa: PLC0415
+        ensure_rows_backfilled, page_wikidata_items,
     )
-    for item in items:
-        if str(item.get("local_id") or "") == local_id:
-            return item
-    return None
+
+    try:
+        await ensure_rows_backfilled(db, run_id, approved_only=approved_only, source=source)
+    except LookupError as exc:
+        raise StudioBuildMissingError(run_id) from exc
+    page = await page_wikidata_items(
+        db, run_id, approved_only=approved_only, source=source,
+        local_id=local_id, limit=1, full_item=True, include_total=False,
+    )
+    return page["items"][0] if page["items"] else None

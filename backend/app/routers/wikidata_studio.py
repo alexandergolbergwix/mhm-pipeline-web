@@ -2592,7 +2592,8 @@ async def export_wikidata_items(
             labels = it.get("labels") if isinstance(it.get("labels"), dict) else {}
             descriptions = it.get("descriptions") if isinstance(it.get("descriptions"), dict) else {}
             av = it.get("ai_verdict") if isinstance(it.get("ai_verdict"), dict) else {}
-            marc_context = marc_context_for_wikidata_item(it, [])
+            marc_context = (it["_marc_context"] if isinstance(it.get("_marc_context"), dict)
+                            else marc_context_for_wikidata_item(it, []))
             records = it.get("record_ids") or it.get("records") or []
             statements = it.get("statements") if isinstance(it.get("statements"), list) else []
             writer.writerow({
@@ -3104,13 +3105,19 @@ async def _studio_item_from_cache(
     approved_only: bool,
     source: str = "canonical",
 ) -> dict[str, Any] | None:
-    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
-    if cached is None:
+    from app.models.wikidata_studio_item_row import WikidataStudioItemRow  # noqa: PLC0415
+    from app.pipeline.wikidata_item_row_views import ensure_rows_backfilled  # noqa: PLC0415
+
+    try:
+        await ensure_rows_backfilled(db, run_id, approved_only=approved_only, source=source)
+    except LookupError:
         return None
-    for it in cached.result_items or []:
-        if str(it.get("local_id") or "") == local_id:
-            return it
-    return None
+    return (await db.execute(select(WikidataStudioItemRow.payload).where(
+        WikidataStudioItemRow.run_id == run_id,
+        WikidataStudioItemRow.approved_only == approved_only,
+        WikidataStudioItemRow.source == source,
+        WikidataStudioItemRow.local_id == local_id,
+    ))).scalar_one_or_none()
 
 
 @router.get(
