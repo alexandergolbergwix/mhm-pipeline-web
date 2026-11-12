@@ -317,3 +317,5 @@ Any new external-write path or reconcile change MUST extend
   payload columns, initial fallback, and missing builds with orphan rows.
 
 See [source repair safeguards](source-repair-safeguards.md) for W-311–W-314, the focused tests, and the source-only build procedure.
+
+The [upload counts and source resolution](upload-counts-and-resolution.md) page lists the W-315–W-317 regression suites.

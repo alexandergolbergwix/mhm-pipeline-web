@@ -129,3 +129,5 @@ dev server proxies `/api` to the FastAPI backend on :8000 (production
 serves both from one origin — no CORS). `yarn build` runs `tsc --noEmit`
 first (strict mode, `noUnusedLocals`/`noUnusedParameters`). Package
 manager is yarn, never npm.
+
+**Wikidata counts.** The review header separates upload receipts from AI review. The header and filter share one state resolver. A new terminal live job causes one silent reload. A request sequence prevents an old response from replacing a newer table. See [upload counts](../wikidata-studio/upload-counts-and-resolution.md).

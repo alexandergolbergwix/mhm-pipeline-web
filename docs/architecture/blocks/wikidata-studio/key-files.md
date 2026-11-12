@@ -61,6 +61,9 @@
 | `backend/app/pipeline/wikidata_item_row_views.py` | `wikidata_studio_item_rows` views: build-time replace, lazy backfill from the cache blob, SQL keyset `page_wikidata_items`, streamed row iterator for exports (W-247 pattern) |
 | `backend/app/models/wikidata_studio_item_row.py` | Per-item review read-model row per `(run_id, approved_only, source)` — indexed columns + full payload JSONB |
 | `backend/app/migrations/versions/0047_wikidata_item_rows.py` | Creates `wikidata_studio_item_rows` |
+| `backend/app/pipeline/wikidata_deferred_payload.py` | Complete source payload for pass two; preserves resolved facts and complete references (W-315) |
+| `frontend/src/utils/wikidataItemDataStatus.ts` | Shared receipt states and exact upload counts (W-316) |
+| `frontend/src/utils/wikidataReviewRefresh.ts` | Run/source-bound terminal job tracker for silent review refresh (W-316) |
 | `backend/app/pipeline/wikidata_upload.py` | `resolve_upload_mode` / `upload_target`, `_prepare_for_upload`, person identity gate (W-190), work skip+`link_qid` (W-196), fail-closed work identity and QID-bound pass 2 (W-302), `UploadOutcome` |
 | `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` — Rule-38 guards + `allow_live` / moratorium; `is_bot` via `mark_as_bot` (default false, W-181); test-wiki remap; leftover snaks refuse the write; `partition_unresolved_local` / session `created_qids` (W-191 / W-192); quantity/time exists-match (W-193); adopt-on-conflict + datatype-keyed maps + MHM stub reuse + holder/live gloss stubs + item-write adopt (W-182 / W-183 / W-186 / W-187 / W-189); existing owned labels survive label/description conflicts (R152) |
 | `backend/converter/wikidata/test_wiki_compat.py` | Remap live P/Q to test entities by label+datatype; `(live_pid, value_type)` map keys; conflict-id parse; holder/live gloss; leftover list for W-186 refuse (W-189) |

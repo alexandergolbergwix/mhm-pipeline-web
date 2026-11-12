@@ -54,3 +54,5 @@ It checks AI filter counts, approval counts, and the item IDs in verification re
 
 - `apiClientRetry.spec.ts` checks incomplete GET recovery, the shared four-attempt
   budget, and one POST attempt after an incomplete response (W-306).
+
+`wikidataItemDataStatus.spec.ts` checks receipt states and count totals. `wikidataReviewRefresh.spec.ts` checks terminal jobs and scope exclusions. `wikidata-studio.spec.ts` checks readable upload filters and header counts (W-316).

@@ -65,3 +65,5 @@ The Wikidata Publication controls show the next action, included/omitted result
 counts, and keep manual actions in a disclosure. The AI review panel labels
 automatic and advisory results separately. The item drawer keeps source wording
 separate from editable multilingual values and uses explicit field labels.
+
+The [upload state helpers](../wikidata-studio/upload-counts-and-resolution.md) are `wikidataItemDataStatus.ts` and `wikidataReviewRefresh.ts` (W-316).

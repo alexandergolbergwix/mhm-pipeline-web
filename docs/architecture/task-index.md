@@ -72,3 +72,5 @@
 | Change extraction approval or rejection | [Explicit rejection](blocks/extraction/rejection.md) + [versioning and export](blocks/versioning-export/README.md) + W-305 |
 
 | Repair source colophons, credited authors, or approved foreign manuscript ranks | [Source repair safeguards](blocks/wikidata-studio/source-repair-safeguards.md) + W-311–W-314 |
+
+| Correct upload counts or a lost second-pass relation | [Upload counts and source resolution](blocks/wikidata-studio/upload-counts-and-resolution.md) + W-315–W-317 |

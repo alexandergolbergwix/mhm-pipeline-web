@@ -1283,3 +1283,14 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 - **R165 — Keep optional prose inside the build lifecycle (W-314).**
   Accept a strict optional boolean and retain progress and heartbeat through the complete job.
   *Why:* the source cache completed while the optional phase had no live progress.
+
+
+- **R166 — Preserve the complete source in pass two (W-315).** Use
+  `build_deferred_link_payload`; require P31 and retain every resolved source fact.
+  *Why:* A partial P1574 payload removed another valid work relation.
+- **R167 — Count receipts separately from AI review (W-316).** Count each row
+  once and refresh after new terminal live uploads and AI verify jobs.
+  *Why:* Adopt receipts and blocked rows produced misleading pending/new counts.
+- **R168 — Bind P50 audit proof to the exact source (W-317).** Use one approved
+  identity per control number and heading; preserve uncertain parts and names.
+  *Why:* A name match alone cannot establish a public author identity.

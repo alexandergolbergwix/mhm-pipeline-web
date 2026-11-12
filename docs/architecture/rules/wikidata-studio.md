@@ -3663,3 +3663,54 @@ Keep both tasks active until the whole job finishes.
 A strict boolean `extract_provenance_prose` defaults to true.
 A false value skips only the optional AI phase after the complete source build and cache save.
 The quality gate, cancellation checks, and terminal receipt remain mandatory.
+
+
+## Rule W-315 — The second upload pass preserves the complete source
+
+The second upload pass must use `build_deferred_link_payload`.
+The helper retains every source statement that has a resolved target.
+The helper combines complete reference blocks for equivalent claims.
+The source must contain P31; an incomplete source must stop before a write.
+The helper preserves the live/test namespace of each target.
+The existing ownership, source freshness, and foreign approval guards still apply.
+
+The 12 November 2026 audit found a lost P1574 fragment relation on Q141746927.
+The old partial payload caused the owned uploader to replace the other P1574 values.
+A complete source payload prevents that replacement.
+The regression checks the earlier GUID and both complete reference blocks.
+
+## Rule W-316 — The review table reports receipts and refreshes after jobs
+
+The review table must separate upload state from AI review state.
+An `adopt` receipt proves an update only when its message confirms an update.
+An unchanged receipt can confirm a completed upload check.
+A reconcile-only adoption does not prove a successful upload.
+A blocked row needs source review, even when it has no QID.
+Reference-only rows and failed uploads have separate states.
+Every row contributes to exactly one upload count.
+
+The table refreshes after a new terminal live upload or AI verify job.
+The tracker uses the run, source, explicit upload target, and terminal job ID.
+Historical terminal jobs do not cause a repeated reload.
+Failed and cancelled live jobs also require a refresh of partial receipts.
+A late response must not overwrite a newer table response.
+
+On 12 November 2026, the old UI called 1,252 successful `adopt` receipts pending updates.
+It also called 324 blocked rows new items.
+The old table did not refresh after an external job completed.
+These counts did not prove missing public uploads.
+
+## Rule W-317 — A source audit requires exact identity proof
+
+A public P50 can satisfy an author check only with explicit source-specific identity proof.
+The proof must bind the control number and exact normalized author heading to one QID.
+A matching name, an empty authority field, or an unapproved legacy match supplies no approval.
+The audit must ignore deprecated author claims.
+The audit normalizes doubled quote transport forms but retains uncertainty marks.
+A unique source-compatible target can clear an earlier provisional identity flag.
+Rejected catalogue notes remain source evidence; structured part titles retain identity review.
+Public work source scope comes from complete source references and explicit control numbers.
+
+The 12 November 2026 audit found false flags from quote transport and provisional statuses.
+It also found catalogue notes among alleged missing standalone work links.
+The regression cases retain contrary authors, uncertain names, and ambiguous scopes as review cases.

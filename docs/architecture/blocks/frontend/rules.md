@@ -86,3 +86,5 @@
     A warm Studio page checks the cache ID without the complete cache payload.
     Only an initial backfill can read the full item blob.
     *Why:* the previous page initialization loaded the corpus for every chunk.
+
+36. **R36 — Keep upload and AI counts separate (W-316).** Use one upload state per row. Refresh after a new terminal live job. Reject late responses. *Why:* Old receipt names and stale tables caused false pending/new counts.

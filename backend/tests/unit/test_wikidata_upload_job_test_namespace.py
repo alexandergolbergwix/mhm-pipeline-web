@@ -73,7 +73,9 @@ async def test_sharded_deferred_json_keeps_test_and_live_qid_distinct(
                                   reference_blocks=[[reference, local_reference]])
     if proven == "mismatch_no_metadata":
         statement = WikidataStatement("P50", "__LOCAL:author", "item")
-    source.statements = [statement]
+    source.statements = [statement, WikidataStatement(
+        "P31", {"id": "Q47461344", "value_namespace": "wikidata"}, "item",
+    )]
     first = upload.UploadOutcome("source", "Source", "other", "Q123", "updated", "ok", [],
                                  ownership="own")
     skipped_author = upload.UploadOutcome("author", "Author", "person", None, "skipped", "ok", [])
@@ -117,11 +119,11 @@ async def test_sharded_deferred_json_keeps_test_and_live_qid_distinct(
 
     def create_uploader(**kwargs):
         instance = FakeUploader(**kwargs)
-        instance._test_qid_map = {"Q900": "Q901"}
-        pids = ("P50", "P248", "P3831")
+        instance._test_qid_map = {"Q900": "Q901", "Q47461344": "Q902"}
+        pids = ("P31", "P50", "P248", "P3831")
         instance._test_pid_map = {pid_map_key(pid, "item"): pid for pid in pids}
         instance._test_property_datatypes = {pid: "wikibase-item" for pid in pids}
-        instance._test_entity_exists = {"Q900": True, "Q901": True}
+        instance._test_entity_exists = {"Q900": True, "Q901": True, "Q902": True}
         instances.append(instance)
         return instance
 
@@ -184,6 +186,7 @@ async def test_new_test_targets_are_persisted_before_slot_registration(
     source = WikidataItem(local_id="source", entity_type="work", existing_qid="Q123",
                           labels={"en": "Source"}, statements=[
                               WikidataStatement("P50", "__LOCAL:author", "item"),
+                              WikidataStatement("P31", "Q47461344", "item"),
                           ])
     author = WikidataItem(local_id="author", entity_type="person", existing_qid="Q900",
                           labels={"en": "Author"})
@@ -222,8 +225,9 @@ async def test_new_test_targets_are_persisted_before_slot_registration(
 
     async def fake_upload(items, **kwargs):
         item = items[0]
-        if item.statements:
-            statement = json.loads(json.dumps(asdict(item.statements[0])))
+        links = [s for s in item.statements if s.property_id == "P50"]
+        if links:
+            statement = json.loads(json.dumps(asdict(links[0])))
             assert statement["value"] == {
                 "id": "Q900", "value_namespace": "local", "value_local_id": "author",
             }

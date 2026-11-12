@@ -9,6 +9,10 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
+from wikibaseintegrator.wbi_config import config as wikibase_config
+
+from app.pipeline.marc_ingest import prepare_record_for_pipeline
+from app.pipeline.marc_verify_context import canonical_control_number
 from converter.wikidata.catalog_notes import is_catalog_note_placeholder
 from converter.wikidata.catalog_references import catalog_reference_code, catalog_reference_text
 from converter.wikidata.item_models import snak_identity
@@ -18,14 +22,11 @@ from converter.wikidata.property_mapping import (
     SCRIPT_TYPE_TO_QID,
     date_to_wikidata,
 )
-from wikibaseintegrator.wbi_config import config as wikibase_config
-
-from app.pipeline.marc_ingest import prepare_record_for_pipeline
-from app.pipeline.marc_verify_context import canonical_control_number
+from converter.wikidata.work_identity import reference_control_numbers
 
 
 def _text(value: object) -> str:
-    return " ".join(str(value or "").split()).strip().rstrip(" ,.;:/-")
+    return " ".join(str(value or "").replace('""', '"').split()).strip().rstrip(" ,.;:/-")
 
 
 def _objects(value: object) -> list[Mapping[str, object]]:
@@ -388,6 +389,8 @@ def _matches(fact: SourceFact, statement: Mapping[str, object]) -> bool:
 def _author_names(statements: Iterable[Mapping[str, object]]) -> set[str]:
     names = set()
     for statement in statements:
+        if statement.get("rank") == "deprecated":
+            continue
         pid = statement.get("property") or statement.get("property_id")
         if pid == "P2093":
             names.add(_text(statement.get("value")).casefold())
@@ -398,6 +401,57 @@ def _author_names(statements: Iterable[Mapping[str, object]]) -> set[str]:
                 if (q.get("property") or q.get("property_id")) == "P1932"
             )
     return names - {""}
+
+
+def _live_work_has_author(
+    fact: SourceFact,
+    target_qid: str,
+    target: Mapping[str, object],
+    works: Mapping[str, list[Mapping[str, object]]],
+    approved_author_qids: Mapping[tuple[str, str], frozenset[str]],
+    control_number: str,
+) -> bool:
+    claims = [
+        {**claim, "property": pid}
+        for pid in ("P50", "P2093") for claim in _live_claims(target, pid)
+    ]
+    name = _text(fact.author_name).casefold()
+    native = [
+        work for work in works.get(target_qid, [])
+        if name in _author_names(_objects(work.get("statements")))
+    ]
+    native_ids = {
+        str(s.get("value"))
+        for work in native if len(native) == 1
+        for s in _objects(work.get("statements"))
+        if (s.get("property") or s.get("property_id")) == "P50"
+        and s.get("rank", "normal") != "deprecated"
+        and re.fullmatch(r"Q[1-9][0-9]*", str(s.get("value") or ""))
+    }
+    actual = {str(s.get("value")) for s in _live_claims(target, "P50")}
+    if native_ids and actual and actual != native_ids:
+        return False
+    if name in _author_names(claims):
+        return True
+    literal_names = _author_names({**c, "property": "P2093"} for c in _live_claims(target, "P2093"))
+    if literal_names:
+        return False
+    expected = approved_author_qids.get((control_number, name), frozenset())
+    return len(expected) == 1 and actual == expected and (not native_ids or native_ids == expected)
+
+
+def _live_work_sources(target: Mapping[str, object]) -> set[str]:
+    claims = target.get("claims") or {}
+    if not isinstance(claims, Mapping):
+        return set()
+    return {
+        cn for rows in claims.values() for claim in _objects(rows)
+        for cn in reference_control_numbers(claim.get("references"))
+    } | {str(s.get("value")) for s in _live_claims(target, "P3959")}
+
+
+def _structured_part_title(title: str) -> bool:
+    return bool(re.search(r"(?:^|[\s(])(?:חלק|כרך|פרק|part|volume)\s+\S+", title, re.I))
 
 
 def _reference_status(
@@ -457,10 +511,15 @@ def compare_gila_source_facts(
     *,
     qids_by_cn: Mapping[str, str] | None = None,
     live_entities: Mapping[str, object] | None = None,
+    approved_author_qids: Mapping[tuple[str, str], Iterable[str]] | None = None,
 ) -> dict[str, object]:
     """Export differences; a read-only comparison never certifies a repair."""
     manuscripts: dict[str, Mapping[str, object]] = {}
     works: dict[str, list[Mapping[str, object]]] = {}
+    author_qids = {
+        (canonical_control_number(cn), _text(name).casefold()): frozenset(qids)
+        for (cn, name), qids in (approved_author_qids or {}).items()
+    }
     for item in items:
         if item.get("entity_type") == "work":
             for key in (str(item.get("existing_qid") or ""), f"__LOCAL:{item.get('local_id')}"):
@@ -566,7 +625,22 @@ def compare_gila_source_facts(
                             }
                         )
                     )
+                    if not live:
+                        note_reasons = {
+                            "catalogue_prose", "descriptive_note", "person_name_not_work",
+                            "folio_range_title", "generic_manuscript_title",
+                        }
+                        reasons = {
+                            str(e.get("projection_reason") or e.get("reason"))
+                            for e in source_decisions
+                        }
+                        is_note = reasons <= note_reasons or (
+                            reasons == {"bibliographic_fragment"}
+                            and not _structured_part_title(fact.candidate_title)
+                        )
+                        live_status = "source_evidence" if is_note else "identity_review"
             if fact.property_id == "P1574" and (fact.author_name or fact.source_scoped):
+                proposed_compatible = []
                 for candidate in proposed:
                     targets = works.get(str(candidate.get("value") or ""), [])
                     compatible = len(targets) == 1
@@ -579,28 +653,32 @@ def compare_gila_source_facts(
                             canonical_control_number(value)
                             for value in targets[0].get("records") or []
                         } == {cn}
-                    if not compatible:
+                    proposed_compatible.append(compatible)
+                if proposed:
+                    one_proposed = len({str(c.get("value")) for c in proposed}) == 1
+                    if not all(proposed_compatible) or not one_proposed:
                         proposal_status = "identity_review"
                         classification = "identity_or_scope_uncertain"
                         reason = "work_author_or_source_requires_review"
+                    elif proposal_status == "identity_review":
+                        proposal_status = "present"
+                live_compatible = []
                 for candidate in live:
-                    target = (live_entities or {}).get(str(candidate.get("value") or ""))
+                    target_qid = str(candidate.get("value") or "")
+                    target = (live_entities or {}).get(target_qid)
                     compatible = isinstance(target, Mapping)
                     if compatible and isinstance(target, Mapping) and fact.author_name:
-                        author_claims = [
-                            {**claim, "property": pid}
-                            for pid in ("P50", "P2093")
-                            for claim in _live_claims(target, pid)
-                        ]
-                        compatible = _text(fact.author_name).casefold() in _author_names(
-                            author_claims
+                        compatible = _live_work_has_author(
+                            fact, target_qid, target, works, author_qids, cn,
                         )
                     if compatible and isinstance(target, Mapping) and fact.source_scoped:
-                        compatible = {
-                            str(claim.get("value")) for claim in _live_claims(target, "P3959")
-                        } == {cn}
-                    if not compatible:
-                        live_status = "identity_review"
+                        compatible = _live_work_sources(target) == {cn}
+                    live_compatible.append(compatible)
+                if live:
+                    one_target = len({str(c.get("value")) for c in live}) == 1
+                    live_status = (
+                        "present" if all(live_compatible) and one_target else "identity_review"
+                    )
             live_target_missing = live_entities is not None and (
                 not qid or qid not in live_entities
             )
@@ -640,6 +718,9 @@ def compare_gila_source_facts(
             elif live_status == "identity_review":
                 live_classification = "identity_or_scope_uncertain"
                 live_reason = "live_work_author_or_source_requires_review"
+            elif live_status == "source_evidence":
+                live_classification = "identity_or_scope_uncertain"
+                live_reason = reason
             if live_classification and proposal_status == "present":
                 reason = live_reason
             counts[f"proposal_{proposal_status}"] += 1

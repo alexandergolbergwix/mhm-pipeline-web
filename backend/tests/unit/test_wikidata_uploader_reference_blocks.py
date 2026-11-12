@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 from wikibaseintegrator import WikibaseIntegrator
 
+from app.pipeline.wikidata_deferred_payload import build_deferred_link_payload
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 from converter.wikidata.test_wiki_compat import (
     WikiTestAdaptStats,
@@ -75,6 +76,29 @@ def _urls(claim: object) -> set[str]:
         reference["snaks"]["P854"][0]["datavalue"]["value"]
         for reference in claim.get_json()["references"]
     }
+
+
+def test_deferred_pass_preserves_other_source_work_links(monkeypatch: pytest.MonkeyPatch) -> None:
+    uploader = _uploader()
+    old = _statement("P1574", "Q142031906", "item", [_source("https://example.org/fragment")])
+    existing = _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(old))
+    old_claim = copy.deepcopy(existing.get_json()["claims"]["P1574"][0])
+    new = _statement("P1574", "Q141991984", "item", [_source("https://example.org/pancieri")])
+    native = WikidataItem(
+        local_id="ms:1", entity_type="manuscript", existing_qid="Q123",
+        statements=[WikidataStatement("P31", "Q87167", "item"), old, new],
+    )
+    payload = build_deferred_link_payload(
+        native, source_qid="Q123", resolved=[new], known_qids={}, is_test=False,
+    )
+
+    built, _, _ = uploader._build_wbi_item(payload, read_only=True)
+
+    claims = built.get_json()["claims"]["P1574"]
+    assert {c["mainsnak"]["datavalue"]["value"]["id"] for c in claims} == {
+        "Q142031906", "Q141991984",
+    }
+    assert next(c for c in claims if c["id"] == old_claim["id"]) == old_claim
 
 
 @pytest.mark.parametrize(("existing_rank", "proposed_rank"), [

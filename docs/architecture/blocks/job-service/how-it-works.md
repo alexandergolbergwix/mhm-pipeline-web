@@ -130,3 +130,5 @@ not rendered as a cancellable running job.
 
 Wikidata source builds keep their publisher and heartbeat through optional prose extraction (W-314).
 The strict boolean `extract_provenance_prose=false` skips that phase and preserves the complete core build.
+
+**Wikidata pass two.** The upload job uses the [complete source payload](../wikidata-studio/upload-counts-and-resolution.md) for each connection write (W-315). No job kind changes.

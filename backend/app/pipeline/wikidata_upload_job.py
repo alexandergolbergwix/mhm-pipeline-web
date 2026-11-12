@@ -32,6 +32,7 @@ from app.pipeline.run_job_service import (
     is_cancel_requested,
     update_job_progress,
 )
+from app.pipeline.wikidata_deferred_payload import build_deferred_link_payload
 from app.pipeline.wikidata_qid_ledger import ledger_key_for_item
 from app.services.wikibase_audit import WikibaseAuditContext
 from converter.wikidata.item_models import WikidataItem
@@ -1638,10 +1639,12 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                 ))
                 continue
 
-            clone = replace(
+            clone = build_deferred_link_payload(
                 source_item,
-                existing_qid=source_qid,
-                statements=resolved,
+                source_qid=source_qid,
+                resolved=resolved,
+                known_qids=created_qids,
+                is_test=mode.is_test,
             )
 
             async def _do_link_write(payload: Any = clone) -> list[Any]:
@@ -1801,6 +1804,10 @@ async def run_wikidata_upload_shard(
     write path sequentially inside the shard — parallelism comes from the
     shard fan-out, not from in-shard concurrency.
     """
+    from app.db import reset_engine  # noqa: PLC0415
+    from app.pipeline.wikidata_existence import (  # noqa: PLC0415
+        prefetch_entities_for_upload,
+    )
     from app.routers.wikidata_studio import (  # noqa: PLC0415
         STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
         _build_native_items,
@@ -1812,10 +1819,6 @@ async def run_wikidata_upload_shard(
     from converter.wikidata.uploader import (  # noqa: PLC0415
         partition_unresolved_local,
         sort_items_for_upload,
-    )
-    from app.db import reset_engine  # noqa: PLC0415
-    from app.pipeline.wikidata_existence import (  # noqa: PLC0415
-        prefetch_entities_for_upload,
     )
 
     for _db_attempt in range(5):

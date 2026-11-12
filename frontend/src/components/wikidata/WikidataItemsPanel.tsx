@@ -30,6 +30,12 @@ import {
   jobProcessedCount,
 } from "@/utils/throttledProgressRefresh";
 import {patchWikidataItemsFromUploadOutcomes} from "@/utils/studioUploadProgress";
+import {
+  countWikidataUploadStates,
+  WIKIDATA_DATA_STATUS_LABEL,
+  WIKIDATA_DATA_STATUS_ORDER,
+} from "@/utils/wikidataItemDataStatus";
+import {WikidataReviewRefreshTracker} from "@/utils/wikidataReviewRefresh";
 import {ensureRunJob, loadStudioBuild, studioBuildFailureJobId, studioBuildJobIdFromConflict} from "@/utils/waitForRunJob";
 import {WIKIDATA_BUILD_PHASE_HINTS} from "@/lib/wikidataBuildPhases";
 import {useLabelStore} from "@/api/wikidataLabels";
@@ -143,7 +149,13 @@ export function WikidataItemsPanel({
     [build?.items],
   );
 
+  const uploadStateCounts = useMemo(
+    () => countWikidataUploadStates(build?.items ?? []), [build?.items],
+  );
+  const loadSequenceRef = useRef(0);
+
   const loadItems = useCallback(async (opts?: {silent?: boolean}) => {
+    const requestSequence = ++loadSequenceRef.current;
     const silent = Boolean(opts?.silent);
     if (!silent) {
       setLoading(true);
@@ -159,19 +171,21 @@ export function WikidataItemsPanel({
       });
       const result = await loadStudioBuild(runId, fetchItems, {
         onProgress: (message) => {
-          if (!silent) setBuildProgress(message);
+          if (!silent && requestSequence === loadSequenceRef.current) setBuildProgress(message);
         },
         onJob: (jobId) => {
           // Track the running build so the panel shows "Build in progress"
           // and live steps instead of an empty "0 items" table.
-          setConflictJobId(jobId);
+          if (requestSequence === loadSequenceRef.current) setConflictJobId(jobId);
         },
       }) as StudioBuild;
+      if (requestSequence !== loadSequenceRef.current) return;
       setBuild(result);
       if (result.property_labels) labelStore.seed(result.property_labels);
       onBuildLoaded?.(result);
       setRefreshToken((t) => t + 1);
     } catch (e) {
+      if (requestSequence !== loadSequenceRef.current) return;
       // A studio build conflict stays on this page. The step progress
       // renders below. The page must not collapse to one red sentence.
       const runningId = e instanceof ApiError
@@ -185,6 +199,7 @@ export function WikidataItemsPanel({
         setConflictJobId(jobId);
         if (failedId) {
           const job = await RunJobs.get(runId, failedId);
+          if (requestSequence !== loadSequenceRef.current) return;
           upsertJob(job);
           setStudioBuildJob(job);
           setError(job.error ?? "Wikidata Studio build failed.");
@@ -193,7 +208,7 @@ export function WikidataItemsPanel({
       }
       setError(e instanceof ApiError ? e.detail : String(e));
     } finally {
-      if (!silent) {
+      if (requestSequence === loadSequenceRef.current) {
         setLoading(false);
         setBuildProgress(null);
       }
@@ -308,6 +323,14 @@ export function WikidataItemsPanel({
   }, []);
 
   const jobsRecord = useRunJobs((s) => s.jobs);
+  const dataRefreshTracker = useMemo(
+    () => new WikidataReviewRefreshTracker(runId, source), [runId, source],
+  );
+  useEffect(() => {
+    if (dataRefreshTracker.observe(Object.values(jobsRecord))) {
+      void loadItems({silent: true});
+    }
+  }, [dataRefreshTracker, jobsRecord, loadItems]);
   const verifyJobActive = useMemo(
     () => selectActiveJob(jobsRecord, runId, "wikidata_verify"),
     [jobsRecord, runId],
@@ -479,8 +502,15 @@ export function WikidataItemsPanel({
                 : "Loading Wikidata items…"
               : buildInProgress && build.summary.total_items === 0
                 ? "Build in progress — records appear here when the build finishes. Large runs take ~25–40 min; watch the steps below or in the job tray (bottom-right)."
-                : `${build.summary.total_items} items · ${build.approved_item_count} approved · ${attentionCount} need attention`}
+                : `${build.summary.total_items} items · ${build.approved_item_count} approved · ${attentionCount} need AI review`}
           </p>
+          {build && (
+            <p className="muted text-xs mt-1" data-testid="wikidata-upload-state-counts">
+              {WIKIDATA_DATA_STATUS_ORDER.filter((status) => uploadStateCounts[status] > 0)
+                .map((status) => `${WIKIDATA_DATA_STATUS_LABEL[status]}: ${uploadStateCounts[status]}`)
+                .join(" · ")}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2" data-testid="wikidata-item-lifecycle-bar">
           <GlassPill as="div" className="px-1 py-1 flex gap-1 text-xs">

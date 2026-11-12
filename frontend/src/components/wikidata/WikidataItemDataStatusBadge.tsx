@@ -11,6 +11,9 @@ const DATA_STATUS_TONE: Record<WikidataItemDataStatus, string> = {
   will_update: "text-warn",
   updated: "text-biu-sky",
   local_only: "muted",
+  needs_review: "text-warn",
+  reference_only: "text-biu-sky",
+  failed: "text-red-300",
 };
 
 export interface WikidataItemDataStatusBadgeProps {

@@ -87,3 +87,5 @@ Use the [source repair checks](../wikidata-studio/source-repair-safeguards.md) a
 Do not store or display its raw output.
 Use `heroku releases --json` for release metadata.
 Select only the release version, status, description, and creation time before storage or display.
+
+The [complete connection payload](../wikidata-studio/upload-counts-and-resolution.md) also requires the committed backend on both Heroku and Modal (W-315).

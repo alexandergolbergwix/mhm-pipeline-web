@@ -47,6 +47,7 @@ def build_gila_audit_report(
     *,
     qids_by_cn: Mapping[str, str] | None = None,
     live_entities: Mapping[str, object] | None = None,
+    approved_author_qids: Mapping[tuple[str, str], Iterable[str]] | None = None,
 ) -> dict[str, object]:
     """Compare local proposals with sources; never report a live correction."""
     from converter.wikidata.content_projection import _work_title_key  # noqa: PLC0415
@@ -253,6 +254,7 @@ def build_gila_audit_report(
         )
     fact_comparison = compare_gila_source_facts(
         sources, materialized, qids_by_cn=qids_by_cn, live_entities=live_entities,
+        approved_author_qids=approved_author_qids,
     )
     return {
         "mode": "read_only_local_proposal", "live_verified": False,

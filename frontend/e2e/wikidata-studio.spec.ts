@@ -37,6 +37,29 @@ async function gotoStudio(page: import("@playwright/test").Page, mode: "modern" 
 // ── Page renders ─────────────────────────────────────────────────────────
 
 test.describe("WikidataStudio page", () => {
+  test("upload counts distinguish successful adoption, source review, and reference use", async ({page}) => {
+    const build = makeBuildResponse({items: [
+      makeStudioItem({
+        local_id: "adopted", labels: {en: "Uploaded witness"}, existing_qid: "Q42", upload_outcome: "adopt",
+        upload_message: "Updated Q42: +1 claims",
+      }),
+      makeStudioItem({local_id: "blocked", labels: {en: "Blocked witness"}, upload_outcome: "blocked"}),
+      makeStudioItem({local_id: "reference", existing_qid: "Q43", upload_outcome: "skip"}),
+    ]});
+    await installStudioMocks(page, build);
+    await gotoStudio(page);
+    await expect(page.getByTestId("wikidata-upload-state-counts")).toContainText("upload succeeded: 1");
+    await expect(page.getByTestId("wikidata-upload-state-counts")).toContainText("needs source review: 1");
+    await expect(page.getByTestId("wikidata-upload-state-counts")).toContainText("reference only: 1");
+    await page.getByRole("button", {name: "Upload state", exact: true}).click();
+    await expect(page.getByRole("dialog")).toContainText("upload succeeded");
+    await expect(page.getByRole("dialog")).toContainText("needs source review");
+    await page.getByRole("dialog").getByText("upload succeeded", {exact: true}).click();
+    await page.getByRole("dialog").getByRole("button", {name: "Apply", exact: true}).click();
+    await expect(page.getByTestId("wikidata-item-table")).toContainText("Uploaded witness");
+    await expect(page.getByTestId("wikidata-item-table")).not.toContainText("Blocked witness");
+  });
+
   test("renders modern review table by default", async ({page}) => {
     const build = makeBuildResponse();
     await installStudioMocks(page, build);

@@ -9,7 +9,10 @@ import {ItemValidatorBadge} from "@/components/wikidata/ItemValidatorBadge";
 import {WikidataItemAiVerdictBadge} from "@/components/wikidata/WikidataItemAiVerdictBadge";
 import {WikidataItemDataStatusBadge} from "@/components/wikidata/WikidataItemDataStatusBadge";
 import {useReportDerivedIds} from "@/hooks/useReportDerivedIds";
-import {resolveWikidataItemDataStatus} from "@/utils/wikidataItemDataStatus";
+import {
+  resolveWikidataItemDataStatus,
+  WIKIDATA_DATA_STATUS_LABEL,
+} from "@/utils/wikidataItemDataStatus";
 
 const PAGE_SIZE = 25;
 
@@ -32,7 +35,7 @@ function cellFilterValues(item: StudioItem, col: ColKey): string[] {
     const n = item.statement_count ?? item.statements?.length ?? 0;
     return [String(n)];
   }
-  if (col === "data_status") return [resolveWikidataItemDataStatus(item)];
+  if (col === "data_status") return [WIKIDATA_DATA_STATUS_LABEL[resolveWikidataItemDataStatus(item)]];
   if (col === "upload_outcome") return [item.upload_outcome ?? "never tried"];
   if (col === "approved") {
     if (item.approved === true) return ["approved"];
@@ -169,7 +172,7 @@ export function WikidataItemTable({
                 ["label", "Label", true],
                 ["local_id", "Local ID", true],
                 ["entity_type", "Entity type", false],
-                ["data_status", "Data status", false],
+                ["data_status", "Upload state", false],
                 ["existing_qid", "QID", false],
                 ["statement_count", "Stmts", true],
                 ["upload_outcome", "Last upload", false],
@@ -284,7 +287,7 @@ export function WikidataItemTable({
 
       {popup && (
         <ColumnFilterPopup
-          columnLabel={popup.col}
+          columnLabel={popup.col === "data_status" ? "Upload state" : popup.col}
           values={distinctForCol(popup.col)}
           valueCounts={countsForCol(popup.col)}
           selected={colFilters[popup.col] ?? new Set()}
