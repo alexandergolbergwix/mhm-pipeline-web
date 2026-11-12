@@ -1457,7 +1457,32 @@ class WikidataUploader:
                         if not getattr(claim, "removed", False)
                     ]
                     existing_ids = [_claim_identity(claim) for claim in existing_list]
+                    if (
+                        pid == "P31"
+                        and item.entity_type == "manuscript"
+                        and not self._is_test
+                        and not owner_only
+                        and not is_owned_by_us
+                        and self._is_our_item_cache.get(str(item.existing_qid)) is not True
+                        and item.existing_qid in self._foreign_accept_qids
+                    ):
+                        for claim in claims_list:
+                            identity = _claim_identity(claim)
+                            matches = [
+                                old for old in existing_list
+                                if _owner_claim_identity(old) == identity[:2]
+                            ]
+                            if len(matches) > 1:
+                                raise ClaimBuildError(["ambiguous matching P31 claims."])
+                            if (
+                                len(matches) == 1
+                                and identity[2] in {"normal", "preferred"}
+                                and _claim_identity(matches[0])[2] in {"normal", "preferred"}
+                            ):
+                                claim.rank = matches[0].rank
                     proposed_ids = [_claim_identity(claim) for claim in claims_list]
+                except ClaimBuildError:
+                    raise
                 except Exception as exc:
                     raise ClaimBuildError([f"{prefix}invalid {pid} claim metadata."]) from exc
                 for identity in proposed_ids:

@@ -127,3 +127,6 @@ loading (from `progress.session_snapshot` while running, disk/`result` at finish
 and partial-result messaging on top. Its optimistic start state is rolled back
 when the enqueue HTTP request rejects, so a request that never created a job is
 not rendered as a cancellable running job.
+
+Wikidata source builds keep their publisher and heartbeat through optional prose extraction (W-314).
+The strict boolean `extract_provenance_prose=false` skips that phase and preserves the complete core build.

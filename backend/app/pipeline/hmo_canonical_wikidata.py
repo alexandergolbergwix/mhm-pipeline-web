@@ -382,7 +382,7 @@ def canonical_wikidata_fingerprint(
     # fails: 62-claim spam drowned P31 in the judge prompt).
     # v17 — sole-content-work author fallback and colophon label stripping
     # (Rule W-300); canonical rows built before them must not revalidate.
-    salt = "hmo-wikidata-v23:"  # Corroborate author-qualified work URIs against current MARC.
+    salt = "hmo-wikidata-v24:"  # Preserve credited authors and source-exact scoped colophons.
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -2499,6 +2499,16 @@ def _sanitize_canonical_claims(
                     statement.value = fixed
             kept.append(statement)
         item.statements = kept
+
+        if record is not None:
+            from app.pipeline.wikidata_colophon_cleanup import (  # noqa: PLC0415
+                collapse_source_colophon_wrappers,
+            )
+
+            collapse_source_colophon_wrappers(
+                item, source_text=str(record.get("colophon_text") or ""),
+                control_number=cn,
+            )
 
 
 _LATIN_LOWER_RE = re.compile(r"^[a-z0-9 ,.\-'\u2019]+$")

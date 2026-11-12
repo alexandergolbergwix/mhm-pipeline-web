@@ -15,6 +15,7 @@ from app.pipeline.wikidata_canonical_enrichment import (
 )
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
 from converter.wikidata.work_author_claims import promote_safe_work_author_claims
+from converter.wikidata.work_identity import work_identity_for_item
 
 
 def _source(url: str) -> list[dict[str, object]]:
@@ -125,6 +126,33 @@ def test_author_promotion_does_not_contaminate_shared_p50() -> None:
     assert works[0].statements[0].reference_blocks == [first, second]
     assert works[1].statements[0].reference_blocks == [first, third]
     assert shared == snapshot
+
+
+@pytest.mark.parametrize("existing_qid", [None, "Q42"])
+def test_new_author_link_retains_source_name_and_identity(existing_qid: str | None) -> None:
+    source = _source("https://example.org/component")
+    author = _claim("P2093", "Alice", "string", source, rank="preferred")
+    person = WikidataItem(
+        local_id="person:1", entity_type="person", existing_qid=existing_qid,
+        labels={"en": "Alice"}, records=["990001"],
+        statements=[WikidataStatement("P8189", "987007000000005171", "external-id")],
+    )
+    work = WikidataItem(
+        local_id="work:1", entity_type="work", records=["990001"], statements=[author],
+    )
+    original = deepcopy(author)
+
+    assert promote_safe_work_author_claims([person, work]) == 1
+    promoted = work.statements[0]
+    assert promoted.property_id == "P50"
+    assert promoted.value == (existing_qid or "__LOCAL:person:1")
+    assert promoted.qualifiers == [{"property": "P1932", "value": "Alice", "type": "string"}]
+    assert promoted.rank == original.rank
+    assert promoted.reference_blocks == original.reference_blocks
+    assert promoted.references == original.references
+    assert work_identity_for_item(work).author_names == frozenset({"alice"})
+    assert not work_identity_for_item(work).unresolved_authors
+    assert author == original
 
 
 def test_sourced_dropped_author_requires_verified_identity_even_with_a_name() -> None:

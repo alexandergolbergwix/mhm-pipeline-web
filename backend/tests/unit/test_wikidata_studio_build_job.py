@@ -735,3 +735,95 @@ def test_statement_cap_is_cleared_on_one_connection_only() -> None:
 
     untouched = object()
     _without_statement_cap(untouched)
+
+
+async def _saved_source_job(db_session, params: dict[str, object]) -> uuid.UUID:
+    job_id = uuid.uuid4()
+    db_session.add(RunJob(
+        id=job_id, project_id=uuid.uuid4(), run_id=uuid.uuid4(),
+        kind=JOB_KIND_WIKIDATA_STUDIO_BUILD, status="running", params=params,
+        progress={}, created_by=uuid.uuid4(),
+    ))
+    await db_session.commit()
+    return job_id
+
+
+def _saved_source_cache() -> SimpleNamespace:
+    return SimpleNamespace(
+        result_items=[{"local_id": "ms1"}], record_count=1,
+        approved_match_count=0, summary={"total_items": 1},
+    )
+
+
+@pytest.mark.asyncio
+async def test_core_source_build_can_exclude_optional_prose(db_session) -> None:
+    job_id = await _saved_source_job(db_session, {
+        "source": "canonical", "extract_provenance_prose": False,
+    })
+    with (
+        patch(
+            "app.routers.wikidata_studio.execute_studio_build",
+            new=AsyncMock(return_value=_saved_source_cache()),
+        ) as build,
+        patch(
+            "app.pipeline.wikidata_studio_build_job._mine_provenance_prose", new=AsyncMock(),
+        ) as mine,
+        patch(
+            "app.pipeline.wikidata_studio_build_job.is_cancel_requested",
+            new=AsyncMock(return_value=False),
+        ),
+        patch("app.pipeline.wikidata_studio_build_job.update_job_progress", new=AsyncMock()),
+        patch("app.pipeline.wikidata_studio_build_job.finish_job", new=AsyncMock()) as finish,
+    ):
+        await run_wikidata_studio_build_job(job_id)
+    build.assert_awaited_once()
+    mine.assert_not_awaited()
+    assert finish.await_args.kwargs["status"] == JOB_STATUS_SUCCEEDED
+    assert finish.await_args.kwargs["result"]["total"] == 1
+    assert "mining provenance prose" not in _phase_plan("canonical", extract_provenance_prose=False)
+
+
+@pytest.mark.asyncio
+async def test_progress_continues_after_the_core_source_is_saved(db_session) -> None:
+    job_id = await _saved_source_job(db_session, {"source": "canonical"})
+
+    async def mine(_job_id, _cached, state, _phases, **_kwargs):
+        state["phase"] = "mining provenance prose"
+        state["done"], state["records"] = 0, 1
+        await asyncio.sleep(0.02)
+
+    with (
+        patch(
+            "app.routers.wikidata_studio.execute_studio_build",
+            new=AsyncMock(return_value=_saved_source_cache()),
+        ),
+        patch("app.pipeline.wikidata_studio_build_job._mine_provenance_prose", side_effect=mine),
+        patch("app.pipeline.wikidata_studio_build_job.PROGRESS_INTERVAL_SECONDS", 0.001),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.is_cancel_requested",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "app.pipeline.wikidata_studio_build_job.update_job_progress", new=AsyncMock(),
+        ) as progress,
+        patch("app.pipeline.wikidata_studio_build_job.finish_job", new=AsyncMock()),
+    ):
+        await run_wikidata_studio_build_job(job_id)
+    assert any(
+        call.args[1].get("phase") == "mining provenance prose"
+        for call in progress.await_args_list
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["false", 0, None])
+async def test_invalid_optional_prose_flag_does_not_start_a_build(db_session, value) -> None:
+    job_id = await _saved_source_job(db_session, {"extract_provenance_prose": value})
+    with (
+        patch("app.routers.wikidata_studio.execute_studio_build", new=AsyncMock()) as build,
+        patch("app.pipeline.wikidata_studio_build_job.finish_job", new=AsyncMock()) as finish,
+    ):
+        await run_wikidata_studio_build_job(job_id)
+    build.assert_not_awaited()
+    assert finish.await_args.kwargs["status"] == JOB_STATUS_FAILED
+    assert "boolean" in finish.await_args.kwargs["error"]

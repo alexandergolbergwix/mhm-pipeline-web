@@ -1261,3 +1261,25 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 - **R160 — Historical repair execution follows W-307.** Persist the exact intent
   before the POST. Recheck current MARC and the owner. Stop after uncertainty.
   *Why:* a local proposal cannot prove a remote correction or a safe resend.
+
+- **R161 — Historical colophon wrappers require exact source equivalence (W-310).**
+  Permit only normalized doubled quotes and one outer quote pair with an optional period.
+  Preserve the exact retained text, source, language, rank, folio, and role checks.
+  *Why:* the Sukkah duplicate retained transport wrappers after quote normalization.
+
+
+- **R162 — Preserve credited names on new P50 (W-311).**
+  Retain the source P2093 literal as P1932 and preserve all source evidence.
+  *Why:* the Pancieri conversion lost the exact name required by the identity gate.
+
+- **R163 — Clean exact colophon wrappers after overrides (W-312).**
+  Require one unique source-exact scoped claim and combine complete reference blocks first.
+  *Why:* a source upload restored old malformed duplicates.
+
+- **R164 — Preserve approved foreign manuscript P31 ranks (W-313).**
+  Use one exact existing active P31 rank without changes to its value, qualifiers, or metadata.
+  *Why:* the native preferred rank blocked twelve safe additive updates.
+
+- **R165 — Keep optional prose inside the build lifecycle (W-314).**
+  Accept a strict optional boolean and retain progress and heartbeat through the complete job.
+  *Why:* the source cache completed while the optional phase had no live progress.

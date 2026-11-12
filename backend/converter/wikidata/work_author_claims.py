@@ -168,11 +168,23 @@ def promote_safe_work_author_claims(
                 if _QID_RE.fullmatch(str(person.existing_qid or ""))
                 else f"__LOCAL:{person.local_id}"
             )
+            credited = deepcopy(statement)
+            if not any(
+                (q.get("property") or q.get("property_id")) == "P1932"
+                and q.get("value") == statement.value
+                for q in credited.qualifiers
+            ):
+                credited.qualifiers.append({
+                    "property": "P1932", "value": statement.value, "type": "string",
+                })
             targets = {
                 id(s): s for s in [*rewritten, *statements]
                 if s.property_id == "P50" and s.value == target
             }
-            compatible = [s for s in targets.values() if matching_qualifiers(s, statement)]
+            compatible = [
+                s for s in targets.values()
+                if matching_qualifiers(s, statement) or matching_qualifiers(s, credited)
+            ]
             if len(compatible) == 1:
                 merge_statement_references(compatible[0], statement)
                 changed += 1
@@ -181,7 +193,7 @@ def promote_safe_work_author_claims(
                 rewritten.append(statement)
                 continue
             rewritten.append(replace(
-                statement,
+                credited,
                 property_id="P50",
                 value=target,
                 value_type="item",

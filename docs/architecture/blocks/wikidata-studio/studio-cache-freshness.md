@@ -78,3 +78,5 @@ Risk: a canonical row that changes without `updated_at` changing is missed. The 
 - HTTP routes check freshness inline with a 25-second budget (`_STUDIO_FRESHNESS_TIMEOUT_SECONDS`). Heroku closes requests after 30 seconds.
 - Background upload jobs use `STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS` (300 seconds). The full check took 73.6 seconds on a Heroku dyno for run `47e03437`. The fingerprint alone takes under 1 second. The item digest and canonical fingerprint take most of the time.
 - A timeout still fails closed with HTTP 409 and no write.
+
+See [source repair safeguards](source-repair-safeguards.md) for post-override cleanup and the optional prose parameter.

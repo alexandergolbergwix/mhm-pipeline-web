@@ -48,7 +48,7 @@
 | `backend/scripts/check_wikidata_export_quality.py` | Read-only compact audit of work identity, author, language, quote, validation, linked-QID handling, and export-field failures (W-199) |
 | `backend/app/pipeline/wikidata_gila_audit.py` | Source comparison, three review classes, catalog-status evidence, and revision/claim-scoped work review proposals (W-296) |
 | `backend/app/pipeline/wikidata_gila_facts.py` | Source fact comparison against final native and live claims, with distinct local and live review outcomes (W-305) |
-| `backend/app/pipeline/wikidata_gila_repairs.py` | Non-executable historical reference and colophon proposals with revision, digest, rank, language, scope, and source checks (W-305) |
+| `backend/app/pipeline/wikidata_gila_repairs.py` | Non-executable historical reference and colophon proposals with revision, digest, rank, language, scope, and source-exact wrapper checks (W-305, W-310) |
 | `backend/scripts/local_measure_verify.py` | Read-only local build/verify; `--gila-audit` writes the full-run local proposal report without an AI judge (W-296) |
 | `backend/converter/wikidata/marc_field_map.py` | The MARC field → Wikidata target table (W-275): one deliberate fate per field — `map` / `evidence` / `out_of_model` — plus per-field and per-property coverage targets; source of the WP8 ledger |
 | `backend/scripts/marc_wikidata_coverage.py` | Coverage harness (W-275): parses a MARC TSV, joins claims by P3959 (`--projected` / `--claims` / `--live`), prints the per-field table against the targets, exits non-zero on regression or `--fail-below-target` |
@@ -122,3 +122,5 @@
 
 | `frontend/src/components/wikidata/WikidataBlockedActionDrawer.tsx` | Blocked-item accept drawer (W-270): remote item + claims diff, reuse without updates / accept & update (sealed consent) / leave out |
 | `backend/app/migrations/versions/0051_plan_reconcile_method.py` | `publication_plan_actions.reconcile_method` — how the target was found (W-270) |
+
+| `backend/app/pipeline/wikidata_colophon_cleanup.py` | Source-exact colophon cleanup after overrides; complete reference blocks and unique scope (W-312) |

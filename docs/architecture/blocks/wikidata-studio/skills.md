@@ -294,3 +294,5 @@ harness and the WP8 ledger follow.
 <RUN_ID> <PUBLICATION_ID> <ACTOR_ID>` — approves the sealed Release of a
 Publication and runs its dry-run with fresh checks (no live writes). Use it
 when the web UI cannot reach the release.
+
+See [source repair safeguards](source-repair-safeguards.md) for W-311–W-314, the focused tests, and the source-only build procedure.

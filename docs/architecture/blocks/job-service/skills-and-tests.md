@@ -89,3 +89,6 @@
 
 - W-306: `test_job_summary_list_omits_bulk_results_and_keeps_detail` in
   `backend/tests/test_run_jobs.py` checks the summary endpoint and selected detail.
+
+The Wikidata build tests cover the optional prose parameter and progress through the complete job (W-314).
+See [source repair safeguards](../wikidata-studio/source-repair-safeguards.md).

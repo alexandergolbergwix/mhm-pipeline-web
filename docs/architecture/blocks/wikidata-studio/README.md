@@ -42,7 +42,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R158) and known gaps.
+- [Rules](rules.md) — the invariants (R1–R165) and known gaps.
 - [Reference blocks](reference-blocks.md) — source grouping, old-data gates, deferred links, test wiki, and export limits (W-304).
 - [Studio cache freshness](studio-cache-freshness.md) — build fingerprint, override application, and the Rebuild required badge.
 - [Upload write guards](upload-write-guards.md) — Studio source recheck before each bulk write, and the owned-item rule.
@@ -61,7 +61,8 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Gila audit risks](gila-audit-risks.md) — open work-identity, folio, and historical reference-data gaps.
 - [Review page reads](review-pages.md) — cache metadata and bounded SQL reads (W-309).
 - [Canonical source identity](canonical-source-identity.md) — current-source author proof and exact graph title forms (W-308).
-- [Historical repairs](historical-repairs.md) — authorized exact writes and durable receipts (W-307).
+- [Source repair safeguards](source-repair-safeguards.md) — credited names, exact colophons, foreign ranks, and optional prose (W-311–W-314).
+- [Historical repairs](historical-repairs.md) — authorized exact writes, source-exact colophon wrappers, and durable receipts (W-307, W-310).
 - [Gila source fidelity](gila-source-fidelity.md) — occurrence identity, source scope, per-fact comparisons, and guarded historical proposals.
 - [Tests](tests.md) — the test suites pinning this block.
 

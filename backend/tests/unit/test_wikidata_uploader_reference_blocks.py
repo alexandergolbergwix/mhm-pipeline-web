@@ -77,6 +77,94 @@ def _urls(claim: object) -> set[str]:
     }
 
 
+@pytest.mark.parametrize(("existing_rank", "proposed_rank"), [
+    ("normal", "preferred"), ("preferred", "normal"),
+])
+def test_accepted_foreign_manuscript_preserves_existing_class_rank(
+    monkeypatch: pytest.MonkeyPatch, existing_rank: str, proposed_rank: str,
+) -> None:
+    uploader = _uploader()
+    old = _statement("P31", "Q123172729", "item", [_source("https://example.org/old")])
+    old.rank = existing_rank
+    existing = _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(old))
+    before = copy.deepcopy(existing.get_json())
+    uploader._is_our_item_cache["Q123"] = False
+    uploader.register_foreign_accept("Q123")
+    new = _statement("P31", "Q123172729", "item", [_source("https://example.org/new")])
+    new.rank = proposed_rank
+
+    result, _, _ = uploader._build_wbi_item(WikidataItem(
+        entity_type="manuscript", existing_qid="Q123", statements=[new],
+    ), read_only=True)
+
+    claims = result.claims.get("P31")
+    assert len(claims) == 1
+    assert claims[0].get_json()["rank"] == existing_rank
+    assert claims[0].get_json()["id"] == before["claims"]["P31"][0]["id"]
+    assert _urls(claims[0]) == {"https://example.org/old", "https://example.org/new"}
+    assert new.rank == proposed_rank
+
+
+@pytest.mark.parametrize(("accepted", "owned", "entity_type", "old_rank", "new_rank"), [
+    (False, False, "manuscript", "normal", "preferred"),
+    (True, True, "manuscript", "normal", "preferred"),
+    (True, False, "work", "normal", "preferred"),
+    (True, False, "manuscript", "deprecated", "normal"),
+    (True, False, "manuscript", "normal", "deprecated"),
+])
+def test_rank_preservation_does_not_relax_other_rank_conflicts(
+    monkeypatch: pytest.MonkeyPatch, accepted: bool, owned: bool, entity_type: str,
+    old_rank: str, new_rank: str,
+) -> None:
+    uploader = _uploader()
+    old = _statement("P31", "Q123172729", "item", [_source("https://example.org/old")])
+    old.rank = old_rank
+    _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(old))
+    uploader._is_our_item_cache["Q123"] = owned
+    if accepted:
+        uploader.register_foreign_accept("Q123")
+    new = _statement("P31", "Q123172729", "item", [_source("https://example.org/new")])
+    new.rank = new_rank
+    with pytest.raises(ClaimBuildError, match="conflicting P31 rank"):
+        uploader._build_wbi_item(WikidataItem(
+            entity_type=entity_type, existing_qid="Q123", statements=[new],
+        ), read_only=True)
+
+
+def test_foreign_class_rank_requires_one_exact_existing_claim(monkeypatch) -> None:
+    uploader = _uploader()
+    normal = _statement("P31", "Q123172729", "item", [_source("https://example.org/one")])
+    preferred = copy.deepcopy(normal)
+    preferred.rank = "preferred"
+    _item_with_existing_claims(monkeypatch, uploader, [
+        uploader._build_claim(normal), uploader._build_claim(preferred),
+    ])
+    uploader._is_our_item_cache["Q123"] = False
+    uploader.register_foreign_accept("Q123")
+    with pytest.raises(ClaimBuildError, match="ambiguous matching P31"):
+        uploader._build_wbi_item(WikidataItem(
+            entity_type="manuscript", existing_qid="Q123", statements=[preferred],
+        ), read_only=True)
+
+
+def test_foreign_class_rank_does_not_cross_a_qualifier_boundary(monkeypatch) -> None:
+    uploader = _uploader()
+    old = _statement("P31", "Q123172729", "item", [_source("https://example.org/old")])
+    old.qualifiers = [{"property": "P1480", "type": "item", "value": "Q18122778"}]
+    _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(old))
+    uploader._is_our_item_cache["Q123"] = False
+    uploader.register_foreign_accept("Q123")
+    new = _statement("P31", "Q123172729", "item", [_source("https://example.org/new")])
+    new.rank = "preferred"
+    result, _, _ = uploader._build_wbi_item(WikidataItem(
+        entity_type="manuscript", existing_qid="Q123", statements=[new],
+    ), read_only=True)
+    claims = result.claims.get("P31")
+    assert len(claims) == 2
+    assert {c.get_json()["rank"] for c in claims} == {"normal", "preferred"}
+    assert len([c for c in claims if c.get_json().get("qualifiers")]) == 1
+
+
 def test_owned_link_update_retains_old_and_new_blocks(monkeypatch: pytest.MonkeyPatch) -> None:
     uploader = _uploader()
     old = _statement("P50", "Q55", "item", [_source("https://example.org/old")])

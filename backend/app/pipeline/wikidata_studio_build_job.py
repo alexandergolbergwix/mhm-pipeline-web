@@ -107,14 +107,16 @@ def _phase_description(label: str) -> str:
     return guide[1] if guide else ""
 
 
-def _phase_plan(source: str) -> tuple[str, ...]:
+def _phase_plan(source: str, *, extract_provenance_prose: bool = True) -> tuple[str, ...]:
     """The phases this build will actually pass through."""
-    if source == "canonical":
-        return BUILD_PHASES
     return tuple(
         phase
         for phase in BUILD_PHASES
-        if phase not in (*_LEGACY_ONLY_PHASES, "assembling canonical projection")
+        if (
+            source == "canonical"
+            or phase not in (*_LEGACY_ONLY_PHASES, "assembling canonical projection")
+        )
+        and (extract_provenance_prose or phase != "mining provenance prose")
     )
 
 
@@ -442,8 +444,16 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         force_rebuild = bool(params.get("force_rebuild", False))
         run_user_id = job.created_by
         source = str(params.get("source") or "legacy")
+        extract_provenance_prose = params.get("extract_provenance_prose", True)
 
-    phases = _phase_plan(source)
+    if type(extract_provenance_prose) is not bool:
+        await finish_job(
+            job_id, status=JOB_STATUS_FAILED,
+            error="extract_provenance_prose must be a boolean",
+        )
+        return
+
+    phases = _phase_plan(source, extract_provenance_prose=extract_provenance_prose)
     # Survives a failed attempt so the next attempt continues the entity
     # cursor, the transliteration cache, and a finished item build.
     resume: dict[str, object] = {}
@@ -581,6 +591,58 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
                     return
         if cached is None:
             return
+
+        if await is_cancel_requested(job_id):
+            await finish_job(job_id, status=JOB_STATUS_CANCELLED)
+            return
+
+        try:
+            if extract_provenance_prose:
+                await _mine_provenance_prose(
+                    job_id, cached, state, phases,
+                    run_id=run_id, approved_only=approved_only, source=source,
+                    should_cancel=should_cancel,
+                )
+        except JobCancelledError:
+            await finish_job(
+                job_id,
+                status=JOB_STATUS_CANCELLED,
+                error="Cancelled by user",
+                progress={
+                    "phase": "cancelled",
+                    "processed": len(phases),
+                    "total": len(phases),
+                    "unit": "steps",
+                    "message": "Cancelled by user",
+                },
+            )
+            return
+
+        if await is_cancel_requested(job_id):
+            # A cancel that landed mid-mining must not be overridden by a
+            # succeeded finish — mining is optional, cancel is not.
+            await finish_job(job_id, status=JOB_STATUS_CANCELLED)
+            return
+
+        total = len(cached.result_items or [])
+        summary = cached.summary or {}
+        await finish_job(
+            job_id,
+            status=JOB_STATUS_SUCCEEDED,
+            result={
+                "total": total,
+                "record_count": cached.record_count,
+                "approved_match_count": cached.approved_match_count,
+                "summary": summary,
+            },
+            progress={
+                "phase": "done",
+                "processed": total,
+                "total": max(total, 1),
+                "unit": "items",
+                "message": f"Built {total} items from {cached.record_count} records",
+            },
+        )
     finally:
         publisher.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -588,54 +650,3 @@ async def run_wikidata_studio_build_job(job_id: uuid.UUID) -> None:
         hb_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await hb_task
-
-    if await is_cancel_requested(job_id):
-        await finish_job(job_id, status=JOB_STATUS_CANCELLED)
-        return
-
-    try:
-        await _mine_provenance_prose(
-            job_id, cached, state, phases,
-            run_id=run_id, approved_only=approved_only, source=source,
-            should_cancel=should_cancel,
-        )
-    except JobCancelledError:
-        await finish_job(
-            job_id,
-            status=JOB_STATUS_CANCELLED,
-            error="Cancelled by user",
-            progress={
-                "phase": "cancelled",
-                "processed": len(phases),
-                "total": len(phases),
-                "unit": "steps",
-                "message": "Cancelled by user",
-            },
-        )
-        return
-
-    if await is_cancel_requested(job_id):
-        # A cancel that landed mid-mining must not be overridden by a
-        # succeeded finish — mining is optional, cancel is not.
-        await finish_job(job_id, status=JOB_STATUS_CANCELLED)
-        return
-
-    total = len(cached.result_items or [])
-    summary = cached.summary or {}
-    await finish_job(
-        job_id,
-        status=JOB_STATUS_SUCCEEDED,
-        result={
-            "total": total,
-            "record_count": cached.record_count,
-            "approved_match_count": cached.approved_match_count,
-            "summary": summary,
-        },
-        progress={
-            "phase": "done",
-            "processed": total,
-            "total": max(total, 1),
-            "unit": "items",
-            "message": f"Built {total} items from {cached.record_count} records",
-        },
-    )

@@ -70,3 +70,5 @@
 | Change corpus maps, SPARQL console, or Research Assistant tools | [research](blocks/research/README.md) + [agent.md](blocks/research/agent.md) + Rules W-228 / W-229 / W-230 / W-231 |
 | Recover a Publication upload that stays running after a worker failure | [Publication](blocks/wikidata-studio/production-publication.md) + W-227; inspect the execution job and resume the paused Execution |
 | Change extraction approval or rejection | [Explicit rejection](blocks/extraction/rejection.md) + [versioning and export](blocks/versioning-export/README.md) + W-305 |
+
+| Repair source colophons, credited authors, or approved foreign manuscript ranks | [Source repair safeguards](blocks/wikidata-studio/source-repair-safeguards.md) + W-311–W-314 |

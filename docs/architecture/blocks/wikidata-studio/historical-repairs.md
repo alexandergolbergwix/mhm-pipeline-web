@@ -1,6 +1,6 @@
 # Exact historical repairs
 
-> Up: [Wikidata Studio](README.md) · Rule W-307
+> Up: [Wikidata Studio](README.md) · Rules W-307, W-310
 
 `wikidata_gila_repairs.py` remains a read-only proposal builder.
 `wikidata_gila_execution.py` provides the separate executor.
@@ -15,6 +15,10 @@ The plan binds the actor, project, run, authorized QIDs, and raw source hashes.
 Each repair rechecks the current raw source, exact entity snapshot, and owner.
 Colophon changes must match a new proposal from current source text.
 Placeholder catalogue notes cannot supply that text.
+The text check permits exact source text after doubled-quote normalization.
+It also permits one outer quote pair, with an optional terminal period.
+The check does not remove internal punctuation, uncertainty marks, or source words.
+The retained claim must still match the source exactly and preserve every existing safety check.
 
 The database audit stores the exact proposal and digest before the POST.
 The audit uses channel `wikidata_repair` and operation `repair_intent`.

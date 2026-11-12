@@ -72,3 +72,11 @@ Run the production migration in this order: apply Alembic head, run the
 controlled HMO rebuild/upload/read-back command documented in the HMO Studio
 skills page, then run the canonical backfill and readiness gate. Only after
 those checks pass run `backend/.venv/bin/python backend/scripts/check_hmo_rollout.py --run-id <uuid>` before enabling `HMO_CANONICAL_FIRST`. Add `--legacy` and `--canonical` TTL paths to require identical shadow projections. The command is read-only and exits non-zero until all gates pass.
+
+### Skill: deploy shared Wikidata source and upload fixes
+
+Commit the backend before `cd modal && modal deploy modal_jobs.py`.
+The Modal image uses `git archive HEAD`.
+Deploy the same commit to Heroku before the next source build or upload.
+Verify both health endpoints and the release commit.
+Use the [source repair checks](../wikidata-studio/source-repair-safeguards.md) after the deploy.

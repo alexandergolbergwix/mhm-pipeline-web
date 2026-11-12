@@ -305,6 +305,7 @@ Any new external-write path or reconcile change MUST extend
   revision/digest changes, uncertain prior outcomes, and source-bound colophon
   rank, language, and folio checks. It performs no remote write.
 
+- W-310: `test_wikidata_gila_repairs.py` checks source-exact colophon wrappers and rejects loss of an uncertainty mark.
 - W-307: `test_wikidata_gila_execution.py` checks source rejection, exact intent,
   ownership, stale revisions, one POST, unknown API errors, and complete readback.
 
@@ -314,3 +315,5 @@ Any new external-write path or reconcile change MUST extend
 
 - W-309: `test_wikidata_row_fallback.py` checks warm-path SQL without corpus
   payload columns, initial fallback, and missing builds with orphan rows.
+
+See [source repair safeguards](source-repair-safeguards.md) for W-311–W-314, the focused tests, and the source-only build procedure.

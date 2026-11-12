@@ -48,3 +48,5 @@ that the account did not create is not a write target.
 - `backend/tests/unit/test_wikidata_upload_guards.py`
 - `backend/tests/unit/test_wikidata_uploader_ownership_policy.py`
 - `backend/tests/unit/test_wikidata_publication_gateway.py`
+
+See [source repair safeguards](source-repair-safeguards.md) for W-311–W-314, the focused tests, and the source-only build procedure.

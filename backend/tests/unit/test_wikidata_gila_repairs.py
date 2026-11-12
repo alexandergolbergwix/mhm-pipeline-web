@@ -3,6 +3,7 @@
 from copy import deepcopy
 
 import pytest
+
 from app.pipeline.wikidata_gila_repairs import (
     build_gila_repair_proposals,
     validate_gila_repair_proposal,
@@ -96,7 +97,8 @@ def test_clean_entity_produces_no_reference_repair() -> None:
     )
 
 
-def test_duplicate_colophon_needs_source_text_and_keeps_all_references() -> None:
+@pytest.mark.parametrize("wrapper", ["{text}", '"{text}"', '"{text}".', '""{text}"".'])
+def test_duplicate_colophon_needs_source_text_and_keeps_all_references(wrapper: str) -> None:
     text = 'השלמתי בשנת ת"י שמואל(?)'
     correct = {
         "id": "Q123$correct",
@@ -118,12 +120,16 @@ def test_duplicate_colophon_needs_source_text_and_keeps_all_references() -> None
     old = deepcopy(correct)
     old["id"] = "Q123$old"
     old.pop("qualifiers")
-    old["mainsnak"]["datavalue"]["value"]["text"] = text.replace('"', '""')
+    legacy_text = wrapper.format(text=text.replace('"', '""'))
+    old["mainsnak"]["datavalue"]["value"]["text"] = legacy_text
     entity = {"id": "Q123", "lastrevid": 1234, "claims": {"P1684": [correct, old]}}
     assert build_gila_repair_proposals({"Q123": entity}) == []
     proposal = build_gila_repair_proposals({"Q123": entity}, colophons_by_qid={"Q123": text})[0]
     assert any(change["kind"] == "remove_duplicate_colophon" for change in proposal["changes"])
     validate_gila_repair_proposal(proposal, entity)
+    old["mainsnak"]["datavalue"]["value"]["text"] = legacy_text.replace("שמואל(?)", "שמואל")
+    assert build_gila_repair_proposals({"Q123": entity}, colophons_by_qid={"Q123": text}) == []
+    old["mainsnak"]["datavalue"]["value"]["text"] = legacy_text
     correct["rank"] = "deprecated"
     assert build_gila_repair_proposals({"Q123": entity}, colophons_by_qid={"Q123": text}) == []
     correct["rank"] = "normal"

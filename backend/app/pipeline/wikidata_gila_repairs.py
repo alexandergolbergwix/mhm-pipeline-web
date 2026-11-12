@@ -96,17 +96,23 @@ def _inscription_language(claim: Mapping[str, object]) -> str:
     return language if isinstance(language, str) and language else ""
 
 
-def _duplicate_colophon(old: Mapping[str, object], kept: Mapping[str, object], source: str) -> bool:
+def is_source_exact_colophon_duplicate(
+    old: Mapping[str, object], kept: Mapping[str, object], source: str,
+) -> bool:
     old_text = _text(old)
     old_sources = reference_control_numbers(old.get("references"))
     kept_sources = reference_control_numbers(kept.get("references"))
     return bool(
         source
+        and isinstance(old.get("mainsnak"), Mapping)
+        and old["mainsnak"].get("property") == "P1684"
+        and isinstance(kept.get("mainsnak"), Mapping)
+        and kept["mainsnak"].get("property") == "P1684"
         and _text(kept) == source
         and _has_colophon_scope(kept)
         and not old.get("qualifiers")
         and old_text != source
-        and old_text.replace('""', '"') == source
+        and old_text.replace('""', '"') in {source, f'"{source}"', f'"{source}".'}
         and _inscription_language(old)
         and _inscription_language(old) == _inscription_language(kept)
         and old_sources
@@ -163,7 +169,7 @@ def build_gila_repair_proposals(
         if source_text and len(correct) == 1:
             kept = correct[0]
             for old in inscriptions:
-                if not _duplicate_colophon(old, kept, source_text):
+                if not is_source_exact_colophon_duplicate(old, kept, source_text):
                     continue
                 existing = next(
                     (change for change in changes if change["claim_id"] == kept["id"]), None
@@ -260,7 +266,7 @@ def validate_gila_repair_proposal(
         kind = change.get("kind")
         if kind == "remove_duplicate_colophon":
             retained = by_id.get(str(change.get("retained_claim_id")))
-            if retained is None or not _duplicate_colophon(
+            if retained is None or not is_source_exact_colophon_duplicate(
                 before, retained, str(change.get("source_text") or "")
             ):
                 raise ValueError("The duplicate colophon lacks source and scope evidence.")
@@ -295,7 +301,7 @@ def validate_gila_repair_proposal(
                         and removed.get("retained_claim_id") == claim_id
                     ):
                         old = by_id.get(str(removed.get("claim_id")))
-                        if old is None or not _duplicate_colophon(
+                        if old is None or not is_source_exact_colophon_duplicate(
                             old, before, str(removed.get("source_text") or "")
                         ):
                             raise ValueError("The colophon reference source cannot be verified.")

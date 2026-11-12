@@ -3613,3 +3613,53 @@ Only an initial backfill selects `result_items`.
 A missing cache remains an error even when orphan item rows exist.
 A cache that disappears before the backfill also remains an error.
 The SQL regression test rejects a warm-path query with either bulk payload column.
+
+## Rule W-310 — Historical colophon wrappers require exact source equivalence
+
+The Sukkah manuscript retained a malformed duplicate colophon after the earlier exact repair batch.
+The old text had doubled quotes, one outer quote pair, and a terminal period.
+The earlier comparison normalized doubled quotes but rejected the remaining transport wrapper.
+
+Permit only the exact source text, that text in one quote pair, or that quoted text with one terminal period.
+Apply this comparison after doubled-quote normalization.
+Do not remove source words, internal punctuation, or uncertainty marks.
+The retained claim must still match current MARC exactly.
+All source, role, folio, language, datatype, rank, revision, ownership, and receipt checks remain mandatory.
+The local command uses this correction; a live receipt remains necessary to establish a successful repair.
+
+## Rule W-311 — Author conversion retains the credited source name
+
+The Pancieri work had a proven person target but lost its source name during P2093 conversion.
+The missing P1932 then prevented the normal source-identity gate from resolving that local P50.
+A new P50 retains the exact literal author name in P1932.
+The conversion preserves the rank, qualifiers, and complete reference blocks.
+It does not override a person target or weaken the source-identity gate.
+
+## Rule W-312 — Canonical cleanup prevents exact colophon wrappers from return
+
+An upload restored old malformed colophons because the source still contained them.
+The canonical sanitizer applies the shared source-equivalence guard after curator overrides.
+This order preserves the base indices for those overrides.
+Require one source record and one unique scoped counterpart with the same language and active rank.
+Preserve exact source text, role, folio, and every complete reference block.
+Retain both claims when the proof is ambiguous.
+The canonical salt advances to `hmo-wikidata-v24`.
+
+## Rule W-313 — Approved foreign manuscripts retain exact existing P31 ranks
+
+Twelve source-proven manuscripts had a preferred native P31 and a normal community P31.
+An additive upload refused these items despite exact target approval and agreement on the physical class.
+For an approved foreign manuscript, one exact existing P31 supplies its active rank.
+The value and every qualifier must agree.
+The uploader preserves the existing claim identity and complete entity metadata.
+Multiple matches, deprecated ranks, owned items, and other properties retain the strict conflict gate.
+The rule does not authorize a community rank change.
+
+## Rule W-314 — Optional prose work remains inside the job lifecycle
+
+The source cache completed before optional AI prose extraction in the repair build.
+The progress publisher and heartbeat stopped too early and concealed that phase.
+Keep both tasks active until the whole job finishes.
+A strict boolean `extract_provenance_prose` defaults to true.
+A false value skips only the optional AI phase after the complete source build and cache save.
+The quality gate, cancellation checks, and terminal receipt remain mandatory.
