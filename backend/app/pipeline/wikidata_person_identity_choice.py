@@ -177,6 +177,7 @@ def make_choice(
         "local_id": item["local_id"],
         "target_qid": target,
         "previous_qid": expected_qid,
+        "projection_existing_qid": item.get("projection_existing_qid", expected_qid),
         "authority_id": authority,
         "source_fingerprint": expected_fingerprint,
         "source_uri": source["source_uri"],
@@ -213,7 +214,8 @@ def apply_choice(item, choice, *, source, records):
     elif (
         sorted(item.get("records") or []) != choice["original_records"]
         or authority_id(item) != choice["authority_id"]
-        or item.get("existing_qid") != choice["previous_qid"]
+        or item.get("existing_qid")
+        not in {choice["previous_qid"], choice["projection_existing_qid"]}
     ):
         raise ValueError("The person choice no longer matches its original identity.")
     for cn, expected_hash in choice["source_identity_hashes"].items():

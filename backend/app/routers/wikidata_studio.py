@@ -3040,7 +3040,14 @@ async def choose_person_identity(
     )
 
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
-    item = await _studio_item_from_cache(db, run_id, local_id, approved_only=True, source="canonical")
+    cached_item = await _studio_item_from_cache(
+        db, run_id, local_id, approved_only=True, source="canonical",
+    )
+    item = await fetch_merged_wikidata_item(
+        db, run_id, local_id, approved_only=True, source="canonical",
+    ) if cached_item is not None else None
+    if item is not None:
+        item = {**item, "projection_existing_qid": cached_item.get("existing_qid")}
     canonical = (await db.execute(select(HmoCanonicalEntity).where(
         HmoCanonicalEntity.run_id == run_id, HmoCanonicalEntity.local_id == local_id,
     ))).scalar_one_or_none()

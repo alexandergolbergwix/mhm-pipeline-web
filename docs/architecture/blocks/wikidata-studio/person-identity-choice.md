@@ -12,7 +12,7 @@ The generic item PATCH cannot supply `person_identity_choice`.
 
 The endpoint verifies the following facts:
 
-- The canonical source fingerprint and previous public target match the request.
+- The canonical source fingerprint and curator-visible public target match the request.
 - The native person has one active NLI authority identifier in the 987 namespace.
 - The public target has Q5 and that exact active P8189.
 - A complete exact-identifier search returns only that target.
@@ -26,6 +26,8 @@ aliases, original records, and hashes of the source identity fields.
 The source hashes include the dates and roles in those MARC fields.
 The endpoint rechecks the canonical source after the public lookup.
 It records the project event before the row change in the same transaction.
+The proof records the cached projection QID separately from a ledger-only visible QID.
+The builder accepts only those two exact prior states.
 An existing choice requires a separate review; this endpoint does not silently replace it.
 
 Migration `0054_person_identity_choice` adds the nullable JSONB field.

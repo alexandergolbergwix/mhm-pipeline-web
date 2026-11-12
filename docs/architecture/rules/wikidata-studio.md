@@ -3748,3 +3748,8 @@ Test mode must never target the chosen public QID.
 The UI must count a valid current choice as reference only.
 An earlier unknown write outcome still requires independent recovery.
 See [person identity choices](../blocks/wikidata-studio/person-identity-choice.md).
+
+The endpoint must use the same merged identity as the review table.
+Store a ledger-only visible QID separately from the original projection QID.
+Neither prior identity can authorize another arbitrary QID.
+The first guarded live choice exposed this difference and returned 409 before any mutation.

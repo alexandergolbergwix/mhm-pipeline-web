@@ -216,6 +216,7 @@ async def test_endpoint_records_the_full_proof_before_the_read_model(monkeypatch
         AsyncMock(return_value=SimpleNamespace(project_id=uuid.uuid4())),
     )
     monkeypatch.setattr(router, "_studio_item_from_cache", AsyncMock(return_value=item))
+    monkeypatch.setattr(router, "fetch_merged_wikidata_item", AsyncMock(return_value=item))
     monkeypatch.setattr(
         marc_verify_context,
         "load_run_marc_records_scoped",
@@ -252,3 +253,14 @@ def test_a_pooled_alias_cannot_authorize_a_different_person():
     records[CN1]["700$a"] = "שלמה בן סעדיה"
     with pytest.raises(ValueError, match="exact person name"):
         choice(item, source, records, proof)
+
+
+def test_a_ledger_only_previous_target_keeps_its_separate_projection_basis():
+    item, source, records, proof = case()
+    item["projection_existing_qid"] = None
+    selected = choice(item, source, records, proof)
+    item["existing_qid"] = None
+    assert apply_choice(item, selected, source=source, records=records)["existing_qid"] == "Q100"
+    item["existing_qid"] = "Q999"
+    with pytest.raises(ValueError):
+        apply_choice(item, selected, source=source, records=records)
