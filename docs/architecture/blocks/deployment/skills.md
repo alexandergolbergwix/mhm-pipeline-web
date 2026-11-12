@@ -80,3 +80,10 @@ The Modal image uses `git archive HEAD`.
 Deploy the same commit to Heroku before the next source build or upload.
 Verify both health endpoints and the release commit.
 Use the [source repair checks](../wikidata-studio/source-repair-safeguards.md) after the deploy.
+
+### Release evidence without secrets
+
+`heroku releases:info` includes configuration secrets.
+Do not store or display its raw output.
+Use `heroku releases --json` for release metadata.
+Select only the release version, status, description, and creation time before storage or display.
