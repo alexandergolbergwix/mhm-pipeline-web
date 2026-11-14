@@ -25,6 +25,7 @@ import pytest
 
 from app.pipeline import wikidata_upload as wu
 from converter.wikidata.reconciler import (
+    PersonIdentityUncertainError,
     ReconciliationUnavailableError,
     WikidataReconciler,
     WorkIdentityUncertainError,
@@ -1472,11 +1473,10 @@ def test_manuscript_by_identifiers_short_circuits_on_p3959(monkeypatch):
 def test_person_by_identifiers_rejects_on_cross_identifier_conflict(monkeypatch):
     rec = WikidataReconciler()
     monkeypatch.setattr(rec, "reconcile_person_by_viaf", lambda _v: "Q1")
-    # Candidate Q1 conflicts on P8189 → must be rejected (treated as a
-    # different real-world entity), returning None.
     monkeypatch.setattr(rec, "_candidate_conflicts", lambda _q, _p: ["P8189"])
 
-    assert rec.reconcile_person_by_identifiers("111", "9870555") is None
+    with pytest.raises(PersonIdentityUncertainError, match="needs review"):
+        rec.reconcile_person_by_identifiers("111", "9870555")
 
 
 def test_person_by_identifiers_accepts_when_no_conflict(monkeypatch):

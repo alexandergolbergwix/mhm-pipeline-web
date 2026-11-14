@@ -15,8 +15,8 @@
 | `backend/app/main.py` | Registration of the source-review router |
 | `backend/app/models/item_override.py` | Durable `source_review_choices` |
 | `backend/app/migrations/versions/0055_source_review_choices.py` | Nullable JSONB column |
-| `backend/app/pipeline/hmo_canonical_wikidata.py` | Source choices after the canonical merge; version v27 |
-| `backend/app/pipeline/wikidata_studio.py` | Override fingerprint and legacy source choices; version v23 |
+| `backend/app/pipeline/hmo_canonical_wikidata.py` | Source choices after the canonical merge; version v29 |
+| `backend/app/pipeline/wikidata_studio.py` | Override fingerprint and legacy source choices; version v25 |
 | `backend/app/pipeline/wikidata_studio_batches.py` | Source choices in streamed builds |
 | `backend/app/pipeline/wikidata_item_views.py` | Current proof metadata and rebuild state |
 | `backend/app/pipeline/wikidata_item_merge.py` | Override serialization |
@@ -34,7 +34,11 @@
 | `backend/app/pipeline/wikidata_gila_audit.py`, `wikidata_gila_completion.py` | Passage inventory and honest requirement counts |
 | `backend/scripts/export_gila_completion.py` | Source passage CSV and completion manifest |
 | `backend/converter/wikidata/retry_policy.py` | Bulk maxlag and Retry-After parser |
-| `backend/converter/wikidata/uploader.py` | Fresh creator user-ID proof and public identity checks |
+| `backend/converter/wikidata/uploader.py` | Fresh creator user-ID proof and final CREATE checks |
+| `backend/app/pipeline/wikidata_creation_safety.py` | Shared semantic and fresh identity checks for public CREATE |
+| `backend/converter/wikidata/reconciler.py` | Conclusive identity lookup; person conflicts require review |
+| `backend/converter/wikidata/item_validator.py` | Semantic errors, including generated person descriptions |
+| `backend/converter/wikidata/holding_institutions.py`, `manuscript_projection.py`, `manuscript_metadata.py` | Current 942 proof; no unresolved microfilm fallback |
 | `backend/app/publication/gateway.py`, `wikidata_gateway.py` | Structured retry delay and target checks |
 | `backend/app/publication/core.py`, `repository.py`, `sql_repository.py` | Durable delayed eligibility and atomic result state |
 | `backend/app/publication/historical_repairs.py` | Exact repair projection and gateway through Publication |

@@ -3363,11 +3363,11 @@ identify an item, but it cannot establish who created it or authorize an edit.
    on live Wikidata. Publication checks sealed work author/source identity and
    requires verified written-work P31 values. Test Publication blocks generic
    reconciliation until a test-specific identity check is available.
-6. Ingest retains repeated work titles with distinct source folio ranges,
-   including on repeated preparation. This does not prove end-to-end folio
-   preservation: `content_projection.py` uses title-only `seen_works` to
-   suppress later claims, so a second P1574 folio qualifier can still be lost.
-   Qualifier-aware canonical dedup tests do not close that earlier gap.
+6. The original audit found a title-only projection gap after ingest.
+   W-305 closed that gap: `content_projection.py` now retains distinct title,
+   author, and folio occurrences through the final P1574 claims.
+   `test_gila_full_path_regressions.py` and `test_wikidata_studio_works.py`
+   cover repeated source titles and distinct folio qualifiers.
 7. The public run-job API rejects underscore-prefixed parameters. The trusted
    Modal worker, not a client, supplies `_step1_state` for deferred links.
 
@@ -3377,8 +3377,8 @@ Key code: `wikidata_upload.py`, `wikidata_upload_job.py`, `uploader.py`,
 `test_wikidata_upload_guards.py`, `test_wikidata_upload_job_progress.py`,
 `test_wikidata_publication_gateway.py`, `test_publication_module.py`,
 `test_publication_router.py`, `test_wikidata_studio_works.py`, and
-`frontend/e2e/wikidata-item-drawer.spec.ts`. The folio test covers ingest,
-not the final projected claims.
+`frontend/e2e/wikidata-item-drawer.spec.ts`. The current folio tests also
+cover the final projected claims under W-305.
 
 ## Rule W-303 — Owner-only updates bind exact run and ledger evidence
 
@@ -3931,3 +3931,65 @@ Filter the Studio query by `profile_name = mhm-wikidata`.
 Return no Publication when the run has operator repairs only.
 Keep the repair Publication, intent, retry date, and receipts intact.
 Tests: `backend/tests/test_publication_router.py`.
+
+### Rule W-335 — New public items pass final semantic and identity checks (2026-11-14)
+
+The direct uploader did not repeat the semantic checks from the bulk path.
+Invalid new items could therefore reach the write path through a direct caller.
+A red regression also proved that conflicting person identifiers could return false absence.
+
+Use `wikidata_creation_safety.creation_errors` after local references resolve and before login.
+Reuse the shared export-quality gate for all hard semantic errors.
+Require a supported entity type, active P31, and an English description.
+A manuscript also needs its exact P3959 and a proven current P217.
+Reject several active identities on one strong identifier property.
+Reject generated person-role and manuscript lists as public descriptions.
+The full-source audit found a named role list with a truncated final fragment.
+The old canonical description filter missed that variant.
+The canonical converter now uses the same predicate as the validator.
+A regression covers the named, truncated form and preserves the original source entity.
+
+Use a new reconciler immediately before the sole public CREATE write.
+Exclude deprecated identifiers from this lookup without a change to the source payload.
+A found target, unavailable lookup, or inconclusive work identity blocks CREATE.
+Distinct person targets or conflicting authority values raise `PersonIdentityUncertainError`.
+A conflict cannot prove absence and cannot authorize adoption.
+Do not convert CREATE to UPDATE or edit a foreign target.
+Retain creator user-ID proof, maxlag, and uncertain-outcome rules.
+
+Tests: `test_wikidata_creation_safety.py`, `test_wikidata_upload_guards.py`,
+`test_wikidata_publication_gateway.py`, and `test_wikidata_uploader_ownership_policy.py`.
+See [CREATE guards](../blocks/wikidata-studio/creation-safety.md).
+
+### Rule W-336 — Unresolved MARC 942 cannot promote microfilm to P217 (2026-11-14)
+
+An ambiguous source record had two current call numbers in field 942.
+The record also had `F 39896` in field 090.
+The legacy projection used field 090 after the current shelfmark resolver withheld a value.
+The canonical projection could restore that same value from an older HMO claim.
+Red regressions reproduced both paths.
+
+Use `current_shelfmark_requires_review` in both projections and in `manuscript_metadata.py`.
+Withhold P217 when current 942 evidence remains unresolved.
+Field 090 also cannot supply P217 when field 942 is absent.
+Do not use the field 090 or stale HMO value in the public designation.
+Retain the raw source and review evidence.
+A reviewed source choice can supply a proven value through the existing scoped path.
+The final CREATE guard requires that value before it permits a new manuscript.
+Use `source-aware-works-v25` and `hmo-wikidata-v29` to invalidate older derived payloads.
+Tests: `test_wikidata_creation_safety.py` and `test_hmo_canonical_wikidata.py`.
+
+### Rule W-337 — Stale statement edits cannot publish QIDs as catalogue codes (2026-11-14)
+
+A full source-derived audit found six catalogue transfer gaps.
+Each stored positional edit supplied only a new work QID.
+The current statement at that position held a P528 catalogue code.
+The edit therefore replaced the code with a QID without an error.
+
+`validate_item` now reports `CATALOG_CODE_IS_QID` for that form.
+The build quality gate and final CREATE gate both enforce the error.
+A stale edit requires source review against the current statement list.
+Do not infer its intended work from its old position.
+Do not delete the edit or change production data to obtain a clean measurement.
+A blocked legacy case is a review case, not a corrected public item.
+Tests: `test_wikidata_creation_safety.py`.

@@ -2,6 +2,8 @@
 
 > Up: [Wikidata Studio](README.md)
 
+The [CREATE guard tests](creation-safety.md#tests) cover final semantics, identity conflicts, and unresolved current shelfmarks (W-335/W-336).
+
 The [completion packet tests](gila-completion-packet.md#files-and-tests) cover source cases, receipt revisions, and the exact Troki authority.
 The [retrieval tests](reference-retrievals.md#files-and-tests) cover date variants, source boundaries, ownership paths, and repeat-update stability (W-323).
 

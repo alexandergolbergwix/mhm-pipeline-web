@@ -124,6 +124,16 @@ _KNOWN_BAD_VALUE_QIDS: dict[str, str] = {
 # ── The 11 checks ────────────────────────────────────────────────────────
 
 
+_GENERATED_PERSON_DESCRIPTION = re.compile(
+    r"^(?:person|author)\b.{0,200}?\blinked to manuscript\s+\d+", re.I | re.S,
+)
+
+
+def is_generated_person_description(value: object) -> bool:
+    """Identify generated role lists, including named and truncated variants."""
+    return isinstance(value, str) and bool(_GENERATED_PERSON_DESCRIPTION.search(value.strip()))
+
+
 def _stmt_values(item: Any, pid: str) -> list[str]:
     """Return every value of property *pid* on *item* as strings."""
     out: list[str] = []
@@ -170,6 +180,15 @@ def validate_item(item: Any) -> list[ValidationIssue]:
     etype = getattr(item, "entity_type", "") or ""
     label = _any_label(item).strip()
     labels = getattr(item, "labels", {}) or {}
+
+    descriptions = getattr(item, "descriptions", {}) or {}
+    if etype == "person" and isinstance(descriptions, dict):
+        if any(is_generated_person_description(value) for value in descriptions.values()):
+            issues.append(ValidationIssue(
+                "error", "GENERATED_PERSON_DESCRIPTION",
+                "A generated person-role and manuscript list cannot serve as a public description.",
+                _REF_HELP_LABEL,
+            ))
 
     # 1. Empty label
     if not label:
@@ -467,6 +486,15 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                     f"value {qval!r}: {explanation}",
                     _REF_DATA_MODEL,
                 ))
+
+    for catalog_code in _stmt_values(item, "P528"):
+        if re.fullmatch(r"Q[1-9][0-9]*", catalog_code.strip()):
+            issues.append(ValidationIssue(
+                "error", "CATALOG_CODE_IS_QID",
+                "A Wikidata item ID replaced a catalogue code. Review the statement edit "
+                "against the current source and statement position.",
+                _REF_DATA_MODEL,
+            ))
 
     # 16. Known-bad P31 QID — sanity check against copy-paste errors in
     #     property_mapping.py. Catches cases like Q179808 (Palme d'Or) being

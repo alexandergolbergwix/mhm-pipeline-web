@@ -48,7 +48,7 @@ Absent, uncertain, or different life dates do not select this audited fallback.
 An explicit rejected or conflicting authority match still blocks the fallback.
 The local authority entry does not prove that the current public work already has P50.
 
-The current build versions are `source-aware-works-v24` and `hmo-wikidata-v28`.
+The current build versions are `source-aware-works-v25` and `hmo-wikidata-v29`.
 A fresh normal build must precede a public source update.
 
 ## Files and tests

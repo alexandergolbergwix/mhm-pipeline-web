@@ -319,21 +319,28 @@ def test_live_upload_does_not_strip_claims(monkeypatch) -> None:
 
     monkeypatch.setattr(up, "_adapt_item_for_test_wiki", _boom)
 
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_creation_safety.reconcile_creation_identity",
+        lambda reconciler, item: (None, "none"),
+    )
     result = up.upload_item(
         WikidataItem(
             local_id="x",
             entity_type="manuscript",
             labels={"en": "x"},
+            descriptions={"en": "Hebrew manuscript in Example Library"},
             statements=[
                 WikidataStatement(
                     property_id="P1476", value="t", value_type="monolingualtext",
                 ),
                 WikidataStatement(property_id="P31", value="Q87167", value_type="item"),
+                WikidataStatement("P3959", "990001234000205171", "external-id"),
+                WikidataStatement("P217", "Ms. 1", "string"),
             ],
         ),
     )
     assert result.status == "success"
-    assert captured["pids"] == ["P1476", "P31"]
+    assert captured["pids"] == ["P1476", "P31", "P3959", "P217"]
     assert "W-182" not in result.message
 
 

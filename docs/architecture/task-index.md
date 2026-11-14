@@ -25,6 +25,7 @@
 | Diagnose repeated citations with different retrieval dates | [retrieval rule](blocks/wikidata-studio/reference-retrievals.md) + Rule W-323 |
 | Diagnose canonical author gaps or source contamination | [canonical source identity](blocks/wikidata-studio/canonical-source-identity.md) + [immutable context](blocks/eval-agent/source-context.md) + W-308 |
 | Apply authorized exact historical repairs | [historical repairs](blocks/wikidata-studio/historical-repairs.md) + Rule W-307 |
+| Prevent invalid new public items | [CREATE guards](blocks/wikidata-studio/creation-safety.md) + W-335/W-336; never infer absence from a conflict |
 | Audit Gila source facts or prepare historical repair proposals | [Gila source fidelity](blocks/wikidata-studio/gila-source-fidelity.md) + Rule W-305; canonical measurement is read-only |
 | Export all nine Gila acceptance points and current correction receipts | [Gila completion packet](blocks/wikidata-studio/gila-completion-packet.md); no network or public write |
 | Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |

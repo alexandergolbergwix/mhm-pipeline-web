@@ -668,26 +668,15 @@ class CurrentWikidataBoundary:
 
         items = [self._native_item(entity) for _, entity in generic_entities]
         if fresh and items:
-            from app.pipeline.wikidata_upload import ReconcileOutcome, _reconcile_for_upload  # noqa: PLC0415
+            from app.pipeline.wikidata_creation_safety import reconcile_creation_identity
+            from app.pipeline.wikidata_upload import ReconcileOutcome  # noqa: PLC0415
             from converter.wikidata.reconciler import WikidataReconciler  # noqa: PLC0415
 
             reconciler = WikidataReconciler()
             outcomes = []
             for item in items:
                 try:
-                    properties = {statement.property_id for statement in item.statements if statement.value}
-                    probeable = (
-                        item.entity_type == "person" and bool(properties & {"P214", "P8189", "P244", "P227", "P213"})
-                        or item.entity_type == "manuscript" and bool(properties & {"P3959", "P217"})
-                        or item.entity_type == "work" and (bool(item.labels.get("he") or item.labels.get("en")) or "P2888" in properties)
-                    )
-                    if not probeable:
-                        raise ValueError("No supported duplicate check exists for this CREATE")
-                    qid, method = _reconcile_for_upload(reconciler, item, item.entity_type)
-                    if not qid and method == "source_scoped_work":
-                        raise ValueError("The source-scoped work did not receive a duplicate check")
-                    if not qid and item.entity_type == "work" and not properties.intersection({"P50", "P2093"}):
-                        raise ValueError("A work without author evidence cannot prove duplicate absence")
+                    qid, method = reconcile_creation_identity(reconciler, item)
                     outcomes.append(ReconcileOutcome(item.local_id, "", item.entity_type, qid, method, ""))
                 except Exception as exc:  # noqa: BLE001
                     outcomes.append(ReconcileOutcome(item.local_id, "", item.entity_type, None, "error", str(exc)))

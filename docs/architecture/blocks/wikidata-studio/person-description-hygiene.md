@@ -13,8 +13,13 @@ It uses the normal source-enriched description or the concise person fallback.
 It preserves a specific biographical description.
 It retains the source comments and role evidence.
 
-The canonical fingerprint uses `hmo-wikidata-v28`.
+The canonical fingerprint uses `hmo-wikidata-v29`.
 A normal rebuild invalidates the previous description projection.
 The tests in `backend/tests/unit/test_hmo_canonical_wikidata.py` cover the reported aggregate and a specific biography.
 The tests also check that the adapter preserves the source and returns a stable result.
 The fix does not establish a person's identity or authorize an edit to a foreign entity.
+
+The canonical converter and semantic validator share `is_generated_person_description` (W-335).
+The predicate covers named role lists with a truncated final fragment, such as the Camillo Jagel case.
+The canonical converter selects a concise replacement before the final semantic gate.
+The source description remains intact in the HMO snapshot.

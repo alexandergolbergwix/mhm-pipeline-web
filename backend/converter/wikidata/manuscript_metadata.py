@@ -230,9 +230,12 @@ class ManuscriptMetadataMixin:
         an alias slot, falling back to a shelfmark-based label.
         """
         is_placeholder = _is_placeholder_title(title)
+        from converter.wikidata.holding_institutions import current_shelfmark_requires_review
+
         shelfmark = (
             str(record.get("holding_942_shelfmark") or "").strip()
-            or _normalise_label(str(record.get("shelfmark") or ""))
+            or ("" if current_shelfmark_requires_review(record)
+                else _normalise_label(str(record.get("shelfmark") or "")))
         )
         from converter.wikidata.item_builder import _holding_institution_name
         holding = _holding_institution_name(record)

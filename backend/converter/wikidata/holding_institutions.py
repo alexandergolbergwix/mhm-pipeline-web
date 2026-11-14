@@ -19,7 +19,7 @@ guessing (Rule W-84's reasoning, and Rule W-75: never default to NLI).
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 # qid: (verified English label, name variants as they appear in MARC/HMO)
@@ -451,3 +451,10 @@ def _looks_like_private_holder(name: str) -> bool:
 
 def _normalise(name: str) -> str:
     return " ".join(str(name or "").split()).strip(" ,.;:\"'").casefold()
+
+
+def current_shelfmark_requires_review(record: Mapping[str, object]) -> bool:
+    """Field 090 cannot prove a current shelfmark without resolved 942 evidence."""
+    return not str(record.get("holding_942_shelfmark") or "").strip() and bool(
+        record.get("holding_subfield_reviews") or record.get("942$z") or record.get("090$a")
+    )

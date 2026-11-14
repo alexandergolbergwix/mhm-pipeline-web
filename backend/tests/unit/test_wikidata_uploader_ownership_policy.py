@@ -20,6 +20,10 @@ def uploader(monkeypatch: pytest.MonkeyPatch) -> WikidataUploader:
     monkeypatch.setattr(up, "_creator_identity_matches", lambda qid, user, **kwargs: user == "Project")
     monkeypatch.setattr(up, "_rate_limit", lambda: None)
     monkeypatch.setattr(up, "_bot_excluded", lambda qid: False)
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_creation_safety.reconcile_creation_identity",
+        lambda reconciler, item: (None, "none"),
+    )
     up._q3959_cache["Q123"] = frozenset({"9901"})
     return up
 
@@ -28,6 +32,19 @@ def manuscript(qid: str = "Q123") -> WikidataItem:
     return WikidataItem(
         local_id="ms1", entity_type="manuscript", existing_qid=qid,
         statements=[WikidataStatement("P3959", "9901", "external-id")],
+    )
+
+
+def new_manuscript() -> WikidataItem:
+    return WikidataItem(
+        local_id="ms1", entity_type="manuscript",
+        labels={"en": "Example Library. Example City. Ms. 1"},
+        descriptions={"en": "Hebrew manuscript in Example Library"},
+        statements=[
+            WikidataStatement("P3959", "990001234000205171", "external-id"),
+            WikidataStatement("P31", "Q87167", "item"),
+            WikidataStatement("P217", "Ms. 1", "string"),
+        ],
     )
 
 
@@ -93,8 +110,7 @@ def test_new_item_can_be_created_without_a_target_qid(
             return self
 
     monkeypatch.setattr(uploader, "_build_wbi_item", lambda item: (FakeItem(), 1, ["P3959"]))
-    item = manuscript()
-    item.existing_qid = None
+    item = new_manuscript()
     result = uploader.upload_item(item)
     assert result.status == "success"
     assert result.qid == "Q123"
@@ -136,8 +152,7 @@ def test_real_wbi_create_writes_without_id_and_reads_assigned_qid(
 
     monkeypatch.setattr(uploader, "_init_wbi", lambda: WikibaseIntegrator())
     monkeypatch.setattr("wikibaseintegrator.entities.baseentity.edit_entity", fake_edit_entity)
-    item = manuscript()
-    item.existing_qid = None
+    item = new_manuscript()
     result = uploader.upload_item(item)
     assert result.status == "success"
     assert result.qid == "Q123"
@@ -358,7 +373,7 @@ def test_ambiguous_write_is_not_retried(
     monkeypatch.setattr("converter.wikidata.uploader.time.sleep", lambda seconds: None)
     item = manuscript()
     if is_create:
-        item.existing_qid = None
+        item = new_manuscript()
     else:
         monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Project")
     result = uploader.upload_item(item)
@@ -393,8 +408,7 @@ def test_real_wbi_http_helper_does_not_repeat_a_write(
 
     monkeypatch.setattr(uploader, "_init_wbi", lambda: WikibaseIntegrator())
     monkeypatch.setattr("wikibaseintegrator.entities.baseentity.edit_entity", edit_entity)
-    item = manuscript()
-    item.existing_qid = None
+    item = new_manuscript()
     result = uploader.upload_item(item)
     assert result.status == "failed"
     assert "outcome unknown" in result.message.lower()

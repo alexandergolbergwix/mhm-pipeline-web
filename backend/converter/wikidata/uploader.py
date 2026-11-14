@@ -3539,6 +3539,15 @@ class WikidataUploader:
                 local_id=item.local_id, qid=item.existing_qid, status="blocked",
                 message="Test UPDATE target lacks exact test-ledger proof.",
             )
+        if not self._is_test and not item.existing_qid:
+            from app.pipeline.wikidata_creation_safety import creation_errors
+
+            errors = creation_errors(item)
+            if errors:
+                return UploadResult(
+                    local_id=item.local_id, status="blocked",
+                    message="Refusing CREATE: " + "; ".join(errors[:12]),
+                )
         from app.pipeline.wikidata_source_choices import revalidate_payload_targets_sync
 
         try:
@@ -3718,6 +3727,26 @@ class WikidataUploader:
                     stage="pre_write",
                     our_p3959=self._our_p3959(item),
                 )
+                if not self._is_test and not item.existing_qid:
+                    from app.pipeline.wikidata_creation_safety import reconcile_creation_identity
+                    from converter.wikidata.reconciler import WikidataReconciler
+
+                    try:
+                        existing, _ = reconcile_creation_identity(WikidataReconciler(), item)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "CREATE identity check failed for %s: %s", item.local_id, exc,
+                        )
+                        return UploadResult(
+                            local_id=item.local_id, status="blocked",
+                            message=f"CREATE_IDENTITY: duplicate absence is unproven: {exc}",
+                        )
+                    if existing:
+                        return UploadResult(
+                            local_id=item.local_id, qid=existing, status="blocked",
+                            message=(f"CREATE_IDENTITY: {existing} already matches; "
+                                     "review its identity without a new item."),
+                        )
                 # WikibaseIntegrator ≥0.12 takes ``is_bot`` (never bare ``bot=``;
                 # Rule W-180). Default is_bot=False — accounts without the
                 # MediaWiki bot right hard-fail (Rule W-181 / export-40).

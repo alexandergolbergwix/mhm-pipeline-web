@@ -52,6 +52,10 @@ class ReconciliationUnavailableError(Exception):
     """
 
 
+class PersonIdentityUncertainError(ReconciliationUnavailableError):
+    """Person identifiers conflict and cannot prove absence or a safe match."""
+
+
 class WorkIdentityUncertainError(ReconciliationUnavailableError):
     """Existing work evidence needs review rather than CREATE or adoption."""
 
@@ -648,7 +652,7 @@ class WikidataReconciler:
         """Fetch a candidate item's identity claims (VIAF/NLI/LCCN/GND/ISNI/DOB/POB).
 
         Returns a dict mapping property → set of string values currently on the item.
-        Empty dict on lookup failure (caller should treat as 'no info, allow match').
+        Raise ReconciliationUnavailableError if the query fails.
         """
         cache_key = f"identity:{qid}"
         if cache_key in self._cache:
@@ -705,16 +709,10 @@ class WikidataReconciler:
     ) -> str | None:
         """Reconcile a person by all available identifiers.
 
-        SAFETY (added 2026-04-13): When an identifier matches a candidate item,
-        we cross-verify against ALL other available identifiers we have. If the
-        candidate already has a DIFFERENT value on any of those identifiers,
-        we REJECT the match — they are different real-world entities who happen
-        to share one identifier (e.g., two lawyers sharing an ISNI). This prevents
-        the wrong-merge disaster where 902+ items got merged because the pipeline
-        trusted a single shared identifier.
-
-        Checks in order: VIAF → NLI → LCCN → GND → ISNI.
-        Returns QID on first verified match; None otherwise.
+        Every available identifier must agree with one candidate.
+        Conflicting candidates or authority values raise PersonIdentityUncertainError.
+        A conflict cannot prove duplicate absence or authorize adoption.
+        Return one verified QID, or None when every identifier lookup is absent.
         """
         viaf_id = extract_viaf_id(viaf_uri) if viaf_uri else None
         return self.reconcile_person_by_identifiers(
@@ -738,16 +736,16 @@ class WikidataReconciler:
 
         SAFETY (2026-04-13): when an identifier matches a candidate item, we
         cross-verify against ALL the other identifiers we hold. If the candidate
-        already has a DIFFERENT value on any of them, REJECT the match — two
-        different real-world entities sharing one identifier must never be
-        merged (the wrong-merge disaster, 902+ items). Checks in order:
+        already has a DIFFERENT value on any of them, require review.
+        A conflict cannot prove absence or authorize adoption. Checks in order:
         VIAF → NLI → LCCN → GND → ISNI.
 
         Returns:
-            QID on the first verified match, None if no safe match.
+            QID for one verified identity, None only when every lookup is absent.
 
         Raises:
             ReconciliationUnavailableError: a SPARQL lookup could not be completed.
+            PersonIdentityUncertainError: the identifiers require identity review.
         """
         proposed: dict[str, str] = {}
         if viaf_id:
@@ -783,21 +781,20 @@ class WikidataReconciler:
             if qid:
                 candidates.append(("P213", qid))
 
-        for matched_prop, qid in candidates:
-            conflicts = self._candidate_conflicts(qid, proposed)
-            if conflicts:
-                logger.warning(
-                    "RECONCILE REJECT: %s matched %s=%s but has conflicting %s — "
-                    "treating as different entity, will create new item",
-                    qid,
-                    matched_prop,
-                    proposed.get(matched_prop),
-                    ", ".join(conflicts),
-                )
-                continue
-            return qid
-
-        return None
+        targets = {qid for _, qid in candidates}
+        if len(targets) > 1:
+            raise PersonIdentityUncertainError(
+                f"Person identity needs review: identifiers match {', '.join(sorted(targets))}."
+            )
+        if not targets:
+            return None
+        qid = next(iter(targets))
+        conflicts = self._candidate_conflicts(qid, proposed)
+        if conflicts:
+            raise PersonIdentityUncertainError(
+                f"Person identity needs review: {qid} conflicts on {', '.join(conflicts)}."
+            )
+        return qid
 
     def reconcile_person_by_label(self, name: str, lang: str = "he") -> str | None:
         """Find an existing Wikidata human item with exactly this label.

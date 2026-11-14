@@ -108,7 +108,11 @@ def test_upload_item_blocks_claim_build_error(monkeypatch) -> None:
     item = WikidataItem(
         local_id="p1",
         entity_type="person",
+        labels={"en": "Example author"},
+        descriptions={"en": "Hebrew manuscript author"},
         statements=[
+            WikidataStatement("P31", "Q5", "item"),
+            WikidataStatement("P214", "123456789", "external-id"),
             WikidataStatement(property_id="P1559", value="n", value_type="monolingualtext"),
         ],
     )
@@ -396,7 +400,7 @@ def test_same_label_description_value_is_removed_from_owned_update(monkeypatch) 
     assert uploader._existing_label_snapshot["Q123"]["he"] == "A title"
 
 
-def test_create_label_description_conflict_reports_unreproduced_pair_once() -> None:
+def test_create_label_description_conflict_reports_unreproduced_pair_once(monkeypatch) -> None:
     from types import SimpleNamespace
 
     from wikibaseintegrator.wbi_exceptions import MWApiError
@@ -421,12 +425,20 @@ def test_create_label_description_conflict_reports_unreproduced_pair_once() -> N
     uploader._check_moratorium_for_live = lambda: None
     uploader._init_wbi = lambda: SimpleNamespace()
     uploader._build_wbi_item = lambda item: (FakeWbiItem(), 1, ["P31"])
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_creation_safety.reconcile_creation_identity",
+        lambda reconciler, item: (None, "none"),
+    )
     result = uploader.upload_item(WikidataItem(
         entity_type="work", local_id="work:מדרש_איכה", labels={"he": "מדרש איכה"},
         descriptions={"en": "Work preserved in a Hebrew manuscript"},
-        statements=[WikidataStatement("P31", "Q47461344", "item")],
+        work_candidate_evidence=[{"accepted": True, "source_field": "505"}],
+        statements=[
+            WikidataStatement("P31", "Q47461344", "item"),
+            WikidataStatement("P2093", "Example author", "string"),
+        ],
     ))
-    assert result.status == "failed"
+    assert result.status == "failed", result.message
     assert "local item has no equal pair" in result.message
     assert len(attempts) == 1
 

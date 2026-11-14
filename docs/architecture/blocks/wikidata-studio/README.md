@@ -42,8 +42,9 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R184) and known gaps.
+- [Rules](rules.md) — the invariants (R1–R187) and known gaps.
 - [Reference blocks](reference-blocks.md) — source grouping, old-data gates, deferred links, test wiki, and export limits (W-304).
+- [CREATE guards](creation-safety.md) — final semantics, fresh identity, current shelfmark, and the nine-point prevention matrix.
 - [Repeated retrievals](reference-retrievals.md) — one current date per identical citation, append-only limits, and exact repair proposals (W-323).
 - [Studio cache freshness](studio-cache-freshness.md) — build fingerprint, override application, and the Rebuild required badge.
 - [Creator-only writes](creator-only-writes.md) — mandatory creator proof; no foreign-edit exception (W-324).

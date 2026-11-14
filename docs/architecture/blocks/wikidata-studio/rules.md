@@ -1166,8 +1166,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 - **R150 — Source scope and qualified meaning survive every projection (W-296).**
   Preserve named unresolved scribes without identifierless person items.
   Keep distinct person roles and folio ranges. Keep author and genre evidence
-  on the matching work. The repeated-title folio projection gap in W-302 is
-  still open. Reject image-only codex inference. Preserve exact dates
+  on the matching work. Preserve each distinct title, author, and folio occurrence
+  in the final P1574 claims (W-305). Reject image-only codex inference. Preserve exact dates
   and distinct references. The user chose separate manuscript/work entities.
   *Why:* the full letter exposed losses and false claims after the first audit pass.
 - **R151 — A local audit report is a proposal, with explicit review cases (W-296).**
@@ -1319,3 +1319,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 182. **R182 — Source candidates use the public builder facade (W-332).** Verify the read in a fresh interpreter. *Why:* an earlier builder import masked a cycle.
 183. **R183 — Repair audit operations must fit the existing column (W-333).** Store `repair_retry` for a deferred send. Keep the full state in JSON. *Why:* the 18-character execution state exceeded the 16-character audit column.
 184. **R184 — The Studio restores only its own Publication profile (W-334).** Filter `latest` by `mhm-wikidata`. *Why:* a newer operator repair must not replace the Studio Release.
+
+185. **R185 — New public items pass the final CREATE checks (W-335).** Apply the shared semantic gate before login. Recheck identity immediately before the write. A conflict or lookup failure requires review. *Why:* a direct uploader caller could bypass the bulk checks; person conflicts could return false absence.
+186. **R186 — An unresolved current shelfmark cannot use microfilm fallback (W-336).** Withhold P217 and the shelfmark portion of the designation until source review proves the current value. Apply this rule in both projections. *Why:* ambiguous 942 values could cause field 090 microfilm data to become the current shelfmark.
+187. **R187 — Catalogue codes cannot contain entity IDs (W-337).** Block P528 values that consist of a public QID. Retain the source and stale edit for review. *Why:* six old positional work edits overwrote catalogue codes after the statement order changed.

@@ -383,7 +383,7 @@ def canonical_wikidata_fingerprint(
     # fails: 62-claim spam drowned P31 in the judge prompt).
     # v17 — sole-content-work author fallback and colophon label stripping
     # (Rule W-300); canonical rows built before them must not revalidate.
-    salt = "hmo-wikidata-v28:"  # Invalidate source choices without exact record and page scope.
+    salt = "hmo-wikidata-v29:"  # Reject microfilm fallback when the current 942 is unresolved.
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -2416,6 +2416,7 @@ def _sanitize_canonical_claims(
     from converter.wikidata.catalog_notes import is_catalog_note_placeholder  # noqa: PLC0415
     from converter.wikidata.catalog_references import catalog_reference_code, catalog_reference_text
     from converter.wikidata.content_projection import letter_content_occurrences
+    from converter.wikidata.holding_institutions import current_shelfmark_requires_review
     from converter.wikidata.item_builder import WikidataItemBuilder  # noqa: PLC0415
     from converter.wikidata.manuscript_projection import (  # noqa: PLC0415
         _current_holder_names,
@@ -2484,6 +2485,8 @@ def _sanitize_canonical_claims(
         for statement in item.statements or []:
             pid = str(statement.property_id or "")
             value = str(statement.value or "")
+            if pid == "P217" and record is not None and current_shelfmark_requires_review(record):
+                continue
             if pid == "P528" and value in replaced_catalog_values:
                 continue
             if letter_occurrences:
@@ -2936,13 +2939,16 @@ def _manuscript_labels_and_aliases(
         labels["en"] = title_clean
         aliases.setdefault("en", []).append(title_clean)
 
+    from converter.wikidata.holding_institutions import current_shelfmark_requires_review
+
     shelfmark = ""
+    unresolved_shelfmark = bool(record and current_shelfmark_requires_review(record))
     if record:
         shelfmark = (
             str(record.get("holding_942_shelfmark") or "").strip()
-            or normalise(str(record.get("shelfmark") or ""))
+            or ("" if unresolved_shelfmark else normalise(str(record.get("shelfmark") or "")))
         )
-    if not shelfmark:
+    if not shelfmark and not unresolved_shelfmark:
         shelfmark = _shelfmark_from_claims(entity)
     cn = ""
     if record:
@@ -3682,6 +3688,8 @@ def _upload_descriptions(
     *,
     context: CanonicalStudioContext | None = None,
 ) -> dict[str, str]:
+    from converter.wikidata.item_validator import is_generated_person_description
+
     # Manuscripts: the generated form wins. HMO manuscript descriptions are
     # `rdfs:comment` catalog notes ("According to Louis Levin…", "Related
     # material: AHW-14", RDA 33x carrier terms) — evidence, not descriptions.
@@ -3702,6 +3710,8 @@ def _upload_descriptions(
     for lang, value in entity.descriptions.items():
         text = str(value or "").strip().rstrip("·").strip()
         if not text or _is_boilerplate_description(text):
+            continue
+        if entity_type == "person" and is_generated_person_description(text):
             continue
         if entity_type == "manuscript" and _is_catalog_note_description(text):
             continue

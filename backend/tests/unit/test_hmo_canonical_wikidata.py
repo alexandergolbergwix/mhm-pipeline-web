@@ -80,6 +80,49 @@ def test_final_canonical_payload_does_not_restore_prose_as_a_catalogue_code() ->
     assert not [s for s in projected["statements"] if s["property"] == "P528"]
 
 
+def test_ambiguous_current_holding_cannot_restore_a_microfilm_shelfmark() -> None:
+    from converter.wikidata.item_builder import WikidataItemBuilder
+
+    context = canonical_studio_context(marc_records=[{
+        "001": "990001", "245$a": "אגרות ביידיש", "090$a": "F 39896",
+        "942$a": "Lower Saxony State Archives of Hannover|Lower Saxony State Archives of Hannover",
+        "942$x": "Hannover|Hannover", "942$c": "Germany|Germany",
+        "942$z": "Ms. Cod. Br. 23|Ms. 775", "942$9": "lat|lat",
+    }])
+    legacy = WikidataItemBuilder().build_all(list(context.marc_by_cn.values()))
+    entity = _manuscript_entity(claims=[{
+        "wikidata_property": "P217", "value": "F 39896", "datatype": "string",
+    }])
+
+    result = build_canonical_studio_result(
+        [entity], context=context, reconcile=False, legacy_native_items=legacy,
+    )
+
+    item = next(row for row in result["items"] if row["entity_type"] == "manuscript")
+    assert not [s for s in item["statements"] if s["property"] == "P217"]
+    assert "F 39896" not in item["labels"]["en"]
+
+
+def test_missing_current_holding_cannot_restore_a_microfilm_shelfmark() -> None:
+    from converter.wikidata.item_builder import WikidataItemBuilder
+
+    context = canonical_studio_context(marc_records=[{
+        "001": "990001", "245$a": "אגרות ביידיש", "090$a": "F 39896",
+    }])
+    legacy = WikidataItemBuilder().build_all(list(context.marc_by_cn.values()))
+    entity = _manuscript_entity(claims=[{
+        "wikidata_property": "P217", "value": "F 39896", "datatype": "string",
+    }])
+
+    result = build_canonical_studio_result(
+        [entity], context=context, reconcile=False, legacy_native_items=legacy,
+    )
+
+    item = next(row for row in result["items"] if row["entity_type"] == "manuscript")
+    assert not [s for s in item["statements"] if s["property"] == "P217"]
+    assert "F 39896" not in item["labels"]["en"]
+
+
 def test_pending_author_approval_does_not_authorize_discard_of_sourced_claim() -> None:
     import pytest
     from app.pipeline.hmo_canonical_wikidata import (
@@ -1654,3 +1697,18 @@ def test_person_description_preserves_a_specific_biographical_description() -> N
     assert native_items_from_hmo([entity])[0].descriptions == {
         "en": "Yemeni scribe of Hebrew manuscripts",
     }
+
+
+def test_person_description_drops_a_named_role_and_manuscript_list() -> None:
+    description = (
+        "Person 'Camillo Jagel' (censor) linked to manuscript 990000961800205171 · "
+        "Person 'Camillo Jagel' (censor) linked to manuscript 990001135400205171 · "
+        "Person 'Camillo Jagel'…"
+    )
+    entity = _person_entity(descriptions={"en": description})
+    before = entity.to_dict()
+
+    item = native_items_from_hmo([entity])[0]
+
+    assert item.descriptions == {"en": "person associated with Hebrew manuscripts"}
+    assert entity.to_dict() == before

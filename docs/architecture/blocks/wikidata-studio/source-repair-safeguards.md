@@ -17,7 +17,7 @@ The source record, language, rank, role, folio, and exact text must agree.
 One unique scoped counterpart must exist.
 The sanitizer first combines the complete reference blocks.
 An ambiguous or uncertain comparison retains both claims.
-The canonical cache salt is `hmo-wikidata-v28`.
+The canonical cache salt is `hmo-wikidata-v29`.
 
 ## Creator-only manuscript updates
 

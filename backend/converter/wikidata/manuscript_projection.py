@@ -379,9 +379,12 @@ class ManuscriptProjectionMixin:
         # alone (Rules W-82 / W-75). Holder evidence stays on P195; location
         # claims require explicit geographic evidence, not NLI-catalog default.
 
+        from converter.wikidata.holding_institutions import current_shelfmark_requires_review
+
         shelfmark = (
             str(record.get("holding_942_shelfmark") or "").strip()
-            or _normalise_label(str(record.get("shelfmark") or ""))
+            or ("" if current_shelfmark_requires_review(record)
+                else _normalise_label(str(record.get("shelfmark") or "")))
         )
         if shelfmark:
             item.statements.append(

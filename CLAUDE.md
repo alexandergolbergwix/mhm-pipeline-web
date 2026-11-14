@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-334)
+## Architectural rules (W-1…W-337)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -128,7 +128,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-270** — Foreign-block resolution retains reconcile methods and a curator drawer; the P3959 ownership override and automatic update are superseded by W-302 — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 - **W-271** — A publication worker must survive its own infrastructure: gateway calls have time budgets; a write timeout is outcome-unknown, not a blind retry. Execution workers retry dead DB connections on a fresh session (bounded); Modal health checks name missing keys and a 401 logs remediation — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
 - **W-272** — Stale `absent` plans must not create duplicates; W-302 supersedes automatic conversion to UPDATE and requires a fresh Plan for any existing target — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md)
-- **W-302** — Foreign updates require exact QID-bound curator approval; Publication binds QID, revision, and entity digest. A CREATE that finds an existing target needs a fresh Plan. Pass 2 binds the first-pass target; work identity fails closed. Ingest retains distinct folios, but projection can still lose them — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-302** — Foreign updates require exact QID-bound curator approval; Publication binds QID, revision, and entity digest. A CREATE that finds an existing target needs a fresh Plan. Pass 2 binds the first-pass target; work identity fails closed. The current projection retains distinct author and folio occurrences (W-305) — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-303** — `owner_only` binds a live creator-owned manuscript update to an exact ledger mapping and a record in the selected run. Local and remote `P3959` must match at normal or preferred rank; claim guards preserve existing claims and metadata and block conflicts. Local snapshots and post-write audit are not atomic with the remote write — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-304** — Preserve explicit source reference blocks across merge, cache, Publication, exports, and writes. Reject ambiguous old flat multi-snak grouping at safety gates; fresh markers do not certify old data. Test-wiki and deferred-reference limits apply — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-305** — Preserve source work identity, author/folio occurrences, script wording, and source scope. Historical proposals bind exact claims, revisions, and digests; local and live review outcomes remain distinct — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
@@ -160,6 +160,9 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-332** — Source candidate reads use the builder facade without a prior import — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-333** — Repair audit operations fit the existing column; JSON retains the full deferred state and API rejection code — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-334** — The Studio restores only the MHM Publication profile; operator repairs retain a separate history — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-335** — New public items require semantic checks and a fresh identity check at the final write boundary. Person identifier conflicts require review — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-336** — An unresolved MARC 942 cannot promote a field 090 microfilm value to the current P217 or designation — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-337** — A public catalogue code cannot be a Wikidata QID; stale positional edits require source review — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 
 - **W-273** — Research Assistant prompt gate: every user prompt passes the local scope router AND the TypeSafe Jev model check (jev-1.13.0) before any LLM call, enforced at both the Heroku dispatch and the Modal entries (dev-stub-only gating left production ungated); all retrieved text incl. MARC notes passes the quarantine; a provider 402 humanizes and retries once on the fallback model — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
 - **W-274** — Remote-agent run contract: every research-agent run emits exactly one terminal event with a machine code (`model_quota_exhausted`, `gate_refused`, `stream_ended`, `deadline_exceeded`), the SSE bridge only synthesizes a terminal when none arrived and never with a look-alike message; a run journal (research_agent_run_journal + `/research-agent/runs/{id}/debug`) records gate→dispatch→terminal; fact/count questions are answered deterministically from the DB (no LLM); the model layer is QUBRID-ONLY with a 402 circuit breaker (2026-10-17: a Modal ModuleNotFoundError surfaced as "stopped responding" and duplicated user rows) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
