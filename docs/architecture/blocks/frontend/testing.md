@@ -77,3 +77,6 @@ Source review: `tests/unit/wikidataSourceReview.spec.tsx` checks exact proof req
 W-330: the source-review unit suite also checks a late save success and failure after a run change with the same local ID.
 The [supplemental test receipt](../../../audits/gila-source-review-followup-2026-11-13.md) records the offline dependency limits.
 `frontend/e2e/fixtures/wikidata-fixtures.ts` supplies the shared mocked Studio and source-review responses.
+
+`wikidataPublicationPanel.spec.tsx` checks the default selected deferral option and an explicit off/on choice.
+`wikidataUploadOutcomes.spec.ts` keeps a skipped existing item reference-only under the current upload-state contract.

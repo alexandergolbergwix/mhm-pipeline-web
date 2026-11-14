@@ -20,6 +20,8 @@ it("lets the curator explicitly defer connections to a later Release", async () 
     build={{...makeBuildResponse(), source: "canonical"}} />);
 
   const defer = screen.getByRole("checkbox", {name: "Defer connections that need new QIDs"});
+  expect(defer).toBeChecked();
+  await user.click(defer);
   expect(defer).not.toBeChecked();
   await user.click(defer);
   await user.click(screen.getByRole("button", {name: "Prepare Release"}));

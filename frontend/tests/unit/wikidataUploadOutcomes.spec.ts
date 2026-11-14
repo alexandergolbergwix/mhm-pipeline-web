@@ -61,6 +61,6 @@ describe("wikidataUploadOutcomes", () => {
         existing_qid: "Q141175735",
         upload_outcome: "skip",
       }),
-    ).toBe("will_update");
+    ).toBe("reference_only");
   });
 });
