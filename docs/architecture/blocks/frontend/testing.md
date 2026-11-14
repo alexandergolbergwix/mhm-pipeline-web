@@ -80,3 +80,13 @@ The [supplemental test receipt](../../../audits/gila-source-review-followup-2026
 
 `wikidataPublicationPanel.spec.tsx` checks the default selected deferral option and an explicit off/on choice.
 `wikidataUploadOutcomes.spec.ts` keeps a skipped existing item reference-only under the current upload-state contract.
+The shared Wikidata browser fixture mocks query-bearing job reads, Studio status, and the absent Publication.
+Its context route blocks unmatched `/api/` paths and preserves Vite's `/src/api/` modules.
+Specific test routes use `fallback()` so the shared item-page mock can handle their other requests.
+`wikidata-complete-scope.spec.ts` also rejects any unexpected backend request.
+The drawer specs check each legacy approval case separately and assert the test-wiki push target.
+The owner-preview specs mock bounded history reads and the selected job detail, including query parameters.
+The functional Playwright suite requests reduced motion to omit the decorative canvas on software renderers.
+The native deployed UI check retains the normal display behavior.
+The shared fixture returns a terminal `wikidata_verify` job and its verdict snapshot for the exact requested item IDs.
+CI uses one browser worker to limit competition for the software renderer.

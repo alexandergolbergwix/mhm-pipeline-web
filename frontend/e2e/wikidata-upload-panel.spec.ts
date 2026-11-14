@@ -47,13 +47,15 @@ test.describe("Wikidata upload panel", () => {
     await gotoModernStudio(page);
   });
 
-  test("upload target radios default to dry-run", async ({page}) => {
+  test("upload defaults to dry-run and blocks a live submit", async ({page}) => {
     await expect(page.getByTestId("wikidata-item-upload-actions")).toBeVisible();
     await expect(page.getByTestId("wikidata-upload-target-dry_run")).toBeChecked();
     await expect(page.getByTestId("wikidata-upload-update-existing")).toBeVisible();
     await expect(page.getByTestId("wikidata-upload-submit")).toBeVisible();
     await expect(page.getByTestId("wikidata-upload-target-pill")).toContainText("moratorium active");
-    await expect(page.getByTestId("wikidata-upload-target-live")).toHaveCount(0);
+    await page.getByTestId("wikidata-upload-target-live").check();
+    await expect(page.getByTestId("wikidata-upload-submit")).toBeDisabled();
+    await expect(page.getByTestId("wikidata-upload-receipt-required")).toContainText("Prepare a Publication");
   });
 
   test("pre/post-upload verify checkboxes are toggleable", async ({page}) => {

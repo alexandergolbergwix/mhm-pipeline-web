@@ -35,6 +35,8 @@ async def record_wikibase_write(
     raise_on_error: bool = False,
 ) -> None:
     """Append one audit row. Optionally propagate a persistence failure."""
+    if ctx.channel == "wikidata_repair" and operation == "pre_send_retryable":
+        operation = "repair_retry"
     try:
         db.add(
             WikibaseCloudWrite(

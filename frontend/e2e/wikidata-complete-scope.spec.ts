@@ -7,7 +7,10 @@ for (const total of [236, 736]) {
       local_id: `item-${index + 1}`, labels: {en: `Item ${index + 1}`},
       ai_verdict: index < 97 ? {overall: "full"} : null,
     }));
-    await installStudioMocks(page, makeBuildResponse({items, total}));
+    const unexpectedApiRequests: string[] = [];
+    await installStudioMocks(page, makeBuildResponse({items, total}), {
+      onUnexpectedApiRequest: url => unexpectedApiRequests.push(url),
+    });
     await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio?*`, async (route) => {
       const query = new URL(route.request().url()).searchParams;
       const number = Number(query.get("page") ?? 1);
@@ -26,7 +29,7 @@ for (const total of [236, 736]) {
     });
     await page.addInitScript(() => localStorage.setItem("mhm.studio.reviewMode", "modern"));
     await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
-    await expect(page.getByTestId("wikidata-items-verify-ai")).toHaveText(`Verify visible (${total})`);
+    await expect(page.getByTestId("wikidata-items-verify-ai")).toHaveText(`Verify visible (${total})`, {timeout: 15_000});
     await expect(page.getByRole("button", {name: `Approve all visible (${total})`, exact: true})).toBeVisible();
     await page.getByTestId("wikidata-item-col-ai_verdict").click();
     const choices = page.getByTestId("filter-mode-checkbox");
@@ -37,5 +40,6 @@ for (const total of [236, 736]) {
     await page.getByRole("button", {name: "Start verification", exact: true}).click();
     await expect.poll(() => scopes.at(-1)?.length).toBe(total);
     expect(scopes.at(-1)).toContain(`item-${total}`);
+    expect(unexpectedApiRequests).toEqual([]);
   });
 }

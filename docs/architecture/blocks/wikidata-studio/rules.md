@@ -1317,3 +1317,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 180. **R180 — Source-review views bind run and item (W-330).** Reset local state when the scope changes. Ignore results after unmount. *Why:* a late save must not affect a different run with the same local ID.
 181. **R181 — Source choices retain record and page scope (W-331).** Preserve unrelated claims, historical scope, rank, and complete sources. *Why:* one reviewed passage cannot authorize a change to another record.
 182. **R182 — Source candidates use the public builder facade (W-332).** Verify the read in a fresh interpreter. *Why:* an earlier builder import masked a cycle.
+183. **R183 — Repair audit operations must fit the existing column (W-333).** Store `repair_retry` for a deferred send. Keep the full state in JSON. *Why:* the 18-character execution state exceeded the 16-character audit column.
+184. **R184 — The Studio restores only its own Publication profile (W-334).** Filter `latest` by `mhm-wikidata`. *Why:* a newer operator repair must not replace the Studio Release.

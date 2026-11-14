@@ -39,6 +39,7 @@
 | `backend/app/publication/core.py`, `repository.py`, `sql_repository.py` | Durable delayed eligibility and atomic result state |
 | `backend/app/publication/historical_repairs.py` | Exact repair projection and gateway through Publication |
 | `backend/app/pipeline/wikidata_gila_execution.py` | Exact one-send transport and fixed creator ID for this repair scope |
+| `backend/app/services/wikibase_audit.py` | Bounded repair operation names and complete JSON receipts |
 | `backend/scripts/execute_gila_repairs.py` | SQL-backed Publication preparation and resume |
 | `frontend/src/api/wikidataSourceReview.ts` | Typed source-review client |
 | `frontend/src/components/wikidata/WikidataSourceReview.tsx` | Requirement table and source choice forms |

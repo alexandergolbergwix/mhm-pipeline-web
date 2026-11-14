@@ -132,8 +132,19 @@ export async function installStudioMocks(
   opts?: {
     overrideResponse?: Record<string, unknown>;
     onWikidataVerifyStart?: (body: unknown) => void;
+    onUnexpectedApiRequest?: (url: string) => void;
+    verificationReason?: string;
   },
 ): Promise<void> {
+  const startedJobs = new Map<string, Record<string, unknown>>();
+  await page.context().route(url => url.pathname.startsWith("/api/"), route => {
+    opts?.onUnexpectedApiRequest?.(route.request().url());
+    return route.abort();
+  });
+  await page.route(url => url.pathname === `/api/runs/${TEST_RUN_ID}/wikidata-studio/status`, route =>
+    route.fulfill({json: {ready: true, total_items: build.total}}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/latest`, route =>
+    route.fulfill({json: {publication: null}}));
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/source-review**`, route => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({local_id: "mock", records: []}),
   }));
@@ -214,7 +225,7 @@ export async function installStudioMocks(
       });
       return;
     }
-    route.continue();
+    route.fallback();
   });
 
   // Studio build endpoint — responds to any query params
@@ -263,7 +274,7 @@ export async function installStudioMocks(
       });
       return;
     }
-    if (route.request().method() !== "GET") { route.continue(); return; }
+    if (route.request().method() !== "GET") { route.fallback(); return; }
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -376,11 +387,11 @@ export async function installStudioMocks(
       });
       return;
     }
-    route.continue();
+    route.fallback();
   });
 
   // Upload job
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, (route) => {
+  await page.route(url => url.pathname === `/api/runs/${TEST_RUN_ID}/jobs`, (route) => {
     if (route.request().method() !== "POST") {
       route.fulfill({
         status: 200,
@@ -389,7 +400,30 @@ export async function installStudioMocks(
       });
       return;
     }
-    const body = route.request().postDataJSON() as {kind?: string};
+    const body: {kind?: string; params?: Record<string, unknown>} = route.request().postDataJSON();
+    if (body.kind === "wikidata_verify") {
+      const params = body.params ?? {};
+      opts?.onWikidataVerifyStart?.(params);
+      const requestedIds = params.item_ids;
+      const selected = Array.isArray(requestedIds)
+        ? build.items.filter(item => requestedIds.some((id: unknown) => id === item.local_id)) : build.items;
+      const session = {
+        session_id: "mock-wikidata-session", run_id: TEST_RUN_ID, events: [],
+        verdicts: selected.map(item => ({
+          candidate: {_item_id: item.local_id, _local_id: item.local_id, label: item.labels.en ?? item.labels.he ?? item.local_id},
+          verdict: {overall: "full", reasoning: opts?.verificationReason ?? "Looks coherent."},
+          evaluator_id: "wikidata_item", judge_id: "mock",
+        })),
+      };
+      const job = {
+        id: "job-wd-verify", project_id: TEST_PROJECT_ID, run_id: TEST_RUN_ID,
+        kind: body.kind, status: "succeeded", created_by: "user-1", params,
+        progress: {phase: "done", session_id: session.session_id},
+        result: {session_id: session.session_id, session_snapshot: session}, error: null,
+      };
+      startedJobs.set(job.id, job);
+      return route.fulfill({json: job});
+    }
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -428,6 +462,9 @@ export async function installStudioMocks(
   });
 
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/*`, (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-1) ?? "";
+    const started = startedJobs.get(id);
+    if (started) return route.fulfill({json: started});
     route.fulfill({
       status: 200,
       contentType: "application/json",

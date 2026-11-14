@@ -224,8 +224,10 @@ async def test_live_transport_classifies_errors_without_a_second_post(
     )
     uploader = SimpleNamespace(_login=login, _rate_limit=Mock(), _assert_modifiable=Mock())
     gateway = LiveRepairGateway(uploader)
-    with pytest.raises(WriteRejectedError if rejected else RuntimeError):
+    with pytest.raises(WriteRejectedError if rejected else RuntimeError) as error:
         await gateway.write("Q123", 10, [{"id": "Q123$duplicate", "remove": ""}])
+    if rejected:
+        assert code in str(error.value)
     session.post.assert_called_once()
     kwargs = session.post.call_args.kwargs
     assert kwargs["allow_redirects"] is False

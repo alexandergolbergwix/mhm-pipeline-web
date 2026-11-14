@@ -13,7 +13,7 @@ async function gotoModernStudio(page: import("@playwright/test").Page) {
     localStorage.setItem("mhm.studio.reviewMode", "modern");
   });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
-  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("wikidata-item-table")).toBeVisible({timeout: 15_000});
 }
 
 test.describe("Wikidata item review table", () => {
@@ -41,9 +41,9 @@ test.describe("Wikidata item review table", () => {
     await expect(page.getByTestId("wikidata-item-row-manuscript::MS A")).toBeVisible();
   });
 
-  test("data status column shows new and will update", async ({page}) => {
-    await expect(page.getByTestId("wikidata-item-data-status-manuscript::MS A")).toContainText("new (not uploaded)");
-    await expect(page.getByTestId("wikidata-item-data-status-person::Person B")).toContainText("will update existing");
+  test("upload state distinguishes a new item and a confirmed upload", async ({page}) => {
+    await expect(page.getByTestId("wikidata-item-data-status-manuscript::MS A")).toContainText("not uploaded");
+    await expect(page.getByTestId("wikidata-item-data-status-person::Person B")).toContainText("upload succeeded");
   });
 
   test("global search filters rows", async ({page}) => {
@@ -73,7 +73,7 @@ test.describe("Wikidata item review table", () => {
           }),
         });
       }
-      route.continue();
+      route.fallback();
     });
     await gotoModernStudio(page);
     await gotoModernStudio(page);
@@ -188,7 +188,7 @@ test.describe("Wikidata item review table", () => {
     await gotoModernStudio(page);
     await page.getByTestId("wikidata-item-col-data_status").click();
     const checkboxList = page.getByTestId("filter-mode-checkbox");
-    await expect(checkboxList.locator("label", {hasText: "new"})).toContainText("(2)");
+    await expect(checkboxList.locator("label", {hasText: "not uploaded"})).toContainText("(2)");
   });
 
   test("Approve all visible starts a bulk-approve job for pending filtered rows", async ({page}) => {

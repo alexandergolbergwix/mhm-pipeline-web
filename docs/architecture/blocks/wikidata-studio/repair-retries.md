@@ -41,3 +41,16 @@ No foreign approval, identifier match, or source choice grants ownership.
 Tests cover delayed eligibility in the SQL repository, early resume, lost responses, foreign targets, hidden creators, and user-ID mismatches.
 The main suites are `test_publication_historical_repairs.py`, `test_publication_repository.py`, and `test_wikidata_creator_uid.py`.
 The [MediaWiki maxlag guidance](https://www.mediawiki.org/wiki/Manual:Maxlag_parameter) defines the bulk request policy.
+
+The audit service maps `pre_send_retryable` to `repair_retry` in the 16-character `operation` column (W-333).
+The JSON receipt retains the complete status and retry metadata.
+The transport retains the API rejection code in its error text.
+An audit failure does not cancel a durable intent or authorize a new plan.
+Resume the same execution after its retry date.
+`backend/tests/test_wikibase_audit.py` checks the column limit and the unchanged receipt.
+
+The Studio uses `GET /api/runs/{runId}/wikidata-publications/latest`.
+That route selects only the `mhm-wikidata` profile (W-334).
+An operator repair retains its separate `gila-exact-repair` Publication and execution.
+The Studio cannot select that repair as its normal Release.
+`backend/tests/test_publication_router.py` checks a newer repair and a run with repairs only.

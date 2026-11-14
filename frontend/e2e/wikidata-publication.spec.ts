@@ -32,7 +32,7 @@ const RELEASE = {
   finding_counts: {error: 0, warning: 0, info: 0},
 };
 
-function summary(stage: "review" | "dry_run" | "publish"): PublicationSummary {
+function summary(stage: "prepare" | "review" | "dry_run" | "publish"): PublicationSummary {
   const approval = stage === "review" || stage === "dry_run" || stage === "publish"
     ? {
         approval_set_id: "approval-7",
@@ -73,7 +73,7 @@ function summary(stage: "review" | "dry_run" | "publish"): PublicationSummary {
     publication_id: "publication-7",
     run_id: TEST_RUN_ID,
     profile_id: "mhm-wikidata",
-    profile_version: "1",
+    profile_version: "1-nodes",
     target: "live",
     status: stage === "publish" ? "publishing" : stage === "dry_run" ? "dry_run_ready" : "reviewed",
     source_current: true,
@@ -141,6 +141,8 @@ test("a curator can explicitly defer connections that need new QIDs", async ({pa
   });
   await gotoModernStudio(page);
   const defer = page.getByRole("checkbox", {name: "Defer connections that need new QIDs"});
+  await expect(defer).toBeChecked();
+  await defer.uncheck();
   await expect(defer).not.toBeChecked();
   await defer.check();
   await expect(page.getByText(/A later Release must add the deferred connections/)).toBeVisible();
@@ -272,12 +274,12 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
 
   await gotoModernStudio(page);
   await page.getByTestId("publication-target-live").check();
-  await page.getByTestId("publication-prepare").click({force: true});
+  await page.getByTestId("publication-prepare").click();
 
   await expect(page.getByTestId("publication-release-state")).toContainText("Release 7");
   expect(prepareBody).toEqual({
     profile_id: "mhm-wikidata",
-    profile_version: "1",
+    profile_version: "1-nodes",
     target: "live",
     source: {kind: "run", projection_source: "canonical", approved_only: true},
   });
@@ -286,10 +288,11 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
   await expect(page.getByText("Upload anyway")).toHaveCount(0);
 
   await page.getByText("Publication details and manual actions", {exact: true}).click();
-  await page.getByTestId("publication-review-eligible-release").click({force: true});
+  await page.getByTestId("publication-review-eligible-release").click();
   await expect(page.getByTestId("publication-approval-state")).toContainText("current");
   await expect(page.getByTestId("publication-dry-run")).toBeEnabled();
-  await page.getByTestId("publication-dry-run").click({force: true});
+  await page.getByTestId("publication-dry-run").click();
+  await expect.poll(() => dryPolls, {timeout: 30_000}).toBeGreaterThanOrEqual(3);
   if (dryOutcome === "failed") {
     await expect(page.getByRole("alert")).toContainText("Wikidata read failed", {timeout: 15000});
     await expect(page.getByTestId("publication-publish")).toBeDisabled();
@@ -325,7 +328,7 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
   await expect.poll(() => commands.filter((command) => command.type === "dry_run").length).toBe(2);
   expect(commands[2].force_refresh).toBe(true);
   await expect(page.getByTestId("publication-publish")).toBeEnabled({timeout: 15000});
-  await page.getByTestId("publication-publish").click({force: true});
+  await page.getByTestId("publication-publish").click();
 
   await expect(page.getByTestId("publication-execution-progress")).toContainText("25 of 100,000");
   expect(commands.map((command) => command.type)).toEqual(["review", "dry_run", "dry_run", "publish"]);
@@ -466,6 +469,7 @@ test("a curator can use an existing QID without updates in a new Release", async
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await page.getByText("Publication details and manual actions", {exact: true}).click();
   await page.getByText(/Blocked actions \(first/).click();
+  await page.getByTestId("publication-accept-existing-toggle").click();
   await page.getByRole("button", {name: "Use Q123 without updates"}).click();
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({target: current.target, profile_version: current.profile_version,

@@ -3,7 +3,7 @@ import {expect, test} from "@playwright/test";
 import {installStudioMocks, makeBuildResponse, makeStudioItem, TEST_RUN_ID} from "./fixtures/wikidata-fixtures";
 
 test("the drawer saves one source occurrence without a public write", async ({page}) => {
-  await page.route("**/api/**", route => route.abort());
+  await page.route(url => url.pathname.startsWith("/api/"), route => route.abort());
   const item = makeStudioItem({local_id: "manuscript::Source", labels: {en: "Source"}, approved: false});
   await installStudioMocks(page, makeBuildResponse({items: [item], total: 1}));
   let request: unknown = null;

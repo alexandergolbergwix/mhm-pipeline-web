@@ -128,7 +128,9 @@ async def latest_publication(
     await _lookup_run_with_access(db, run_id, auth, write=False)
     row = (await db.execute(select(PublicationRow).join(PublicationRelease,
         PublicationRelease.id == PublicationRow.latest_release_id).where(
-            PublicationRow.run_id == run_id, PublicationRelease.status == "sealed"
+            PublicationRow.run_id == run_id,
+            PublicationRow.profile_name == "mhm-wikidata",
+            PublicationRelease.status == "sealed"
         ).order_by(PublicationRow.created_at.desc(), PublicationRow.id.desc()).limit(1))).scalar_one_or_none()
     if row is None:
         return PublicationMutationResponse()

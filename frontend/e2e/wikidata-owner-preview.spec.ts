@@ -5,7 +5,7 @@ import {installStudioMocks, makeBuildResponse, TEST_PROJECT_ID, TEST_RUN_ID} fro
 test.beforeEach(async ({page}) => {
   await installStudioMocks(page, makeBuildResponse());
   await page.route("**/wikidata-publications/latest", (route) => route.fulfill({json: {publication: null}}));
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100`, (route) => route.fulfill({json: {jobs: []}}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100*`, (route) => route.fulfill({json: {jobs: []}}));
   await page.addInitScript(() => localStorage.setItem("mhm.studio.reviewMode", "modern"));
 });
 
@@ -16,15 +16,16 @@ test("restores the current user's completed preview and ignores other creators",
     status: "succeeded", params, created_by: "user-1", progress: {}, error: null,
     result: {outcomes: [{local_id: "own", label: "Own item", entity_type: "work", qid: "Q1", status: "blocked", message: "Saved reason"}], link_outcomes: []},
   };
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100`, (route) => route.fulfill({json: {jobs: [
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100*`, (route) => route.fulfill({json: {jobs: [
     {...saved, id: "foreign-preview", created_by: "user-2", result: {outcomes: [], link_outcomes: []}},
     {...saved, id: "unknown-preview", created_by: null, result: {outcomes: [], link_outcomes: []}},
     saved,
   ]}}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/saved-owner-preview*`, route => route.fulfill({json: saved}));
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
-  await expect(page.getByTestId("wikidata-owner-preview-table")).toContainText("Saved reason");
+  await expect(page.getByTestId("wikidata-owner-preview-table")).toContainText("Saved reason", {timeout: 15_000});
   await page.reload();
-  await expect(page.getByTestId("wikidata-owner-preview-table")).toContainText("Saved reason");
+  await expect(page.getByTestId("wikidata-owner-preview-table")).toContainText("Saved reason", {timeout: 15_000});
 });
 
 test("does not attach an active preview from another or unknown creator", async ({page}) => {
@@ -32,12 +33,12 @@ test("does not attach an active preview from another or unknown creator", async 
   const foreign = {id: "foreign-preview", project_id: TEST_PROJECT_ID, run_id: TEST_RUN_ID,
     kind: "wikidata_upload", status: "running", params, created_by: "user-2", progress: {}, result: null, error: null};
   let polls = 0;
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100`, (route) => route.fulfill({json: {jobs: [foreign, {...foreign, id: "unknown", created_by: null}]}}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100*`, (route) => route.fulfill({json: {jobs: [foreign, {...foreign, id: "unknown", created_by: null}]}}));
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?active=true`, (route) => route.fulfill({json: {jobs: [foreign]}}));
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/foreign-preview`, async (route) => { polls++; await route.fulfill({json: foreign}); });
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/foreign-preview*`, async (route) => { polls++; await route.fulfill({json: foreign}); });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   const preview = page.getByTestId("wikidata-owner-preview");
-  await expect(preview.getByTestId("wikidata-owner-preview-start")).toBeEnabled();
+  await expect(preview.getByTestId("wikidata-owner-preview-start")).toBeDisabled();
   await expect(preview).not.toContainText("Preview status: running");
   expect(polls).toBe(0);
 });
@@ -46,8 +47,8 @@ test("shows cancellation failures for the preview", async ({page}) => {
   const params = {owner_only: true, dry_run: true, upload_target: "dry_run", update_existing: true};
   const active = {id: "own-preview", project_id: TEST_PROJECT_ID, run_id: TEST_RUN_ID, created_by: "user-1",
     kind: "wikidata_upload", status: "running", params, progress: {}, result: null, error: null};
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100`, (route) => route.fulfill({json: {jobs: [active]}}));
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/own-preview`, (route) => route.fulfill({json: active}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100*`, (route) => route.fulfill({json: {jobs: [active]}}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/own-preview*`, (route) => route.fulfill({json: active}));
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/own-preview/cancel`, (route) => route.fulfill({status: 403, json: {detail: "Cancellation denied"}}));
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   const preview = page.getByTestId("wikidata-owner-preview");
@@ -59,8 +60,8 @@ test("shows cancellation failures in the preview progress modal", async ({page})
   const params = {owner_only: true, dry_run: true, upload_target: "dry_run", update_existing: true};
   const active = {id: "modal-preview", project_id: TEST_PROJECT_ID, run_id: TEST_RUN_ID, created_by: "user-1",
     kind: "wikidata_upload", status: "running", params, progress: {}, result: null, error: null};
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100`, (route) => route.fulfill({json: {jobs: [active]}}));
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/modal-preview`, (route) => route.fulfill({json: active}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs?kind=wikidata_upload&limit=100*`, (route) => route.fulfill({json: {jobs: [active]}}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/modal-preview*`, (route) => route.fulfill({json: active}));
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/modal-preview/cancel`, (route) => route.fulfill({status: 403, json: {detail: "Cancellation denied"}}));
   page.on("dialog", (dialog) => void dialog.accept());
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio?job=modal-preview`);
@@ -112,7 +113,7 @@ test("previews owner eligibility and connections without changing upload status"
     requests.push(route.request().postDataJSON());
     await route.fulfill({json: snapshot("running")});
   });
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/owner-preview`, (route) => route.fulfill({json: snapshot("succeeded")}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/owner-preview*`, (route) => route.fulfill({json: snapshot("succeeded")}));
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   await expect(page.getByTestId("publication-prepare")).toBeVisible();
   const preview = page.getByTestId("wikidata-owner-preview");
@@ -135,7 +136,7 @@ test("does not patch the review table when the compatibility upload panel is vis
     progress: {phase: "uploading", item_outcome: {local_id: "person::Moses Maimonides", status: "processing"}},
   };
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/prepare`, (route) => route.fulfill({status: 410, json: {detail: "Unavailable"}}));
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/owner-active`, (route) => route.fulfill({json: snapshot}));
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/owner-active*`, (route) => route.fulfill({json: snapshot}));
   await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, async (route) => {
     if (route.request().method() !== "POST") return route.fallback();
     await route.fulfill({json: snapshot});
@@ -169,7 +170,7 @@ test("does not attach a start response with an unknown creator", async ({page}) 
     await route.fulfill({json: {id: "unknown", run_id: TEST_RUN_ID, project_id: TEST_PROJECT_ID,
       kind: "wikidata_upload", status: "running", params, created_by: null, progress: {}, result: null, error: null}});
   });
-  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/unknown`, async (route) => { polls++; await route.fulfill({status: 500}); });
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/unknown*`, async (route) => { polls++; await route.fulfill({status: 500}); });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
   const preview = page.getByTestId("wikidata-owner-preview");
   await preview.getByTestId("wikidata-owner-preview-start").click();

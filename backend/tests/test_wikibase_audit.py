@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -21,6 +22,27 @@ from app.services.wikibase_audit import (
     fetch_latest_wikibase_writes,
     record_wikibase_write,
 )
+
+
+@pytest.mark.asyncio
+async def test_deferred_repair_audit_fits_operation_column_without_changing_receipt(
+    db_session, sample_run,
+) -> None:
+    receipt = {"status": "pre_send_retryable", "corrected": False, "retry_after_seconds": 60}
+    await record_wikibase_write(
+        db_session,
+        WikibaseAuditContext(
+            actor_user_id=sample_run["user_id"],
+            run_id=sample_run["run_id"],
+            channel="wikidata_repair",
+        ),
+        operation=receipt["status"], target_kind=TARGET_ITEM,
+        target_key="Q123", outcome_message=json.dumps(receipt), raise_on_error=True,
+    )
+    row = (await db_session.execute(select(WikibaseCloudWrite))).scalar_one()
+    assert len(row.operation) <= WikibaseCloudWrite.__table__.c.operation.type.length
+    assert row.operation == "repair_retry"
+    assert json.loads(row.outcome_message) == receipt
 
 
 @pytest.mark.asyncio
@@ -84,7 +106,7 @@ async def test_fetch_latest_wikibase_writes_returns_only_the_newest_row_per_targ
     outcome, not the full history (that lives in ProjectEvent/history)."""
     run_id = sample_run["run_id"]
     actor_id = sample_run["user_id"]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     db_session.add_all([
         WikibaseCloudWrite(

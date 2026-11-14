@@ -3905,3 +3905,29 @@ Import `structured_work_attribution` through the public `item_builder` facade.
 Keep that explicit facade export available to source-review callers.
 Run the candidate-read regression in a fresh interpreter.
 The test must not depend on an earlier application or builder import.
+
+### Rule W-333 — Repair audit operations retain the database contract (2026-11-14)
+
+Wikidata deferred an exact reference repair before the edit.
+The durable Publication intent retained `pre_send_retryable` and its retry date.
+The secondary audit tried to store that 18-character state in a 16-character `operation` column.
+Postgres rejected the audit insert and stopped the operator command.
+
+The audit service maps this repair state to `repair_retry`.
+The JSON receipt retains the full state and retry metadata.
+The transport retains the API rejection code in its error text.
+Resume the same durable execution after its retry date.
+An audit failure cannot authorize a new plan or a blind resend.
+Tests: `test_wikibase_audit.py` and `test_wikidata_gila_execution.py`.
+
+### Rule W-334 — The Studio restores only the MHM Publication profile (2026-11-14)
+
+Exact operator repairs use a separate `gila-exact-repair` Publication.
+The Studio `latest` query selected the newest sealed Publication without a profile filter.
+A newer repair could therefore replace the normal Release in the Studio panel.
+A regression test reproduced this result through the authenticated route.
+
+Filter the Studio query by `profile_name = mhm-wikidata`.
+Return no Publication when the run has operator repairs only.
+Keep the repair Publication, intent, retry date, and receipts intact.
+Tests: `backend/tests/test_publication_router.py`.

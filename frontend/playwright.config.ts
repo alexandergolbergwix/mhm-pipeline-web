@@ -26,13 +26,15 @@ export default defineConfig({
   timeout: 60_000,
   // 3 workers keeps the Vite dev server + Playwright IPC stable under
   // local load (the admin-panel serial block occupies 1 worker for ~2 min;
-  // 3 total means 2 workers free for everything else).  CI keeps 2.
-  workers: process.env.CI ? 2 : 3,
+  // 3 total means 2 workers free for everything else). CI uses one worker
+  // to avoid concurrent software graphics on the Studio pages.
+  workers: process.env.CI ? 1 : 3,
   reporter: process.env.CI
     ? [["github"], ["html", { open: "never" }]]
     : [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:5173",
+    reducedMotion: "reduce",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

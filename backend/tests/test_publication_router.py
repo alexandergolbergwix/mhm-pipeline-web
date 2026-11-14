@@ -111,6 +111,36 @@ async def _prepare_direct(db_session, run_id, actor_id, *, target: str, profile_
 
 
 @pytest.mark.asyncio
+async def test_latest_studio_publication_excludes_operator_repair_profiles(sample_run, db_session):
+    from datetime import timedelta
+
+    from app.models.publication import Publication
+
+    run_id = sample_run["run_id"]
+    await _add_canonical_cache(db_session, run_id)
+    normal = await _prepare_direct(db_session, run_id, sample_run["user_id"], target="test")
+    repair = await _prepare_direct(
+        db_session, run_id, sample_run["user_id"], target="test", profile_version="1-nodes",
+    )
+    normal_row = await db_session.get(Publication, uuid.UUID(normal.publication_id))
+    repair_row = await db_session.get(Publication, uuid.UUID(repair.publication_id))
+    repair_row.profile_name = "gila-exact-repair"
+    repair_row.created_at = normal_row.created_at + timedelta(minutes=1)
+    await db_session.commit()
+
+    url = f"/api/runs/{run_id}/wikidata-publications/latest"
+    response = await sample_run["client"].get(url)
+    assert response.status_code == 200, response.text
+    assert response.json()["publication"]["publication_id"] == normal.publication_id
+
+    normal_row.profile_name = "gila-exact-repair"
+    await db_session.commit()
+    response = await sample_run["client"].get(url)
+    assert response.status_code == 200, response.text
+    assert response.json()["publication"] is None
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(("decision", "expected_status"), [("approve", "approved"), ("reject", "rejected")])
 async def test_entity_pages_show_review_status_after_review(sample_run, db_session, decision, expected_status):
     run_id = sample_run["run_id"]

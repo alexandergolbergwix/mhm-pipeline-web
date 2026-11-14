@@ -105,7 +105,7 @@ test.describe("WikidataStudio page", () => {
 // ── AI verification ─────────────────────────────────────────────────────
 
 test.describe("AI verification", () => {
-  test("verifies the current Wikidata item with item_ids in the SSE body", async ({page}) => {
+  test("verifies the current Wikidata item through a background job", async ({page}) => {
     const build = makeBuildResponse({
       items: [
         makeStudioItem({
@@ -119,80 +119,14 @@ test.describe("AI verification", () => {
     });
     const posts: Array<{url: string; body: unknown}> = [];
 
-    await installStudioMocks(page, build);
-    await page.route(
-      `**/api/runs/${TEST_RUN_ID}/wikidata-studio/ai-verify/actions*`,
-      (route) => {
-        route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([
-            {
-              id: "audit_wikidata_item",
-              label: "Audit Wikidata item",
-              description: "Judge the generated item against MARC evidence.",
-              scope_kinds: ["single", "selection", "all"],
-              evaluators: ["wikidata_item"],
-              min_candidates: 1,
-            },
-          ]),
-        });
-      },
-    );
-    await page.route(
-      `**/api/runs/${TEST_RUN_ID}/wikidata-studio/ai-verify/sessions`,
-      (route) => {
-        route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([]),
-        });
-      },
-    );
-    await page.route(
-      `**/api/runs/${TEST_RUN_ID}/wikidata-studio/ai-verify/start-stream`,
-      (route) => {
-        posts.push({
-          url: route.request().url(),
-          body: route.request().postDataJSON(),
-        });
-        route.fulfill({
-          status: 200,
-          contentType: "text/event-stream",
-          body: [
-            "event: session.start",
-            `data: ${JSON.stringify({
-              session_id: "s1",
-              action_id: "audit_wikidata_item",
-              scope_size: 1,
-            })}`,
-            "",
-            "event: agent.verdict",
-            `data: ${JSON.stringify({
-              record_id: "990000000000000001",
-              evaluator_id: "wikidata_item",
-              sub_type: "person",
-              candidate: {
-                _local_id: "person::Moses Maimonides",
-                label: "Moses Maimonides",
-              },
-              verdict: {
-                overall: "pass",
-                name_ok: "yes",
-                type_ok: "yes",
-                role_ok: "n/a",
-                reasoning: "The item matches the supplied evidence.",
-              },
-            })}`,
-            "",
-            "event: session.end",
-            `data: ${JSON.stringify({session_id: "s1", outcome: "complete"})}`,
-            "",
-            "",
-          ].join("\n"),
-        });
-      },
-    );
+    await installStudioMocks(page, build, {
+      verificationReason: "The item matches the supplied evidence.",
+    });
+    page.on("request", request => {
+      if (request.method() !== "POST" || !request.url().endsWith(`/runs/${TEST_RUN_ID}/jobs`)) return;
+      const body: {kind?: string; params?: Record<string, unknown>} = request.postDataJSON();
+      if (body.kind === "wikidata_verify") posts.push({url: request.url(), body: body.params});
+    });
 
     await gotoStudio(page, "legacy");
     await page.getByRole("button", {name: /verify current with ai/i}).click();
@@ -358,6 +292,7 @@ test.describe("ItemApprovalBadge toggle", () => {
 
     await installStudioMocks(page, build);
     await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, (route) => {
+      if (route.request().method() !== "PATCH") return route.fallback();
       if (route.request().method() === "PATCH") {
         patches.push({url: route.request().url(), body: route.request().postDataJSON()});
       }
@@ -408,7 +343,7 @@ test.describe("force-rebuild", () => {
     await installStudioMocks(page, build);
     await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, async (route) => {
       if (route.request().method() !== "POST") {
-        await route.continue();
+        await route.fallback();
         return;
       }
       const body = route.request().postDataJSON() as {
@@ -482,11 +417,11 @@ test.describe("eval-agent verification", () => {
     });
     await gotoStudio(page, "legacy");
 
-    await page.getByRole("button", {name: /verify all visible with ai/i}).click();
+    await page.getByRole("button", {name: /verify all visible/i}).click();
     await expect(page.getByText(/2 visible/)).toBeVisible({timeout: 8000});
     await page.getByRole("button", {name: /start verification/i}).click();
 
-    expect(startBody).toMatchObject({
+    await expect.poll(() => startBody).toMatchObject({
       action_id: "audit_wikidata_item",
       item_ids: ["manuscript::Hebrew Manuscript", "person::Moses Maimonides"],
     });
@@ -511,7 +446,7 @@ test.describe("pagination", () => {
 
     await installStudioMocks(page, makeBuildResponse());
     await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio*`, (route) => {
-      if (route.request().method() !== "GET") { route.continue(); return; }
+      if (route.request().method() !== "GET") { route.fallback(); return; }
       requests.push(route.request().url());
       callCount++;
       const pageParam = new URL(route.request().url()).searchParams.get("page") ?? "1";

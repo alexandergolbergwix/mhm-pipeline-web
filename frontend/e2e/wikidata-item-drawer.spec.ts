@@ -12,44 +12,36 @@ async function gotoModernStudio(page: import("@playwright/test").Page) {
     localStorage.setItem("mhm.studio.reviewMode", "modern");
   });
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio`);
-  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("wikidata-item-table")).toBeVisible({timeout: 15_000});
 }
 
 test.describe("Wikidata item detail drawer", () => {
-  test("legacy foreign approvals cannot expose an edit override", async ({page}) => {
-    const cases = [
-      {name: "Matching", accepted: "Q111", enabled: true, checked: true},
-      {name: "Stale", accepted: "Q222", enabled: true, checked: false},
-      {name: "Missing", accepted: null, enabled: true, checked: false},
-      {name: "Disabled", accepted: "Q111", enabled: false, checked: false},
-    ];
-    const items = cases.map(({name, accepted, enabled}) => ({
-      ...makeStudioItem({local_id: `manuscript::${name}`, labels: {en: name}, existing_qid: "Q111"}),
-      accept_foreign_modify: enabled,
-      accepted_foreign_qid: accepted,
-    }));
-    await page.route("**/api/**", (route) => route.abort());
-    await installStudioMocks(page, makeBuildResponse({items, total: items.length}));
-
-    let patch: unknown = null;
-    await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, (route) => {
-      if (route.request().method() !== "PATCH") return route.fallback();
-      patch = route.request().postDataJSON();
-      Object.assign(items[1], patch);
-      return route.fulfill({status: 200, contentType: "application/json", body: "{}"});
-    });
-
-    await gotoModernStudio(page);
-    for (const scenario of cases) {
-      await page.getByTestId(`wikidata-item-row-manuscript::${scenario.name}`).getByRole("button", {name: "Open"}).click();
-      const checkbox = page.getByTestId("wikidata-accept-foreign-modify");
+  for (const scenario of [
+    {name: "Matching", accepted: "Q111", enabled: true},
+    {name: "Stale", accepted: "Q222", enabled: true},
+    {name: "Missing", accepted: null, enabled: true},
+    {name: "Disabled", accepted: "Q111", enabled: false},
+  ]) {
+    test(`legacy foreign approval ${scenario.name} cannot expose an edit override`, async ({page}) => {
+      const item = {
+        ...makeStudioItem({local_id: `manuscript::${scenario.name}`, labels: {en: scenario.name}, existing_qid: "Q111"}),
+        accept_foreign_modify: scenario.enabled, accepted_foreign_qid: scenario.accepted,
+      };
+      await installStudioMocks(page, makeBuildResponse({items: [item], total: 1}));
+      let patch: unknown = null;
+      await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/items/**`, route => {
+        if (route.request().method() !== "PATCH") return route.fallback();
+        patch = route.request().postDataJSON();
+        return route.fulfill({json: {}});
+      });
+      await gotoModernStudio(page);
+      await page.getByTestId(`wikidata-item-row-${item.local_id}`).getByRole("button", {name: "Open"}).click();
       await expect(page.getByText("Fetching statements and evidence…")).toBeHidden();
-      await expect(checkbox).toHaveCount(0);
+      await expect(page.getByTestId("wikidata-accept-foreign-modify")).toHaveCount(0);
       await expect(page.getByText("Only the account that created an existing Wikidata item can update it.", {exact: false})).toBeVisible();
       expect(patch).toBeNull();
-      await page.getByTestId("wikidata-item-detail-drawer").getByRole("button", {name: "Close"}).click();
-    }
-  });
+    });
+  }
 
   test("drawer push and apply-fix buttons capture API calls", async ({page}) => {
     const item = makeStudioItem({
@@ -87,6 +79,7 @@ test.describe("Wikidata item detail drawer", () => {
         });
       }
       if (route.request().method() === "POST" && url.includes("/push")) {
+        expect(new URL(url).searchParams.get("upload_target")).toBe("test");
         pushCalled = true;
         return route.fulfill({
           status: 200,
@@ -117,20 +110,17 @@ test.describe("Wikidata item detail drawer", () => {
           }),
         });
       }
-      route.continue();
+      route.fallback();
     });
 
     await gotoModernStudio(page);
-    await page.getByTestId("wikidata-upload-submit").click();
-    await expect(page.getByText("TEST MODE (test.wikidata.org)")).toBeVisible({timeout: 8000});
-
     await page.getByTestId("wikidata-item-row-manuscript::Push Me").getByRole("button", {name: "Open"}).click();
     await expect(page.getByTestId("wikidata-item-detail-drawer")).toBeVisible();
     await expect(page.getByLabel("English label")).toHaveValue("Push Me");
     await expect(page.getByLabel("Hebrew label")).toHaveAttribute("dir", "rtl");
     await expect(page.getByRole("button", {name: "Save changes"})).toBeVisible();
     await page.getByRole("button", {name: "Add Hebrew alias"}).click();
-    await page.getByLabel("Hebrew alias 1").fill("דחוף");
+    await page.getByRole("textbox", {name: "Hebrew alias 1", exact: true}).fill("דחוף");
     await page.getByRole("button", {name: "Save changes"}).click();
     await expect.poll(() => savePayload).toMatchObject({aliases: {he: ["דחוף"]}});
 
@@ -164,7 +154,7 @@ test.describe("Wikidata item detail drawer", () => {
           }),
         });
       }
-      route.continue();
+      route.fallback();
     });
 
     await gotoModernStudio(page);
