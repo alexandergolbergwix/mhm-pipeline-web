@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import uuid
 from datetime import UTC, datetime, timedelta
+from dataclasses import replace
 
 import pytest
 from sqlalchemy import update
@@ -359,3 +360,15 @@ async def test_sql_repository_persists_the_publication_lifecycle(
     assert len(second_claim) == 1
     assert first_claim[0].action_key != second_claim[0].action_key
     assert no_claim == ()
+
+    intent = await repository.latest_write_intent(completed.execution_id, "manuscript:1")
+    assert intent is not None
+    future = now + timedelta(seconds=60)
+    await repository.update_write_intent(replace(intent, state="pre_send_retryable", next_attempt_at=future))
+    reopened = SqlAlchemyPublicationRepository(db_session)
+    early = await reopened.claim_execution_actions(completed.execution_id, worker_id="restart-early", now=now,
+        lease_duration=timedelta(minutes=1), limit=1, exclude_entity_keys=("work:2",))
+    assert early == ()
+    eligible = await reopened.claim_execution_actions(completed.execution_id, worker_id="restart-eligible",
+        now=future + timedelta(seconds=1), lease_duration=timedelta(minutes=1), limit=1, exclude_entity_keys=("work:2",))
+    assert len(eligible) == 1 and eligible[0].entity_key == "manuscript:1"

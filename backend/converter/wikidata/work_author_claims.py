@@ -169,7 +169,15 @@ def promote_safe_work_author_claims(
                 else f"__LOCAL:{person.local_id}"
             )
             credited = deepcopy(statement)
-            if not any(
+            peer_has_author = any(
+                peer is not work and peer.entity_type == "work"
+                and set(peer.records or []) & set(work.records or [])
+                and {_name_key(v) for v in peer.labels.values()} & {_name_key(v) for v in work.labels.values()}
+                and any(s.property_id == "P50" and s.value == target and matching_qualifiers(s, statement)
+                        for s in peer.statements)
+                for peer in corpus
+            )
+            if not peer_has_author and not any(
                 (q.get("property") or q.get("property_id")) == "P1932"
                 and q.get("value") == statement.value
                 for q in credited.qualifiers

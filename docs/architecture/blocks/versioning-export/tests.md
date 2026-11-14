@@ -10,3 +10,5 @@
 - `backend/tests/test_section_export_router.py`, `test_section_import_router.py` — per-section round-trips
 - `backend/tests/test_extraction_rejection.py` — rejected import/export and legacy import compatibility
 - `frontend/e2e/history-timeline.spec.ts` — timeline UI click paths
+
+Source choices: `test_wikidata_source_review.py` checks the full proof event before the row state. `test_publication_migrations.py` checks migration through the current head. Import/export and history suites retain the existing reference-block boundaries.

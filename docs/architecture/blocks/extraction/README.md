@@ -4,7 +4,7 @@
 
 ## What this block does
 
-Turns an uploaded MARC catalogue file (`.mrc` / `.marc` / TSV / CSV / JSON /
+Turns an uploaded MARC catalogue file (`.mrc` / `.marc` / MARCXML / TSV / CSV / JSON /
 JSONL) into normalised per-manuscript record dicts, then runs four ML models
 (Person NER, Provenance NER, Contents NER, Genre classifier) over the
 note-bearing MARC fields to surface entities the structured catalogue does not
@@ -24,6 +24,7 @@ classifies each candidate against the MARC record itself. Approved entities
   - [Review UI](review-ui.md) — the 11-capability curator surface (Rule W-16)
 - [Rules](rules.md)
 - [Explicit rejection](rejection.md) — durable review states, migration, API, and exports
+- [Person dates](person-dates.md) — occurrence alignment and retained source evidence
 - [Skills](skills.md)
 - [Tests pinning this block](tests.md)
 
@@ -36,3 +37,5 @@ classifies each candidate against the MARC record itself. Approved entities
 - [caching](../caching/README.md) — `inference_cache` + Redis L1 (Rule W-25), entities scoped cache
 - [frontend](../frontend/README.md) — glass components, Zustand rules (W-35/W-36)
 - [deployment](../deployment/README.md) — Heroku env vars, ephemeral-filesystem constraints, Modal deploy
+
+- [Original MARC occurrences](marc-occurrences.md) — MARCXML, source order, sparse associations, and local comparison (W-326).

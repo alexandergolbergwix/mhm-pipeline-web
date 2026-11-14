@@ -128,6 +128,7 @@ PROPERTY_LABELS: dict[str, str] = {
     "P21":   "sex or gender",
     "P1412": "languages spoken, written or signed",
     "P1343": "described by source",
+    "P304": "page(s)",
     # Location
     "P17":   "country",
     "P131":  "located in the administrative territorial entity",

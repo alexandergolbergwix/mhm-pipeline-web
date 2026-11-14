@@ -1,4 +1,6 @@
 # Wikidata Studio — Rules
+> Current policy: [creator-only writes](creator-only-writes.md) supersedes every foreign-edit exception below.
+
 > Up: [Wikidata Studio](README.md)
 1. **R1 — Item construction stays behind the shared builder facade.** All
    projection logic lives in focused modules under `backend/converter/wikidata/`;
@@ -1302,3 +1304,16 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 170. **R170 — Source person choices remain scoped and reference only (W-320).** Require the exact canonical fingerprint, source identity hashes, and unique public identifier proof. Skip public person writes and global ledger changes. See [the choice contract](person-identity-choice.md).
 
 171. **R171 — Single-item reads use exact SQL rows (W-321).** Keep the full detail payload for one local ID. Retain a small reference-only flag on the table. *Why:* a full-corpus detail read exceeded the web memory quota.
+172. **R172 — A completion packet retains every source case and current proof.** Separate manual review, supported repair, and unchecked evidence. Require a current revision for facts and corrected-QID receipts. *Why:* a successful transfer or old receipt cannot certify all nine email requirements. See [the packet contract](gila-completion-packet.md).
+173. **R173 — Normal owned updates retain one current retrieval per identical citation (W-323).** Preserve distinct source metadata and uncertain dates. Append-only paths skip another copy without a replacement. See [the retrieval contract](reference-retrievals.md).
+
+174. **R174 — Every existing write needs creator proof (W-324).** Ignore old approvals. Reject unknown creators and foreign creators. Preserve reference-only reuse. *Why:* a curator exception violated the user's unconditional policy.
+175. **R175 — Person descriptions exclude generated role lists (W-325).** Preserve source comments and specific biographies. *Why:* joined per-role comments became truncated public descriptions.
+
+176. **R176 — Source associations need original occurrence proof (W-326).** Flat agreement does not prove an original field association. *Why:* source and public comparisons can repeat the same parser defect.
+177. **R177 — Source choices require current proof and a new item review (W-327).** Keep source gaps and unchecked passages separate from verified public claims. *Why:* a public read cannot close an unconsumed note.
+178. **R178 — Delayed repairs retain exact state and creator IDs (W-328).** Reuse Publication intents and `next_attempt_at`. *Why:* a lost response must not cause a blind resend.
+179. **R179 — Author promotion retains distinct sources (W-329).** Compare compatible occurrences before an optional credited-name qualifier. *Why:* early promotion split one author into two claims.
+180. **R180 — Source-review views bind run and item (W-330).** Reset local state when the scope changes. Ignore results after unmount. *Why:* a late save must not affect a different run with the same local ID.
+181. **R181 — Source choices retain record and page scope (W-331).** Preserve unrelated claims, historical scope, rank, and complete sources. *Why:* one reviewed passage cannot authorize a change to another record.
+182. **R182 — Source candidates use the public builder facade (W-332).** Verify the read in a fresh interpreter. *Why:* an earlier builder import masked a cycle.

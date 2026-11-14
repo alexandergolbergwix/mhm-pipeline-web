@@ -277,13 +277,13 @@ async def test_conflicting_ledger_rows_do_not_choose_last_value():
 def test_remote_creator_and_exact_target(monkeypatch, entity, page, author, expected):
     uploader = WikidataUploader(token="fixture", allow_live=True)
     monkeypatch.setattr(uploader, "ensure_owner_only_authenticated", lambda: None)
-    monkeypatch.setattr(uploader, "_query_userinfo_rights", lambda: {"name": "Account"})
+    monkeypatch.setattr(uploader, "_query_userinfo_rights", lambda: {"name": "Account", "id": 6935067})
     revision_response = SimpleNamespace(
         status_code=200,
         raise_for_status=lambda: None,
         json=lambda: {
             "query": {
-                "pages": {"1": {"pageid": 1, "ns": 0, **page, "revisions": [{"user": author}]}}
+                "pages": {"1": {"pageid": 1, "ns": 0, **page, "revisions": [{"user": author, "userid": 6935067, "revid": 1}]}}
             }
         },
     )
@@ -352,6 +352,9 @@ def test_uploader_rejects_create_and_target_shift(monkeypatch):
 
 def test_owned_update_passes_both_guards_before_one_write(monkeypatch):
     uploader = WikidataUploader(token="fixture", allow_live=True)
+    monkeypatch.setattr(uploader, "_get_authenticated_user", lambda: "Account")
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
+    monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Account")
     checks = []
     monkeypatch.setattr(
         uploader, "owner_only_target_valid", lambda qid, cn: checks.append(qid) or True
@@ -940,6 +943,9 @@ def test_owner_write_conflict_does_not_retry(monkeypatch):
     from wikibaseintegrator.wbi_exceptions import MWApiError
 
     uploader = WikidataUploader(token="fixture", allow_live=True)
+    monkeypatch.setattr(uploader, "_get_authenticated_user", lambda: "Account")
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
+    monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Account")
     monkeypatch.setattr(uploader, "owner_only_target_valid", lambda qid, cn: True)
     monkeypatch.setattr(uploader, "_owner_only_revision", lambda qid, cn: 42)
     monkeypatch.setattr(uploader, "_init_wbi", lambda: None)
@@ -980,7 +986,7 @@ def _real_owner_uploader(monkeypatch, entity_responses, *, creator="Account"):
     calls = []
     writes = []
     monkeypatch.setattr(uploader, "ensure_owner_only_authenticated", lambda: None)
-    monkeypatch.setattr(uploader, "_query_userinfo_rights", lambda: {"name": "Account"})
+    monkeypatch.setattr(uploader, "_query_userinfo_rights", lambda: {"name": "Account", "id": 6935067})
     monkeypatch.setattr(uploader, "_init_wbi", lambda: None)
     monkeypatch.setattr(uploader, "_is_our_item", lambda *a, **kw: True)
     monkeypatch.setattr(uploader, "_bot_excluded", lambda qid: False)
@@ -1004,7 +1010,7 @@ def _real_owner_uploader(monkeypatch, entity_responses, *, creator="Account"):
                             "pageid": 1,
                             "ns": 0,
                             "title": "Q123",
-                            "revisions": [{"user": creator}],
+                            "revisions": [{"user": creator, "userid": 6935067, "revid": 1}],
                         }
                     }
                 }

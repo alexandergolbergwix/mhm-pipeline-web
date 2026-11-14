@@ -37,5 +37,6 @@ async def test_gated_download_sanitizes_headers_and_exports_adopted_qid(sample_r
     )
     assert response.status_code == 200
     assert "\nQ9\t" not in response.text and "\nQ8\t" not in response.text
-    assert "Q42\tP31\tQ5" in response.text
+    assert "Q42\tP31\tQ5" not in response.text
+    assert "creator verification" in response.text
     assert "CREATE" not in response.text

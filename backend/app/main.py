@@ -121,6 +121,8 @@ def create_app() -> FastAPI:
     app.include_router(wikibase_writes.router, prefix="/api")
     app.include_router(api_keys.router, prefix="/api")
     app.include_router(wikidata_studio.router, prefix="/api")
+    from app.routers import wikidata_source_review
+    app.include_router(wikidata_source_review.router, prefix="/api")
     app.include_router(publication.router, prefix="/api")
     from app.routers import publication_ai_review
     app.include_router(publication_ai_review.router, prefix="/api")

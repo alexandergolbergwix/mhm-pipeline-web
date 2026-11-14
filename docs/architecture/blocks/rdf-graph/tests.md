@@ -46,3 +46,6 @@
 
 - `backend/tests/unit/test_graph_builder_codicological_labels.py` — anthology
   records use the canonical structure type and emit no removed predicates (R21).
+
+- The ontology parity suite requires schema declarations or explicit runtime type proof for the two presence vocabulary individuals (R25/W-251).
+- The codicological description suite keeps Hebrew title/name evidence in Hebrew comments and English descriptions free of Hebrew text (R25/W-251).

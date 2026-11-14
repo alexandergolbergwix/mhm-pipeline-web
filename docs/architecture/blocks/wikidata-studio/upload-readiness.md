@@ -17,7 +17,7 @@ The build preserves supported alternative headings and existing spelling toleran
 The build clears unconfirmed identifiers and omits people without a publishable identity.
 The source evidence remains available for curator correction.
 Fingerprint version `hmo-wikidata-v14` introduced this identity change; the
-current canonical salt is `hmo-wikidata-v23` (W-305).
+current canonical salt is `hmo-wikidata-v28` (W-305).
 
 `converter.authority.heading_fidelity.given_names_match` supplies the shared comparison.
 The export audit checks emitted P8189 claims against their authority headings.

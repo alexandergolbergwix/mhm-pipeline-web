@@ -156,6 +156,7 @@ def test_505_contents_retain_source_and_folio_evidence() -> None:
         "source_field": "505",
         "candidate_kind": "named_work",
         "source_text": "1) דף א-ב : ספר הדרושים",
+        "source_key": "505$a:1:1",
         "folio_range": "א-ב",
         "sequence": 1,
     }]

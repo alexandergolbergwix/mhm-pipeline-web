@@ -107,10 +107,10 @@ def test_deferred_rehydration_and_resolution(model_with_blocks):
 
 
 def test_quickstatements_marks_only_first_snak_of_each_new_block(model_with_blocks):
-    item = studio_dict_to_native_item({"existing_qid": "Q42", "statements": [_statement()]})
+    item = studio_dict_to_native_item({"local_id": "reference:case", "statements": [_statement()]})
     line = QuickStatementsExporter().export_item(item)
     assert line == (
-        'Q42\tP31\tQ5\tS248\tQ1\tS813\t+2026-01-01T00:00:00Z/11'
+        'CREATE\nLAST\tP31\tQ5\tS248\tQ1\tS813\t+2026-01-01T00:00:00Z/11'
         '\t!S854\t"https://example.org"'
     )
 
@@ -140,16 +140,16 @@ def test_legacy_references_are_one_block(model_with_blocks):
     statement = _statement()
     statement["reference_blocks"] = []
     statement["references"] = [{"property": "P248", "value": "Q999", "type": "item"}]
-    item = studio_dict_to_native_item({"existing_qid": "Q42", "statements": [statement]})
-    assert QuickStatementsExporter().export_item(item) == "Q42\tP31\tQ5\tS248\tQ999"
+    item = studio_dict_to_native_item({"local_id": "reference:case", "statements": [statement]})
+    assert QuickStatementsExporter().export_item(item) == "CREATE\nLAST\tP31\tQ5\tS248\tQ999"
 
 
 def test_quickstatements_omits_ambiguous_legacy_sources():
     statement = _statement()
     statement["reference_blocks"] = []
-    item = studio_dict_to_native_item({"existing_qid": "Q42", "statements": [statement]})
+    item = studio_dict_to_native_item({"local_id": "reference:case", "statements": [statement]})
     output = QuickStatementsExporter().export_item(item)
-    assert "Item omitted: Q42" in output
+    assert "Item omitted: reference:case" in output
     assert "Statement omitted: ambiguous flat reference provenance" in output
 
 
@@ -157,9 +157,9 @@ def test_quickstatements_rejects_empty_or_unresolved_blocks(model_with_blocks):
     statement = _statement()
     statement["reference_blocks"] = [[], [{"property": "P248", "value": "Q1", "type": "item"}]]
     statement["references"] = deepcopy(sum(statement["reference_blocks"], []))
-    item = studio_dict_to_native_item({"existing_qid": "Q42", "statements": [statement]})
+    item = studio_dict_to_native_item({"local_id": "reference:case", "statements": [statement]})
     output = QuickStatementsExporter().export_item(item)
-    assert "Item omitted: Q42" in output
+    assert "Item omitted: reference:case" in output
     assert "invalid or unsupported reference" in output
     item.statements[0].reference_blocks = [[
         {"property": "P248", "value": "__LOCAL:x", "type": "item"},
@@ -172,7 +172,7 @@ def test_quickstatements_rejects_empty_or_unresolved_blocks(model_with_blocks):
     ]]
     item.statements[0].references = deepcopy(item.statements[0].reference_blocks[0])
     output = QuickStatementsExporter().export_item(item)
-    assert "Item omitted: Q42" in output
+    assert "Item omitted: reference:case" in output
     assert "invalid or unsupported reference" in output
 
 
@@ -407,9 +407,9 @@ def test_fresh_manuscript_sources_are_either_explicit_or_blocked():
 def test_reference_time_rejects_unsafe_values(model_with_blocks, value, precision):
     snak = {"property": "P813", "value": value, "type": "time", "precision": precision}
     statement = {**_statement(), "references": [snak], "reference_blocks": [[snak]]}
-    item = studio_dict_to_native_item({"existing_qid": "Q42", "statements": [statement]})
+    item = studio_dict_to_native_item({"local_id": "reference:case", "statements": [statement]})
     output = QuickStatementsExporter().export_item(item)
-    assert "Item omitted: Q42" in output
+    assert "Item omitted: reference:case" in output
     assert "invalid or unsupported reference" in output
     assert "\tP31\t" not in output
 

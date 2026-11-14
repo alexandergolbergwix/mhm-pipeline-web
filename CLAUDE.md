@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-321)
+## Architectural rules (W-1…W-332)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -93,7 +93,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-78** — Exported authority and work identity MUST stay precise
 - **W-82** — Manuscript labels MUST reflect the physical holder
 - **W-98** — Wikidata projection MUST follow the WikiProject Manuscripts data model fail-closed
-- **W-99** — Wikidata write path MUST smart-check existence and own-or-accept modify
+- **W-99** — Wikidata writes require an existence check; creator-only modification supersedes the former accept exception (W-324)
 - **W-100** — Project Wikibase P/Q MUST map to public Wikidata via ontology, never by ID identity
 - **W-103** — Wikidata upload target is curator-chosen; default dry-run
 - **W-114** — Related works MUST NOT mint evidence-less Wikidata CREATE items
@@ -148,6 +148,16 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-319** — Bulk HMO writes apply curator overrides and preserve claim metadata — see [hmo-wikibase.md](docs/architecture/rules/hmo-wikibase.md).
 - **W-320** — Person identity choices bind exact source records and remain reference only — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-321** — Single-item reads use exact SQL rows; retain the full detail payload and a small reference-only flag on table rows — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-323** — Identical source citations retain one current retrieval on normal owned updates; append-only paths preserve existing blocks.
+- **W-324** — Existing writes require creator proof without foreign approval exceptions; old approvals and cached ownership cannot bypass the guard.
+- **W-325** — Generated person-role lists cannot become public descriptions; canonical version `hmo-wikidata-v26` invalidates the old form.
+- **W-326** — Original MARC occurrences retain field associations and replace stale derived values — see [authority-marc.md](docs/architecture/rules/authority-marc.md).
+- **W-327** — Source choices retain exact evidence, history, and honest requirement coverage — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-328** — Exact repairs use durable Publication state, server delays, and fresh creator user IDs — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-329** — Equivalent P50 representations retain every distinct source block and compatible scope — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-330** — Source-review saves cannot update a different run or item after the original view closes — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-331** — Source choices preserve record and page scope, ranks, historical claims, and complete references — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-332** — Source candidate reads use the builder facade without a prior import — see [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 
 - **W-273** — Research Assistant prompt gate: every user prompt passes the local scope router AND the TypeSafe Jev model check (jev-1.13.0) before any LLM call, enforced at both the Heroku dispatch and the Modal entries (dev-stub-only gating left production ungated); all retrieved text incl. MARC notes passes the quarantine; a provider 402 humanizes and retries once on the fallback model — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
 - **W-274** — Remote-agent run contract: every research-agent run emits exactly one terminal event with a machine code (`model_quota_exhausted`, `gate_refused`, `stream_ended`, `deadline_exceeded`), the SSE bridge only synthesizes a terminal when none arrived and never with a look-alike message; a run journal (research_agent_run_journal + `/research-agent/runs/{id}/debug`) records gate→dispatch→terminal; fact/count questions are answered deterministically from the DB (no LLM); the model layer is QUBRID-ONLY with a 402 circuit breaker (2026-10-17: a Modal ModuleNotFoundError surfaced as "stopped responding" and duplicated user rows) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
@@ -306,6 +316,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-83** — Place authority identifiers MUST preserve their namespace
 - **W-84** — Ambiguous KIMA names MUST abstain
 - **W-166** — An unconfirmed authority identity may not name or date a person
+- **W-322** — Sparse person-date arrays retain source evidence without guessed occurrence associations; completion reports require current public proof.
 
 ### [rdf-ontology.md](docs/architecture/rules/rdf-ontology.md) — RDF graph + ontology
 

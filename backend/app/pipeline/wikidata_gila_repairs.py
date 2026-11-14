@@ -5,6 +5,7 @@ import json
 from collections.abc import Mapping
 from copy import deepcopy
 
+from converter.wikidata.reference_retrieval import current_reference_indices, reference_source_key
 from converter.wikidata.work_identity import reference_control_numbers
 
 
@@ -44,6 +45,11 @@ def _distinct_references(value: object) -> list[dict[str, object]]:
             seen.add(identity)
             kept.append(deepcopy(reference))
     return kept
+
+
+def _current_references(value: object) -> list[dict[str, object]]:
+    references = _objects(value, "References")
+    return [deepcopy(references[index]) for index in current_reference_indices(references)]
 
 
 def _text(claim: Mapping[str, object]) -> str:
@@ -134,6 +140,14 @@ def build_gila_repair_proposals(
             raise ValueError("A live entity must be an object.")
         if "missing" in entity:
             continue
+        redirect = entity.get("redirects")
+        if (
+            isinstance(redirect, Mapping)
+            and redirect.get("from") == qid
+            and redirect.get("to") == entity.get("id")
+            and entity.get("id") != qid
+        ):
+            continue
         claims = entity.get("claims", {})
         if not isinstance(claims, Mapping):
             raise ValueError("Live claims must be an object.")
@@ -141,7 +155,8 @@ def build_gila_repair_proposals(
         for pid, rows in claims.items():
             for claim in _objects(rows, "Claims"):
                 references = _objects(claim.get("references", []), "References")
-                distinct = _distinct_references(references)
+                exact = _distinct_references(references)
+                distinct = _current_references(exact)
                 if len(distinct) == len(references):
                     continue
                 claim_id = claim.get("id")
@@ -151,12 +166,17 @@ def build_gila_repair_proposals(
                 after["references"] = distinct
                 changes.append(
                     {
-                        "kind": "deduplicate_exact_references",
+                        "kind": (
+                            "coalesce_retrieval_references"
+                            if len(distinct) < len(exact)
+                            else "deduplicate_exact_references"
+                        ),
                         "property": pid,
                         "claim_id": claim_id,
                         "before": deepcopy(claim),
                         "after": after,
                         "duplicate_blocks": len(references) - len(distinct),
+                        "retrieval_variants": len(exact) - len(distinct),
                     }
                 )
         source_text = (colophons_by_qid or {}).get(qid, "")
@@ -175,7 +195,7 @@ def build_gila_repair_proposals(
                     (change for change in changes if change["claim_id"] == kept["id"]), None
                 )
                 after = deepcopy(existing["after"] if existing else kept)
-                after["references"] = _distinct_references(
+                after["references"] = _current_references(
                     [
                         *_objects(after.get("references", []), "References"),
                         *_objects(old.get("references", []), "References"),
@@ -283,11 +303,11 @@ def validate_gila_repair_proposal(
             if not isinstance(effective, Mapping):
                 raise ValueError("The retained colophon cannot be removed.")
             effective_ids = {
-                _reference_identity(ref)
+                reference_source_key(ref)
                 for ref in _objects(effective.get("references", []), "References")
             }
             if any(
-                _reference_identity(ref) not in effective_ids
+                reference_source_key(ref) not in effective_ids
                 for ref in _objects(before.get("references", []), "References")
             ):
                 raise ValueError("The duplicate removal loses a distinct source.")
@@ -306,8 +326,12 @@ def validate_gila_repair_proposal(
                         ):
                             raise ValueError("The colophon reference source cannot be verified.")
                         references.extend(_objects(old.get("references", []), "References"))
-            elif kind != "deduplicate_exact_references":
+            elif kind not in {"deduplicate_exact_references", "coalesce_retrieval_references"}:
                 raise ValueError("The repair operation is unsupported.")
-            expected["references"] = _distinct_references(references)
+            expected["references"] = (
+                _current_references(references)
+                if kind in {"coalesce_retrieval_references", "preserve_colophon_references"}
+                else _distinct_references(references)
+            )
             if expected != change.get("after"):
                 raise ValueError("The proposal changes unsupported claim fields.")

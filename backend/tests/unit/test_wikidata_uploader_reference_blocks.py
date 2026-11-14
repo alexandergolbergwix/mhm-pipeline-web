@@ -30,7 +30,12 @@ from converter.wikidata.uploader import (
 
 
 def _uploader(*, is_test: bool = False) -> WikidataUploader:
-    return WikidataUploader(token="Fixture@Bot:not-a-credential", is_test=is_test, allow_live=not is_test)
+    uploader = WikidataUploader(
+        token="Fixture@Bot:not-a-credential", is_test=is_test, allow_live=not is_test
+    )
+    uploader._authenticated_user = "Project"
+    uploader._creator_cache["Q123"] = "Project"
+    return uploader
 
 
 def _source(url: str) -> list[dict[str, object]]:
@@ -113,7 +118,7 @@ def test_accepted_foreign_manuscript_preserves_existing_class_rank(
     existing = _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(old))
     before = copy.deepcopy(existing.get_json())
     uploader._is_our_item_cache["Q123"] = False
-    uploader.register_foreign_accept("Q123")
+    uploader._foreign_accept_qids.add("Q123")
     new = _statement("P31", "Q123172729", "item", [_source("https://example.org/new")])
     new.rank = proposed_rank
 
@@ -164,7 +169,7 @@ def test_foreign_class_rank_requires_one_exact_existing_claim(monkeypatch) -> No
         uploader._build_claim(normal), uploader._build_claim(preferred),
     ])
     uploader._is_our_item_cache["Q123"] = False
-    uploader.register_foreign_accept("Q123")
+    uploader._foreign_accept_qids.add("Q123")
     with pytest.raises(ClaimBuildError, match="ambiguous matching P31"):
         uploader._build_wbi_item(WikidataItem(
             entity_type="manuscript", existing_qid="Q123", statements=[preferred],
@@ -312,6 +317,7 @@ def test_upload_rank_conflict_returns_blocked_without_write(monkeypatch: pytest.
     writes: list[bool] = []
     monkeypatch.setattr(existing, "write", lambda **kwargs: writes.append(True))
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     proposed = _statement("P50", "Q55", "item", [_source("https://example.org/new")])
     proposed.rank = "preferred"
     result = uploader.upload_item(WikidataItem(existing_qid="Q123", statements=[proposed]))
@@ -338,6 +344,7 @@ def test_upload_merges_references_into_exact_rank_before_write(monkeypatch: pyte
 
     monkeypatch.setattr(existing, "write", write)
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     monkeypatch.setattr(uploader, "_rate_limit", lambda: None)
     proposed = _statement("P50", "Q55", "item", [_source("https://example.org/new")])
     proposed.rank = "preferred"
@@ -385,7 +392,9 @@ def test_distinct_qualifiers_keep_separate_claims(monkeypatch: pytest.MonkeyPatc
     assert [_urls(claim) for claim in claims] == [{"https://example.org/old"}, {"https://example.org/new"}]
 
 
-def test_owned_full_update_preserves_distinct_reference_hashes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_owned_full_update_coalesces_identical_sources_with_distinct_hashes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     uploader = _uploader()
     old = _statement("P571", "same", "string", [_source("https://example.org/old")])
     claim = uploader._build_claim(old)
@@ -396,17 +405,116 @@ def test_owned_full_update_preserves_distinct_reference_hashes(monkeypatch: pyte
     second = copy.deepcopy(reference)
     second["hash"] = "b" * 40
     data["references"].append(second)
-    existing = WikibaseIntegrator().item.new().from_json({
-        "id": "Q123", "type": "item", "lastrevid": 1,
-        "labels": {}, "descriptions": {}, "aliases": {}, "claims": {"P571": [data]}, "sitelinks": {},
-    })
-    monkeypatch.setattr(uploader, "_init_wbi", lambda: SimpleNamespace(item=SimpleNamespace(get=lambda *a, **k: existing)))
+    existing = (
+        WikibaseIntegrator()
+        .item.new()
+        .from_json(
+            {
+                "id": "Q123",
+                "type": "item",
+                "lastrevid": 1,
+                "labels": {},
+                "descriptions": {},
+                "aliases": {},
+                "claims": {"P571": [data]},
+                "sitelinks": {},
+            }
+        )
+    )
+    monkeypatch.setattr(
+        uploader,
+        "_init_wbi",
+        lambda: SimpleNamespace(item=SimpleNamespace(get=lambda *a, **k: existing)),
+    )
     uploader._is_our_item_cache["Q123"] = True
     new = _statement("P571", "same", "string", [_source("https://example.org/new")])
-    item = WikidataItem(existing_qid="Q123", statements=[WikidataStatement("P31", "Q1", "item"), new])
+    item = WikidataItem(
+        existing_qid="Q123", statements=[WikidataStatement("P31", "Q1", "item"), new]
+    )
     result, _, _ = uploader._build_wbi_item(item, read_only=True)
     references = list(result.claims.get("P571")[0].references)
-    assert [ref.hash for ref in references] == ["a" * 40, "b" * 40, None]
+    assert [ref.hash for ref in references] == ["a" * 40, None]
+
+
+def _retrieved_source(day: str) -> list[dict[str, object]]:
+    return [
+        *_source("https://example.org/catalog/record"),
+        {
+            "property": "P813",
+            "value": f"+{day}T00:00:00Z",
+            "type": "time",
+            "precision": 11,
+        },
+    ]
+
+
+@pytest.mark.parametrize("full", [False, True])
+def test_owned_retrieval_refresh_replaces_the_same_source_and_then_stays_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+    full: bool,
+) -> None:
+    uploader = _uploader()
+    old = _statement("P1476", "אור הרופאים", "monolingualtext", [_retrieved_source("2026-08-11")])
+    existing = _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(old))
+    new = _statement("P1476", "אור הרופאים", "monolingualtext", [_retrieved_source("2026-11-11")])
+    statements = [WikidataStatement("P31", "Q47461344", "item"), new] if full else [new]
+    native = WikidataItem(existing_qid="Q123", statements=statements)
+    _, _, changed = uploader._build_wbi_item(native, read_only=True)
+    assert "P1476" in changed
+    refs = existing.claims.get("P1476")[0].get_json()["references"]
+    assert len(refs) == 1
+    assert refs[0]["snaks"]["P813"][0]["datavalue"]["value"]["time"] == "+2026-11-11T00:00:00Z"
+    _, _, changed_again = uploader._build_wbi_item(native, read_only=True)
+    assert "P1476" not in changed_again
+
+
+def test_an_older_native_retrieval_does_not_regress_the_public_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uploader = _uploader()
+    latest = _statement(
+        "P1476", "אור הרופאים", "monolingualtext", [_retrieved_source("2026-11-11")]
+    )
+    existing = _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(latest))
+    before = copy.deepcopy(existing.get_json())
+    old = _statement("P1476", "אור הרופאים", "monolingualtext", [_retrieved_source("2026-08-11")])
+    _, _, changed = uploader._build_wbi_item(
+        WikidataItem(existing_qid="Q123", statements=[old]), read_only=True
+    )
+    assert "P1476" not in changed
+    assert existing.get_json() == before
+
+
+def test_owner_only_retains_the_original_reference_and_does_not_append_another_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uploader = _uploader()
+    old = _statement("P1476", "אור הרופאים", "monolingualtext", [_retrieved_source("2026-08-11")])
+    existing = _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(old))
+    before = copy.deepcopy(existing.get_json())
+    new = _statement("P1476", "אור הרופאים", "monolingualtext", [_retrieved_source("2026-11-11")])
+    _, _, changed = uploader._build_wbi_item(
+        WikidataItem(existing_qid="Q123", statements=[new]), read_only=True, owner_only=True
+    )
+    assert "P1476" not in changed
+    assert existing.get_json() == before
+
+
+def test_foreign_updates_preserve_existing_references_without_another_retrieval_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uploader = _uploader()
+    old = _statement("P1476", "אור הרופאים", "monolingualtext", [_retrieved_source("2026-08-11")])
+    existing = _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(old))
+    uploader._is_our_item_cache["Q123"] = False
+    uploader.register_foreign_accept("Q123")
+    before = copy.deepcopy(existing.get_json())
+    new = _statement("P1476", "אור הרופאים", "monolingualtext", [_retrieved_source("2026-11-11")])
+    _, _, changed = uploader._build_wbi_item(
+        WikidataItem(existing_qid="Q123", statements=[new]), read_only=True
+    )
+    assert "P1476" not in changed
+    assert existing.get_json() == before
 
 
 def test_update_rejects_invalid_native_rank(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -475,6 +583,7 @@ def test_upload_blocks_inconsistent_reference_views_before_local_resolution(
 ) -> None:
     uploader = _uploader()
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     initialized: list[bool] = []
     monkeypatch.setattr(uploader, "_init_wbi", lambda: initialized.append(True))
     stmt = _statement("P571", "same", "string", [[
@@ -499,6 +608,7 @@ def test_upload_blocks_unsupported_reference_metadata_before_write(
 ) -> None:
     uploader = _uploader()
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     initialized: list[bool] = []
     monkeypatch.setattr(uploader, "_init_wbi", lambda: initialized.append(True))
     stmt = WikidataStatement("P571", "same", "string", references=_source("https://example.org/old"))
@@ -620,6 +730,7 @@ def test_test_upload_blocks_local_namespace_lost_in_json(
 ) -> None:
     uploader = _uploader(is_test=True)
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     initialized: list[bool] = []
     monkeypatch.setattr(uploader, "_init_wbi", lambda: initialized.append(True))
     uploader._test_qid_map = {"Q900": "Q999"}
@@ -639,6 +750,7 @@ def test_serialized_local_reference_with_explicit_live_collision_never_writes(
 ) -> None:
     uploader = _uploader(is_test=True)
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     writes: list[object] = []
     monkeypatch.setattr(uploader, "_init_wbi", lambda: writes.append("initialized"))
     uploader._test_qid_map = {"Q900": "Q999"}
@@ -672,6 +784,7 @@ def test_in_memory_local_and_explicit_live_collision_write_correct_qids(monkeypa
     uploader._test_property_datatypes = {"P571": "string", "P248": "wikibase-item", "P50": "wikibase-item"}
     uploader._test_entity_exists = {"Q900": True, "Q999": True}
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     monkeypatch.setattr(uploader, "_init_wbi", lambda: None)
     monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     monkeypatch.setattr(uploader, "_rate_limit", lambda: None)
@@ -707,6 +820,7 @@ def test_test_wiki_reports_unsupported_reference_calendar_before_write(
 ) -> None:
     uploader = _uploader(is_test=True)
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     initialized: list[bool] = []
     monkeypatch.setattr(uploader, "_init_wbi", lambda: initialized.append(True))
     snak = {"property": "P813", "value": "+2020-01-02T00:00:00Z", "type": "time",
@@ -856,6 +970,7 @@ def test_local_test_reference_json_requires_exact_test_ledger_proof(monkeypatch:
 def test_test_upload_refuses_live_seed_without_test_ledger(monkeypatch: pytest.MonkeyPatch) -> None:
     uploader = _uploader(is_test=True)
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     initialized: list[bool] = []
     monkeypatch.setattr(uploader, "_init_wbi", lambda: initialized.append(True))
     uploader._test_entity_exists = {"Q900": True}
@@ -870,6 +985,7 @@ def test_test_upload_refuses_live_seed_without_test_ledger(monkeypatch: pytest.M
 def test_test_upload_never_updates_same_number_without_exact_ledger(monkeypatch: pytest.MonkeyPatch) -> None:
     uploader = _uploader(is_test=True)
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     initialized: list[bool] = []
     monkeypatch.setattr(uploader, "_init_wbi", lambda: initialized.append(True))
     uploader._is_our_item_cache["Q900"] = True
@@ -896,6 +1012,7 @@ def test_successful_test_write_does_not_supply_ledger_proof(monkeypatch: pytest.
 def test_pre_resolved_live_seed_is_refused_without_test_ledger(monkeypatch: pytest.MonkeyPatch) -> None:
     uploader = _uploader(is_test=True)
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     initialized: list[bool] = []
     monkeypatch.setattr(uploader, "_init_wbi", lambda: initialized.append(True))
     item = WikidataItem(local_id="work:one", statements=[WikidataStatement("P50", "__LOCAL:person:source", "item")])
@@ -913,6 +1030,7 @@ def test_explicit_live_main_qid_maps_despite_untrusted_same_number(monkeypatch: 
     uploader._test_property_datatypes = {"P31": "wikibase-item"}
     uploader._test_entity_exists = {"Q901": True}
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     monkeypatch.setattr(uploader, "_init_wbi", lambda: None)
     monkeypatch.setattr(uploader, "_ensure_test_maps_for_item", lambda _, **_kwargs: WikiTestAdaptStats())
     monkeypatch.setattr(uploader, "_rate_limit", lambda: None)
@@ -962,6 +1080,7 @@ def test_test_local_mainsnak_provenance_survives_json_and_requires_ledger(monkey
 def test_legacy_serialized_local_mainsnak_without_namespace_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
     uploader = _uploader(is_test=True)
     monkeypatch.setattr(uploader, "_check_moratorium_for_live", lambda: None)
+    monkeypatch.setattr(uploader, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     initialized: list[bool] = []
     monkeypatch.setattr(uploader, "_init_wbi", lambda: initialized.append(True))
     stmt = WikidataStatement("P50", "__LOCAL:person:source", "item")

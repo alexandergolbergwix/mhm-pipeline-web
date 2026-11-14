@@ -33,7 +33,7 @@ open clients see updates without waiting for the next poll tick.
 
 - [Key files](key-files.md) — every module, model, migration, hook, and test that makes up the service
 - [How it works](how-it-works.md) — lifecycle, job kinds and owners, frontend attachment
-- [Rules](rules.md) — R1–R42 invariants (claiming, staleness, secrets, cancellation, UI)
+- [Rules](rules.md) — R1–R43 invariants (claiming, staleness, secrets, cancellation, UI)
 - [Skills & tests](skills-and-tests.md) — add a job kind, debug a stuck job, attach UI; tests pinning this block
 
 - [Payloads](payloads.md) — summary lists and selected detail (W-306)
@@ -51,3 +51,5 @@ open clients see updates without waiting for the next poll tick.
 - [deployment](../deployment/README.md) — dyno restarts, `WORKER_ID`, Heroku 30 s router timeout
 - [platform-security](../platform-security/README.md) — KEK-wrapped secrets injected into job params
 - [versioning-export](../versioning-export/README.md) · [research](../research/README.md)
+
+Exact historical repairs reuse the Publication action queue. See [repair retries](../wikidata-studio/repair-retries.md). No new run-job kind exists.

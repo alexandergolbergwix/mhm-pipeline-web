@@ -22,9 +22,11 @@
 | Change upload ownership / foreign-modify accept | [wikidata-studio guards](blocks/wikidata-studio/guards-and-upload.md) + Rule W-99 |
 | Preview or change owner-only manuscript updates | [owner-only upload](blocks/wikidata-studio/owner-only-upload.md) + Rule W-303; dry-run needs a live credential and is not authorization |
 | Diagnose reference grouping, old caches, or test-wiki reference writes | [reference blocks](blocks/wikidata-studio/reference-blocks.md) + Rule W-304 |
+| Diagnose repeated citations with different retrieval dates | [retrieval rule](blocks/wikidata-studio/reference-retrievals.md) + Rule W-323 |
 | Diagnose canonical author gaps or source contamination | [canonical source identity](blocks/wikidata-studio/canonical-source-identity.md) + [immutable context](blocks/eval-agent/source-context.md) + W-308 |
 | Apply authorized exact historical repairs | [historical repairs](blocks/wikidata-studio/historical-repairs.md) + Rule W-307 |
 | Audit Gila source facts or prepare historical repair proposals | [Gila source fidelity](blocks/wikidata-studio/gila-source-fidelity.md) + Rule W-305; canonical measurement is read-only |
+| Export all nine Gila acceptance points and current correction receipts | [Gila completion packet](blocks/wikidata-studio/gila-completion-packet.md); no network or public write |
 | Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |
 | Change MARC 500/505 work candidates or Studio item counts | [extraction ingest](blocks/extraction/ingest.md) + [Wikidata Studio R22](blocks/wikidata-studio/rules.md) |
 | Touch Wikibase Cloud items/schema | [hmo-wikibase-studio](blocks/hmo-wikibase-studio/README.md) — schema AI verify: eval-agent [R17](blocks/eval-agent/rules.md), Rule W-47 |
@@ -77,3 +79,12 @@
 
 
 | Correct a pooled person target without a global key change | [Person identity choices](blocks/wikidata-studio/person-identity-choice.md) — W-320; exact source scope, reference-only use, normal versioned endpoint |
+
+Creator-only edits and reference reuse: [Wikidata policy](blocks/wikidata-studio/creator-only-writes.md), Rule W-324.
+Joined person-role descriptions: [description hygiene](blocks/wikidata-studio/person-description-hygiene.md), Rule W-325.
+
+| Task | Guide |
+|---|---|
+| Review a source occurrence or Gila coverage | [Source review](blocks/wikidata-studio/source-review.md) |
+| Resume an exact historical repair | [Repair retries](blocks/wikidata-studio/repair-retries.md) |
+| Compare original MARC associations | [MARC occurrences](blocks/extraction/marc-occurrences.md) |

@@ -4,7 +4,6 @@ import {useState} from "react";
 import type {
   PublicationAdvanceCommand,
   PublicationEntity,
-  PublicationForeignQidConsent,
   PublicationSummary,
 } from "@/api/publication";
 import {getPublicationReadiness} from "@/utils/publicationState";
@@ -57,9 +56,6 @@ export function WikidataPublicationControls({
 }: WikidataPublicationControlsProps) {
   const [aiActive, setAiActive] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
-  const [consentSelection, setConsentSelection] = useState<{planDigest: string; entityKeys: string[]}>({
-    planDigest: "", entityKeys: [],
-  });
   const release = publication.current_release;
   const approval = publication.approval_set;
   const plan = publication.plan;
@@ -80,9 +76,6 @@ export function WikidataPublicationControls({
   const executionWaitingForReview = execution?.status === "paused"
     && executionActionsComplete;
   const executionFinishedSuccessfully = execution?.status === "succeeded";
-  const selectedKeys = consentSelection.planDigest === plan?.plan_digest ? consentSelection.entityKeys : [];
-  const consents = (plan?.blocked_actions ?? []).flatMap((action) =>
-    action.consent && selectedKeys.includes(action.entity_key) ? [action.consent] : []);
   const includedCount = plan
     ? actionCount(plan.action_counts, "create")
       + actionCount(plan.action_counts, "update")
@@ -113,17 +106,6 @@ export function WikidataPublicationControls({
       approval_set_id: approval.approval_set_id,
       expected_approval_digest: approval.approval_digest,
       ...(forceRefresh ? {force_refresh: true} : {}),
-      ...(consents.length ? {foreign_qid_consents: consents} : {}),
-    });
-    setConsentSelection({planDigest: "", entityKeys: []});
-  };
-  const acceptForeignUpdate = (consent: PublicationForeignQidConsent) => {
-    if (!approval) return;
-    return onAdvance({
-      type: "dry_run",
-      approval_set_id: approval.approval_set_id,
-      expected_approval_digest: approval.approval_digest,
-      foreign_qid_consents: [consent],
     });
   };
   const publish = () => {
@@ -146,7 +128,7 @@ export function WikidataPublicationControls({
       <div className="rounded-lg bg-white/5 p-4 space-y-3">
         <p className="text-lg font-medium">{executionWaitingForReview ? "Upload actions complete" : executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : executionFinishedSuccessfully ? "Upload complete" : execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
         <p className="text-sm muted">{release.entity_count} items in this Release · Target: {publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}</p>
-        {plan && <p className="text-sm">{actionCount(plan.action_counts, "create")} new · {actionCount(plan.action_counts, "update")} updates · reused without updates: {actionCount(plan.action_counts, "skip")} · accepted foreign updates: {plan.accepted_foreign_update_count ?? 0} · {actionCount(plan.action_counts, "blocked")} need attention</p>}
+        {plan && <p className="text-sm">{actionCount(plan.action_counts, "create")} new · {actionCount(plan.action_counts, "update")} updates · reused without updates: {actionCount(plan.action_counts, "skip")} · {actionCount(plan.action_counts, "blocked")} need attention</p>}
         {plan && <div className="rounded-md border border-white/10 surface-inset p-3" data-testid="publication-result-summary" aria-live="polite">
           <p className="text-sm font-medium">{includedCount.toLocaleString()} of {release.entity_count.toLocaleString()} records prepared</p>
           <p className="text-xs muted">
@@ -233,27 +215,13 @@ export function WikidataPublicationControls({
               <WikidataBlockedActionDrawer
                 entityKey={action.entity_key}
                 targetQid={action.target_qid}
-                consent={action.consent ?? null}
+                consent={null}
                 ourStatements={action.our_statements ?? []}
                 target={publication.target}
                 disabled={busy || executionActive || !readiness.approvalCurrent || !publication.source_current}
                 onUseExisting={onUseExisting}
-                onAcceptUpdate={acceptForeignUpdate}
               />
-              {action.consent && <div className="mt-2 space-y-1">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={selectedKeys.includes(action.entity_key)}
-                    disabled={busy || executionActive || !readiness.approvalCurrent || !publication.source_current}
-                    onChange={(event) => {
-                      const entityKeys = event.target.checked
-                        ? [...selectedKeys, action.entity_key]
-                        : selectedKeys.filter((key) => key !== action.entity_key);
-                      setConsentSelection({planDigest: plan.plan_digest, entityKeys});
-                    }} />
-                  I reviewed {action.consent.qid} and permit this Release to update it.
-                </label>
-                <p className="muted">Check before publication after you review this item. A changed item requires another review.</p>
-              </div>}
+              <p className="muted">Only the creator account can update an existing item. Use other items without updates.</p>
             </li>)}
           </ul>
         </details>}

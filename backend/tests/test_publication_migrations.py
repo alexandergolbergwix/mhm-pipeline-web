@@ -27,6 +27,7 @@ def test_migrated_database_can_read_execution_actions():
                 connection.execute(
                     text(f"CREATE TABLE IF NOT EXISTS {legacy_table} (id INTEGER PRIMARY KEY)")
                 )
+            connection.execute(text("CREATE TABLE extraction_approvals (id INTEGER PRIMARY KEY, approved BOOLEAN)"))
             scripts = ScriptDirectory(str(Path(__file__).parents[1] / "app/migrations"))
             revisions = list(scripts.iterate_revisions("head", "0040_publication_core"))
             for revision in reversed(revisions):

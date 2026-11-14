@@ -1,5 +1,7 @@
 # Wikidata Publication
 
+> Current policy: [creator-only writes](creator-only-writes.md) supersedes the historical foreign-edit paths below.
+
 > Up: [Wikidata Studio](README.md)
 
 ## Purpose
@@ -30,8 +32,7 @@ An uncertain remote result remains `outcome_unknown` until recovery proves it.
 - Every Release entity must have an approval before dry-run.
 - A Dry-run Receipt must pass and remain unexpired before publish.
 - A live target requires the canonical source.
-- A foreign QID blocks the Plan unless consent matches the entity key, QID,
-  remote revision, and sealed entity digest (W-302).
+- A foreign QID always blocks an update. Historical consent has no authority (W-324).
 - A new Approval Set invalidates the current Plan. Publish, Resume, and the
   worker require the current Plan and Approval Set.
 - A final CREATE check that finds any existing target blocks and requires a
@@ -165,13 +166,11 @@ See [Publication credentials](publication-credentials.md) for account binding, t
 
 See [the asynchronous dry-run flow](publication-dry-run-job.md) for job polls, progress, and cancellation.
 
-## Review statuses and foreign QID consent
+## Review statuses and creator-only writes
 
 The entity read API maps stored `approve`/`reject` decisions to `approved`/`rejected` (W-220).
-A blocked action can expose `consent` with an entity key, QID, revision, and entity digest (W-221).
-The curator opens the QID link and selects its consent checkbox after review.
-`Check before publication` submits selected `foreign_qid_consents` and starts fresh checks.
-The worker accepts consent only when all four values match.
+The Plan blocks every foreign update, including an exact historical consent.
+Blocked action responses return `consent: null`.
+The UI offers reference-only reuse and defer, with no foreign-update control.
 The test target links to `test.wikidata.org`; the live target links to `www.wikidata.org`.
-Lookup timeouts have no consent option. Use **Check all records again** to repeat those checks.
-The user must select consent again after a request or a new Plan.
+The gateway checks creator proof before every send.

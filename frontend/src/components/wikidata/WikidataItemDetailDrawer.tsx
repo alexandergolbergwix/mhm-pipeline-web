@@ -14,6 +14,7 @@ import {ItemValidatorBadge} from "@/components/wikidata/ItemValidatorBadge";
 import {WikidataComparePanel} from "@/components/wikidata/WikidataComparePanel";
 import {WikidataItemAiVerdictBadge} from "@/components/wikidata/WikidataItemAiVerdictBadge";
 import {WikidataItemDataStatusBadge} from "@/components/wikidata/WikidataItemDataStatusBadge";
+import {WikidataSourceReview} from "@/components/wikidata/WikidataSourceReview";
 import {useLabelStore} from "@/api/wikidataLabels";
 
 function AiVerdictReasoningCard({verdict}: {verdict: StudioItem["ai_verdict"]}) {
@@ -89,9 +90,6 @@ export function WikidataItemDetailDrawer({
   const [compareOpen, setCompareOpen] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [pushMsg, setPushMsg] = useState<string | null>(null);
-  const [acceptedForeignQid, setAcceptedForeignQid] = useState(
-    item.accept_foreign_modify ? item.accepted_foreign_qid ?? null : null,
-  );
   const labelStore = useLabelStore();
 
   useEffect(() => {
@@ -110,7 +108,6 @@ export function WikidataItemDetailDrawer({
         setLabels({...(full.labels ?? {})});
         setDescriptions({...(full.descriptions ?? {})});
         setAliasesHe(full.aliases?.he ?? []);
-        setAcceptedForeignQid(full.accept_foreign_modify ? full.accepted_foreign_qid ?? null : null);
         setExcluded(new Set());
       })
       .catch((e) => {
@@ -126,12 +123,8 @@ export function WikidataItemDetailDrawer({
 
   const statements = detailItem.statements ?? [];
   const wikidataQid = detailItem.existing_qid || null;
-  const acceptForeign = Boolean(wikidataQid && acceptedForeignQid === wikidataQid);
   const historyId = detailItem.local_id ?? "";
 
-  useEffect(() => {
-    setAcceptedForeignQid(detailItem.accept_foreign_modify ? detailItem.accepted_foreign_qid ?? null : null);
-  }, [detailItem.accept_foreign_modify, detailItem.accepted_foreign_qid, detailItem.local_id, detailItem.existing_qid]);
 
   useEffect(() => {
     if (pinned) return;
@@ -252,16 +245,6 @@ export function WikidataItemDetailDrawer({
       setSaving(false);
     }
   }, [item.ai_verdict, item.local_id, pushToWikidata, runId]);
-
-  const toggleAcceptForeign = useCallback(async () => {
-    if (!item.local_id || !wikidataQid) return;
-    const next = !acceptForeign;
-    const saved = await save({
-      accept_foreign_modify: next,
-      accepted_foreign_qid: next ? wikidataQid : null,
-    });
-    if (saved) setAcceptedForeignQid(next ? wikidataQid : null);
-  }, [acceptForeign, item.local_id, save, wikidataQid]);
 
   const clearOverride = useCallback(async () => {
     if (!item.local_id) return;
@@ -386,28 +369,16 @@ export function WikidataItemDetailDrawer({
           >
             <h4 className="text-sm font-medium">Existing Wikidata item {wikidataQid}</h4>
             <p className="text-xs muted leading-relaxed">
-              By default you may only CREATE new items (after dedup) or UPDATE items
-              your Wikidata token created. To modify this QID if it is community-owned,
-              explicitly accept below — a duplicate CREATE is never allowed.
+              Only the account that created an existing Wikidata item can update it.
+              An item from another account can serve as a link target. It cannot receive edits.
             </p>
-            <label className="flex items-start gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={acceptForeign}
-                disabled={saving}
-                onChange={() => void toggleAcceptForeign()}
-                data-testid="wikidata-accept-foreign-modify"
-              />
-              <span>
-                I accept modifying <span className="font-mono">{wikidataQid}</span> even
-                if I did not create it
-              </span>
-            </label>
           </section>
         )}
 
         <AiVerdictReasoningCard verdict={detailItem.ai_verdict} />
+        {source === "canonical" && detailItem.entity_type === "manuscript" && detailItem.local_id && (
+          <WikidataSourceReview key={detailItem.local_id} runId={runId} localId={detailItem.local_id} onSaved={onSaved} />
+        )}
 
         <section className="space-y-3" aria-labelledby={fieldId(detailItem.local_id, "labels-heading")}>
           <h4 id={fieldId(detailItem.local_id, "labels-heading")} className="text-sm font-medium">Labels</h4>

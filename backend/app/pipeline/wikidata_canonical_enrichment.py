@@ -540,6 +540,7 @@ def merge_legacy_into_canonical(
             "Rewrote %d merged local references to canonical item IDs (Rule W-203)",
             rewritten,
         )
+    promote_safe_work_author_claims(merged)
     normalize_work_author_claims(merged)
     return _with_deduped_statements(merged)
 

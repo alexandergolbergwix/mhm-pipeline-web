@@ -15,7 +15,7 @@ from app.pipeline.wikidata_upload import ForeignAccept, PreparedItem, _apply_exi
 
 
 def test_accept_allows_foreign_modify_requires_matching_qid():
-    assert accept_allows_foreign_modify(
+    assert not accept_allows_foreign_modify(
         existing_qid="Q42",
         accept_foreign_modify=True,
         accepted_foreign_qid="Q42",
@@ -151,8 +151,8 @@ def test_apply_existence_allows_foreign_with_qid_bound_accept(monkeypatch):
         ownership_checker=_Foreign(),
         is_test=False,
     )
-    assert out.blocked is False
-    assert out.allow_foreign_modify is True
+    assert out.blocked is True
+    assert out.allow_foreign_modify is False
 
 
 def test_apply_existence_accept_without_token(monkeypatch):
@@ -166,8 +166,8 @@ def test_apply_existence_accept_without_token(monkeypatch):
         ownership_checker=None,
         is_test=False,
     )
-    assert out.blocked is False
-    assert out.allow_foreign_modify is True
+    assert out.blocked is True
+    assert out.allow_foreign_modify is False
 
 
 def test_apply_existence_foreign_accept_ignored_on_test(monkeypatch):

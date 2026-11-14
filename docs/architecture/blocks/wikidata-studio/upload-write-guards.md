@@ -1,6 +1,6 @@
 # Wikidata Studio - Upload Write Guards
 
-> Up: [Wikidata Studio](README.md) | Rules W-302, W-303
+> Up: [Wikidata Studio](README.md) | Rules W-303, W-324
 
 ## Studio source recheck once per write batch
 
@@ -32,13 +32,9 @@ that the account did not create is not a write target.
 - `_is_our_item` treats the authenticated user as the owner only when the user
   is the first-revision author. Three independent checks must agree. See the
   method docstring for the channels.
-- The one exception is a live curator accept of the exact QID
-  (`accepted_foreign_qid`, Rule W-302). The accept covers only that QID.
-  The test wiki never uses this exception.
-- `WikidataPublicationGateway._assert_publication_modifiable`
-  (`backend/app/publication/wikidata_gateway.py`) applies the same rule before a
-  Publication write. The mutation must have creator ownership or
-  `allow_foreign_update`.
+- Foreign approvals have no effect. Old jobs and plans cannot bypass the creator check.
+- `WikidataPublicationGateway._assert_publication_modifiable` applies the same rule before every send.
+- The guard independently verifies the first-revision author, even when the ownership cache says owned.
 - Identity evidence never grants ownership. P3959 is identity evidence, not an
   ownership channel (Rule W-302).
 

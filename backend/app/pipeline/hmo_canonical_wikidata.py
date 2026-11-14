@@ -60,6 +60,7 @@ _QID = re.compile(r"^Q[1-9][0-9]*$")
 _MAX_DESCRIPTION_LENGTH = 250
 
 _BOILERPLATE_DESCRIPTION = (
+    re.compile(r"^Person(?: \([^)]*\))? linked to manuscript \d+", re.I),
     re.compile(r"^Offline HMO Wikibase draft for ", re.I),
     re.compile(r"^Linked to \d+ manuscripts", re.I),
     re.compile(r" linked to manuscript \d+\.?$", re.I),
@@ -382,7 +383,7 @@ def canonical_wikidata_fingerprint(
     # fails: 62-claim spam drowned P31 in the judge prompt).
     # v17 — sole-content-work author fallback and colophon label stripping
     # (Rule W-300); canonical rows built before them must not revalidate.
-    salt = "hmo-wikidata-v24:"  # Preserve credited authors and source-exact scoped colophons.
+    salt = "hmo-wikidata-v28:"  # Invalidate source choices without exact record and page scope.
     if enrichment_fingerprint:
         salt = f"{salt}enrich={enrichment_fingerprint}:"
     return hashlib.sha256((salt + payload).encode()).hexdigest()
@@ -1852,6 +1853,22 @@ def build_canonical_studio_result(
     )
 
     from app.pipeline.wikidata_person_identity_choice import apply_choice, validate_incoming_scope  # noqa: PLC0415
+
+    from app.pipeline.wikidata_source_choices import SOURCE, apply_choices  # noqa: PLC0415
+
+    applied_source_choices = set()
+    for item in native_items:
+        item.authority_evidence = [row for row in item.authority_evidence if row.get("source") != SOURCE]
+        choices = (overrides or {}).get(item.local_id, {}).get("source_review_choices")
+        if choices:
+            if context is None:
+                raise ValueError("The source choices have no current record context.")
+            apply_choices(item, choices, context.marc_by_cn)
+            applied_source_choices.add(item.local_id)
+    expected_source_choices = {key for key, override in (overrides or {}).items()
+                               if override.get("source_review_choices") and key in entities_by_local_id}
+    if applied_source_choices != expected_source_choices:
+        raise ValueError("A reviewed source item disappeared from the canonical projection.")
 
     applied_choices = set()
     for index, item in enumerate(native_items):

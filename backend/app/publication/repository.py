@@ -147,6 +147,7 @@ class WriteIntentRecord:
     detail: str | None = None
     result_qid: str | None = None
     result_fingerprint: str | None = None
+    next_attempt_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -727,6 +728,9 @@ class InMemoryPublicationRepository:
                 "outcome_unknown",
             }:
                 continue
+            next_attempt_at = row.get("next_attempt_at")
+            if isinstance(next_attempt_at, datetime) and next_attempt_at > now:
+                continue
             lease_expires_at = row["lease_expires_at"]
             if isinstance(lease_expires_at, datetime) and lease_expires_at > now:
                 continue
@@ -777,6 +781,7 @@ class InMemoryPublicationRepository:
                     f"entity:{intent.entity_key}"
                 ]
                 action["state"] = intent.state
+                action["next_attempt_at"] = intent.next_attempt_at
                 action["lease_owner"] = None
                 action["lease_expires_at"] = None
                 await self._append_audit(intent)

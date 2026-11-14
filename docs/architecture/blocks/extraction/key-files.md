@@ -23,3 +23,9 @@
 | `modal/README.md` | Deploy steps, pay-per-call economics, cold-start numbers |
 | `frontend/src/components/extraction/` | `EntityTable`, `EntityFilterChips`, `ColumnFilterPopup`, `EntityActionsBar`, `EntityEditModal`, `MarcSourceDrawer`, `NerVerificationModal`, `AiVerdictPill`, `EntityDetailDrawer` |
 | `frontend/src/hooks/useApprovalStore.ts` | Poll store: 2s while a verify modal is open, 30s idle; emits `mhm.entities.refreshed` DOM event |
+
+| File | Purpose |
+|---|---|
+| `backend/app/pipeline/marc_occurrences.py` | Original fields, ordered subfields, derived-value provenance, source keys, and occurrence-aware people/contents |
+| `backend/converter/parser/marc_reader.py` | `MarcRecord.field_order` and `MarcField.ordered_subfields` |
+| `backend/scripts/compare_marc_associations.py` | Local comparison with independent original 942 tuples and explicit missing evidence |

@@ -1632,3 +1632,25 @@ def test_final_projection_applies_source_choice_without_reusing_the_pooled_perso
     assert result["records"] == [cn]
     assert {s["property_id"] for s in result["statements"]} == {"P31", "P8189"}
     assert source.to_dict() == before
+
+
+def test_person_description_drops_the_joined_role_and_manuscript_list() -> None:
+    description = (
+        "Person (contributor) linked to manuscript 990000593730205171 · "
+        "Person (scribe) linked to manuscript 990000593730205171 · "
+        "Person (contributor) linked to manuscript 990001088900205171 · "
+        "Person (scribe) linked to manuscript 990001088900205171 · Person…"
+    )
+    entity = _person_entity(descriptions={"en": description})
+    before = dict(entity.descriptions)
+    items = native_items_from_hmo([entity])
+    assert items[0].descriptions == {"en": "person associated with Hebrew manuscripts"}
+    assert entity.descriptions == before
+    assert native_items_from_hmo([entity])[0].descriptions == items[0].descriptions
+
+
+def test_person_description_preserves_a_specific_biographical_description() -> None:
+    entity = _person_entity(descriptions={"en": "Yemeni scribe of Hebrew manuscripts"})
+    assert native_items_from_hmo([entity])[0].descriptions == {
+        "en": "Yemeni scribe of Hebrew manuscripts",
+    }

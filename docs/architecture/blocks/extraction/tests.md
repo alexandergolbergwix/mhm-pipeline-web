@@ -6,6 +6,7 @@
 - `frontend/tests/unit/extractionRejection.spec.ts` verifies request payloads and a rejected-only change on the next poll.
 
 - `backend/tests/unit/test_marc_ingest_ner_inputs.py` — subfield collapse → NER inputs
+- `backend/tests/unit/test_marc_person_date_alignment.py` checks empty slots, sparse dates, source repair, and retained review evidence (W-322).
 - `backend/tests/unit/test_colophon_structured.py`, `test_notes_work_extraction.py`, `test_editorial_extraction.py` — colophon year/scribe, anchored/quoted work mentions, stale-derived cleanup, editor notes
 - `backend/tests/test_provenance_events_ingest.py` — 541/583 provenance events (Rule W-32)
 - `backend/tests/unit/test_marc_date_sources.py`, `test_marc_dates_no_008.py`, `test_hebrew_date_parse.py` — the 260/264-not-008 date contract, Hebrew century parsing, and BCE boundaries
@@ -23,3 +24,7 @@
   it asserts zero normalization errors and zero unmapped non-empty tags.
 - `backend/tests/unit/test_gila_full_path_regressions.py` verifies raw script
   wording, source folios, catalogue semantics, and content scope through the builder (W-305).
+
+W-326: `test_marc_occurrences.py` covers MARCXML, binary MARC, field order, sparse roles, removed source fields, and repeated preparation. The migration test also supplies the older extraction table. Revision 0053 uses batch alteration so SQLite can check the same constraint.
+
+`test_notes_work_extraction.py` retains the exact source key with the 505 title, source text, and folio.

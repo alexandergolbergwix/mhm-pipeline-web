@@ -26,15 +26,18 @@ Block-specific rules live in each block's `rules.md`. These apply everywhere:
   reconcile + validator gates inside the write path; lookup errors block,
   never create. Publication live writes require a sealed Release, a current
   Dry-run Receipt, and a server-held target-bound credential (W-212).
+  Existing Wikidata updates require creator proof without a foreign-approval exception (W-324).
+  The final guard compares fresh authenticated and first-revision user IDs (W-328).
   The bulk live upload API is a separate path with a session-released
   Settings credential (W-291). *Why:* the April mass-merge / June
   mass-duplicate incidents.
 - **G7 — Curator mutations are events first.** `apply_event(...)` before the
   read-model update, for all versioned entity types. *Why:* the event log is
   the authoritative history; read-models are caches.
+  Source choices and their clears follow this rule. A source choice does not grant publication approval (W-327).
 - **G8 — Every user-visible UI surface gets an e2e spec** (Playwright with
   deterministically mocked backend), and any new public-endpoint or guard
   behaviour extends its pinning test suite. *Why:* tests are the regression
   contract; docs describe, tests enforce.
 
-Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-321).
+Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-332).

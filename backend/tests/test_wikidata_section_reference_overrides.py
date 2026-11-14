@@ -139,3 +139,18 @@ def test_inconsistent_reference_blocks_only_patch_is_flagged():
     finding = _with_reference_provenance_finding(item, reference_source=source)
     assert any(issue["code"] == "REFERENCE_PROVENANCE_UNVERIFIED"
                for issue in finding["validation_issues"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("approval", [
+    {"accept_foreign_modify": True},
+    {"accepted_foreign_qid": "Q123"},
+    {"accept_foreign_modify": True, "accepted_foreign_qid": "Q123"},
+])
+async def test_item_override_cannot_grant_permission_for_foreign_edits(sample_run, approval):
+    response = await sample_run["client"].patch(
+        f"/api/runs/{sample_run['run_id']}/wikidata-studio/items/manuscript:1",
+        json=approval,
+    )
+    assert response.status_code == 422
+    assert "Foreign edits are disabled" in response.json()["detail"]

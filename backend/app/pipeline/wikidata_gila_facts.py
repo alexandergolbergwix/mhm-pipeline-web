@@ -5,7 +5,7 @@ import json
 import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlsplit
 
@@ -53,6 +53,8 @@ class SourceFact:
     author_name: str = ""
     source_scoped: bool = False
     candidate_title: str = ""
+    source_key: str = ""
+    reviewed_identity_current: bool = False
 
 
 def _source_title_and_author(entry: Mapping[str, object]) -> tuple[str, str]:
@@ -86,7 +88,7 @@ def _source_title_and_author(entry: Mapping[str, object]) -> tuple[str, str]:
     return title, author
 
 
-def _source_facts(record: Mapping[str, object]) -> list[SourceFact]:
+def _source_facts(record: Mapping[str, object], *, catalog_choices=None) -> list[SourceFact]:
     cn = canonical_control_number(record.get("_control_number"))
     facts = [
         SourceFact("001", "P3959", cn, source_value=cn),
@@ -207,7 +209,7 @@ def _source_facts(record: Mapping[str, object]) -> list[SourceFact]:
         contents.append(
             {"title": main_title, "author": next(iter(authors)), "source_field": "100/245"}
         )
-    for entry in contents:
+    for content_index, entry in enumerate(contents):
         title, source_author = _source_title_and_author(entry)
         if not title:
             continue
@@ -241,6 +243,7 @@ def _source_facts(record: Mapping[str, object]) -> list[SourceFact]:
                 author_name=source_author,
                 source_scoped=entry.get("identity_scope") == "record",
                 candidate_title=_text(entry.get("title")),
+                source_key=str(entry.get("source_key") or f"content:{content_index}"),
             )
         )
     for evidence in _objects(record.get("non_work_content_evidence")):
@@ -263,6 +266,24 @@ def _source_facts(record: Mapping[str, object]) -> list[SourceFact]:
         facts.append(SourceFact("957/590", "P1684", colophon, qualifiers, source_value=colophon))
     for reference in _objects(record.get("catalog_references")):
         code = catalog_reference_code(reference)
+        reviewed = (catalog_choices or {}).get(
+            (str(reference.get("source_field") or "581"), catalog_reference_text(reference).strip())
+        )
+        if not code and reviewed:
+            proof = reviewed["proof"]
+            pages = str(proof["candidate"].get("pages") or "")
+            facts.append(
+                SourceFact(
+                    str(reference.get("source_field") or "581"),
+                    "P1343",
+                    proof["target_qid"],
+                    {"P304": pages} if pages else {},
+                    source_value=catalog_reference_text(reference),
+                    scope="bibliographic_source",
+                    evidence_only=not reviewed["target_identity_current"],
+                )
+            )
+            continue
         facts.append(
             SourceFact(
                 str(reference.get("source_field") or "510/942"),
@@ -281,6 +302,17 @@ def _source_facts(record: Mapping[str, object]) -> list[SourceFact]:
                 None,
                 source_value=str(note),
                 scope="catalogue_status",
+                evidence_only=True,
+            )
+        )
+    for review in _objects(record.get("person_subfield_reviews")):
+        facts.append(
+            SourceFact(
+                str(review.get("source_field") or "100/700$d"),
+                "",
+                None,
+                source_value=json.dumps(dict(review), ensure_ascii=False, sort_keys=True),
+                scope="person_date_alignment",
                 evidence_only=True,
             )
         )
@@ -413,16 +445,19 @@ def _live_work_has_author(
 ) -> bool:
     claims = [
         {**claim, "property": pid}
-        for pid in ("P50", "P2093") for claim in _live_claims(target, pid)
+        for pid in ("P50", "P2093")
+        for claim in _live_claims(target, pid)
     ]
     name = _text(fact.author_name).casefold()
     native = [
-        work for work in works.get(target_qid, [])
+        work
+        for work in works.get(target_qid, [])
         if name in _author_names(_objects(work.get("statements")))
     ]
     native_ids = {
         str(s.get("value"))
-        for work in native if len(native) == 1
+        for work in native
+        if len(native) == 1
         for s in _objects(work.get("statements"))
         if (s.get("property") or s.get("property_id")) == "P50"
         and s.get("rank", "normal") != "deprecated"
@@ -445,7 +480,9 @@ def _live_work_sources(target: Mapping[str, object]) -> set[str]:
     if not isinstance(claims, Mapping):
         return set()
     return {
-        cn for rows in claims.values() for claim in _objects(rows)
+        cn
+        for rows in claims.values()
+        for claim in _objects(rows)
         for cn in reference_control_numbers(claim.get("references"))
     } | {str(s.get("value")) for s in _live_claims(target, "P3959")}
 
@@ -535,7 +572,17 @@ def compare_gila_source_facts(
     rows = []
     counts: Counter[str] = Counter()
     for raw in marc_records:
-        record = prepare_record_for_pipeline(dict(raw))
+        from app.pipeline.wikidata_source_choices import (
+            reviewed_catalog_map,
+            source_record_for_audit,
+        )
+
+        source_cn = canonical_control_number(
+            prepare_record_for_pipeline(dict(raw)).get("_control_number")
+        )
+        record, reviewed = source_record_for_audit(
+            manuscripts.get(source_cn, {}), raw, live_entities, author_qids
+        )
         cn = canonical_control_number(record.get("_control_number"))
         if not cn:
             raise ValueError("An audit source needs a control number.")
@@ -545,7 +592,46 @@ def compare_gila_source_facts(
         entity = (live_entities or {}).get(qid, {})
         if not isinstance(entity, Mapping):
             raise ValueError("A live entity must be an object.")
-        for index, fact in enumerate(_source_facts(record)):
+        source_facts = _source_facts(record, catalog_choices=reviewed_catalog_map(reviewed))
+        for decision in reviewed:
+            proof = decision["proof"]
+            candidate = proof["candidate"]
+            if candidate["kind"] != "work_occurrence":
+                continue
+            matching = [
+                i
+                for i, fact in enumerate(source_facts)
+                if fact.property_id == "P1574" and fact.source_key == candidate["source_key"]
+            ]
+            if len(matching) > 1:
+                continue
+            if matching:
+                source_facts[matching[0]] = replace(
+                    source_facts[matching[0]],
+                    value=proof["target_qid"],
+                    evidence_only=not decision["target_identity_current"],
+                    reviewed_identity_current=decision["target_identity_current"],
+                )
+            else:
+                qualifiers = {"P1932": candidate["title"]}
+                if candidate.get("folio"):
+                    qualifiers["P958"] = candidate["folio"]
+                source_facts.append(
+                    SourceFact(
+                        candidate["source_field"],
+                        "P1574",
+                        proof["target_qid"],
+                        qualifiers,
+                        source_value=candidate["source_text"],
+                        scope="content_occurrence",
+                        author_name=candidate.get("author", ""),
+                        candidate_title=candidate["title"],
+                        source_key=candidate["source_key"],
+                        evidence_only=not decision["target_identity_current"],
+                        reviewed_identity_current=decision["target_identity_current"],
+                    )
+                )
+        for index, fact in enumerate(source_facts):
             candidates = [
                 row
                 for row in statements
@@ -627,8 +713,11 @@ def compare_gila_source_facts(
                     )
                     if not live:
                         note_reasons = {
-                            "catalogue_prose", "descriptive_note", "person_name_not_work",
-                            "folio_range_title", "generic_manuscript_title",
+                            "catalogue_prose",
+                            "descriptive_note",
+                            "person_name_not_work",
+                            "folio_range_title",
+                            "generic_manuscript_title",
                         }
                         reasons = {
                             str(e.get("projection_reason") or e.get("reason"))
@@ -639,7 +728,11 @@ def compare_gila_source_facts(
                             and not _structured_part_title(fact.candidate_title)
                         )
                         live_status = "source_evidence" if is_note else "identity_review"
-            if fact.property_id == "P1574" and (fact.author_name or fact.source_scoped):
+            if (
+                fact.property_id == "P1574"
+                and (fact.author_name or fact.source_scoped)
+                and not fact.reviewed_identity_current
+            ):
                 proposed_compatible = []
                 for candidate in proposed:
                     targets = works.get(str(candidate.get("value") or ""), [])
@@ -669,7 +762,12 @@ def compare_gila_source_facts(
                     compatible = isinstance(target, Mapping)
                     if compatible and isinstance(target, Mapping) and fact.author_name:
                         compatible = _live_work_has_author(
-                            fact, target_qid, target, works, author_qids, cn,
+                            fact,
+                            target_qid,
+                            target,
+                            works,
+                            author_qids,
+                            cn,
                         )
                     if compatible and isinstance(target, Mapping) and fact.source_scoped:
                         compatible = _live_work_sources(target) == {cn}
@@ -679,6 +777,16 @@ def compare_gila_source_facts(
                     live_status = (
                         "present" if all(live_compatible) and one_target else "identity_review"
                     )
+            if fact.property_id == "P1574" and fact.reviewed_identity_current:
+                scope_fact = replace(fact, value=None)
+                if {str(row.get("value")) for row in candidates if _matches(scope_fact, row)} != {
+                    fact.value
+                }:
+                    proposal_status = "identity_review"
+                if {
+                    str(row.get("value")) for row in live_candidates if _matches(scope_fact, row)
+                } != {fact.value}:
+                    live_status = "identity_review"
             live_target_missing = live_entities is not None and (
                 not qid or qid not in live_entities
             )
@@ -740,6 +848,8 @@ def compare_gila_source_facts(
                     "property": fact.property_id,
                     "expected_value": fact.value,
                     "expected_qualifiers": dict(fact.qualifiers),
+                    "source_key": fact.source_key,
+                    "reviewed_identity_current": fact.reviewed_identity_current,
                     "expected_precision": fact.precision,
                     "expected_calendar": fact.calendar,
                     "expected_unit": fact.unit,

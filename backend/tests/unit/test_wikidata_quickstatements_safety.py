@@ -6,7 +6,7 @@ from converter.wikidata.item_models import WikidataItem, WikidataStatement
 from converter.wikidata.quickstatements import QuickStatementsExporter
 
 
-def _item(statement: WikidataStatement, *, existing: bool = True) -> WikidataItem:
+def _item(statement: WikidataStatement, *, existing: bool = False) -> WikidataItem:
     return WikidataItem(
         local_id="ms:1", entity_type="manuscript", existing_qid="Q42" if existing else None,
         labels={"en": "Manuscript"}, statements=[statement],
@@ -154,14 +154,15 @@ def test_live_quantity_unit_uri_is_preserved_in_quickstatements() -> None:
     statement = WikidataStatement(
         "P1104", "12", "quantity", unit="http://www.wikidata.org/entity/Q174728",
     )
-    assert "Q42\tP1104\t12U174728" in QuickStatementsExporter().export_item(_item(statement))
+    assert "LAST\tP1104\t12U174728" in QuickStatementsExporter().export_item(_item(statement))
 
 
 @pytest.mark.parametrize("value", ["unsafe||Q9|P31|Q5", "unsafe\x7ftext", " unsafe"])
 def test_unsafe_text_is_excluded_without_rewriting(value: str) -> None:
     statement = WikidataStatement("P2093", value, "string")
     output = QuickStatementsExporter().export([_item(statement)])
-    assert "Statement omitted" in output and "incomplete" in output.lower()
+    assert "Statement omitted" in output
+    assert "incomplete" in output.lower()
     assert 'Q42\tP2093\t"' not in output
     assert "Q9\tP31\tQ5" not in output
 
@@ -219,7 +220,8 @@ def test_an_omitted_statement_cannot_produce_a_partial_item(existing: bool) -> N
     item = _item(WikidataStatement("P31", "Q5", "item"), existing=existing)
     item.statements.append(WikidataStatement("P50", "__LOCAL:author", "item"))
     output = QuickStatementsExporter().export([item])
-    assert "Statement omitted" in output and "incomplete" in output.lower()
+    assert ("creator verification" if existing else "Statement omitted") in output
+    assert "incomplete" in output.lower()
     assert "CREATE" not in output
     assert "\tP31\tQ5" not in output
     assert "\tLen\t" not in output
@@ -278,7 +280,10 @@ def test_empty_export_is_explicit_and_safe() -> None:
 
 def test_empty_existing_item_reports_its_identifier() -> None:
     item = WikidataItem(entity_type="manuscript", existing_qid="Q42")
-    assert "Item omitted: Q42; no exportable data" in QuickStatementsExporter().export_item(item)
+    assert (
+        "Item omitted: Q42; existing items require creator verification"
+        in QuickStatementsExporter().export_item(item)
+    )
 
 
 def test_unsupported_reference_omits_only_its_item_with_local_id() -> None:

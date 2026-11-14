@@ -11,7 +11,7 @@ async def test_list_judge_models(auth_user) -> None:
     r = await async_client.get("/api/judge-models")
     assert r.status_code == 200
     body = r.json()
-    assert body["default"] == "gemini-3.5-flash"
+    assert body["default"] == "moonshotai/Kimi-K2.5"
     ids = [m["id"] for m in body["models"]]
     assert "gemini-3.5-flash" in ids
     assert "moonshotai/Kimi-K2.5" in ids

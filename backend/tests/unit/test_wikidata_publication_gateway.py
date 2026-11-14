@@ -106,7 +106,7 @@ class _CsrfRetryUploader:
         *,
         read_only: bool = False,
     ) -> tuple[object, int, list[str]]:
-        del item, read_only
+        self.item.id = getattr(item, "existing_qid", None)
         return self.item, 0, []
 
     def _assert_modifiable(
@@ -576,6 +576,10 @@ async def test_real_wbi_sends_only_once_after_ambiguous_response(
     outcome = await session.write(GatewayWriteRequest(
         intent_id="intent", request_key="request", mutation=mutation, authorize_send=authorize,
     ))
+    if action == "foreign-update":
+        assert sends == []
+        assert outcome.status == "blocked"
+        return
     assert len(sends) == 1
     assert sends[0]["allow_redirects"] is False
     assert outcome.status == "outcome_unknown"
@@ -589,6 +593,10 @@ async def test_real_wbi_sends_only_once_after_ambiguous_response(
     ))
     assert confirmations == [mutation.target_qid]
     assert recovered.status == "outcome_unknown"
+    if action == "foreign-update":
+        assert sends == []
+        assert outcome.status == "blocked"
+        return
     assert len(sends) == 1
 
 
@@ -992,13 +1000,14 @@ async def test_write_once_requires_consent_despite_matching_p3959() -> None:
 
     from dataclasses import replace
     accepted_request = replace(request, mutation=replace(mutation, allow_foreign_update=True))
-    assert await boundary.write_once(accepted_request) == "Q134619072"
-    assert uploader.write_count == 1
+    with pytest.raises(Exception, match="not authored by the authenticated user"):
+        await boundary.write_once(accepted_request)
+    assert uploader.write_count == 0
     assert uploader._foreign_accept_qids == set()
     assert uploader._is_our_item_cache == {}
     with pytest.raises(Exception, match="not authored by the authenticated user"):
         await boundary.write_once(request)
-    assert uploader.write_count == 1
+    assert uploader.write_count == 0
 
 
 @pytest.mark.asyncio
@@ -1641,7 +1650,7 @@ class _TestUpdateUploader:
             self.write_count += 1
             return SimpleNamespace(id=target)
 
-        return SimpleNamespace(write=write), 0, []
+        return SimpleNamespace(id=target, write=write), 0, []
 
 
 def _test_wiki_update(marker: object) -> GatewayMutation:

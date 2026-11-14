@@ -23,7 +23,7 @@ disaster (902+ wrong merges) and a mass-duplicate/non-notable-creation
 bulk-deletion request (~5,948 items). Its whole write path is therefore
 **fail-closed**: reconcile-before-create with hard errors on lookup failure, a
 validator moat that blocks any ERROR-severity item, four modification guards
-inside the uploader, smart existence + own-or-accept modify (Rule W-99), and a
+inside the uploader, smart existence + creator-only modify (Rule W-324), and a
 bulk upload-target gate (default `dry_run`; API clients may choose `test` or
 `live` — Rules W-103 / W-291). A live bulk job requires the curator's live
 Settings credential but does not require a sealed Publication Release, Receipt,
@@ -42,9 +42,12 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R169) and known gaps.
+- [Rules](rules.md) — the invariants (R1–R182) and known gaps.
 - [Reference blocks](reference-blocks.md) — source grouping, old-data gates, deferred links, test wiki, and export limits (W-304).
+- [Repeated retrievals](reference-retrievals.md) — one current date per identical citation, append-only limits, and exact repair proposals (W-323).
 - [Studio cache freshness](studio-cache-freshness.md) — build fingerprint, override application, and the Rebuild required badge.
+- [Creator-only writes](creator-only-writes.md) — mandatory creator proof; no foreign-edit exception (W-324).
+- [Person descriptions](person-description-hygiene.md) — exclude joined generic role lists (W-325).
 - [Upload write guards](upload-write-guards.md) — Studio source recheck before each bulk write, and the owned-item rule.
 - [Test-ledger local targets](test-ledger-local-targets.md) — sealed test QIDs and `publication_local_targets` registered before build.
 - [Owner-only upload](owner-only-upload.md) — exact manuscript targets, live credential, preview, and limits (W-303).
@@ -53,12 +56,13 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Phase 1 projection quality](projection-quality.md) — evidence gates for labels, notes, subjects, genres, roles, and current institutions.
 - [Skills](skills.md) — operator playbooks: P/Q constants, validator checks,
   dry-runs, force-rebuild, blocked items, local quality audit, AI autofixes,
-  foreign-modify accept, HMO→Wikidata PQ mapping.
+  reference-only reuse, HMO→Wikidata PQ mapping.
 - [Local quality audit](quality-audit.md) — read-only measurement, count
   interpretation, and safe remediation order.
 - [Gila audit completion](gila-audit-completion.md) — source-qualified claims,
   the accepted model, and the full-run review report (W-296).
 - [Gila audit risks](gila-audit-risks.md) — open work-identity, folio, and historical reference-data gaps.
+- [Gila completion packet](gila-completion-packet.md) — all nine points, source cases, exact revisions, and correction receipts.
 - [Review page reads](review-pages.md) — cache metadata and bounded SQL reads (W-309).
 - [Canonical source identity](canonical-source-identity.md) — current-source author proof and exact graph title forms (W-308).
 - [Upload counts and source resolution](upload-counts-and-resolution.md) — receipt states, refresh, complete connection payloads, and exact audit proof (W-315–W-318).
@@ -89,3 +93,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Foreign-block resolution](foreign-block-resolution.md) — identity evidence, reconcile-method stamping, the blocked-item sweep, and the accept drawer (W-270/W-302).
 
 - [Person identity choices](person-identity-choice.md) — exact source proof and reference-only targets (W-320).
+
+- [Source choices and coverage](source-review.md) — exact decisions, all nine requirements, and [record/page guards](source-choice-scope.md).
+- [Durable exact repairs](repair-retries.md) — Publication resume, server delays, and immutable creator IDs.
+- [Gila implementation files](gila-key-files.md) — source review, metadata, migrations, and executor modules.

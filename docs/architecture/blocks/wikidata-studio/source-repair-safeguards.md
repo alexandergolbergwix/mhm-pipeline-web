@@ -1,6 +1,6 @@
 # Source repair safeguards
 
-> Up: [Wikidata Studio](README.md) · Rules W-311–W-314
+> Up: [Wikidata Studio](README.md) · Rules W-311–W-314, W-324, W-328
 
 ## Credited authors
 
@@ -17,16 +17,17 @@ The source record, language, rank, role, folio, and exact text must agree.
 One unique scoped counterpart must exist.
 The sanitizer first combines the complete reference blocks.
 An ambiguous or uncertain comparison retains both claims.
-The canonical cache salt is `hmo-wikidata-v24`.
+The canonical cache salt is `hmo-wikidata-v28`.
 
-## Approved foreign manuscript ranks
+## Creator-only manuscript updates
 
-An exact QID-bound approval permits an additive update on a foreign manuscript.
-For P31, one exact existing claim supplies its normal or preferred rank.
+Rule W-324 supersedes the old QID-bound foreign approval exception.
+A foreign manuscript remains a reference target and cannot receive an edit or merge.
+The final guard requires fresh creator user-ID proof under Rule W-328.
+For an owned item, one exact existing P31 can supply its normal or preferred rank.
 The value and all qualifiers must match.
-The uploader preserves the existing GUID, rank, metadata, and references.
+The uploader preserves the existing GUID, rank, metadata, and complete reference blocks.
 Duplicate existing matches remain an error.
-Owned items, other properties, deprecated ranks, and unapproved targets retain their existing guards.
 
 ## Source build without optional prose extraction
 
@@ -52,5 +53,5 @@ An uncertain remote outcome requires a fresh entity and history check first.
 
 - `test_wikidata_canonical_safety.py` checks exact credited names and complete source evidence.
 - `test_wikidata_colophon_projection.py` checks wrapper equivalence, ambiguity, and override positions.
-- `test_wikidata_uploader_reference_blocks.py` checks foreign ranks and the unchanged refusal cases.
+- `test_wikidata_uploader_reference_blocks.py` checks rank preservation and creator-only refusal cases.
 - `test_wikidata_studio_build_job.py` checks the optional phase, boolean input, heartbeat, and progress.

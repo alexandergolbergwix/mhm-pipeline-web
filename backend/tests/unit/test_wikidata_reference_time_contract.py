@@ -14,7 +14,7 @@ from converter.wikidata.uploader import ClaimBuildError, WikidataUploader
 
 def _item(snak: dict[str, object], *, blocks: bool) -> WikidataItem:
     references = [copy.deepcopy(snak)]
-    return WikidataItem(existing_qid="Q123", statements=[WikidataStatement(
+    return WikidataItem(local_id="reference:case", statements=[WikidataStatement(
         "P217", "MS 1", "string", references=references,
         reference_blocks=[copy.deepcopy(references)] if blocks else [],
     )])
@@ -31,7 +31,7 @@ def _uploader() -> WikidataUploader:
 
 def _assert_qs_reference_omitted(item: WikidataItem) -> None:
     output = QuickStatementsExporter().export_item(item)
-    assert "Item omitted: Q123" in output
+    assert "Item omitted: reference:case" in output
     assert "invalid or unsupported reference" in output
     assert "\tP217\t" not in output
 

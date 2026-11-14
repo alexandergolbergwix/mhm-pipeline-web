@@ -2,6 +2,9 @@
 
 > Up: [Wikidata Studio](README.md)
 
+The [completion packet tests](gila-completion-packet.md#files-and-tests) cover source cases, receipt revisions, and the exact Troki authority.
+The [retrieval tests](reference-retrievals.md#files-and-tests) cover date variants, source boundaries, ownership paths, and repeat-update stability (W-323).
+
 - `backend/tests/unit/test_wikidata_studio_sharding.py` — the sharded
   build contracts: `shard_slices` chunking, streamed fingerprint ==
   sequential fingerprint (and flips on approval change), lossless
@@ -323,3 +326,15 @@ The [upload counts and source resolution](upload-counts-and-resolution.md) page 
 - `backend/tests/unit/test_wikidata_person_identity_choice.py` covers exact source identity, public ambiguity, stale proofs, source scope, namespace separation, and ledger isolation.
 
 - `test_wikidata_item_views.py` proves that an exact single-item read avoids the corpus blob and a similarly named row. `test_wikidata_items_export_import.py` retains attached MARC context in CSV.
+
+W-324: `test_wikidata_creator_only.py`, ownership, upload, Publication, and QuickStatements suites reject foreign edits without an exception.
+W-325: `test_hmo_canonical_wikidata.py` covers joined person-role descriptions and preservation of specific biographies.
+
+`backend/tests/test_wikidata_section_reference_overrides.py` checks HTTP 422 for new foreign approvals.
+The Publication UI and item drawer specs retain old approval fixtures and require no foreign-edit control.
+
+W-326–W-329: `test_marc_occurrences.py`, `test_wikidata_source_choices.py`, `test_wikidata_source_review.py`, `test_wikidata_creator_uid.py`, `test_publication_historical_repairs.py`, and `test_publication_repository.py` cover the new boundaries. `test_merge_prefers_safe_p50_over_legacy_p2093` retains both source blocks. Frontend specs: `wikidataSourceReview.spec.tsx` and `wikidata-source-review.spec.ts`.
+
+W-330: `wikidataSourceReview.spec.tsx` rejects obsolete save callbacks and errors after a run change with the same local ID.
+
+W-331/W-332: `test_wikidata_source_choices.py` checks shared and unproven record scope, citation pages, exact sources, preserved ranks, historical shelfmarks, overlapping work choices, and a fresh-interpreter read.

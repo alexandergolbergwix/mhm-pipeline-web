@@ -20,3 +20,8 @@
 | `frontend/src/api/export.ts` | Typed client — hidden-anchor download (no JS-heap buffering) |
 | `frontend/src/components/export/ExportButton.tsx` / `ExportProjectDialog.tsx` | Project-header "Export…" entry point + entity-type picker |
 | `backend/app/export/formatters.py` | `items_to_rdf_graph`: statement nodes, `pq:` qualifiers, `prov:wasDerivedFrom` references, best-rank `wdt:`; raises `ValueError` on unrepresentable input (see [TTL statement export](ttl-statement-export.md)) |
+
+| File | Purpose |
+|---|---|
+| `backend/app/migrations/versions/0055_source_review_choices.py` | Nullable source-choice JSONB on item overrides |
+| `backend/app/routers/wikidata_source_review.py` | Validated proof events before row changes |

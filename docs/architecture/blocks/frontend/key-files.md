@@ -67,3 +67,11 @@ automatic and advisory results separately. The item drawer keeps source wording
 separate from editable multilingual values and uses explicit field labels.
 
 The [upload state helpers](../wikidata-studio/upload-counts-and-resolution.md) are `wikidataItemDataStatus.ts` and `wikidataReviewRefresh.ts` (W-316).
+
+The Wikidata item drawer, Publication controls, blocked-action drawer, and AI review remove foreign-edit authority (W-324).
+
+| File | Purpose |
+|---|---|
+| `frontend/src/components/wikidata/WikidataSourceReview.tsx` | Per-manuscript source choices, requirement states, citations, catalogue notes, and stale-proof controls |
+| `frontend/src/api/wikidataSourceReview.ts` | Typed local source-review API |
+| `frontend/src/routes/ProjectDetail.tsx` | MARCXML upload option |

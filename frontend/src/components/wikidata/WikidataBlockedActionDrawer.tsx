@@ -32,7 +32,7 @@ export interface WikidataBlockedActionDrawerProps {
   target: PublicationTarget;
   disabled: boolean;
   onUseExisting?: (entityKeys: string[]) => void | Promise<void>;
-  onAcceptUpdate: (consent: PublicationForeignQidConsent) => void | Promise<void>;
+  onAcceptUpdate?: (consent: PublicationForeignQidConsent) => void | Promise<void>;
 }
 
 function formatClaimValue(value: unknown): string {
@@ -73,12 +73,10 @@ function remoteClaimsFrom(payload: unknown, qid: string): RemoteClaim[] {
 export function WikidataBlockedActionDrawer({
   entityKey,
   targetQid,
-  consent,
   ourStatements,
   target,
   disabled,
   onUseExisting,
-  onAcceptUpdate,
 }: WikidataBlockedActionDrawerProps) {
   const [open, setOpen] = useState(false);
   const [remoteClaims, setRemoteClaims] = useState<RemoteClaim[] | null>(null);
@@ -124,15 +122,6 @@ export function WikidataBlockedActionDrawer({
     setBusyAction("reuse");
     try {
       await onUseExisting([entityKey]);
-    } finally {
-      setBusyAction("");
-    }
-  };
-  const accept = async () => {
-    if (!consent) return;
-    setBusyAction("accept");
-    try {
-      await onAcceptUpdate(consent);
     } finally {
       setBusyAction("");
     }
@@ -199,15 +188,7 @@ export function WikidataBlockedActionDrawer({
                 {busyAction === "reuse" ? "Saving…" : `Use ${targetQid} without updates`}
               </button>
             )}
-            <button
-              type="button"
-              className="button-ghost text-sm"
-              disabled={disabled || !consent || busyAction !== ""}
-              onClick={() => { void accept(); }}
-              data-testid="publication-accept-foreign-update"
-            >
-              {busyAction === "accept" ? "Saving…" : `Accept & update ${targetQid}`}
-            </button>
+            <p className="muted">Only the creator account can update this item.</p>
             <button
               type="button"
               className="button-ghost text-sm"
@@ -219,7 +200,7 @@ export function WikidataBlockedActionDrawer({
             </button>
           </div>
           <p className="muted">
-            Accept & update writes your consent for this Release to add our claims to {targetQid}.
+            Use the existing QID without updates to preserve its public data.
             Leave it out keeps the record for a later release.
           </p>
         </div>

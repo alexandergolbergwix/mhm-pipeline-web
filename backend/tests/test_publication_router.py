@@ -180,10 +180,9 @@ async def test_foreign_consent_reaches_dry_run_worker(sample_run, db_session, mo
     blocked = await run_check()
     actions = blocked["plan"]["blocked_actions"]
     assert actions[1]["consent"] is None
-    consent = actions[0]["consent"]
-    assert consent["entity_key"] == "work:1"
-    assert consent["qid"] == "Q123"
-    assert consent["remote_revision"] == 7
+    assert actions[0]["consent"] is None
+    consent = {"entity_key": "work:1", "qid": "Q123", "remote_revision": 7,
+               "entity_digest": "0" * 64}
     assert actions[0]["entity_label"] == "Work 1"
     assert actions[0]["our_statements"] and actions[0]["our_statements"][0]["property"]
     if mismatch:
@@ -191,9 +190,9 @@ async def test_foreign_consent_reaches_dry_run_worker(sample_run, db_session, mo
     command["foreign_qid_consents"] = [consent]
     checked = await run_check()
     assert checked["plan"]["plan_id"] != blocked["plan"]["plan_id"]
-    assert checked["plan"]["action_counts"]["update"] == (1 if mismatch is None else 0)
-    assert checked["plan"]["action_counts"]["blocked"] == (1 if mismatch is None else 2)
-    assert checked["plan"]["accepted_foreign_update_count"] == (1 if mismatch is None else 0)
+    assert checked["plan"]["action_counts"]["update"] == 0
+    assert checked["plan"]["action_counts"]["blocked"] == 2
+    assert checked["plan"]["accepted_foreign_update_count"] == 0
     assert checked["dry_run_receipt"]["status"] == "failed"
 
 

@@ -395,7 +395,7 @@ _WIKIDATA_CSV_FIELDS = [
     "label_en", "label_he", "description_en", "description_he",
     "instance_of_qid", "manuscript_cn", "records_json",
     "statements_json", "validation_issues_json",
-    "authority_evidence_json", "work_candidate_evidence_json",
+    "authority_evidence_json", "work_candidate_evidence_json", "source_review_choices_json",
     "claims_count",
 ]
 
@@ -430,6 +430,7 @@ def _wikidata_csv_row(item: dict[str, Any]) -> dict[str, Any]:
         "entity_type": item.get("entity_type") or "",
         "existing_qid": item.get("existing_qid") or "",
         "approved": item.get("approved"),
+        "source_review_choices_json": json.dumps(item.get("source_review_choices"), ensure_ascii=False),
         "ai_verdict_overall": verdict.get("overall"),
         "ai_verdict_reasoning": verdict.get("reasoning"),
         "ai_verdict_json": _json_cell(verdict),
@@ -460,6 +461,7 @@ def _attach_item_review_metadata(
         local_id = str(row.get("local_id") or row.get("id") or "")
         override = by_local_id.get(local_id)
         row["approved"] = override.approved if override else None
+        row["source_review_choices"] = override.source_review_choices if override else None
         row["ai_verdict"] = override.ai_verdict if override else None
         row["ai_verdict_at"] = (
             override.ai_verdict_at.isoformat() if override and override.ai_verdict_at else None
@@ -552,6 +554,7 @@ async def _get_wikidata_items(
             "add_statements": r.add_statements,
             "remove_statements": r.remove_statements,
             "statement_edits": r.statement_edits,
+            "source_review_choices": r.source_review_choices,
         } for r in override_rows},
         hmo_instance_qids=hmo_instance_qids,
     )

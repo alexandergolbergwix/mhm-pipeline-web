@@ -22,7 +22,7 @@ export function automaticProgressText(state: PublicationAiReviewState | null): s
   return `AI check: ${state.processed} / ${state.total} records`;
 }
 
-export function WikidataPublicationAiReview({publication, busy, onAdvance, onActiveChange}: Props) {
+export function WikidataPublicationAiReview({publication, busy, onActiveChange}: Props) {
   const [state, setState] = useState<PublicationAiReviewState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,15 +30,13 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
   const model = useTier1Model();
   const [verificationModel, setVerificationModel] = useState("");
   const active = state?.status === "queued" || state?.status === "running";
-  const {run_id: runId, publication_id: publicationId, plan, approval_set: approval} = publication;
+  const {run_id: runId, publication_id: publicationId, plan} = publication;
   const current = publication.source_current && getPublicationReadiness(publication).approvalCurrent && !publication.execution;
   const report = state?.report;
   const blockedCount = plan?.action_counts.blocked ?? 0;
   const reportCurrent = current && report?.publication_id === publicationId && report?.plan_id === plan?.plan_id
     && report?.plan_digest === plan?.plan_digest && report?.release_digest === publication.current_release.release_digest;
   const reportPreparedThisRelease = report?.automatic === true && report.result_publication_id === publicationId;
-  const recommended = reportCurrent && state?.status === "succeeded"
-    ? (report?.items ?? []).flatMap((item) => item.status === "recommended" && item.consent ? [item.consent] : []) : [];
 
   useEffect(() => {
     onActiveChange(active);
@@ -106,12 +104,6 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
     finally {setLoading(false);}
   };
 
-  const approve = async () => {
-    if (!approval || recommended.length === 0) return;
-    await onAdvance({type: "dry_run", approval_set_id: approval.approval_set_id,
-      expected_approval_digest: approval.approval_digest, force_refresh: true, foreign_qid_consents: recommended});
-  };
-
   return <div className="rounded-lg border border-white/10 p-3 space-y-3" data-testid="publication-ai-review">
     <p className="font-medium">Resolve with AI</p>
     <p className="text-sm muted">The system checks the {blockedCount} record{blockedCount === 1 ? "" : "s"} that need attention. It keeps the checked records and defers an uncertain record. It does not publish.</p>
@@ -146,8 +138,7 @@ export function WikidataPublicationAiReview({publication, busy, onAdvance, onAct
         {item.qid && <a className="link-accent underline" target="_blank" rel="noopener noreferrer"
           href={`https://${publication.target === "live" ? "www" : "test"}.wikidata.org/wiki/${item.qid}`}>Review {item.qid}</a>}
       </li>)}</ul>
-      {!report.automatic && <button type="button" className="button-primary text-sm" disabled={busy || active || loading || recommended.length === 0}
-        onClick={() => {void approve();}}>Approve AI recommendations ({recommended.length}) and check again</button>}
+      <p className="muted">AI advice cannot authorize an edit to an item from another account.</p>
       </details>
       {report.automatic && <div className="space-y-2">
         {reportPreparedThisRelease && <p className="text-xs muted">This Release uses the checked subset from this report.</p>}

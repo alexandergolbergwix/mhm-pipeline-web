@@ -92,7 +92,7 @@ def test_slim_upload_progress_outcome_processing_shape() -> None:
     (True, "Q123", "Q123", "own", None, None, True),
     (True, "Q123", "Q999", "own", None, None, False),
     (True, None, "Q123", "own", None, None, False),
-    (True, "Q123", "Q123", "foreign", "Q123", "Q123", True),
+    (True, "Q123", "Q123", "foreign", "Q123", "Q123", False),
     (True, "Q123", "Q999", "foreign", "Q123", "Q123", False),
     (True, "Q123", "Q123", "foreign", "Q123", "Q999", False),
     (True, "Q123", "Q123", "foreign", None, "Q123", False),
@@ -108,8 +108,13 @@ async def test_pass2_job_checks_actual_target_before_link_write(
     from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
     source = WikidataItem(
-        local_id="source", entity_type="other", labels={"en": "Source"},
-        statements=[WikidataStatement("P50", "__LOCAL:target", "item")],
+        local_id="source",
+        entity_type="other",
+        labels={"en": "Source"},
+        statements=[
+            WikidataStatement("P31", "Q47461344", "item"),
+            WikidataStatement("P50", "__LOCAL:target", "item"),
+        ],
     )
     first = upload.UploadOutcome(
         local_id="source", label="Source", entity_type="other", qid=first_qid,
@@ -233,7 +238,7 @@ async def test_deferred_author_fallback_preserves_metadata_boundary(
         reference_blocks=[[ref]] if metadata == "blocks" else [],
     )
     source = WikidataItem(local_id="source", entity_type="work", labels={"en": "Work"},
-                          statements=[stmt])
+                          statements=[WikidataStatement("P31", "Q47461344", "item"), stmt])
     author = WikidataItem(local_id="author", entity_type="person", labels={"en": "Author"})
     first = upload.UploadOutcome("source", "Work", "work", "Q123", "updated", "ok", [],
                                  ownership="own")
@@ -306,13 +311,18 @@ async def test_deferred_author_fallback_preserves_metadata_boundary(
         assert result["target_local_id"] == unresolved_target
         assert unresolved_target in result["message"]
     elif writes:
-        written = writes[0].statements[0]
+        written = next(
+            statement for statement in writes[0].statements if statement.property_id != "P31"
+        )
         assert (written.property_id, written.value) == (
             ("P2093", "Author") if expected == "fallback" else ("P50", "Q500")
         )
         if expected == "resolved":
             assert written.references == stmt.references
-            assert written.reference_blocks == stmt.reference_blocks
+            expected_blocks = stmt.reference_blocks or (
+                [stmt.references] if stmt.references else []
+            )
+            assert written.reference_blocks == expected_blocks
             assert written.qualifiers == stmt.qualifiers
 
 
@@ -332,8 +342,14 @@ async def test_job_checks_revocation_at_each_actual_write(
     from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
     source = WikidataItem(
-        local_id="source", entity_type="other", existing_qid="Q123",
-        labels={"en": "Source"}, statements=[WikidataStatement("P50", "__LOCAL:target", "item")],
+        local_id="source",
+        entity_type="other",
+        existing_qid="Q123",
+        labels={"en": "Source"},
+        statements=[
+            WikidataStatement("P31", "Q47461344", "item"),
+            WikidataStatement("P50", "__LOCAL:target", "item"),
+        ],
     )
     first = upload.UploadOutcome(
         local_id="source", label="Source", entity_type="other", qid="Q123",
@@ -433,23 +449,19 @@ async def test_job_checks_revocation_at_each_actual_write(
         upload_job.run_wikidata_upload_shard(job.id, sample_run["run_id"], ["source"])
         if path == "shard_first" else upload_job.run_wikidata_upload_job(job.id)
     )
-    task = asyncio.create_task(operation)
-    try:
-        await asyncio.wait_for(entered.wait(), timeout=10)
-        approval.accept_foreign_modify = False
-        await db_session.commit()
-    finally:
-        proceed.set()
-    result = await task
+    proceed.set()
+    result = await operation
     if path == "shard_first":
-        assert result["outcomes"][0]["status"] == "blocked"
+        assert result["outcomes"][0]["status"] == "skipped"
     else:
         await db_session.refresh(job)
         if path == "regular_first":
-            assert job.result["outcomes"][0]["status"] == "blocked"
+            assert job.result["outcomes"][0]["status"] == "skipped"
         else:
-            assert job.result["link_outcomes"][0]["status"] == "blocked"
-    assert writes == (["Q123"] if path == "regular_second" else [])
+            assert job.result["link_outcomes"][0]["status"] == "skipped_foreign"
+    assert writes == []
+    assert calls == 0
+
 
 
 @pytest.mark.asyncio
@@ -474,10 +486,20 @@ async def test_regular_job_settles_inflight_before_terminal(
     from app.pipeline import wikidata_upload_job as upload_job
     from converter.wikidata.item_models import WikidataItem, WikidataStatement
 
-    sources = [WikidataItem(
-        local_id=f"source{i}", entity_type="other", labels={"en": f"Source {i}"},
-        statements=[WikidataStatement("P50", "__LOCAL:target", "item")] if phase == 2 else [],
-    ) for i in range(count)]
+    sources = [
+        WikidataItem(
+            local_id=f"source{i}",
+            entity_type="other",
+            labels={"en": f"Source {i}"},
+            statements=[
+                WikidataStatement("P31", "Q47461344", "item"),
+                WikidataStatement("P50", "__LOCAL:target", "item"),
+            ]
+            if phase == 2
+            else [],
+        )
+        for i in range(count)
+    ]
     params = {"upload_target": "live", "_wikidata_token": "fake"}
     if phase == 2:
         params["_step1_state"] = {

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
+import math
+import random
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import replace
@@ -648,38 +650,24 @@ class PublicationModule:
                     reconcile_method = None
                     detail = "The gateway omitted the entity observation"
                 else:
-                    consent = consents.get(entity.entity_key)
-                    consent_matches = (
-                        observation.status == "present_foreign"
-                        and consent is not None
-                        and bool(observation.qid)
-                        and observation.remote_revision is not None
-                        and consent.qid == observation.qid
-                        and consent.remote_revision == observation.remote_revision
-                        and consent.entity_digest == entity.entity_digest
-                    )
-                    action_name = (
-                        "update"
-                        if consent_matches
-                        else {
-                            "absent": "create",
-                            "present_owned": "update",
-                            "present_foreign": "block",
-                            "unknown": "block",
-                        }[observation.status]
-                    )
+                    action_name = {
+                        "absent": "create",
+                        "present_owned": "update",
+                        "present_foreign": "block",
+                        "unknown": "block",
+                    }[observation.status]
                     observation_status = observation.status
                     target_qid = observation.qid
                     target_fingerprint = observation.fingerprint
                     target_revision = observation.remote_revision
-                    allow_foreign_update = consent_matches
+                    allow_foreign_update = False
                     reconcile_method = observation.method
                     detail = (
                         observation.detail
-                        if observation.status != "present_foreign" or consent_matches
+                        if observation.status != "present_foreign"
                         else (
-                            "Foreign QID consent does not match the QID, revision, "
-                            "and entity digest"
+                            "Creator-only policy forbids edits to foreign entities. "
+                            "Use the existing QID without updates."
                         )
                     )
                 reference = entity.document.get("publication_reference_only") if isinstance(entity.document, Mapping) else None
@@ -1177,8 +1165,16 @@ class PublicationModule:
         outcome: WriteOutcome,
     ) -> None:
         state = "outcome_unknown" if outcome.status == "confirmed_not_applied" else outcome.status
+        delay = outcome.retry_after_seconds
+        next_attempt_at = None
+        if outcome.status == "pre_send_retryable" and delay is not None:
+            if not math.isfinite(delay) or delay < 0:
+                delay = 5.0
+            backoff = min(300.0, 5.0 * 2 ** min(intent.attempt - 1, 6))
+            next_attempt_at = self._clock() + timedelta(seconds=max(delay, backoff) + random.SystemRandom().uniform(0, 1))
         updated = replace(
             intent,
+            next_attempt_at=next_attempt_at,
             state=cast(
                 "Literal['in_flight', 'succeeded', 'pre_send_retryable', "
                 "'outcome_unknown', 'blocked', 'skipped']",

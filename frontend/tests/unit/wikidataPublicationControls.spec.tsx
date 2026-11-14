@@ -250,7 +250,7 @@ describe("WikidataPublicationControls", () => {
     expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("7 existing items reused without updates");
   });
 
-  it("offers accept, reuse, and defer for every blocked item", async () => {
+  it("offers reuse and defer without a foreign-update control", async () => {
     const onAdvance = vi.fn();
     const onUseExisting = vi.fn().mockResolvedValue(undefined);
     const consent = {
@@ -307,7 +307,7 @@ describe("WikidataPublicationControls", () => {
     />);
 
     expect(screen.getByText(/reused without updates: 1/)).toBeInTheDocument();
-    expect(screen.getByText(/accepted foreign updates: 1/)).toBeInTheDocument();
+    expect(screen.queryByText(/accepted foreign updates:/)).not.toBeInTheDocument();
 
     // The accept affordance appears for the blocked entity even though the
     // release entity has no stamped existing_qid.
@@ -320,13 +320,9 @@ describe("WikidataPublicationControls", () => {
     expect(screen.getByText("P3959: 990000533850205171")).toBeInTheDocument();
     expect(screen.getByText("P31: Q87167")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByTestId("publication-accept-foreign-update"));
-    expect(onAdvance).toHaveBeenCalledWith({
-      type: "dry_run",
-      approval_set_id: "approval-1",
-      expected_approval_digest: "sha256:approval-1",
-      foreign_qid_consents: [consent],
-    });
+    expect(screen.queryByTestId("publication-accept-foreign-update")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", {name: /I reviewed/})).not.toBeInTheDocument();
+    expect(onAdvance).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByTestId("publication-reuse-existing"));
     expect(onUseExisting).toHaveBeenCalledWith(["manuscript:1"]);

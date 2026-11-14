@@ -5,6 +5,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from rdflib import RDF
+
+from converter.config.namespaces import CIDOC, HM
+from converter.rdf.graph_builder import GraphBuilder
+from converter.transformer.field_handlers import ExtractedData
 from converter.wikidata.hmo_wikidata_pq_mapper import HMO_LOCAL_NAME_TO_WIKIDATA_PID
 
 _BACKEND = Path(__file__).resolve().parents[2]
@@ -29,10 +34,21 @@ def _equivalent_property_map() -> dict[str, str]:
     }
 
 
-def test_graph_builder_hm_symbols_are_declared_in_ontology() -> None:
+def test_graph_builder_hm_symbols_have_schema_or_instance_types() -> None:
     used = set(re.findall(r"\bHM\.([A-Za-z0-9_]+)\b", _GRAPH_BUILDER.read_text(encoding="utf-8")))
     declared = _declared_hm_terms()
-    missing = sorted(used - declared)
+    runtime_individuals = {
+        "Vocab_Vocalization_present": HM.VocalizationType,
+        "Vocab_Cantillation_present": CIDOC.E55_Type,
+    }
+    graph = GraphBuilder().build_graph(
+        ExtractedData(has_vocalization=True, has_cantillation=True), "990001"
+    )
+    for name, expected_type in runtime_individuals.items():
+        assert (HM[name], RDF.type, expected_type) in graph
+    assert any(graph.triples((None, HM.has_vocalization, HM.Vocab_Vocalization_present)))
+    assert any(graph.triples((None, HM.has_cantillation, HM.Vocab_Cantillation_present)))
+    missing = sorted(used - declared - runtime_individuals.keys())
     assert missing == [], f"GraphBuilder emits undeclared hm: terms: {missing}"
 
 

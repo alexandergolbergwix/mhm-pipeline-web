@@ -15,6 +15,7 @@ class MarcField:
     indicators: tuple = ("", "")
     subfields: dict[str, list[str]] = field(default_factory=dict)
     data: str | None = None
+    ordered_subfields: list[tuple[str, str]] = field(default_factory=list)
 
     def get_subfield(self, code: str) -> str | None:
         """Get first value of a subfield."""
@@ -33,6 +34,7 @@ class MarcRecord:
     control_number: str
     fields: dict[str, list[MarcField]] = field(default_factory=dict)
     leader: str = ""
+    field_order: list[tuple[str, int]] = field(default_factory=list)
 
     def get_field(self, tag: str) -> MarcField | None:
         """Get first field by tag."""
@@ -136,6 +138,7 @@ class MarcReader:
                 )
             else:
                 subfields_dict: dict[str, list[str]] = {}
+                ordered_subfields: list[tuple[str, str]] = []
                 if hasattr(field, "subfields"):
                     for sf in field.subfields:
                         if hasattr(sf, "code") and hasattr(sf, "value"):
@@ -146,6 +149,7 @@ class MarcReader:
                         if code not in subfields_dict:
                             subfields_dict[code] = []
                         subfields_dict[code].append(value)
+                        ordered_subfields.append((code, value))
 
                 indicators = ("", "")
                 if hasattr(field, "indicators"):
@@ -153,10 +157,12 @@ class MarcReader:
                 elif hasattr(field, "indicator1") and hasattr(field, "indicator2"):
                     indicators = (field.indicator1 or "", field.indicator2 or "")
 
-                marc_field = MarcField(tag=tag, indicators=indicators, subfields=subfields_dict)
+                marc_field = MarcField(tag=tag, indicators=indicators, subfields=subfields_dict,
+                                       ordered_subfields=ordered_subfields)
 
             if tag not in marc_record.fields:
                 marc_record.fields[tag] = []
+            marc_record.field_order.append((tag, len(marc_record.fields[tag])))
             marc_record.fields[tag].append(marc_field)
 
         return marc_record

@@ -17,6 +17,7 @@ def uploader(monkeypatch: pytest.MonkeyPatch) -> WikidataUploader:
     monkeypatch.setattr(up, "_get_first_revision_author", lambda qid: "Other")
     monkeypatch.setattr(up, "_item_exists_on_wikidata_sparql", lambda qid: True)
     monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_creator_identity_matches", lambda qid, user, **kwargs: user == "Project")
     monkeypatch.setattr(up, "_rate_limit", lambda: None)
     monkeypatch.setattr(up, "_bot_excluded", lambda qid: False)
     up._q3959_cache["Q123"] = frozenset({"9901"})
@@ -41,7 +42,8 @@ def test_approval_does_not_change_ownership_or_approve_another_qid(
 ) -> None:
     uploader.register_foreign_accept("Q123")
     assert not uploader._is_our_item("Q123", our_p3959="9901")
-    uploader._assert_modifiable("Q123", "test")
+    with pytest.raises(UnauthorisedModificationError):
+        uploader._assert_modifiable("Q123", "test")
     with pytest.raises(UnauthorisedModificationError):
         uploader._assert_modifiable("Q124", "test")
     assert uploader._is_our_item_cache.get("Q123") is False
@@ -66,8 +68,8 @@ def test_direct_upload_blocks_foreign_p3959_and_accepts_exact_qid(
     assert uploader.upload_item(manuscript()).status == "skipped"
     assert writes == []
     uploader.register_foreign_accept("Q123")
-    assert uploader.upload_item(manuscript()).status == "updated"
-    assert writes == ["Q123"]
+    assert uploader.upload_item(manuscript()).status == "skipped"
+    assert writes == []
 
 
 def test_creator_owned_item_does_not_require_foreign_approval(
@@ -192,7 +194,7 @@ def test_type_error_retry_refuses_a_changed_target(
             self.id = "Q124"
             raise TypeError("write failed")
 
-    uploader.register_foreign_accept("Q123")
+    monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Project")
     monkeypatch.setattr(uploader, "_build_wbi_item", lambda item: (FakeItem(), 1, ["P3959"]))
     result = uploader.upload_item(manuscript())
     assert result.status == "failed"
@@ -205,7 +207,7 @@ def test_build_rejects_a_prefetched_entity_with_a_different_qid(
 ) -> None:
     from wikibaseintegrator import WikibaseIntegrator
 
-    uploader.register_foreign_accept("Q123")
+    monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Project")
     uploader._prefetched_entities["Q123"] = {
         "id": "Q124", "type": "item", "lastrevid": 1,
         "labels": {"en": {"language": "en", "value": "Wrong target"}},
@@ -221,7 +223,7 @@ def test_build_rejects_a_prefetched_entity_with_a_different_qid(
         "labels": {"en": {"language": "en", "value": "Correct target"}},
         "descriptions": {}, "aliases": {}, "claims": {}, "sitelinks": {},
     }
-    uploader.register_foreign_accept("Q123")
+    monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Project")
     uploader._build_wbi_item(manuscript())
     assert uploader._existing_label_snapshot["Q123"] == {"en": "Correct target"}
 
@@ -242,9 +244,13 @@ def test_approved_foreign_item_keeps_existing_metadata(
     item = manuscript()
     item.labels = {"en": "Proposed label"}
     item.descriptions = {"en": "Proposed description"}
-    entity, _, _ = uploader._build_wbi_item(item)
-    assert entity.labels.get("en").value == "Existing label"
-    assert entity.descriptions.get("en").value == "Existing description"
+    with pytest.raises(UnauthorisedModificationError):
+        uploader._build_wbi_item(item)
+    assert uploader._prefetched_entities["Q123"]["labels"]["en"]["value"] == "Existing label"
+    assert (
+        uploader._prefetched_entities["Q123"]["descriptions"]["en"]["value"]
+        == "Existing description"
+    )
     assert uploader._is_our_item_cache.get("Q123") is not True
 
 
@@ -269,8 +275,8 @@ def test_deferred_link_update_requires_approval_for_its_source_qid(
     assert uploader.upload_item(item, created_qids={"work1": "Q456"}).status == "skipped"
     assert writes == []
     uploader.register_foreign_accept("Q123")
-    assert uploader.upload_item(item, created_qids={"work1": "Q456"}).status == "updated"
-    assert writes == ["Q123"]
+    assert uploader.upload_item(item, created_qids={"work1": "Q456"}).status == "skipped"
+    assert writes == []
 
 
 def test_cache_warm_does_not_trust_old_creation_contribution(
@@ -303,14 +309,16 @@ def test_cache_share_refuses_a_different_account(uploader: WikidataUploader) -> 
 
 
 def test_cache_share_allows_the_same_account_on_the_same_wiki(
-    uploader: WikidataUploader,
+    uploader: WikidataUploader, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     other = WikidataUploader(token="Fixture@Bot:not-a-credential", allow_live=True)
     uploader._authenticated_user = "Project"
     other._authenticated_user = "Project"
     uploader.register_foreign_accept("Q123")
     uploader._is_our_item_cache["Q456"] = True
+    uploader._creator_cache["Q456"] = "Project"
     other.share_caches_from(uploader)
+    monkeypatch.setattr(other, "_creator_identity_matches", lambda qid, user, **kwargs: True)
     other._assert_modifiable("Q456", "pass2")
     assert other._foreign_accept_qids is not uploader._foreign_accept_qids
 
@@ -352,7 +360,7 @@ def test_ambiguous_write_is_not_retried(
     if is_create:
         item.existing_qid = None
     else:
-        uploader.register_foreign_accept("Q123")
+        monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Project")
     result = uploader.upload_item(item)
     assert result.status == "failed"
     assert "outcome unknown" in result.message.lower()
@@ -407,9 +415,9 @@ def test_foreign_approval_is_consumed_after_one_upload(
 
     monkeypatch.setattr(uploader, "_build_wbi_item", lambda item: (FakeItem(), 1, ["P3959"]))
     uploader.register_foreign_accept("Q123")
-    assert uploader.upload_item(manuscript()).status == "updated"
     assert uploader.upload_item(manuscript()).status == "skipped"
-    assert writes == ["Q123"]
+    assert uploader.upload_item(manuscript()).status == "skipped"
+    assert writes == []
 
 
 def test_foreign_approval_is_cleared_after_early_failure(uploader: WikidataUploader) -> None:
@@ -456,7 +464,7 @@ def test_foreign_approval_is_not_visible_to_another_thread(
     with ThreadPoolExecutor(max_workers=1) as executor:
         result = executor.submit(uploader.upload_item, manuscript()).result()
     assert result.status == "skipped"
-    assert uploader.upload_item(manuscript()).status == "updated"
+    assert uploader.upload_item(manuscript()).status == "skipped"
 
 
 def test_foreign_approval_does_not_retry_a_confirmed_rejection(
@@ -477,9 +485,8 @@ def test_foreign_approval_does_not_retry_a_confirmed_rejection(
     monkeypatch.setattr("converter.wikidata.uploader.time.sleep", lambda seconds: None)
     uploader.register_foreign_accept("Q123")
     result = uploader.upload_item(manuscript())
-    assert result.status == "failed"
-    assert "check foreign approval" in result.message.lower()
-    assert len(calls) == 1
+    assert result.status == "skipped"
+    assert calls == []
     assert not uploader._foreign_accept_qids
 
 
@@ -496,8 +503,8 @@ def test_foreign_approval_does_not_retry_a_pre_write_error(
     monkeypatch.setattr("converter.wikidata.uploader.time.sleep", lambda seconds: None)
     uploader.register_foreign_accept("Q123")
     result = uploader.upload_item(manuscript())
-    assert result.status == "failed"
-    assert calls == ["build"]
+    assert result.status == "skipped"
+    assert calls == []
     assert not uploader._foreign_accept_qids
 
 
@@ -515,6 +522,7 @@ def test_test_stub_timeout_does_not_fall_back_to_another_create(
         up, "_login", SimpleNamespace(get_session=lambda: SimpleNamespace(post=post)),
     )
     monkeypatch.setattr(up, "_get_csrf_token", lambda: "fixture")
+    monkeypatch.setattr(up, "_creator_identity_matches", lambda qid, user, **kwargs: user == "Project")
     monkeypatch.setattr(up, "_rate_limit", lambda: None)
     monkeypatch.setattr(
         up, "_adopt_by_exact_label_from_new_data", lambda **kwargs: calls.append("search"),

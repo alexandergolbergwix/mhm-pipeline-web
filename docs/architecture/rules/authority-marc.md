@@ -4,6 +4,26 @@ Architectural invariants for this area. Each rule records a real
 production incident — read the whole rule before changing the code it
 names. Index: [CLAUDE.md](../../../CLAUDE.md).
 
+### Rule W-322 — Sparse person dates do not establish occurrence associations
+
+The Gila source record `990000885680205171` has four 700 names and two date values.
+The former positional parser attached one date to the scribe and shifted the other date to Elia Levita.
+The 897-record check finds 187 ambiguous date groups across 185 source records.
+
+Preserve explicit empty slots in each flattened person-date array.
+Attach dates only when the name and date arrays have equal slot counts.
+Otherwise, retain the field, names, and complete values in `person_subfield_reviews`.
+Use reason `person_date_alignment_unproven`.
+Apply this rule to raw authors, contributors, personal subjects, and structured entries with several names.
+The audit retains the unresolved group as source evidence under email point 5.
+It does not infer a public birth or death from that group.
+
+The current Wikidata schemas are `source-aware-works-v22` and `hmo-wikidata-v26`.
+The exact audited Troki authority retains normal rejection and identity guards.
+The completion packet does not authorize public edits or certify old receipts as current proof.
+See [person dates](../blocks/extraction/person-dates.md) and [the completion packet](../blocks/wikidata-studio/gila-completion-packet.md).
+Tests: `test_marc_person_date_alignment.py`, `test_wikidata_gila_completion.py`, and `test_wikidata_troki_author_identity.py`.
+
 ### Rule W-23 — KIMA / VIAF / Mazal payload completeness (added 2026-06-03)
 
 - `payload.cluster_ids` MUST be populated from VIAF `meta`
@@ -292,3 +312,18 @@ Invariant:
    export cannot measure it, because it never records WHICH MARC heading each
    authority row matched, so any pairing reconstructed from it mispairs and reports
    artifact flips.
+
+### Rule W-326 — Original MARC occurrences define source associations (2026-11-13)
+
+A synthetic record reproduced a wrong library location.
+The old parser selected the second library and borrowed the first city and country.
+Flat counts also cannot independently reconstruct missing original field boundaries.
+
+Retain original occurrences, indicators, subfield order, and field order at import.
+Regenerate flat compatibility columns from that evidence.
+Keep each library tuple and each person role/date within its own source occurrence.
+Withhold sparse flat associations and retain a review case.
+A structured rebuild must remove old derived values when its original field disappears.
+Recompute current 505/581/590 values without duplicate or stale source text.
+The local comparison must separate original evidence, absent original evidence, changed saved values, and new derived values.
+See [MARC occurrences](../blocks/extraction/marc-occurrences.md).

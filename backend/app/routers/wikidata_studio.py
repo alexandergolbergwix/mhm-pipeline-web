@@ -1328,6 +1328,7 @@ async def _execute_studio_build(
                 "remove_statements": r.remove_statements,
                 "statement_edits":   r.statement_edits,
                 "person_identity_choice": getattr(r, "person_identity_choice", None),
+                "source_review_choices": getattr(r, "source_review_choices", None),
                 "approved": r.approved,
             }
             for r in override_rows
@@ -1451,6 +1452,7 @@ async def _execute_studio_build(
             "remove_statements": r.remove_statements,
             "statement_edits":   r.statement_edits,
             "person_identity_choice": getattr(r, "person_identity_choice", None),
+                "source_review_choices": getattr(r, "source_review_choices", None),
                 "approved": r.approved,
         }
         for r in override_rows
@@ -2021,6 +2023,7 @@ async def rebuild_selected_wikidata_items(
             "remove_statements": r.remove_statements,
             "statement_edits": r.statement_edits,
             "person_identity_choice": getattr(r, "person_identity_choice", None),
+                "source_review_choices": getattr(r, "source_review_choices", None),
                 "approved": r.approved,
         }
         for r in override_rows
@@ -2571,7 +2574,7 @@ async def export_wikidata_items(
             "local_id", "entity_type", "existing_qid", "approved", "source_uri",
             "record_ids_json", "label_en", "label_he", "description_en", "description_he",
             "aliases_json", "statement_count", "statements_json", "validation_issues_json",
-            "authority_evidence_json", "local_reference_targets_json",
+            "authority_evidence_json", "local_reference_targets_json", "source_review_choices_json",
             "has_blocking_validation", "marc_context_json", "upload_outcome", "upload_message",
             "upload_at", "ai_verdict_overall", "ai_verdict_name_ok", "ai_verdict_type_ok",
             "ai_verdict_role_ok", "ai_verdict_reasoning", "ai_verdict_model",
@@ -2609,6 +2612,7 @@ async def export_wikidata_items(
                 "description_he": descriptions.get("he"),
                 "aliases_json": _json_cell(it.get("aliases")),
                 "authority_evidence_json": _json_cell(it.get("authority_evidence")),
+                "source_review_choices_json": _json_cell(it.get("source_review_choices")),
                 "local_reference_targets_json": _json_cell(it.get("local_reference_targets")),
                 "statement_count": len(statements),
                 "statements_json": _json_cell(statements),
@@ -2679,6 +2683,17 @@ async def import_wikidata_items(
             skipped += 1
             errors.append(f"unknown local_id {local_id!r}")
             continue
+        source_choices = None
+        if row.get("source_review_choices") is not None:
+            from app.pipeline.wikidata_source_choices import reprove_choices
+            from app.routers.wikidata_source_review import _records
+
+            try:
+                source_choices = await reprove_choices(row["source_review_choices"], await _records(db, run_id, local_id))
+            except (ValueError, HTTPException) as exc:
+                errors.append(str(exc))
+                skipped += 1
+                continue
         await patch_item_override(
             run_id,
             local_id,
@@ -2694,6 +2709,11 @@ async def import_wikidata_items(
             auth,
             db,
         )
+        if source_choices is not None:
+            from app.routers.wikidata_source_review import persist_source_choices
+
+            run = await _lookup_run_with_access(db, run_id, auth, write=True)
+            await persist_source_choices(db, run, local_id, auth, source_choices)
         imported += 1
 
     return {"imported": imported, "skipped": skipped, "errors": errors}
@@ -2829,6 +2849,8 @@ class ItemOverridePayload(BaseModel):
     """Partial update — every field optional. The persisted row is
     merged with the existing override, so the UI can PATCH one tab
     at a time."""
+    model_config = {"extra": "forbid"}
+
     labels:            dict[str, str | None] | None = None
     descriptions:      dict[str, str | None] | None = None
     aliases:           dict[str, list[str] | None] | None = None
@@ -2851,6 +2873,7 @@ class ItemOverrideResponse(BaseModel):
     remove_statements: list[int]
     statement_edits: dict[str, Any]
     person_identity_choice: dict[str, Any] | None = None
+    source_review_choices: list[dict[str, Any]] | None = None
     approved: bool | None = None
     accept_foreign_modify: bool | None = None
     accepted_foreign_qid: str | None = None
@@ -2903,6 +2926,13 @@ async def patch_item_override(
     Statement edits use ``{"<index>": {"value": "Q5"}}`` — index is
     relative to the builder output AFTER removals are applied.
     """
+    if payload.accept_foreign_modify or payload.accepted_foreign_qid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Foreign edits are disabled. Only the creator account can update an existing item."
+            ),
+        )
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
 
     row = (
@@ -2992,6 +3022,7 @@ async def patch_item_override(
             "accept_foreign_modify": row.accept_foreign_modify,
             "accepted_foreign_qid": row.accepted_foreign_qid,
             "person_identity_choice": row.person_identity_choice,
+            "source_review_choices": row.source_review_choices,
         }
         await apply_event(
             db,
@@ -3017,6 +3048,7 @@ async def patch_item_override(
         statement_edits=row.statement_edits or {},
         approved=row.approved,
         person_identity_choice=row.person_identity_choice,
+        source_review_choices=row.source_review_choices,
         accept_foreign_modify=row.accept_foreign_modify,
         accepted_foreign_qid=row.accepted_foreign_qid,
     )

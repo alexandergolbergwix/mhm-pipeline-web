@@ -19,7 +19,7 @@ specs with fully mocked backends ("every click is a test").
 - [Key files](key-files.md) — entry points, stores, hooks, glass system, test configs
 - [How it works](how-it-works.md) — routing, API clients, Zustand discipline, polling, glass, build tooling
 - [Testing](testing.md) — the three-layer test pyramid and the suites pinning this block
-- [Rules](rules.md) — the invariants (R1–R37)
+- [Rules](rules.md) — the invariants (R1–R40)
 - [Skills](skills.md) — pages, API clients, job UI, e2e specs, glass components, polling surfaces
 
 ## Related blocks
@@ -33,3 +33,5 @@ specs with fully mocked backends ("every click is a test").
 
 
 The legacy `/runs/:runId` Authority route now redirects to HMO Studio. Authority mutation/review is no longer a standalone frontend surface.
+
+- [Gila source review](../wikidata-studio/source-review.md) — source choices, all nine requirements, and stale proof states.

@@ -22,7 +22,7 @@ behind a Redis→Postgres **cache stack**, curators review in a rich UI, and
 every curator mutation is **event-versioned** (`project_events`).
 
 **→ Read [CLAUDE.md](CLAUDE.md) first** — it indexes every architectural
-rule (Rules W-1…W-321) and points at the topic file under
+rule (Rules W-1…W-332) and points at the topic file under
 [docs/architecture/rules/](docs/architecture/rules/) that holds its full
 text. Read the topic file for the area you are touching; each rule records a
 real production incident plus the invariant that closes it — check it before touching RDF
@@ -60,7 +60,7 @@ System-wide pages: [global rules](docs/architecture/global-rules.md) ·
 Before changing a block, read its `README.md` + `rules.md`: the rules are the
 invariants your change must not break, and `skills.md` has step-by-step
 playbooks for the common tasks. Incident-annotated rule **details**
-(W-1…W-321) stay in [docs/architecture/rules/](docs/architecture/rules/), indexed by [CLAUDE.md](CLAUDE.md).
+(W-1…W-332) stay in [docs/architecture/rules/](docs/architecture/rules/), indexed by [CLAUDE.md](CLAUDE.md).
 
 ### Skill: keep docs in sync with every code change
 
@@ -177,10 +177,9 @@ and `useVerifyJob` upserts on start/poll (block **R15**). Deep dive:
 
 **WPM projection + write policy (Rules W-98…W-100):** manuscripts follow the
 WikiProject Manuscripts contract (`docs/wikidata-manuscripts-data-model.md`);
-upload runs smart existence + own-or-accept modify
+upload runs smart existence + creator-only modify
 (`docs/wikidata-data-access.md`); HMO/project Wikibase claims map to public
-P/Q only via `hmo_wikidata_pq_mapper` (never by numeric ID identity). Foreign
-existing QIDs need the drawer accept checkbox bound to that QID.
+P/Q only via `hmo_wikidata_pq_mapper` (never by numeric ID identity). Foreign existing QIDs are reference-only targets. Rule W-324 disables all foreign-edit approvals.
 
 **Source-aware work boundary (Rule W-68):** clean Hebrew MARC 505 titles are
 structural contents evidence; MARC 500 work rows must come from the anchored

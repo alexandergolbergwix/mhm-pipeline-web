@@ -92,3 +92,9 @@
 37. **R37 — Stop obsolete cursor walks (W-318).** The request sequence must
 stop the old page chain after its current request. *Why:* A response guard
 alone still permits unnecessary requests and connection pressure.
+
+38. **R38 — No UI action grants a foreign Wikidata edit (W-324).** Keep reference-only reuse. Hide old consent controls even for old responses. *Why:* historical approvals violated the creator-only policy.
+
+39. **R39 — Source review never grants publication approval (W-327).** Send the exact candidate key, source hash, evidence URL, and reason. Expose stale proof and rebuild requirements. *Why:* a local source decision does not establish a public correction.
+
+40. **R40 — Source-review callbacks stay in their original view (W-330).** Key the view by run and local item. Ignore save results after that view unmounts. *Why:* a late result from another run could show an obsolete error or call the wrong save callback.

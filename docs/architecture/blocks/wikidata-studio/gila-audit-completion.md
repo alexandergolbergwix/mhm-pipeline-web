@@ -3,6 +3,7 @@
 > Up: [Wikidata Studio](README.md) · Rules W-294/W-296
 
 The [11 November implementation receipt](../../../audits/gila-code-implementation-2026-11-11.md) records the current local code and corpus checks.
+The [12 November live verification](../../../audits/gila-live-verification-2026-11-12.md) checks all 897 manuscripts and lists the unresolved source identities.
 The historical measurements below retain their original dates. Live correction remains a separate operation.
 
 ## Accepted model
@@ -53,8 +54,8 @@ reconstructed reliably; safety gates require a rebuild from source.
 Reference-only changes count as updates, so the exists path does not skip them.
 The local migration does not prove that live references were corrected.
 
-The current legacy build schema is `source-aware-works-v21`.
-The current canonical fingerprint salt is `hmo-wikidata-v23` (W-305).
+The current legacy build schema is `source-aware-works-v24`.
+The current canonical fingerprint salt is `hmo-wikidata-v28` (W-322).
 W-296 originally used `source-aware-works-v13` and `hmo-wikidata-v16`.
 Port shared converter changes upstream before the next full desktop sync.
 
@@ -136,3 +137,5 @@ QIDs. It reported 90 absent-source cases, zero selected transfer cases, and
 1,220 identity/scope cases. It did not verify live corrections.
 The mixed old work and failed bulk items still need their own repair receipts
 and live read-back before the audit can close.
+
+The [retrieval contract](reference-retrievals.md) distinguishes exact repeats from the same citation with different P813 dates.

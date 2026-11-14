@@ -134,6 +134,9 @@ export async function installStudioMocks(
     onWikidataVerifyStart?: (body: unknown) => void;
   },
 ): Promise<void> {
+  await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/source-review**`, route => route.fulfill({
+    status: 200, contentType: "application/json", body: JSON.stringify({local_id: "mock", records: []}),
+  }));
   // Auth — current user
   await page.route("**/api/auth/me", (route) => {
     route.fulfill({

@@ -1,5 +1,7 @@
 # Wikidata Studio — How it works: guards and upload
 
+> Current policy: [creator-only writes](creator-only-writes.md) supersedes the historical foreign-edit paths below.
+
 > Up: [Wikidata Studio](README.md)
 
 *Continues from [build-and-cache.md](build-and-cache.md) (build pipeline,
@@ -30,8 +32,7 @@ any ERROR blocks the write regardless of create-vs-update or approval state.
 Then (live + dry-run with `enforce_ownership`) `wikidata_existence` confirms
 the QID via batched Action API `wbgetentities` (50 ids, throttled 429 backoff;
 Rule W-185) and classifies ownership with the curator token: **own → UPDATE**,
-**foreign without accept → skip**, **foreign with QID-bound `accept_foreign_modify` → UPDATE (audited)**, **unknown →
-block**. Upload jobs prefetch all native `existing_qid`s once into an
+**foreign → skip**, **unknown → block**. Upload jobs prefetch all native `existing_qid`s once into an
 existence cache before the write loop. `None` from the Action API is retried
 before fail-closed block; on test, confirmed-missing **and foreign-but-alive**
 QIDs still clear to CREATE (Rule W-181) — never UPDATE a community test
@@ -56,13 +57,11 @@ whole statement, not just the snak.
 without dangling `__LOCAL:` connections. Pass 2 MERGE-UPDATEs those edges
 once both QIDs exist (`link_outcomes`; unresolved targets stay visible).
 Pass 2 checks the actual source QID against the authorized pass-1 outcome.
-For a foreign source, the outcome and current curator approval must both name
-that QID (W-302). A dry-run can use its `dry:<local_id>` placeholder.
-Before a live foreign write, `upload_items` rechecks the persisted approval
-for the run, local item, and exact QID in a separate database session. A missing
-run, missing or changed approval, or database error blocks the write. This
-check applies to both passes, including shard writes. It is not atomic with
-the external Wikidata write: revocation after the check can still race a write.
+A foreign source cannot receive pass-2 updates, even with a saved approval.
+A dry-run can use its `dry:<local_id>` placeholder.
+Each existing write requires the authenticated account to match the first-revision author.
+The shared uploader rechecks that proof before the build and before the send.
+A cached owned classification cannot replace the creator proof.
 Progress is `Step N of 2` with nested item/link counters, `steps[]` for the
 modal, and `eta_seconds` after three samples. Cancel skips remaining pass-1
 items and does not run pass 2.
@@ -110,13 +109,13 @@ W-193) — wiki `+11` vs native `11` is not a missing claim. The job
 optionally filters to
 item-approved (`item_approved_only`), unwraps the user's encrypted Wikidata
 token (also for dry-run when present, so ownership preview is truthful),
-loads per-item foreign accepts from `WikidataItemOverride`, and calls
+retains old override data for compatibility, and calls
 `wikidata_upload.upload_items`. Live prepare (Rule W-195): after a W-190
 heading clash, identity PIDs are stripped and the QID cleared; an
 identifierless person is **skipped**, not CREATE. Uncertain remaining QIDs
 (no identity PID, method not identifier) are confirmed with DeepSeek
 fail-closed; heading clash never reaches the LLM. Pass 2 MERGE UPDATE uses
-the first-pass target, with exact-QID approval for foreign items; leftover P50 to a skipped person becomes P2093
+the first-pass owned target; leftover P50 to a skipped person becomes P2093
 on our work. Never UPDATE Savoy Q209579 / Sultan / Kostlitz / Tikkun
 Q2740944 / Shor Q6580025. Live prepare (Rule W-196): P1476/P1680/P1684
 coerce to monolingualtext; P2048/P2049 above 1000 mm omit; a unique
@@ -134,9 +133,8 @@ separate Publication workflow uses its own Release and credential contract
 (Rule W-212). All four desktop Rule-38
 modification guards stay intact (`_is_our_item`, `_assert_modifiable` in
 `_build_wbi_item`, `_would_create_identity_conflict` per statement, pre-write
-`_assert_modifiable`); foreign accept on **live only** via
-`register_foreign_accept` (never cache priming; test ignores accept and CREATEs
-instead of UPDATEing foreign-alive QIDs). Test Q remap reuses bot-owned items,
+`_assert_modifiable`). Rule W-324 removes every foreign-accept exception.
+`register_foreign_accept` has no authority. Historical approvals cannot bypass the guard. Test Q remap reuses bot-owned items,
 session stubs, or MHM stub descriptions (Rules W-184 / W-187).
 The default source is the durable HMO Wikibase read-back. `native_items_from_hmo`
 adapts normalized HMO labels, descriptions, aliases, accepted authority

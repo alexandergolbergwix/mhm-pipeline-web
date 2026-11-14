@@ -344,6 +344,7 @@ async def export_project(
                 "remove_statements": r.remove_statements,
                 "statement_edits": r.statement_edits,
                 "person_identity_choice": r.person_identity_choice,
+                "source_review_choices": r.source_review_choices,
                 "updated_by_email": email_map.get(r.updated_by) if r.updated_by else None,
                 "created_at": r.created_at,
                 "updated_at": r.updated_at,

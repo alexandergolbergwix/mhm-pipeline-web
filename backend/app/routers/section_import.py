@@ -653,6 +653,7 @@ class WikidataOverrideImportRow(BaseModel):
     add_statements: list[dict[str, Any]] = []
     remove_statements: list[int] = []
     statement_edits: dict[str, Any] = {}
+    source_review_choices: list[dict[str, Any]] | None = None
 
     @field_validator("local_id", mode="before")
     @classmethod
@@ -750,6 +751,26 @@ async def import_wikidata_studio(
         }
 
         if existing is not None:
+            from app.pipeline.wikidata_item_merge import override_row_to_dict
+
+            new_state = {**override_row_to_dict(existing), **new_state}
+        choices = None
+        if row.source_review_choices is not None:
+            from app.pipeline.wikidata_source_choices import reprove_choices
+            from app.routers.wikidata_source_review import _records
+
+            try:
+                records = await _records(db, run_id, row.local_id)
+                choices = await reprove_choices(row.source_review_choices, records)
+            except (ValueError, HTTPException) as exc:
+                errors.append(ImportRowError(row=idx, message=str(exc)))
+                skipped += 1
+                continue
+            new_state["source_review_choices"] = choices
+            new_state["approved"] = None
+            new_state.update(ai_verdict=None, ai_verdict_at=None, rule_verdict=None, rule_verdict_at=None)
+
+        if existing is not None:
             try:
                 await apply_event(
                     db,
@@ -763,12 +784,19 @@ async def import_wikidata_studio(
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("apply_event PATCH wikidata override %s: %s", existing.id, exc)
+                if choices is not None:
+                    raise
             existing.labels = row.labels
             existing.descriptions = row.descriptions
             existing.aliases = row.aliases
             existing.add_statements = row.add_statements
             existing.remove_statements = row.remove_statements
             existing.statement_edits = row.statement_edits
+            if choices is not None:
+                existing.source_review_choices = choices
+                existing.approved = None
+                existing.ai_verdict = existing.ai_verdict_at = None
+                existing.rule_verdict = existing.rule_verdict_at = None
             existing.updated_by = auth.user.id
         else:
             override = WikidataItemOverride(
@@ -780,6 +808,7 @@ async def import_wikidata_studio(
                 add_statements=row.add_statements,
                 remove_statements=row.remove_statements,
                 statement_edits=row.statement_edits,
+                source_review_choices=choices,
                 updated_by=auth.user.id,
             )
             db.add(override)
@@ -797,6 +826,8 @@ async def import_wikidata_studio(
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("apply_event CREATE wikidata override: %s", exc)
+                if choices is not None:
+                    raise
 
         imported += 1
 

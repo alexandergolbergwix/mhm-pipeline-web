@@ -1,12 +1,13 @@
 # Exact historical repairs
 
-> Up: [Wikidata Studio](README.md) · Rules W-307, W-310
+> Up: [Wikidata Studio](README.md) · Rules W-307, W-310, W-323
 
 `wikidata_gila_repairs.py` remains a read-only proposal builder.
 `wikidata_gila_execution.py` provides the separate executor.
 `backend/scripts/execute_gila_repairs.py` provides the operator command.
 The command first creates a fresh plan with the normal credential and ownership guard.
 The command applies a saved plan only with `--apply`.
+The [retrieval rule](reference-retrievals.md) also covers references that differ only by a supported P813 date.
 The operator must have authorization for the live repair scope.
 The command accepts the session cookie through a hidden terminal prompt.
 The session, KEK, and wiki credential remain in memory.

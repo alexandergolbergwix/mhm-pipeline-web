@@ -16,7 +16,7 @@ async function gotoModernStudio(page: import("@playwright/test").Page) {
 }
 
 test.describe("Wikidata item detail drawer", () => {
-  test("foreign acceptance is bound to the displayed QID", async ({page}) => {
+  test("legacy foreign approvals cannot expose an edit override", async ({page}) => {
     const cases = [
       {name: "Matching", accepted: "Q111", enabled: true, checked: true},
       {name: "Stale", accepted: "Q222", enabled: true, checked: false},
@@ -44,12 +44,9 @@ test.describe("Wikidata item detail drawer", () => {
       await page.getByTestId(`wikidata-item-row-manuscript::${scenario.name}`).getByRole("button", {name: "Open"}).click();
       const checkbox = page.getByTestId("wikidata-accept-foreign-modify");
       await expect(page.getByText("Fetching statements and evidence…")).toBeHidden();
-      await expect(checkbox).toHaveJSProperty("checked", scenario.checked);
-      if (scenario.name === "Stale") {
-        await checkbox.check();
-        await expect.poll(() => patch).toEqual({accept_foreign_modify: true, accepted_foreign_qid: "Q111"});
-        await expect(checkbox).toBeChecked();
-      }
+      await expect(checkbox).toHaveCount(0);
+      await expect(page.getByText("Only the account that created an existing Wikidata item can update it.", {exact: false})).toBeVisible();
+      expect(patch).toBeNull();
       await page.getByTestId("wikidata-item-detail-drawer").getByRole("button", {name: "Close"}).click();
     }
   });

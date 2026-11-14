@@ -481,8 +481,8 @@ def classify_ownership_with_uploader(
     """Classify QID ownership using an authenticated ``WikidataUploader``.
 
     Prefer this path when a curator token is available — it reuses Rule-38's
-    triple-verification channels (plus the Rule W-270 P3959 override on live
-    manuscripts when *our_p3959* is provided).
+    creator and existence checks. P3959 and legacy foreign approvals never grant
+    ownership (Rule W-324).
     """
     clean = str(qid or "").strip()
     if not clean:
@@ -510,8 +510,5 @@ def accept_allows_foreign_modify(
     accept_foreign_modify: bool,
     accepted_foreign_qid: str | None,
 ) -> bool:
-    """True only when the curator explicitly accepted *this* reconciled QID."""
-    if not accept_foreign_modify:
-        return False
-    wanted = str(accepted_foreign_qid or "").strip()
-    return bool(wanted) and wanted == str(existing_qid).strip()
+    """Legacy approval fields cannot authorize a foreign modification."""
+    return False

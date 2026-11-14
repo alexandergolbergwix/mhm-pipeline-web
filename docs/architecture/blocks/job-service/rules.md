@@ -134,3 +134,5 @@
   leave no audit row or saved outcome. The job API and worker also reject
   invalid upload `source` values.
   *Why:* target selection and creator checks must share the restricted scope.
+
+- **R43 — Publication retries retain their future eligibility (W-328).** Commit the intent result and `next_attempt_at` together. Resume must honor that date. Keep uncertain repair outcomes in recovery. *Why:* a process restart must not shorten a server delay or duplicate an uncertain edit.

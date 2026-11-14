@@ -3765,3 +3765,143 @@ Use the normal override, ledger, receipt, and verdict rules.
 Expose a small `reference_only` flag on table rows because the table omits authority evidence.
 An unknown POST requires a readback before any further mutation.
 A CSV export must use its attached MARC context instead of a new empty-record context.
+
+## Rule W-323 — One source retains one current retrieval on normal owned updates
+
+On 12 November 2026, Q141175529 had four references for the same catalogue record and URL.
+Only P813 differed. The uploader treated each retrieval date as a separate source identity.
+The earlier exact-reference audit missed these date variants across the corpus.
+
+Use the latest recorded retrieval only when every other reference snak matches exactly.
+Require a source URL or external identifier and one valid day-precision Gregorian P813 value.
+Preserve different pages, quotations, publication dates, identifiers, and ambiguous dates.
+Do not replace a newer date with an older incoming date.
+Normal owned updates can remove repeated blocks. Preserve existing blocks on append-only paths.
+Owner-only and foreign append paths must skip another copy without a metadata replacement.
+Test-wiki paths must not interpret the live P813 identifier.
+Historical proposals must retain exact revisions, entity digests, and complete claim evidence.
+The normal source, ownership, and execution guards still apply.
+Report exact repeats and retrieval-date variants separately.
+See [the reference contract](../blocks/wikidata-studio/reference-retrievals.md).
+
+## Rule W-324 — Every existing write requires creator proof without an exception
+
+On 12 November 2026, the user required an unconditional ban on edits to entities from other accounts.
+Earlier guards allowed foreign edits after exact curator approval.
+Saved approvals and cached classifications could therefore permit an unwanted edit.
+
+Require the authenticated account to match the first-revision author before each existing-item write.
+Retain the normal ownership, source, target, validator, and revision checks.
+Do not let a cached owned result replace the creator proof.
+Ignore historical foreign approvals. Reject new approvals at the item override API.
+Block foreign Publication plans and recheck the creator immediately before each gateway send.
+Compare the actual write target with the planned target.
+Keep foreign QIDs available as references after identity checks.
+Do not create a duplicate as a substitute for a blocked foreign update.
+QuickStatements must omit existing-item commands because it has no authenticated creator proof.
+This rule supersedes the foreign-edit exceptions in W-99, W-221, W-270, W-302, and W-313.
+See [the creator-only contract](../blocks/wikidata-studio/creator-only-writes.md).
+
+## Rule W-325 — Generated role lists cannot become person descriptions
+
+On 12 November 2026, Q141953242 had a truncated list of person roles and manuscript identifiers as its English description.
+The HMO exporter joined per-role RDF comments. The Wikidata filter missed the aggregate form.
+Recognize the generated person-role prefix without a final-suffix requirement.
+Use a concise source-enriched description or the existing generic person fallback.
+Preserve specific biographies, source comments, and role evidence.
+Advance the canonical fingerprint to `hmo-wikidata-v26`.
+See [person description hygiene](../blocks/wikidata-studio/person-description-hygiene.md).
+
+### Rule W-327 — Source choices retain exact scope and honest coverage (2026-11-13)
+
+The Gila audit had complete public reads but still had unresolved source passages.
+A public read did not prove complete conversion of every note.
+
+Bind each source choice to a record, candidate key, source hash, folio, public target, evidence URL, and curator reason.
+Require compatible public title, author, type, and bibliography metadata.
+Recheck the source after the public lookup.
+Record the proof event before the row update in the same transaction.
+Clear prior approval and verdicts.
+Reject proofs in the generic PATCH.
+Re-prove imports and mark changed source evidence as stale.
+Recheck selected public identities before a send.
+
+Keep public reads, verified claims, source gaps, identity reviews, pending repairs, and unchecked passages separate.
+A documented unresolved passage remains unresolved.
+Retain the explicit difference between Gila's wording and the separate manuscript/work model.
+A bibliographic citation never becomes an inscription or a catalogue code by inference.
+See [Source review](../blocks/wikidata-studio/source-review.md).
+
+### Rule W-328 — Exact repairs retain delays, intents, and immutable creator proof (2026-11-13)
+
+Repeated source references remained after several uploads.
+Server maxlag prevented the later bulk repair.
+The gateway had a structured server delay but reduced it to a detail string.
+A cached creator name also lacked an immutable identity check at the final send.
+
+Use the existing Publication intents, checkpoints, receipts, and action queue for exact historical repairs.
+Retain the complete public before entity and exact authorized QID.
+Use `BULK_MAXLAG = 5` and retain numeric or HTTP-date Retry-After values.
+Commit the intent result and `next_attempt_at` together.
+A resumed worker must honor that date.
+A confirmed rejection may retry after the delay.
+An uncertain outcome requires exact public recovery; it never grants a blind resend.
+A success needs the expected full public entity and current revision receipt.
+
+The final existing-item guard must compare fresh authenticated and first-revision user IDs.
+Hidden, missing, redirected, mismatched, or non-integer proof denies the write.
+Cached names and old foreign approvals cannot replace that proof.
+The Gila historical queue additionally requires Alexander Goldberg IL, user ID `6935067`.
+Foreign targets remain excluded from edits and merges.
+See [Repair retries](../blocks/wikidata-studio/repair-retries.md).
+
+### Rule W-329 — Author promotion preserves distinct source blocks (2026-11-13)
+
+The safe P50/P2093 merge regression produced two author claims.
+An early optional P1932 qualifier prevented the compatible source claims from coalescence.
+
+Compare source-linked peer work authors before addition of an optional credited name.
+Require the same proven person, compatible work title, source record, rank, and scope qualifiers.
+Retain every distinct reference block on the single author claim.
+Never flatten the blocks or discard one source during promotion.
+`test_merge_prefers_safe_p50_over_legacy_p2093` pins both source blocks and the original qualifier.
+
+### Rule W-330 — Source-review results stay within their original view (2026-11-13)
+
+A source-review save could finish after the curator selected another run with the same local item ID.
+The old response could show an obsolete error or call the save callback for the new view.
+Two regression tests reproduced these outcomes before the fix.
+
+Bind the source-review component to both `runId` and `localId`.
+Reset its forms, notice, and busy state when either value changes.
+Ignore save success, failure, and completion callbacks after the original view unmounts.
+Keep the existing guard against late source reads.
+This UI rule does not cancel an accepted local save or grant a public write.
+Tests: `frontend/tests/unit/wikidataSourceReview.spec.tsx`.
+
+### Rule W-331 — Source choices retain the exact record and page scope (2026-11-14)
+
+A work choice could retarget one claim that carried two source records.
+A citation rejection could remove other page ranges for the same publication.
+A library choice also replaced unrelated shelfmarks and discarded rank or references on unchanged claims.
+Regression tests reproduced each defect before the fix.
+
+Require exact source-record scope before a value change or removal.
+Block shared or unproven scope and conflicting choices before claim mutation.
+Reject a citation match only at its exact page scope.
+Preserve historical claims and other records' claims.
+Merge complete references for an unchanged value and retain its rank.
+Add the selected record's reference to a compatible citation that lacks it.
+Use `source-aware-works-v24` and `hmo-wikidata-v28` to invalidate older projections.
+See [Source-choice scope](../blocks/wikidata-studio/source-choice-scope.md).
+
+### Rule W-332 — Source candidate reads do not depend on import order (2026-11-14)
+
+A fresh interpreter could not read source candidates.
+The web helper imported `content_projection`, which imported the builder before its own mixin existed.
+The broad suite masked the cycle because another test imported the builder first.
+
+Import `structured_work_attribution` through the public `item_builder` facade.
+Keep that explicit facade export available to source-review callers.
+Run the candidate-read regression in a fresh interpreter.
+The test must not depend on an earlier application or builder import.

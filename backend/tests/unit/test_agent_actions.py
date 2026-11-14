@@ -14,19 +14,19 @@ from app.pipeline import agent_actions
 
 
 class TestRegistryShape:
-    """The registry exposes exactly the three documented actions, each
+    """The registry exposes exactly the four documented actions, each
     with the fields ``to_dict()`` promises."""
 
-    def test_three_actions_registered(self) -> None:
+    def test_four_actions_registered(self) -> None:
         actions = agent_actions.list_actions()
-        assert len(actions) == 3
+        assert len(actions) == 4
 
     def test_registry_includes_canonical_ids(self) -> None:
         ids = {a.id for a in agent_actions.list_actions()}
-        assert ids == {"audit_match", "find_duplicates", "birth_death_check"}
+        assert ids == {"audit_match", "find_duplicates", "birth_death_check", "review_publication_blocked"}
 
     @pytest.mark.parametrize(
-        "action_id", ["audit_match", "find_duplicates", "birth_death_check"],
+        "action_id", ["audit_match", "find_duplicates", "birth_death_check", "review_publication_blocked"],
     )
     def test_get_action_returns_each(self, action_id: str) -> None:
         action = agent_actions.get_action(action_id)
@@ -63,7 +63,7 @@ class TestScopeFiltering:
         assert "find_duplicates" in ids
 
     def test_unfiltered_returns_full_set(self) -> None:
-        assert len(agent_actions.list_actions(scope_kind=None)) == 3
+        assert len(agent_actions.list_actions(scope_kind=None)) == 4
 
 
 class TestRenderGoal:

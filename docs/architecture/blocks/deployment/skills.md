@@ -92,3 +92,8 @@ The [complete connection payload](../wikidata-studio/upload-counts-and-resolutio
 
 
 Migration `0054_person_identity_choice` must precede the source-choice endpoint. Deploy the committed Heroku and Modal code before a canonical rebuild with a person choice (W-320).
+
+Migration `0055_source_review_choices` adds nullable JSONB on item overrides after revision 0054.
+The normal release phase must apply it before the source-review API serves requests.
+Deploy the same committed backend to Heroku and Modal before a new build.
+Expected build versions: `source-aware-works-v24` and `hmo-wikidata-v28`.

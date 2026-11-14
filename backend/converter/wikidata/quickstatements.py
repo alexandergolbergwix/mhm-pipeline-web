@@ -449,7 +449,9 @@ class QuickStatementsExporter:
             if (not isinstance(item.existing_qid, str)
                     or not re.fullmatch(r"Q[1-9][0-9]*", item.existing_qid)):
                 return _item_omission(item, "invalid Wikidata target")
-            qid = item.existing_qid
+            return _item_omission(
+                item, "existing items require creator verification through the guarded uploader",
+            )
         else:
             lines.append("CREATE")
             qid = "LAST"

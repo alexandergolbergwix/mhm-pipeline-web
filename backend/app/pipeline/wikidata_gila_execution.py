@@ -6,6 +6,8 @@ from collections.abc import Awaitable, Callable, Mapping
 from copy import deepcopy
 from typing import Protocol
 
+from converter.wikidata.retry_policy import BULK_MAXLAG
+
 import requests
 
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
@@ -69,6 +71,11 @@ def validate_source_colophons(
 
 class WriteRejectedError(RuntimeError):
     """The API confirms rejection without a successful edit."""
+
+    def __init__(self, message: str, *, code: str = "", retry_after_seconds: float | None = None):
+        super().__init__(message)
+        self.code = code
+        self.retry_after_seconds = retry_after_seconds
 
 
 class RepairGateway(Protocol):
@@ -228,6 +235,8 @@ class LiveRepairGateway:
             self.uploader._creator_cache.pop(qid, None)
             self.uploader._foreign_accept_qids.clear()
             self.uploader._assert_modifiable(qid, stage="exact_repair")
+            if not self.uploader._creator_identity_matches(qid, "Alexander Goldberg IL", required_user_id=6935067):
+                raise ValueError("The historical repair requires creator user ID 6935067.")
             self.uploader._bot_exclusion_cache.pop(qid, None)
             if self.uploader._bot_excluded(qid):
                 raise ValueError("The target excludes bot edits.")
@@ -262,20 +271,25 @@ class LiveRepairGateway:
                     ),
                     "token": token,
                     "format": "json",
-                    "maxlag": 20,
+                    "maxlag": BULK_MAXLAG,
                 },
                 allow_redirects=False,
                 timeout=30,
             )
-            response.raise_for_status()
             result = response.json()
             if not isinstance(result, dict):
                 raise RuntimeError("The write response is unavailable.")
             if result.get("error"):
                 error = result["error"]
                 if isinstance(error, dict) and error.get("code") in PRE_WRITE_REJECTIONS:
-                    raise WriteRejectedError("The API rejected the exact repair before the edit.")
+                    from converter.wikidata.retry_policy import retry_after_seconds
+
+                    code = str(error["code"])
+                    delay = retry_after_seconds(response.headers.get("Retry-After")) if code in {"maxlag", "ratelimited", "readonly"} else None
+                    raise WriteRejectedError("The API rejected the exact repair before the edit.",
+                                             code=code, retry_after_seconds=delay)
                 raise RuntimeError("The API returned an uncertain write outcome.")
+            response.raise_for_status()
             entity = result.get("entity")
             if (
                 result.get("success") != 1

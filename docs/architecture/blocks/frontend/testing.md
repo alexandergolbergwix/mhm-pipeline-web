@@ -67,3 +67,13 @@ The Wikidata fixture serves `/items/page` with cursor pages and server totals. T
 The count unit test covers a current source-scoped person choice as reference only. A stale build remains unconfirmed. The cursor fixture serves `/items/page` with a proper cursor response.
 
 The upload-state unit test also accepts the bounded table `reference_only` flag. The table omits the full authority evidence and private choice proof (W-321).
+
+The Wikidata drawer and Publication specs reject historical foreign approvals and retain reference-only reuse (W-324).
+
+`WikidataPublicationAiReview.tsx` cannot submit historical foreign consents; its report remains advisory (W-324).
+
+Source review: `tests/unit/wikidataSourceReview.spec.tsx` checks exact proof requests and stale-source errors. `e2e/wikidata-source-review.spec.ts` checks the drawer flow and the absence of public writes. The shared Studio fixture supplies an empty source-review response for other drawer tests.
+
+W-330: the source-review unit suite also checks a late save success and failure after a run change with the same local ID.
+The [supplemental test receipt](../../../audits/gila-source-review-followup-2026-11-13.md) records the offline dependency limits.
+`frontend/e2e/fixtures/wikidata-fixtures.ts` supplies the shared mocked Studio and source-review responses.

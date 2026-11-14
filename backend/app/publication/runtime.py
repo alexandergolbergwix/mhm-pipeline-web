@@ -70,7 +70,6 @@ from app.schemas.publication import (
     CancelPublicationCommand,
     DryRunPublicationCommand,
     BlockedPlanAction,
-    PublicationForeignQidConsent,
     DryRunReceiptSummary,
     EntityKeysSelection,
     ExecutionSummary,
@@ -963,13 +962,7 @@ class PublicationRuntime:
                     entity_key=row.entity_key,
                     target_qid=row.target_qid,
                     reason=row.detail or "The target check did not pass.",
-                    consent=PublicationForeignQidConsent(
-                        entity_key=row.entity_key, qid=row.target_qid,
-                        remote_revision=row.target_revision,
-                        entity_digest=row.entity_digest,
-                    ) if row.target_qid
-                        and row.target_revision is not None and row.target_revision > 0
-                        else None,
+                    consent=None,
                     entity_label=str(
                         labels.get("en") or labels.get("he") or row.entity_key
                     ),

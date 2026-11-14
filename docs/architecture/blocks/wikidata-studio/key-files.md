@@ -4,7 +4,10 @@
 
 | File | Purpose |
 |---|---|
+| `backend/tests/unit/test_wikidata_creator_only.py` | Mandatory creator proof, stale approvals, invalid caches, and safe QID references (W-324) |
+| `backend/converter/wikidata/reference_retrieval.py` | Current reference selection; preserves distinct sources and ambiguous dates (W-323) |
 | `backend/converter/wikidata/work_candidates.py` | Source eligibility, citation word boundaries, and explicit policy reasons |
+| `backend/app/pipeline/wikidata_gila_completion.py`, `backend/scripts/export_gila_completion.py` | Complete source-case inventory, nine-point report, and current receipt checks |
 | `backend/app/pipeline/wikidata_local_refs.py` | Local target resolution and explicit evidence for deferred unknown-text occurrences |
 | `backend/app/pipeline/wikidata_studio.py` | Glue: DB rows → desktop builder input; fingerprint; override application; item serialisation + label enrichment; `local_id_for_item` |
 | `backend/app/pipeline/hmo_canonical_wikidata.py` | HMO Wikibase read-back → native Wikidata item adapter; CN-indexed summarized-node rollup onto manuscript/person/work (Rule W-117); `PUBLIC_WIKIDATA_ENTITY_TYPES` gate; `filter_public_wikidata_items` / stale-cache detection (W-118); label hygiene + work evidence (W-120); MARC 245 / known-QID work recovery (W-121); approved author recovery for canonical works (W-201); safe single-representation work author normalization (W-204); role-specific work-author sanitation with approved NER context (W-206 / W-209); browseable P2888/P973 Item:Q bridge (W-122); recover trusted person IDs before W-154 omit (W-188); coalesce same-identity persons before export (W-213) |
@@ -65,7 +68,7 @@
 | `frontend/src/utils/wikidataItemDataStatus.ts` | Shared receipt states and exact upload counts (W-316) |
 | `frontend/src/utils/wikidataReviewRefresh.ts` | Run/source-bound terminal job tracker for silent review refresh (W-316) |
 | `backend/app/pipeline/wikidata_upload.py` | `resolve_upload_mode` / `upload_target`, `_prepare_for_upload`, person identity gate (W-190), work skip+`link_qid` (W-196), fail-closed work identity and QID-bound pass 2 (W-302), `UploadOutcome` |
-| `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` — Rule-38 guards + `allow_live` / moratorium; `is_bot` via `mark_as_bot` (default false, W-181); test-wiki remap; leftover snaks refuse the write; `partition_unresolved_local` / session `created_qids` (W-191 / W-192); quantity/time exists-match (W-193); adopt-on-conflict + datatype-keyed maps + MHM stub reuse + holder/live gloss stubs + item-write adopt (W-182 / W-183 / W-186 / W-187 / W-189); existing owned labels survive label/description conflicts (R152) |
+| `backend/converter/wikidata/uploader.py` | Real `WikidataUploader` — mandatory creator proof without a foreign exception (W-324); Rule-38 guards + `allow_live` / moratorium; `is_bot` via `mark_as_bot` (default false, W-181); test-wiki remap; leftover snaks refuse the write; `partition_unresolved_local` / session `created_qids` (W-191 / W-192); quantity/time exists-match (W-193); adopt-on-conflict + datatype-keyed maps + MHM stub reuse + holder/live gloss stubs + item-write adopt (W-182 / W-183 / W-186 / W-187 / W-189); existing owned labels survive label/description conflicts (R152) |
 | `backend/converter/wikidata/test_wiki_compat.py` | Remap live P/Q to test entities by label+datatype; `(live_pid, value_type)` map keys; conflict-id parse; holder/live gloss; leftover list for W-186 refuse (W-189) |
 | `backend/app/routers/wikidata_studio.py` (`_build_native_items`, `studio_dict_to_native_item`) | Upload natives from Studio cache (W-181); cache-miss rebuild fallback |
 | `backend/app/pipeline/wikidata_existence.py` | Action API `wbgetentities` alive check + labels + ownership classify + QID-bound foreign accept |
@@ -129,3 +132,5 @@
 | `backend/app/pipeline/wikidata_colophon_cleanup.py` | Source-exact colophon cleanup after overrides; complete reference blocks and unique scope (W-312) |
 
 - `backend/app/pipeline/wikidata_person_identity_choice.py` validates source-scoped public person proofs. Migration `0054_person_identity_choice` stores each reviewed proof.
+
+See [Gila implementation files](gila-key-files.md) for the source-choice, coverage, MARC, bibliography, and exact-repair extensions.

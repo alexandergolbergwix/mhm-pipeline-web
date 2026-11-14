@@ -767,8 +767,8 @@ def test_foreign_work_requires_accept_for_the_exact_qid(monkeypatch, accepted_qi
         ownership_checker=SimpleNamespace(_is_our_item=lambda qid: False),
         is_test=False,
     )
-    assert result.blocked is (accepted_qid != "Q123")
-    assert result.allow_foreign_modify is (accepted_qid == "Q123")
+    assert result.blocked is True
+    assert result.allow_foreign_modify is False
 
 
 @pytest.mark.parametrize("accepted_qid", [None, "Q999", "Q123"])
@@ -792,8 +792,8 @@ def test_p3959_is_not_foreign_ownership(monkeypatch, accepted_qid) -> None:
         ownership_checker=Checker(), is_test=False,
     )
     assert result.ownership == "foreign"
-    assert result.blocked is (accepted_qid != "Q123")
-    assert result.allow_foreign_modify is (accepted_qid == "Q123")
+    assert result.blocked is True
+    assert result.allow_foreign_modify is False
     assert seen == [None]
 
 
@@ -832,8 +832,8 @@ def test_foreign_pass2_requires_the_same_item_and_qid_approval(
         check_foreign_accept=lambda local_id, qid: True,
     )[0]
     assert outcome.ownership == "foreign"
-    assert outcome.accepted_foreign_qid == "Q123"
-    assert wu.pass2_may_update_source(outcome, "Q123", accept=accepts[first.local_id])
+    assert outcome.accepted_foreign_qid is None
+    assert not wu.pass2_may_update_source(outcome, "Q123", accept=accepts[first.local_id])
 
     second = _manuscript("990000533850205171", qid=target_qid)
     second_accepts = accepts if approved else {}
@@ -842,13 +842,13 @@ def test_foreign_pass2_requires_the_same_item_and_qid_approval(
         is_test=False, allow_live=True, uploader=uploader,
         check_foreign_accept=lambda local_id, qid: True,
     )[0]
-    assert second_outcome.status == ("updated" if approved and target_qid == "Q123" else "skipped")
-    assert uploader.writes == (["Q123", "Q123"] if approved and target_qid == "Q123" else ["Q123"])
+    assert second_outcome.status == "skipped"
+    assert uploader.writes == []
 
 
 @pytest.mark.parametrize("status,ownership,qid,accepted,allowed", [
-    ("updated", "foreign", "Q123", "Q123", True),
-    ("exists", "foreign", "Q123", "Q123", True),
+    ("updated", "foreign", "Q123", "Q123", False),
+    ("exists", "foreign", "Q123", "Q123", False),
     ("updated", "foreign", "Q123", "Q999", False),
     ("updated", "foreign", "Q123", None, False),
     ("updated", "foreign", None, None, False),
@@ -871,7 +871,7 @@ def test_pass2_requires_authorized_outcome(status, ownership, qid, accepted, all
     ("created", "absent", "Q123", None, "Q123", False, True),
     ("created", "absent", "Q123", None, "Q999", False, False),
     ("updated", "own", "Q123", None, "Q999", False, False),
-    ("updated", "foreign", "Q123", "Q123", "Q123", False, True),
+    ("updated", "foreign", "Q123", "Q123", "Q123", False, False),
     ("updated", "foreign", "Q123", "Q123", "Q999", False, False),
     ("updated", "foreign", "Q123", "Q999", "Q123", False, False),
     ("updated", "own", "Q123", None, None, False, False),
@@ -925,7 +925,8 @@ def test_foreign_outcome_does_not_authorize_a_different_returned_qid(monkeypatch
         is_test=False, allow_live=True, uploader=uploader,
         check_foreign_accept=lambda local_id, qid: True,
     )[0]
-    assert outcome.qid == "Q999"
+    assert outcome.qid == "Q123"
+    assert outcome.status == "skipped"
     assert outcome.accepted_foreign_qid is None
     assert not wu.pass2_may_update_source(outcome, "Q999")
 
@@ -1005,10 +1006,10 @@ async def test_live_foreign_write_rechecks_persisted_approval_after_prepare(
     finally:
         proceed.set()
     outcome = (await task)[0]
-    allowed = state in {"valid", "own"}
-    assert outcome.status == ("updated" if allowed else "blocked")
+    allowed = state == "own"
+    assert outcome.status == ("updated" if allowed else "skipped")
     assert writes == (["Q123"] if allowed else [])
-    assert registrations == (["Q123"] if state == "valid" else [])
+    assert registrations == []
     if state == "own":
         assert outcome.ownership == "own"
         assert checks == []
@@ -1367,8 +1368,8 @@ def test_dry_run_allows_foreign_with_accept(monkeypatch):
             ),
         },
     )
-    assert outcomes[0].status == "would_adopt"
-    assert "explicit accept_foreign_modify" in outcomes[0].message
+    assert outcomes[0].status == "skipped"
+    assert "not created by your account" in outcomes[0].message
 
 
 def test_foreign_accept_ignored_on_test_upload(monkeypatch):

@@ -1,0 +1,660 @@
+control_number,qid,property,value,value_type,qualifiers,status
+990000403660205171,Q141746831,P1071,Q805,item,[],present
+990000403660205171,Q141746831,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ונה, יצחק בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000409090205171,Q141746833,P1071,Q38,item,[],present
+990000409260205171,Q141746834,P1071,Q805,item,[],present
+990000409270205171,Q141746835,P1071,Q805,item,[],present
+990000413030205171,Q141746836,P1071,Q805,item,[],present
+990000413130205171,Q141746838,P1071,Q805,item,[],present
+990000413440205171,Q141746840,P1071,Q805,item,[],present
+990000413460205171,Q141746841,P1071,Q805,item,[],present
+990000413570205171,Q141746842,P1071,Q3852,item,[],present
+990000413570205171,Q141746842,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יהודה ליב בן דוד איש גנש"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000413580205171,Q141746843,P1071,Q805,item,[],present
+990000413710205171,Q141746845,P1071,Q79,item,[],present
+990000417500205171,Q141746846,P1071,Q13360,item,[],present
+990000439040205171,Q141175736,P1071,Q406,item,[],present
+990000448060205171,Q141746847,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקיסי, סעדיה בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000454350205171,Q141746848,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בשירי, יחיא"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000463550205171,Q141746849,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""נפתלי בן שמואל הלוי, איש גינץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000464670205171,Q141746853,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ביבי, יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000532010205171,Q141746854,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000538270205171,Q141746856,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000538930205171,Q141746857,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צורף, דוד בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000543440205171,Q141746859,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שמואל טוביה בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000543440205171,Q141746859,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 2278"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990000543850205171,Q141746861,P1071,Q955523,item,[],present
+990000550940205171,Q141746862,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""חיים בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000550960205171,Q141746865,P1071,Q2125362,item,[],present
+990000550960205171,Q141746865,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""זכריה בן יוסף בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000551170205171,Q141746866,P1071,Q2125362,item,[],present
+990000551170205171,Q141746866,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""זכריה בן יוסף בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000552160205171,Q141746867,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צבי הירש בן דוד כץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000552170205171,Q141746868,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""לנדסהוט, שמשון בן יוחנן הלוי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000552280205171,Q141746869,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סנגויני, אליקים בן קלונימוס"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000553740205171,Q141746870,P1071,Q220,item,[],present
+990000553740205171,Q141746870,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""Camagna, Giovanni Battista"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000554010205171,Q141746871,P1071,Q2125362,item,[],present
+990000554010205171,Q141746871,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""זכריה בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000558260205171,Q141746872,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""רמצ'אן, סעדיה (או זכריה) בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000558270205171,Q134925976,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקטיעי, משה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000558280205171,Q141746873,P1071,Q805,item,[],present
+990000558280205171,Q141746873,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן שלמה הלוי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000559480205171,Q141746875,P1071,Q2028,item,[],present
+990000559760205171,Q141746876,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אבוקרה, שמשון בן גבריאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000561550205171,Q141746881,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקטיעי, משה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000561960205171,Q141746883,P1071,Q13134,item,[],present
+990000563700205171,Q141746884,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלמוסאי, סעדיה בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000563810205171,Q141746887,P1071,Q2125362,item,[],present
+990000563810205171,Q141746887,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""זכריה בן סעדיה בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000563980205171,Q141746889,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שלמה בן ישראל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000564000205171,Q141746890,P1071,Q955523,item,[],present
+990000564000205171,Q141746890,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פינחס בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000566640205171,Q141746891,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקטיעי, משה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000566780205171,Q141746892,P1071,Q641,item,[],present
+990000566780205171,Q141746892,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מורנו, רפאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000569120205171,Q141175739,P1071,Q13362,item,[],present
+990000569120205171,Q141175739,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ריקי, רפאל עמנואל חי בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000570500205171,Q141746901,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן אמברך"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000571790205171,Q141746902,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מודנה, ישראל בן אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000572680205171,Q141746903,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פיליפ, יעקב חיים"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000572690205171,Q141746905,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פיליפ, יעקב חיים"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000572690205171,Q141746905,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1798"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990000574480205171,Q141746906,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000574500205171,Q141746907,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""משה (לא מזוהה)"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000578370205171,Q141746909,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סומך, שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000589830205171,Q141746933,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""עגיב, יהונתן בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000590500205171,Q141746934,P1071,Q1218,item,[],present
+990000591080205171,Q141746935,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יעקב בן נחום מטישוויטץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000593730205171,Q141746936,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלחגאג', חיים בן שלום בן דוד בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000594010205171,Q141746937,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן שלום בן שלמה בן בניה לוי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000594240205171,Q141746942,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פנו, עזרא בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000595570205171,Q141746944,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""משה בן עובדיה בן ראובן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000597080205171,Q141362079,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מל\""י"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000597080205171,Q141362079,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 858"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990000598840205171,Q141746945,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלטוילי, שלום בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000602640205171,Q141746947,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלחגאגי, חיים בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000605740205171,Q141746948,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000606310205171,Q141746949,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000610900205171,Q141746951,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מילר, יהודה בן שמואל רויטלינגן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000612200205171,Q141746955,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלחגאגי, חיים בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000617640205171,Q141746959,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דיין, יעקב"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000621640205171,Q141746961,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שמחה בן חננאל מכוכיזוב"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000629890205171,Q141746962,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שיניור גודינס, בנימין"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000632200205171,Q141746964,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""קרח, יוסף בן שלם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000633490205171,Q141175742,P1071,Q188336,item,[],present
+990000634000205171,Q141746967,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן סעדיה בן עמרם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000638760205171,Q141746968,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""כטלווא, יהודה צבי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000641320205171,Q141746971,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ריק, יהודה בן צבי הירש"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000649970205171,Q141746974,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלגהסי, מעודד בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000650360205171,Q141746975,P1071,Q22690,item,[],present
+990000653720205171,Q141746979,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אליקים גוטשלק בן צבי הירש"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000655210205171,Q134624941,P1071,Q641,item,[],present
+990000655210205171,Q134624941,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיזה, אהרן בן משה ישראל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000656400205171,Q141746983,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אוטולינגו, שמואל דוד בן יחיאל הלוי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000665780205171,Q141746989,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פפגיא, זוסלמן משלם בן מאיר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000666370205171,Q141746990,P1071,Q6247,item,[],present
+990000667860205171,Q141746992,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שואט, יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000669660205171,Q141746993,P1071,Q3766,item,[],present
+990000672460205171,Q141746996,P1071,Q641,item,[],present
+990000672460205171,Q141746996,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""טיליו, אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000677600205171,Q141746998,P1071,Q641,item,[],present
+990000677600205171,Q141746998,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פנו, אליעזר ראובן חי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000681680205171,Q141747000,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יר\""י"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000681680205171,Q141747000,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 781"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990000683720205171,Q141747001,P1071,Q1218,item,[],present
+990000687740205171,Q141747003,P1071,Q641,item,[],present
+990000688750205171,Q134605231,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אמריליו, ראובן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000694400205171,Q141747005,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שמחה בן יצחק אייזק מדובנא"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000696420205171,Q141747008,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""משה בן יהודה מלאקוילה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000698660205171,Q141747009,P1071,Q168225,item,[],present
+990000702460205171,Q141747013,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, גד בן עמנואל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000705510205171,Q141747014,P1071,Q6247,item,[],present
+990000705510205171,Q141747014,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יל\""י"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000727400205171,Q141747015,P1071,Q6122,item,[],present
+990000738230205171,Q141747017,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דיאנה, יצחק אלישע"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000749240205171,Q141175743,P1071,Q6247,item,[],present
+990000750090205171,Q141747057,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שושי, אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000763560205171,Q141747059,P1071,Q406,item,[],present
+990000770470205171,Q141747062,P1071,Q3572,item,[],present
+990000770470205171,Q141747062,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אזאוי, שלום בן נחמיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000773730205171,Q141747063,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בשירי, יחיא"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000775160205171,Q141747071,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלבז, אפרים בן שאול"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000776020205171,Q141175745,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אזולאי, ישועה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000779510205171,Q141747073,P1071,Q1085,item,[],present
+990000788370205171,Q141747074,P1071,Q79,item,[],present
+990000788440205171,Q141747076,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אשנבי, שמואל בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000788500205171,Q141747077,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אשנבי, שמואל בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000790140205171,Q141747082,P1071,Q3766,item,[],present
+990000790140205171,Q141747082,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מזרחי, משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000790230205171,Q141747085,P1071,Q641,item,[],present
+990000790230205171,Q141747085,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יצחק בן יעקב מן הלויים"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000790230205171,Q141747085,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""וולטרה, חיים"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000798840205171,Q141747088,P1071,Q202560,item,[],present
+990000798890205171,Q141747093,P1071,Q202560,item,[],present
+990000799150205171,Q141747094,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יצחק בן מרדכי הזקן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000801720205171,Q141747096,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צדוק בן יוסף הזקן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000802880205171,Q141747098,P1071,Q1719466,item,[],present
+990000804310205171,Q141747099,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צדוק בן יוסף הזקן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000810710205171,Q141747100,P1071,Q202560,item,[],present
+990000810710205171,Q141747100,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000818510205171,Q141747144,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""משה בן אליהו הלוי הירושלמי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000819050205171,Q141747145,P1071,Q3415,item,[],present
+990000819050205171,Q141747145,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פרמי, יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000824830205171,Q141747148,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אוטולנגו, יעקב בן מנחם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000825080205171,Q141175769,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אשנבי, יוסף בן שמואל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000828230205171,Q141747150,P1071,Q13362,item,[],present
+990000829710205171,Q141747152,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""עזרי, יאשיהו בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000829710205171,Q141747152,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פריצול, אברהם בן מרדכי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000831830205171,Q141747153,P1071,Q6247,item,[],present
+990000834140205171,Q141747154,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלקרוט, מתתיה בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000840890205171,Q141747155,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מונדולפו, מתתיהו בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000842550205171,Q141747157,P1071,Q727,item,[],present
+990000846660205171,Q141747160,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""קלימני, פויגלה בת אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000848100205171,Q141747161,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""קולוניה, יצחק סיני בן יהודה שמואל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000856010205171,Q141175772,P1071,Q160544,item,[],present
+990000856010205171,Q141175772,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שלמה נחום בן שבתי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000856190205171,Q141747162,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מררי, שאול בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000856560205171,Q141747163,P1071,Q3012,item,[],present
+990000856560205171,Q141747163,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 392"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990000857990205171,Q141747164,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מוצירי, שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000861670205171,Q141747166,P1071,Q85,item,[],present
+990000864590205171,Q141175776,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יעקב"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000864630205171,Q141747167,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000870540205171,Q141747168,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יצחק בן מרדכי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000880550205171,Q141175777,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סידיש, שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000885660205171,Q141747169,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 178"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990000885680205171,Q141747170,P1071,Q22690,item,[],present
+990000885680205171,Q141747170,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פיבש יואל בן שמואל שליט"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000885680205171,Q141747170,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 4088"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990000885680205171,Q141747170,P3342,Q66031,item,"[{""type"": ""item"", ""value"": ""Q10359183"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""sender"", ""property_label"": ""object has role"", ""value_namespace"": ""wikidata""}, {""type"": ""string"", ""value"": ""51א-52א"", ""property"": ""P958"", ""property_id"": ""P958"", ""property_label"": ""section, verse, paragraph, or clause""}, {""type"": ""string"", ""value"": ""אליהו בן אשר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000885680205171,Q141747170,P3342,Q61073,item,"[{""type"": ""item"", ""value"": ""Q28008314"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""addressee"", ""property_label"": ""object has role"", ""value_namespace"": ""wikidata""}, {""type"": ""string"", ""value"": ""51א-52א"", ""property"": ""P958"", ""property_id"": ""P958"", ""property_label"": ""section, verse, paragraph, or clause""}, {""type"": ""string"", ""value"": ""מינסטר, סבסטין"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000892070205171,Q141747171,P1071,Q1218,item,[],present
+990000893610205171,Q141747173,P1071,Q13360,item,[],present
+990000893610205171,Q141747173,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""לינגי, ישראל שלמה בן טוביה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000894670205171,Q141747174,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שבזי, אברהם בן משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000896070205171,Q141747178,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""משה יצחק בן אברהם מפרוסטיץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000896090205171,Q141747180,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""משה יצחק בן אברהם מפרוסטיץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000898590205171,Q141747184,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלטוילי, שלום בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000904450205171,Q141747187,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יהודה בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000913260205171,Q141747188,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""הלר, יום טוב ליפמן בן נתן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000914630205171,Q141747190,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 176"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990000914680205171,Q141747191,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלמוסאי, מימון בן משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000920390205171,Q141747192,P1071,Q1085,item,[],present
+990000920390205171,Q141747192,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""עוזרש, שמעון יהודה ליב בן מאיר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000927450205171,Q141747193,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000928800205171,Q141747195,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אזנקוט, סעדיה בן לוי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000932720205171,Q141747197,P1071,Q406,item,[],present
+990000932720205171,Q141747197,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""רומן, יעקב בן יצחק אבן בקודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000942930205171,Q141747199,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בניחגאג, מעודד בן שמריה בן נחום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000946000205171,Q141747207,P1071,Q1794,item,[],present
+990000946000205171,Q141747207,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פינחס זליגמן בן גרשון"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000947690205171,Q141747209,P1071,Q1720,item,[],present
+990000950220205171,Q141747210,P1071,Q641,item,[],present
+990000950220205171,Q141747210,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""היני, אברהם בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000953470205171,Q141747215,P1071,Q727,item,[],present
+990000953610205171,Q141747216,P1071,Q727,item,[],present
+990000953620205171,Q141747217,P1071,Q727,item,[],present
+990000958680205171,Q134688667,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מורושיני, ג'וליו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000961800205171,Q141747219,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ריאיטי, יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000987120205171,Q141747220,P1071,Q220,item,[],present
+990000987120205171,Q141747220,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""Biancuzzi, Benedetto"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000990260205171,Q141747223,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יהודה בן אליעזר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000990320205171,Q141747225,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלטוילי, אהרן בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000998950205171,Q141747226,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מונטאלצינו, עמנואל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000998970205171,Q141747227,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990000999120205171,Q141747228,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פונטרימולי, משה בן גבריאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001005060205171,Q141747230,P1071,Q6122,item,[],present
+990001005060205171,Q141747230,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ברוך, יוסף בן בניהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001010130205171,Q141747232,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""לינגי, ישראל שלמה בן טוביה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001011990205171,Q141747235,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שמואל בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001015950205171,Q141747237,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1253"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001016240205171,Q141747238,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 25"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001022280205171,Q141747239,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 830"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001022840205171,Q141747241,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""טוב בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001022860205171,Q141747243,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אברהם בן סעדיה בן עמרם בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001022870205171,Q141747244,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אברהם בן זכריה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001022880205171,Q141747245,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלאשרסי, משה בן יוסף בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001022890205171,Q141747246,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלטוילי, זכרי אבן אביגד בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001022890205171,Q141747246,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלנג'אר, יוסף בן מעודד בן יתר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001022890205171,Q141747246,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1704"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001022900205171,Q141747248,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001022920205171,Q141747250,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שלמה בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001027310205171,Q141747251,P1071,Q2028,item,[],present
+990001028160205171,Q141175783,P1071,Q2125362,item,[],present
+990001028160205171,Q141175783,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001028930205171,Q141747253,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלתאם, זכי בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001029260205171,Q141747255,P1071,Q47492,item,[],present
+990001029300205171,Q141747256,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}]",present
+990001030090205171,Q141747257,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""חביב שמיע הלוי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001039100205171,Q141747262,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1533"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001039720205171,Q141175785,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1894"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001039990205171,Q141747264,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שבת, שלמה בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001039990205171,Q141747264,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 2256"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001041130205171,Q141747265,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""זכריה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001042260205171,Q141747267,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אבן צור, יעקב בן ראובן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001044950205171,Q141747269,P1071,Q641,item,[],present
+990001044950205171,Q141747269,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""נחום בן נתן שליט"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001048690205171,Q134610828,P1071,Q13362,item,[],present
+990001056990205171,Q141175787,P1071,Q6122,item,[],present
+990001059010205171,Q141747277,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צבע, חזקיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001062450205171,Q141747278,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בדיחי, יוסף בן ישראל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001062450205171,Q141747278,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ישע בן דוד בן נחום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001064240205171,Q141747283,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001064240205171,Q141747283,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יפת בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001064960205171,Q141747284,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אבן צור, שלמה אליהו בן יעקב"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001064960205171,Q141747284,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אבן צור, יעקב בן ראובן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001065130205171,Q141747285,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001065200205171,Q141747286,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001065660205171,Q141747287,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001066960205171,Q141747290,P1071,Q6247,item,[],present
+990001067860205171,Q141747291,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ברכה, יוסף בן רצון בן שמואל בן אהרן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001067860205171,Q141747291,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 100"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001067870205171,Q141747292,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ברכה, יוסף בן רצון בן שמואל בן אהרן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001067870205171,Q141747292,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 101"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001068010205171,Q141747293,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 114"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001077040205171,Q141747294,P1071,Q641,item,[],present
+990001077400205171,Q141747295,P1071,Q6247,item,[],present
+990001078470205171,Q141747296,P1071,Q279,item,[],present
+990001079140205171,Q141747297,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001079640205171,Q141747298,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001084010205171,Q141747302,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001084110205171,Q141747304,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלכסנדר בן מרדכי כהן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001084150205171,Q141747305,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלכלפי, אברהם בן שלמה בן יונה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001084690205171,Q134595167,P1071,Q202560,item,[],present
+990001084690205171,Q134595167,P11603,,somevalue,"[{""type"": ""item"", ""value"": ""Q30230067"", ""property"": ""P1480"", ""property_id"": ""P1480"", ""value_label"": ""possibly"", ""property_label"": ""sourcing circumstances""}, {""type"": ""string"", ""value"": ""מבי\""ז(?)"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001084690205171,Q134595167,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 132"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001084720205171,Q141747306,P1071,Q3415,item,[],present
+990001084720205171,Q141747306,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מקלי, יוסף חי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001085880205171,Q141747307,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, דוד חיים בן משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001085880205171,Q141747307,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 934"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001085960205171,Q141747308,P1071,Q13360,item,[],present
+990001086610205171,Q141747309,P1071,Q727,item,[],present
+990001086610205171,Q141747309,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מרשן, יעקב בן מאיר מאמשטרדם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001086610205171,Q141747309,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1473"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001086690205171,Q141747310,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""לאון, יצחק בן מרדכי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001086690205171,Q141747310,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1549"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001087630205171,Q141747311,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001087630205171,Q141747311,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 3323"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001087660205171,Q141747312,P1071,Q202560,item,[],present
+990001087660205171,Q141747312,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001087660205171,Q141747312,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 3397"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001088330205171,Q141747313,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צרור, משה בן אפרים"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001088330205171,Q141747313,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 316"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001088830205171,Q141747314,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בדארידוס, גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001088900205171,Q141747315,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלחגאג', חיים בן שלום בן דוד בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001089080205171,Q141747316,P1071,Q1055,item,[],present
+990001089080205171,Q141747316,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""קוריאל, משה בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001089080205171,Q141747316,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 2000"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001089360205171,Q141175788,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""עמר, יוסף יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001089510205171,Q141747317,P1071,Q475991,item,[],present
+990001089510205171,Q141747317,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001089680205171,Q141747318,P1071,Q641,item,[],present
+990001089680205171,Q141747318,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""היני, אברהם בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001089680205171,Q141747318,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 981"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001091240205171,Q141747319,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פרינטי, יעקב בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001091450205171,Q141747320,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""Grimani, Agostino"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001092680205171,Q141747322,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 644"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001093620205171,Q141747323,P1071,Q279,item,[],present
+990001093620205171,Q141747323,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1131"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001094480205171,Q141747324,P1071,Q13134,item,[],present
+990001094480205171,Q141747324,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1010"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001096270205171,Q141747325,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 2363"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001096280205171,Q141747326,P1071,Q13362,item,[],present
+990001096280205171,Q141747326,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 834"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001111010205171,Q141747329,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 3799"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001111570205171,Q141747330,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001112170205171,Q141747334,P1071,Q641,item,[],present
+990001117480205171,Q141747337,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001117500205171,Q141747338,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001118020205171,Q141175789,P1071,Q641,item,[],present
+990001119800205171,Q141747339,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מורדו, ראובן בן אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001119800205171,Q141747339,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1427"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001119980205171,Q141747340,P1071,Q727,item,[],present
+990001119980205171,Q141747340,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 683"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001121620205171,Q141747341,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001121680205171,Q141747343,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001121720205171,Q141747344,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 2548"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001121850205171,Q141747346,P1071,Q2125362,item,[],present
+990001121850205171,Q141747346,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""זכריה בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001122020205171,Q141747347,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלחגאגי, חיים בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001124870205171,Q141747350,P1071,Q79,item,[],present
+990001124870205171,Q141747350,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ויטל, משה בן שמואל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001132180205171,Q141747353,P1071,Q220,item,[],present
+990001132180205171,Q141747353,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""Biancuzzi, Benedetto"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001134600205171,Q141747356,P1071,Q641,item,[],present
+990001134600205171,Q141747356,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פיגו, אפרים"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001134600205171,Q141747356,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1187"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001135390205171,Q141747358,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 1557"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001135400205171,Q141175790,P1071,Q279,item,[],present
+990001136280205171,Q141747359,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 760"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001136420205171,Q141747360,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001136420205171,Q141747360,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 442"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001136560205171,Q141175791,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן נחום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001137910205171,Q141747362,P1071,Q2125362,item,[],present
+990001137910205171,Q141747362,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""עזאני, זכריה בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001140550205171,Q141747365,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001141100205171,Q141747416,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001142410205171,Q141747417,P1071,Q727,item,[],present
+990001143740205171,Q141747434,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""הלחמי, אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001147460205171,Q141747435,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שלמה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001153290205171,Q141747436,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שרארה, עמרם בן שלום בן יתר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001154460205171,Q141747442,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צראב, ישועה בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001160220205171,Q141747447,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""כרמי, ישראל בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001162290205171,Q141747449,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקיסי, סעדיה בן שלמה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001162850205171,Q141747450,P1071,Q279,item,[],present
+990001162850205171,Q141747450,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""רובירה בן ציון"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001164280205171,Q141747451,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""כהן, פינחס בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001166920205171,Q141175792,P1071,Q6247,item,[],present
+990001167130205171,Q141747452,P1071,Q6247,item,[],present
+990001167280205171,Q141747454,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001174190205171,Q141747457,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""לאון, אברהם שלום בן מרדכי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001177810205171,Q141747458,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מורנו, רפאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001189730205171,Q141747459,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקטיעי, משה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001190060205171,Q141747462,P1071,Q406,item,[],present
+990001190680205171,Q141747463,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צמח, יעקב בן חיים"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001191160205171,Q141747465,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שרארה, עמרם בן שלום בן יתר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001192190205171,Q141747471,P1071,Q172597,item,[],present
+990001192190205171,Q141747471,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלעדוי, יעקב בן יצחק בן עודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001197830205171,Q141747473,P1071,Q13134,item,[],present
+990001204270205171,Q141747476,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אברהם בן משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001205430205171,Q141747479,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ונה, אברהם בן יוסף בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001205540205171,Q141747480,P1071,Q34217,item,[],present
+990001205840205171,Q141175794,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אבהר, יוסף בן סעדיה בן יוסף בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001207530205171,Q141747483,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יעקב בן ישועה חזן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001207830205171,Q141747484,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שמואל בן ברוך"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001207830205171,Q141747484,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ברוך"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001209580205171,Q141747485,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ברכה, יוסף בן רצון בן שמואל בן אהרן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001209890205171,Q141747486,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלמסורי, זכריה בן אברהם בן זכריה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001210020205171,Q141747488,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דניאל גליפי דלמאר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001210060205171,Q141747489,P1071,Q85,item,[],present
+990001211120205171,Q141747493,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלחגאגי, חיים בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001219050205171,Q141749918,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""כילי, משה בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001219060205171,Q141747506,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שמעון בן נפתלי ממרקלסום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001219330205171,Q141747507,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001219480205171,Q141747509,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מימון בן סעדיה בן משה אלמוסאי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001219490205171,Q141175796,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלחגאג', חיים בן שלום בן דוד בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001219500205171,Q141747511,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מעלם, זכריה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001219520205171,Q141747512,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פינחס בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001233890205171,Q141747514,P1071,Q214178,item,[],present
+990001233890205171,Q141747514,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מרחיב בן יעקב בן אברהם בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001236420205171,Q141747515,P1071,Q475991,item,[],present
+990001236420205171,Q141747515,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001238680205171,Q141747516,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן יעקב יעיד מוגרבי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001239200205171,Q141747517,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""כלופי, זכריה בן נתן בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001239240205171,Q141747518,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלטיאני, דוד בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001243370205171,Q141747522,P1071,Q13134,item,[],present
+990001243900205171,Q141747523,P1071,Q214178,item,[],present
+990001243900205171,Q141747523,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דנפי, יעקב בן מורגאן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001245530205171,Q141747526,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אדו, ראובן בן יעקב אבן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001248200205171,Q141747527,P1071,Q3415,item,[],present
+990001249850205171,Q141747528,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלגמוה, אברהם בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001249930205171,Q141747530,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שלמה בן ישראל בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001251960205171,Q141747531,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אבראהים בן ישמעאל בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001253400205171,Q141362081,P1071,Q3852,item,[],present
+990001254240205171,Q141175798,P1071,Q1218,item,[],present
+990001254240205171,Q141175798,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""גבאי, טוביה בן חיים יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001255900205171,Q141747537,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מאיר בן בצלאל כץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001255910205171,Q141747539,P1071,Q2028,item,[],present
+990001267610205171,Q141747589,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אוטולינגו, שמואל דוד בן יחיאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001269950205171,Q141747590,P1071,Q475991,item,[],present
+990001269950205171,Q141747590,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001270070205171,Q141747591,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אפרים בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001270550205171,Q141747592,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פרובנצלו בן ציון"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001270690205171,Q141747594,P1071,Q475991,item,[],present
+990001270690205171,Q141747594,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001273110205171,Q141747597,P1071,Q3852,item,[],present
+990001273110205171,Q141747597,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אינשטט, נתן בן יחאיל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001273580205171,Q141747598,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלחגאגי, חיים בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001285000205171,Q141747600,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""המרשלק, נתן נטע בן משה נפתלי הירש"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001286970205171,Q141175799,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלגהסי, מעודד בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001291720205171,Q141747604,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ברכה, יוסף בן רצון בן שמואל בן אהרן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001294770205171,Q141747606,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שמואל בן אברהם בן שמואל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001303260205171,Q141747607,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקיסי, סעדיה בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001303400205171,Q141747609,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בשירי, יחיא"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001313900205171,Q141747613,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלכלפי, זכריה בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001319630205171,Q141747615,P1071,Q406,item,[],present
+990001321540205171,Q141747616,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אבן צור, משה בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001324660205171,Q141747620,P1071,Q2125362,item,[],present
+990001327370205171,Q141747624,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אברהם בן מרדכי הכהן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001327810205171,Q141747625,P1071,Q1055,item,[],present
+990001327810205171,Q141747625,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""קורדובה, יצחק בן משה רפאל די"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001333740205171,Q141747627,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001338380205171,Q141747628,P1071,Q2125362,item,[],present
+990001338390205171,Q141747629,P1071,Q955523,item,[],present
+990001338390205171,Q141747629,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלמעברי, סעדיה בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001338440205171,Q134696535,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלועאני, יהודה בן משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001343980205171,Q141747633,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001345390205171,Q141747634,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן סלימן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001347190205171,Q141747635,P1071,Q6397,item,[],present
+990001347920205171,Q141747638,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001348400205171,Q141747639,P1071,Q2125362,item,[],present
+990001349760205171,Q141747641,P1071,Q955523,item,[],present
+990001349760205171,Q141747641,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פינחס בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001349770205171,Q141747642,P1071,Q955523,item,[],present
+990001349770205171,Q141747642,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פינחס בן גד הכהן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001350000205171,Q141747643,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יחיא, תם בן גדליה אבן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001350200205171,Q141747644,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001361140205171,Q141747656,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעיד בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001366470205171,Q141747662,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן עמרם בן עודד בן זכריה בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001366960205171,Q141747668,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלמנזלי, שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001371210205171,Q141747669,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן יעקב"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001371830205171,Q141747671,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001371830205171,Q141747671,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001371930205171,Q141747673,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001372120205171,Q141747675,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001372150205171,Q141747676,P1071,Q475991,item,[],present
+990001372150205171,Q141747676,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001372150205171,Q141747676,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001372730205171,Q141747677,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יצחק בן עבדאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001373740205171,Q141747678,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יהודה ליב בן יחיאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001373740205171,Q141747678,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""גורדון, מנחם בן יעקב כץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001375760205171,Q141747680,P1071,Q1085,item,[],present
+990001375760205171,Q141747680,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שמואל בן משה מפראג"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001376840205171,Q141175802,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יום טוב ליפמן חזן בן וייבלמן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001381470205171,Q141747683,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אברהם בן פינחס מבוסקוביץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001381470205171,Q141747683,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אהרן בן יהודה אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001391780205171,Q141747687,P1071,Q2125362,item,[],present
+990001395280205171,Q141747690,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""טריביש, יצחק בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001398050205171,Q141747691,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""חיים דוד בן מרדכי שאלתיאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001399490205171,Q141747693,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בשירי, יחיא"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001402040205171,Q141747694,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלנדאף, יוסף בן סעיד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001406710205171,Q141175808,P1071,Q1218,item,[],present
+990001416510205171,Q141747696,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן אמברך"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001465880205171,Q141747697,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001466250205171,Q141747699,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יעקב"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001468680205171,Q141747701,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אזוביב, סעדיה בן נהוראי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001490230205171,Q141747706,P1071,Q641,item,[],present
+990001492200205171,Q141747774,P1071,Q727,item,[],present
+990001492200205171,Q141747774,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""Curiel, Semuel de David"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001497790205171,Q133214943,P1071,Q85,item,[],present
+990001499320205171,Q141175809,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001510630205171,Q141747778,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001580110205171,Q141175810,P1071,Q13362,item,[],present
+990001625570205171,Q141747784,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אופנהים, יעקב בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001626410205171,Q141747785,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ליטמריץ, יואל בן בנימין וולף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001629230205171,Q141747786,P1071,Q34217,item,[],present
+990001629240205171,Q141747787,P1071,Q34217,item,[],present
+990001642720205171,Q141747811,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מורנו, רפאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001659100205171,Q141747812,P1071,Q31487,item,[],present
+990001675340205171,Q141747816,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יצחק בן צבי הירש"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001679010205171,Q141747898,P1071,Q475991,item,[],present
+990001679010205171,Q141747898,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001679060205171,Q141747899,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מזרחי, שמעון בן יונה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001679300205171,Q141747900,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מזרחי, שמעון בן יונה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001689710205171,Q141747902,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלכלפי, אברהם בן שלמה בן יונה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001689720205171,Q141747903,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יהודה בן אברהם בן יוסף בן זכריה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001689730205171,Q141747934,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלשיחאני, יוסף בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001689780205171,Q141747936,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלפהים, זכריה בן דוד בן זכריה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001691040205171,Q141747937,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שב\""ע"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001692760205171,Q141747940,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יצחק בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001704440205171,Q141747943,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""קמפר, יוהן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001704450205171,Q141747944,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""לוי בן אליעזר מבערנהיים"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001710490205171,Q141747947,P1071,Q727,item,[],present
+990001731860205171,Q141748058,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""איספירנסה, גבריאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001738610205171,Q141748061,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001748970205171,Q141175880,P1071,Q495,item,[],present
+990001751720205171,Q141748067,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001753270205171,Q141748069,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צגיר, אברהם בן יעקב"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001758470205171,Q141748072,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מילר, יהודה בן שמואל רויטלינגן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001761710205171,Q141748075,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ניסן בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001761720205171,Q141748076,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שבתי בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001762200205171,Q141748079,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פירוז, דניאל בן משה בן ישעיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001767770205171,Q141748080,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יהודה בן מאיר הכהן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001771680205171,Q141748081,P1071,Q168225,item,[],present
+990001772940205171,Q141748082,P1071,Q2471,item,[],present
+990001772940205171,Q141748082,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקטיעי, משה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001775180205171,Q141748083,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שלמה בן ישראל בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001777970205171,Q141748085,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""משה בן יוסף כץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001778280205171,Q141748086,P1071,Q13362,item,[],present
+990001779170205171,Q141748087,P1071,Q3415,item,[],present
+990001779170205171,Q141748087,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""טריוי, יצחק יחיאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001785380205171,Q141748091,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אוטולינגו, שמואל דוד בן יחיאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001785780205171,Q141748092,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אוטולינגו, שמואל דוד בן יחיאל מפאנו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001786730205171,Q141748094,P1071,Q279,item,[],present
+990001792130205171,Q141748099,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיכאל יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001792890205171,Q141175882,P1071,Q202560,item,[],present
+990001792890205171,Q141175882,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""כרמי, ישראל בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001793780205171,Q141748100,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001793970205171,Q141748101,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""לוי, יהודה בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001794810205171,Q141748102,P1071,Q406,item,[],present
+990001797580205171,Q141748103,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלחראזי, שלמה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001799180205171,Q141748104,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שלמה בן ישראל בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001800780205171,Q141748105,P1071,Q279,item,[],present
+990001800800205171,Q141748106,P1071,Q6247,item,[],present
+990001800810205171,Q141748107,P1071,Q13362,item,[],present
+990001801810205171,Q141748108,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""נחמיה בן אמש\""ל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001804060205171,Q141748109,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""למלן, אהרן בן יעקב מפודהיץ"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001810750205171,Q141748112,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ערוך, אליהו חיים בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001816070205171,Q141748114,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""זליגמן, שלמה בן אהרן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001818810205171,Q141748115,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מנחם בן חנוכה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001819490205171,Q141748116,P1071,Q1794,item,[],present
+990001819490205171,Q141748116,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יעקב בן שלמה (מפרנקפורט)"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001820030205171,Q141748117,P1071,Q727,item,[],present
+990001824840205171,Q141748119,P1071,Q2028,item,[],present
+990001827110205171,Q141748121,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלמליח, יהודה בן אברהם בן נחום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001827130205171,Q141748122,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בשירי, יחיא"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001827620205171,Q141748123,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעדיה בן מעודד בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001827870205171,Q141175885,P1071,Q172597,item,[],present
+990001827870205171,Q141175885,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלעדוי, יוסף בן עמרם בן עודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001827880205171,Q141748124,P1071,Q172597,item,[],present
+990001827880205171,Q141748124,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלעדוי, יוסף בן עמרם בן עודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001828180205171,Q141748126,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""זכריה בן סעדיה בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001830400205171,Q141175886,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דדיניאה, יהודה בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001831030205171,Q141748127,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001831070205171,Q141748128,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001831110205171,Q141748129,P1071,Q202560,item,[],present
+990001831110205171,Q141748129,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001831120205171,Q141748130,P1071,Q202560,item,[],present
+990001831120205171,Q141748130,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001835410205171,Q141748133,P1071,Q1218,item,[],present
+990001835410205171,Q141748133,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אברהם בן ידידיה הכהן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001836320205171,Q141748134,P1071,Q79,item,[],present
+990001836700205171,Q141748135,P1071,Q214178,item,[],present
+990001844730205171,Q141748138,P1071,Q641,item,[],present
+990001844730205171,Q141748138,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""קמרינו, מצליח ברכיה בן משה (השני)"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001845770205171,Q141748139,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקטיעי, משה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001848360205171,Q141748140,P1071,Q475991,item,[],present
+990001848360205171,Q141748140,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001848690205171,Q141748141,P1071,Q1085,item,[],present
+990001850070205171,Q141748143,P1071,Q13362,item,[],present
+990001850070205171,Q141748143,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פשקרול, משה בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001850280205171,Q141748144,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מזרחי, משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001851470205171,Q141748145,P1071,Q3415,item,[],present
+990001851470205171,Q141748145,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלוקיו, שלמה בן משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001855990205171,Q141748147,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001856020205171,Q141748148,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001856120205171,Q141175887,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בידרידוש, נתן יהושע בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001856940205171,Q141748149,P1071,Q955523,item,[],present
+990001856940205171,Q141748149,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""סעיד בן יחיא"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001857740205171,Q141748153,P1071,Q641,item,[],present
+990001858080205171,Q141748155,P1071,Q2028,item,[],present
+990001858540205171,Q141748156,P1071,Q641,item,[],present
+990001858880205171,Q141175888,P1071,Q2028,item,[],present
+990001858880205171,Q141175888,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בסן, חזקיה מרדכי בן שמואל חיים"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001860230205171,Q141748158,P1071,Q279,item,[],present
+990001860230205171,Q141748158,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פוג'טי, יהודה אריה בן יעקב"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001861710205171,Q141748159,P1071,Q1218,item,[],present
+990001863380205171,Q141748162,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקטיעי, משה בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001863380205171,Q141748162,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקטיבי, דוד בן משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001865510205171,Q141748163,P1071,Q727,item,[],present
+990001866430205171,Q141748164,P1071,Q641,item,[],present
+990001869850205171,Q141362082,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שושן, יצחק בן חת"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001873200205171,Q141748166,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""תנעמי, משה בן אברהם בן זכריה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001875220205171,Q141175891,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקיסי, סעדיה בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001878130205171,Q141175892,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלפתיחי, יוסף בן יונה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001878160205171,Q141748169,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""כלופי, זכריה בן נתן בן יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001878530205171,Q141748170,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שלום בן יוסף הקרחי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001882940205171,Q141748171,P1071,Q3766,item,[],present
+990001882940205171,Q141748171,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מזרחי, משה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001884800205171,Q141748172,P1071,Q641,item,[],present
+990001892910205171,Q141748173,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שמואל בן ברוך"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001900810205171,Q141748175,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלפתיחי, סעדיה בן שלום בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001901250205171,Q141748176,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלפקעה, יהודה בן אברהם בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001901520205171,Q141748187,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלאחמר, יוסף בן שלום בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001901770205171,Q141748188,P1071,Q172597,item,[],present
+990001901770205171,Q141748188,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלעדוי, יוסף בן עמרם בן עודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001902100205171,Q141748190,P1071,Q955523,item,[],present
+990001905840205171,Q141748194,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מאינרדו, קיסר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001905850205171,Q141748246,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מאינרדו, קיסר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001905860205171,Q141748248,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מאינרדו, קיסר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001910770205171,Q141748274,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אוטולינגו, שמואל דוד בן יחיאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001911540205171,Q141748275,P1071,Q13360,item,[],present
+990001911540205171,Q141748275,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אוטולינגו, שמואל דוד בן יחיאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001913310205171,Q141748276,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אוטולנגי, ישראל בן טוביה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001913460205171,Q141748278,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אוטולינגו, שמואל דוד בן יחיאל"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001914650205171,Q141748279,P1071,Q6247,item,[],present
+990001914650205171,Q141748279,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יהודה בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001917110205171,Q141748306,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלטון, עזרה ברכיה בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001921390205171,Q141748307,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יהודה בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001921540205171,Q141748308,P1071,Q955523,item,[],present
+990001921540205171,Q141748308,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלמעברי, סעדיה בן מעודד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001925450205171,Q141748319,P1071,Q202560,item,[],present
+990001925450205171,Q141748319,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""דלפוגיט, אליהו"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001926380205171,Q141748320,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""תאומים, יעקב בן אהרן"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001929740205171,Q141748321,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן שלום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001937770205171,Q141748328,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלשרפי, יוסף בן סעדיה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001948980205171,Q141175896,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""עבד אללה בן סוכר"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001949060205171,Q141748333,P1071,Q3766,item,[],present
+990001950490205171,Q141748334,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יחיאל בן דוד בן פורת"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001952110205171,Q141748339,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלפתיחי, יהודה בן דוד בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001952110205171,Q141748339,P3342,Q1170731,item,"[{""type"": ""item"", ""value"": ""Q136357543"", ""property"": ""P3831"", ""property_id"": ""P3831"", ""value_label"": ""former owner"", ""property_label"": ""object has role""}, {""type"": ""string"", ""value"": ""Ms. 55"", ""property"": ""P217"", ""property_id"": ""P217"", ""property_label"": ""inventory number""}]",present
+990001979390205171,Q141748400,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלמליח, יהודה בן אברהם בן נחום"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001983850205171,Q141748402,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אסטרוק, מרדכי בן יעקב"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001989170205171,Q141748403,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""לאון, יוסף בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990001989170205171,Q141748403,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990002091070205171,Q141748406,P1071,Q6247,item,[],present
+990024819990205171,Q141748407,P1071,Q1085,item,[],present
+990024953100205171,Q141748408,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בנימין שניאור"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990025349370205171,Q141748409,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלקלומה, משה בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990025630180205171,Q141748410,P1071,Q805,item,[],present
+990025656430205171,Q141748411,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""חטר בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990025843430205171,Q141748412,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""שושן, יצחק בן חת"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990025903200205171,Q141175899,P1071,Q38,item,[],present
+990025916320205171,Q141754509,P1071,Q38,item,[],present
+990025916320205171,Q141754509,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""צורף, יעקב בן שלמה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990025916610205171,Q134885243,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אבא בן משלם הלוי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990025934540205171,Q141748415,P1071,Q13362,item,[],present
+990025934540205171,Q141748415,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""פשקרול, משה בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990026016230205171,Q141748417,P1071,Q2471,item,[],present
+990026035260205171,Q141748418,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""יוסף בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990026143620205171,Q141748419,P11603,,somevalue,"[{""type"": ""item"", ""value"": ""Q30230067"", ""property"": ""P1480"", ""property_id"": ""P1480"", ""value_label"": ""possibly"", ""property_label"": ""sourcing circumstances""}, {""type"": ""string"", ""value"": ""אלמסורי, ?ד בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990026526560205171,Q141748420,P1071,Q2028,item,[],present
+990026929000205171,Q141748422,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מודנה, יהודה אריה בן יצחק"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990027154270205171,Q141748424,P11603,,somevalue,"[{""type"": ""item"", ""value"": ""Q30230067"", ""property"": ""P1480"", ""property_id"": ""P1480"", ""value_label"": ""possibly"", ""property_label"": ""sourcing circumstances""}, {""type"": ""string"", ""value"": ""אלענבי, יוסף בן זכריה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990032561810205171,Q141748429,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""אלפהים, חיים בן דוד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990033787170205171,Q141748434,P1071,Q727,item,[],present
+990033790980205171,Q141748435,P1071,Q727,item,[],present
+990033790980205171,Q141748435,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""Gabay, Mosse"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990034170610205171,Q141748436,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מיליאב, עמנואל בן גד"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990034371380205171,Q141748438,P1071,Q279,item,[],present
+990034372240205171,Q141748439,P1071,Q38,item,[],present
+990034376070205171,Q141748440,P1071,Q38,item,[],present
+990035044030205171,Q141175900,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מונדולפו, שמואל בן אברהם"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990035802410205171,Q141748442,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""ישראל בן יוסף"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990035844820205171,Q141748443,P1071,Q3415,item,[],present
+990036375040205171,Q141748445,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""מכבי, יהודה"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present
+990036504500205171,Q141748446,P1071,Q727,item,[],present
+990036504570205171,Q141748447,P1071,Q727,item,[],present
+990038384110205171,Q141175901,P1071,Q641,item,[],present
+990038692590205171,Q141175902,P11603,,somevalue,"[{""type"": ""string"", ""value"": ""בשירי, יחיא הלוי"", ""property"": ""P1932"", ""property_id"": ""P1932"", ""property_label"": ""object named as""}]",present

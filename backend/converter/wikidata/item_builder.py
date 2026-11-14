@@ -1350,7 +1350,12 @@ def _associate_item_with_source_record(
 
 # ── Builder ──────────────────────────────────────────────────────────
 
-from converter.wikidata.content_projection import ContentProjectionMixin
+from converter.wikidata.content_projection import (
+    ContentProjectionMixin,
+)
+from converter.wikidata.content_projection import (  # noqa: E402
+    structured_work_attribution as structured_work_attribution,
+)
 from converter.wikidata.manuscript_metadata import ManuscriptMetadataMixin
 from converter.wikidata.manuscript_projection import ManuscriptProjectionMixin
 from converter.wikidata.person_linking import PersonLinkingMixin

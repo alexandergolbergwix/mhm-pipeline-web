@@ -13,7 +13,7 @@ It binds the work evidence to one corroborated source record.
 An unsupported author-qualified URI cannot create a work.
 A title that itself contains `by` retains the authorless-title path.
 
-The canonical cache salt is `hmo-wikidata-v23`.
+The canonical cache salt is `hmo-wikidata-v28`.
 `local_measure_verify.py` now checks native and serialized output with the production export gate.
 The complete audit must pass that gate before it reports success.
 The export gate initializes the item builder before the content mixin in a new process.

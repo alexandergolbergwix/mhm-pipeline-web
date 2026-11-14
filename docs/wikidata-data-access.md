@@ -84,23 +84,18 @@ Every Studio item goes through this gate **before** any CREATE/UPDATE (live and 
 
 ### Write decision matrix
 
-| Existing QID? | Ownership | Curator accept foreign modify (bound to that QID)? | Action |
-|---|---|---|---|
-| No (confirmed absent) | — | — | **CREATE** (after validator) |
-| Yes | **own** (acting token is first-revision author) | — | **UPDATE** allowed |
-| Yes | **foreign** | **No** (default) | **SKIP / BLOCK** — never CREATE a duplicate, never silent modify |
-| Yes | **foreign** | **Yes** (per-entity, QID-bound) | **UPDATE** allowed (audited exception; identity-conflict guards still apply) |
-| Yes | **unknown** (no token / API fail) | — | **BLOCK** fail-closed for UPDATE; do not CREATE |
+| Existing QID? | Creator proof | Action |
+|---|---|---|
+| No, confirmed absent | Not applicable | CREATE after duplicate and validator checks |
+| Yes | Authenticated account is the first-revision author | UPDATE after all other guards |
+| Yes | Another creator | SKIP / BLOCK; reference-only reuse remains available |
+| Yes | Unknown account or creator | BLOCK UPDATE and duplicate CREATE |
 
-Defaults:
-
-- User may **add** new entities only after smart non-duplication checks.
-- User may **modify** only entities they created (token-proven), unless they explicitly accept each foreign QID.
-
-Accept is stored on `WikidataItemOverride` as `accept_foreign_modify` + `accepted_foreign_qid` and must match the reconciled QID at upload time.
-P3959 is identity evidence, not creator ownership or permission to edit (W-302).
-Publication additionally binds foreign consent to the entity key, remote revision,
-and sealed entity digest. Bulk upload does not use that Publication consent.
+Rule W-324 makes creator proof mandatory without an exception.
+Historical foreign approval fields remain readable but cannot authorize an edit.
+P3959 and a ledger mapping establish identity, not creator ownership.
+Publication and bulk upload apply the same creator-only rule.
+QuickStatements emits no existing-item edit commands because it has no authenticated creator proof.
 
 ---
 

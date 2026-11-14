@@ -30,7 +30,8 @@ def test_main_codicological_unit_has_meaningful_description() -> None:
     description = unit.descriptions["en"]
     assert GENERIC_SUFFIX not in description
     assert "990001800310205171" in description
-    assert title in description
+    assert title not in description
+    assert title in unit.descriptions["he"]
     assert shelfmark in description
     assert description.startswith("Primary codicological unit of manuscript")
 
@@ -176,8 +177,10 @@ def test_paleographical_unit_comment_grounds_scribe() -> None:
     graph = GraphBuilder().build_graph(data, "990001800310205171")
     pu_nodes = list(graph.subjects(RDF.type, HM.Paleographical_Unit))
     assert pu_nodes
-    comment = str(graph.value(pu_nodes[0], RDFS.comment))
-    assert "scribe משה בן מימון" in comment
+    comments = {literal.language: str(literal) for literal in graph.objects(pu_nodes[0], RDFS.comment)}
+    assert "משה בן מימון" in comments["he"]
+    assert "משה בן מימון" not in comments["en"]
+    assert "scribe" in comments["en"]
 
 
 def test_paleographical_unit_comment_states_negative_when_unknown() -> None:
@@ -208,7 +211,8 @@ def test_long_isbd_work_label_uses_precolon_head() -> None:
     assert work is not None
     label = work.labels.get("he") or work.labels.get("en")
     assert label == "שער שברי לוחות"
-    assert "שער שברי לוחות" in work.descriptions["en"]
+    assert "שער שברי לוחות" not in work.descriptions["en"]
+    assert "שער שברי לוחות" in work.descriptions["he"]
 
 
 def test_digital_urls_strip_marc_quote_wrappers() -> None:

@@ -183,6 +183,7 @@ CLAIM_SOURCE_SLICES: dict[str, tuple[str, ...]] = {
     "P528": ("record_ids", "shelfmark"),              # catalog code
     "P958": ("extent", "notes"),                      # folio / section
     "P972": ("record_ids",),                          # catalog
+    "P1343": ("notes", "shelfmark"),                # reviewed bibliography in 581/942
     "P793": ("provenance", "notes"),                  # significant event
     "P1552": ("material", "notes"),                   # has quality
     "P1566": ("place",),                              # GeoNames ID

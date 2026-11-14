@@ -270,6 +270,7 @@ def item_label(item: dict[str, Any]) -> str:
 
 _LIST_VIEW_DROP_KEYS = frozenset({
     "person_identity_choice",
+    "source_review_choices",
     "statements",
     "authority_evidence",
     "work_candidate_evidence",
@@ -362,6 +363,7 @@ def _content_override_newer_than_build(row: WikidataItemOverride, built_at: date
         row.labels or row.descriptions or row.aliases
         or row.add_statements or row.remove_statements or row.statement_edits
         or getattr(row, "person_identity_choice", None)
+        or getattr(row, "source_review_choices", None) is not None
     )
     return has_content and row.updated_at > built_at
 
@@ -418,6 +420,7 @@ def _merge_one_wikidata_item(
             if ov_row and ov_row.ai_verdict_at else None
         ),
         "person_identity_choice": getattr(ov_row, "person_identity_choice", None),
+        "source_review_choices": getattr(ov_row, "source_review_choices", None),
         "override_present": ov_row is not None,
         "override_id": str(ov_row.id) if ov_row else None,
         "rebuild_required": rebuild_required,

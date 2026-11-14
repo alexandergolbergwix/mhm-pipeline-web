@@ -862,7 +862,6 @@ class SqlAlchemyPublicationRepository:
         self._session.add(row)
         await self._session.flush()
         await self._append_audit(intent)
-        await self._session.commit()
         await self._session.execute(
             update(ExecutionActionRow)
             .where(
@@ -903,7 +902,6 @@ class SqlAlchemyPublicationRepository:
                 )
         await self._session.flush()
         await self._append_audit(intent)
-        await self._session.commit()
         await self._session.execute(
             update(ExecutionActionRow)
             .where(
@@ -917,6 +915,7 @@ class SqlAlchemyPublicationRepository:
                 result_qid=intent.result_qid,
                 result_fingerprint=intent.result_fingerprint,
                 last_error=intent.detail,
+                next_attempt_at=intent.next_attempt_at,
             )
         )
         await self._session.commit()

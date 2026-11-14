@@ -44,10 +44,10 @@
 2. Prefer having a Wikidata token in Settings so ownership (own vs foreign) is
    truthful on dry-run (Rule W-99). Use **Wikidata (test) bot password** for
    `upload_target=test` and **Wikidata (live)** for live (Rule W-178).
-   Without a token, existing QIDs block unless a QID-bound foreign accept is set.
+   Without a token, existing QIDs block because creator proof is absent.
 3. Read per-item outcomes: `exists` (would UPDATE own item), `would_adopt`
-   (ledger/reconcile match or accepted foreign), `success` (would CREATE),
-   `skipped`/`blocked` (foreign without accept, ownership unknown, reconcile
+   (owned ledger/reconcile match), `success` (would CREATE),
+   `skipped`/`blocked` (foreign, ownership unknown, reconcile
    outage, or validator ERROR — message says which).
 4. No live writes in dry-run; moratorium still does not apply to dry-run.
 5. If every row fails with **permissiondenied** / "permissions needed", the
@@ -92,14 +92,14 @@
    `POST …/jobs/{id}/cancel` while the job is still active. Cancel progress/result
    still carries `upload_target`.
 
-### Skill: accept modifying a foreign Wikidata QID
+### Skill: reuse a foreign Wikidata QID
 
-1. Open the item drawer when `existing_qid` is set.
-2. Tick **I accept modifying Q… even if I did not create it** — PATCHes
-   `accept_foreign_modify=true` + `accepted_foreign_qid=<that QID>`.
-3. Re-run dry-run/upload. Accept must match the reconciled QID at write time;
-   a different QID still skips. Duplicate CREATE remains forbidden.
-4. Contract: `docs/wikidata-data-access.md` + Rule W-99.
+1. Verify the source identity against the existing entity.
+2. Choose reference-only reuse through the normal curator workflow.
+3. Keep that QID as a statement target without edits to the foreign entity.
+4. Use the guarded uploader only for entities that the authenticated account created.
+
+Rule W-324 removes the previous foreign-accept exception.
 
 ### Skill: map HMO / project Wikibase claims to public Wikidata P/Q
 
@@ -137,7 +137,7 @@
    retry when WDQS is reachable. Never work around by hand-creating the item.
 3. **Rule-38 / foreign skip** (`refusing to modify QXXX` / not created by your
    account): default policy forbids community UPDATE. Either leave the item,
-   or use the drawer foreign-accept checkbox bound to that QID (Rule W-99),
+   or use the existing QID without updates (Rule W-324),
    then re-dry-run. Never CREATE a duplicate.
 4. **Identifierless skipped persons** (not blocked): if they already have
    VIAF/NLI/QID in authority evidence, force-rebuild so W-188 can stamp
@@ -163,8 +163,7 @@
 9. **Stale duplicate warning on a linked item** (W-199): if an item has an
    `existing_qid`, treat it as `already_linked` and do not flag CREATE risk.
    Refresh verify when the note says `recorded on the stored verdict`.
-   Use the drawer foreign-accept checkbox only when the upload must modify that
-   foreign QID. Never create a second item for the linked QID.
+   Use the foreign QID only as a reference target. Never create a second item for the linked QID.
 
 ### Skill: load all items in the modern review panel
 
@@ -298,3 +297,5 @@ when the web UI cannot reach the release.
 See [source repair safeguards](source-repair-safeguards.md) for W-311–W-314, the focused tests, and the source-only build procedure.
 
 For receipt counts, terminal refresh, and complete connection repairs, follow [upload counts and source resolution](upload-counts-and-resolution.md).
+
+For a Gila source decision, open a manuscript drawer and use [Source review](source-review.md). Supply the exact target, evidence URL, and reason. Rebuild the items. Review and approve the new result. Use [durable exact repairs](repair-retries.md) for a previously reviewed repair plan; an early resume retains the server delay.

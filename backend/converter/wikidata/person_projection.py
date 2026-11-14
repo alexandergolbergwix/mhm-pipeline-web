@@ -56,6 +56,21 @@ _DATE_SUPPRESSING_AUTHORITY_FLAGS = (
 )
 
 _AUDITED_PERSON_AUTHORITIES: dict[str, dict[str, object]] = {
+    "יצחק בן אברהם מטרוקי": {
+        "source": "nli",
+        "name_type": "Personal",
+        "entity_kind": "person",
+        "wikidata_qid": "Q168171",
+        "mazal_id": "987007297464205171",
+        "viaf_uri": "https://viaf.org/viaf/67288238",
+        "preferred_name_heb": "יצחק בן אברהם מטרוקי",
+        "preferred_name_lat": "Isaac of Troki",
+        "birth_year": 1533,
+        "death_year": 1594,
+        "required_source_dates": "1533-1594",
+        "role": "author",
+        "accepted": True,
+    },
     "קנטריני, יצחק חיים": {
         "source": "nli",
         "name_type": "Personal",
@@ -123,9 +138,27 @@ _AUDITED_PERSON_AUTHORITIES: dict[str, dict[str, object]] = {
 }
 
 
-def audited_person_authority(name: str) -> dict[str, object] | None:
+def audited_person_authority(
+    name: str, *, source_record: dict[str, object] | None = None,
+) -> dict[str, object] | None:
     key = _strip_name_quotes(name).strip().rstrip(" ,.;:/-").casefold()
     authority = _AUDITED_PERSON_AUTHORITIES.get(key)
+    required_dates = authority.get("required_source_dates") if authority else None
+    if required_dates:
+        authors = source_record.get("authors") if source_record is not None else None
+        if not isinstance(authors, list):
+            return None
+        headings = []
+        for row in authors:
+            if not isinstance(row, dict):
+                continue
+            heading = _strip_name_quotes(str(row.get("name") or ""))
+            if heading.strip().rstrip(" ,.;:/-").casefold() == key:
+                headings.append(row)
+        if not headings or any(
+            str(row.get("dates") or "").strip() != required_dates for row in headings
+        ):
+            return None
     return dict(authority) if authority is not None else None
 
 
@@ -232,7 +265,7 @@ class PersonProjectionMixin:
                 match_info = m  # type: ignore[assignment]
                 break
         if not match_info and not audited_identity_rejected:
-            audited = audited_person_authority(clean_name)
+            audited = audited_person_authority(clean_name, source_record=source_record)
             if audited is not None:
                 match_info = dict(audited)
                 if not viaf_uri and match_info.get("viaf_uri"):

@@ -6,6 +6,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
+from app.pipeline.wikidata_source_coverage import source_passages
 from app.pipeline.marc_verify_context import canonical_control_number
 from app.pipeline.wikidata_gila_facts import compare_gila_source_facts
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals, entity_digest
@@ -15,7 +16,9 @@ from converter.wikidata.item_builder import manuscript_en_label
 from converter.wikidata.work_identity import reference_control_numbers
 
 _REVIEW_CLASSES = (
-    "absent_in_source", "present_not_transferred", "identity_or_scope_uncertain",
+    "absent_in_source",
+    "present_not_transferred",
+    "identity_or_scope_uncertain",
 )
 
 
@@ -32,13 +35,18 @@ def _text(value: object) -> str:
 
 
 def _claims(item: Mapping[str, object], pid: str) -> list[Mapping[str, object]]:
-    return [row for row in _rows(item.get("statements"))
-            if (row.get("property") or row.get("property_id")) == pid]
+    return [
+        row
+        for row in _rows(item.get("statements"))
+        if (row.get("property") or row.get("property_id")) == pid
+    ]
 
 
 def _qualified(statement: Mapping[str, object], pid: str, value: str) -> bool:
-    return any((q.get("property") or q.get("property_id")) == pid and q.get("value") == value
-               for q in _rows(statement.get("qualifiers")))
+    return any(
+        (q.get("property") or q.get("property_id")) == pid and q.get("value") == value
+        for q in _rows(statement.get("qualifiers"))
+    )
 
 
 def build_gila_audit_report(
@@ -76,7 +84,18 @@ def build_gila_audit_report(
     source_authors: dict[str, list[str]] = {}
     colophons_by_qid: dict[str, str] = {}
     for raw in sources:
-        record = prepare_record_for_pipeline(dict(raw))
+        from app.pipeline.wikidata_source_choices import (
+            reviewed_catalog_map,
+            source_record_for_audit,
+        )
+
+        source_cn = canonical_control_number(
+            prepare_record_for_pipeline(dict(raw)).get("_control_number")
+        )
+        record, reviewed_choices = source_record_for_audit(
+            manuscripts.get(source_cn, {}), raw, live_entities, approved_author_qids
+        )
+        reviewed_catalogs = reviewed_catalog_map(reviewed_choices)
         cn = canonical_control_number(record.get("_control_number"))
         if not cn:
             raise ValueError("An audit source must have a control number.")
@@ -84,24 +103,41 @@ def build_gila_audit_report(
         cases: list[dict[str, object]] = []
 
         def case(
-            point: int, classification: str, field: str, reason: str,
-            *, target: list[dict[str, object]] = cases,
+            point: int,
+            classification: str,
+            field: str,
+            reason: str,
+            *,
+            target: list[dict[str, object]] = cases,
         ) -> None:
-            target.append({"point": point, "classification": classification,
-                           "field": field, "reason": reason})
+            target.append(
+                {"point": point, "classification": classification, "field": field, "reason": reason}
+            )
             totals[classification] += 1
 
         if not item:
             case(9, "present_not_transferred", "record", "manuscript_absent_from_proposal")
+        holding_review = bool(record.get("holding_subfield_reviews"))
+        if holding_review:
+            case(
+                1,
+                "identity_or_scope_uncertain",
+                "942",
+                "holding_associations_require_original_occurrences",
+            )
         shelfmark = _text(record.get("holding_942_shelfmark"))
         if shelfmark:
             if shelfmark not in {_text(s.get("value")) for s in _claims(item, "P217")}:
                 case(1, "present_not_transferred", "942$z", "current_shelfmark_differs")
             expected_label = manuscript_en_label(
-                shelfmark, _text(record.get("holding_942_name")), record,
+                shelfmark,
+                _text(record.get("holding_942_name")),
+                record,
             )
             labels = item.get("labels") or {}
-            if not isinstance(labels, Mapping) or labels.get("en") != expected_label:
+            if not holding_review and (
+                not isinstance(labels, Mapping) or labels.get("en") != expected_label
+            ):
                 case(1, "present_not_transferred", "942", "structured_english_label_differs")
         else:
             if _text(raw.get("942$z")):
@@ -111,19 +147,29 @@ def build_gila_audit_report(
 
         if not record.get("extent") and record.get("907$n"):
             case(2, "identity_or_scope_uncertain", "907$n", "image_name_does_not_prove_form")
-        if not any(s.get("value") == "Q118384267" and _qualified(s, "P3831", "Q60474998")
-                   for s in _claims(item, "P361")):
+        if not any(
+            s.get("value") == "Q118384267" and _qualified(s, "P3831", "Q60474998")
+            for s in _claims(item, "P361")
+        ):
             case(4, "present_not_transferred", "001", "qualified_ktiv_membership_absent")
 
-        scribes = [row for row in _rows(record.get("contributors"))
-                   if str(row.get("role") or "").casefold() in {"scribe", "transcriber"}]
+        scribes = [
+            row
+            for row in _rows(record.get("contributors"))
+            if str(row.get("role") or "").casefold() in {"scribe", "transcriber"}
+        ]
         projected_scribes = _claims(item, "P11603")
         for scribe in scribes:
             name = _text(scribe.get("name"))
-            named = [s for s in projected_scribes if any(
-                (q.get("property") or q.get("property_id")) == "P1932"
-                and _text(q.get("value")) == name for q in _rows(s.get("qualifiers"))
-            )]
+            named = [
+                s
+                for s in projected_scribes
+                if any(
+                    (q.get("property") or q.get("property_id")) == "P1932"
+                    and _text(q.get("value")) == name
+                    for q in _rows(s.get("qualifiers"))
+                )
+            ]
             if any(s.get("value_type") == "somevalue" for s in named):
                 case(5, "identity_or_scope_uncertain", "700", "named_scribe_identity_unresolved")
             elif not named and not projected_scribes:
@@ -131,22 +177,54 @@ def build_gila_audit_report(
             elif not named:
                 case(5, "identity_or_scope_uncertain", "700", "verify_scribe_target_identity")
         source_authors[cn] = [_text(row.get("name")) for row in _rows(record.get("authors"))]
+        for review in _rows(record.get("person_subfield_reviews")):
+            case(
+                5,
+                "identity_or_scope_uncertain",
+                str(review.get("source_field") or "100/700$d"),
+                str(review.get("reason") or "person_subfield_alignment_unproven"),
+            )
         for work in works_by_cn.get(cn, []):
             if (
-                any(_work_title_key(s.get("value")) == _work_title_key(record.get("title"))
-                    for s in _claims(work, "P1476"))
-                and _claims(work, "P2093") and not _claims(work, "P50")
+                any(
+                    _work_title_key(s.get("value")) == _work_title_key(record.get("title"))
+                    for s in _claims(work, "P1476")
+                )
+                and _claims(work, "P2093")
+                and not _claims(work, "P50")
             ):
                 case(5, "identity_or_scope_uncertain", "100", "author_identity_not_linked")
 
         evidence = _rows(item.get("work_candidate_evidence"))
         for candidate in evidence:
+            reviewed_matches = [
+                row
+                for row in reviewed_choices
+                if row["target_identity_current"]
+                and row["proof"]["candidate"]["kind"] == "work_occurrence"
+                and _work_title_key(row["proof"]["candidate"]["title"])
+                == _work_title_key(candidate.get("raw_title") or candidate.get("title"))
+                and str(row["proof"]["candidate"].get("folio") or "")
+                == str(candidate.get("folio_range") or "")
+                and row["proof"]["candidate"]["source_field"]
+                == str(candidate.get("source_field") or "")
+            ]
+            if len(reviewed_matches) == 1:
+                continue
             if candidate.get("accepted") is not True:
-                case(6, "identity_or_scope_uncertain", str(candidate.get("source_field") or ""),
-                     str(candidate.get("reason") or "work_candidate_requires_review"))
+                case(
+                    6,
+                    "identity_or_scope_uncertain",
+                    str(candidate.get("source_field") or ""),
+                    str(candidate.get("reason") or "work_candidate_requires_review"),
+                )
             elif candidate.get("identity_scope") == "record":
-                case(3, "identity_or_scope_uncertain", str(candidate.get("source_field") or ""),
-                     "descriptive_work_identity_is_source_scoped")
+                case(
+                    3,
+                    "identity_or_scope_uncertain",
+                    str(candidate.get("source_field") or ""),
+                    "descriptive_work_identity_is_source_scoped",
+                )
 
         if record.get("place") and not _claims(item, "P1071"):
             case(7, "identity_or_scope_uncertain", "751/260", "production_place_not_resolved")
@@ -175,6 +253,14 @@ def build_gila_audit_report(
             case(8, "identity_or_scope_uncertain", "957/590", "catalog_prose_requires_review")
         for reference in _rows(record.get("catalog_references")):
             catalog = _text(catalog_reference_code(reference))
+            reviewed = reviewed_catalogs.get(
+                (
+                    str(reference.get("source_field") or "581"),
+                    catalog_reference_text(reference).strip(),
+                )
+            )
+            if not catalog and reviewed and reviewed["target_identity_current"]:
+                continue
             if catalog and catalog not in {_text(s.get("value")) for s in _claims(item, "P528")}:
                 case(8, "present_not_transferred", "581/942", "catalog_reference_absent")
             elif not catalog and catalog_reference_text(reference):
@@ -197,6 +283,8 @@ def build_gila_audit_report(
                     dict(reference) for reference in _rows(record.get("catalog_references"))
                 ],
                 "cases": cases,
+                "source_passages": source_passages(raw),
+                "source_review_choices": reviewed_choices,
             }
         )
 
@@ -219,13 +307,21 @@ def build_gila_audit_report(
             if not isinstance(datavalue, Mapping):
                 raise ValueError("A live datavalue must be an object.")
             controls = sorted(reference_control_numbers(claim.get("references")))
-            claim_rows.append({"claim_id": claim.get("id"), "value": datavalue.get("value"),
-                               "source_control_numbers": controls})
-        controls = sorted({
-            cn for claim in claim_rows
-            if isinstance(claim["source_control_numbers"], list)
-            for cn in claim["source_control_numbers"]
-        })
+            claim_rows.append(
+                {
+                    "claim_id": claim.get("id"),
+                    "value": datavalue.get("value"),
+                    "source_control_numbers": controls,
+                }
+            )
+        controls = sorted(
+            {
+                cn
+                for claim in claim_rows
+                if isinstance(claim["source_control_numbers"], list)
+                for cn in claim["source_control_numbers"]
+            }
+        )
         repair_proposals.append(
             {
                 "qid": qid,
@@ -253,20 +349,27 @@ def build_gila_audit_report(
             }
         )
     fact_comparison = compare_gila_source_facts(
-        sources, materialized, qids_by_cn=qids_by_cn, live_entities=live_entities,
+        sources,
+        materialized,
+        qids_by_cn=qids_by_cn,
+        live_entities=live_entities,
         approved_author_qids=approved_author_qids,
     )
     return {
-        "mode": "read_only_local_proposal", "live_verified": False,
+        "mode": "read_only_local_proposal",
+        "live_verified": False,
         "model_decision": "separate_physical_manuscripts_and_written_works",
-        "record_count": len(rows), "review_classes": list(_REVIEW_CLASSES),
+        "record_count": len(rows),
+        "review_classes": list(_REVIEW_CLASSES),
         "case_counts": {category: totals[category] for category in _REVIEW_CLASSES},
         "records": rows,
         "checked_qids": sorted({str(row["qid"]) for row in rows if row["qid"]}),
-        "corrected_qids": [], "work_repair_proposals": repair_proposals,
+        "corrected_qids": [],
+        "work_repair_proposals": repair_proposals,
         "fact_comparison": fact_comparison,
         "historical_repair_proposals": build_gila_repair_proposals(
-            live_entities or {}, colophons_by_qid=colophons_by_qid,
+            live_entities or {},
+            colophons_by_qid=colophons_by_qid,
         ),
         "completion_status": "incomplete_requires_review_or_live_receipts",
         "remaining_checks": [

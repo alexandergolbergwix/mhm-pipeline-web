@@ -29,3 +29,5 @@ JSON export/import surfaces at project level and per pipeline section.
 
 - [Caching stack](../caching/README.md) — event-logged mutations are exactly what flips the fingerprint-keyed build caches; section imports invalidate `WikidataStudioCache` explicitly
 - [System Design](../../system-design.md)
+
+- [Source-choice history](source-choice-history.md) — validated proof, imports, exports, and reverts (W-327).

@@ -73,7 +73,7 @@ def _find_work_author_match(
         return None
     from converter.wikidata.person_projection import audited_person_authority  # noqa: PLC0415
 
-    return audited_person_authority(author_name)
+    return audited_person_authority(author_name, source_record=source_record)
 
 
 def _work_description_with_attestation(
@@ -231,7 +231,7 @@ class WorkProjectionMixin:
                     direct_qid = ""
                 if not direct_qid:
                     from converter.wikidata.person_projection import audited_person_authority  # noqa: PLC0415
-                    audited = audited_person_authority(match_name)
+                    audited = audited_person_authority(match_name, source_record=source_record)
                     if audited:
                         audited_qid = str(audited.get("wikidata_qid") or "").strip()
                         if re.fullmatch(r"Q\d+", audited_qid):

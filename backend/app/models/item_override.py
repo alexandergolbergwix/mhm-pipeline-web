@@ -70,6 +70,7 @@ class WikidataItemOverride(Base):
     )
 
     person_identity_choice: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    source_review_choices: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
 
     ai_verdict: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     ai_verdict_at: Mapped[datetime | None] = mapped_column(

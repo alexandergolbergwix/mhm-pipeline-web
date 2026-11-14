@@ -1,5 +1,7 @@
 # Automatic Publication resolution
 
+> Current policy: [creator-only writes](creator-only-writes.md) supersedes the historical foreign-edit paths below.
+
 > Up: [Wikidata Studio](README.md)
 
 ## User flow

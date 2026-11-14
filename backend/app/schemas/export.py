@@ -118,6 +118,8 @@ class ExportWikidataOverride(BaseModel):
     add_statements: list[dict[str, Any]] = Field(default_factory=list)
     remove_statements: list[int] = Field(default_factory=list)
     statement_edits: dict[str, Any] = Field(default_factory=dict)
+    person_identity_choice: dict[str, Any] | None = None
+    source_review_choices: list[dict[str, Any]] | None = None
     updated_by_email: str | None
     created_at: datetime
     updated_at: datetime

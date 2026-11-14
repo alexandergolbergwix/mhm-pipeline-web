@@ -60,7 +60,7 @@ class TestActionsEndpointHappyPath:
         )
         assert r.status_code == 200
         ids = {a["id"] for a in r.json()}
-        assert ids == {"audit_match", "find_duplicates", "birth_death_check"}
+        assert ids == {"audit_match", "find_duplicates", "birth_death_check", "review_publication_blocked"}
 
     @pytest.mark.asyncio
     async def test_scope_all_includes_every_action(self, sample_run) -> None:

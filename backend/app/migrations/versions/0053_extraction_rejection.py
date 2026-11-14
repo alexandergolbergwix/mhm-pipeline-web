@@ -10,15 +10,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "extraction_approvals",
-        sa.Column("rejected", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
-    op.create_check_constraint(
-        "ck_extraction_review_exclusive", "extraction_approvals", "NOT (approved AND rejected)"
-    )
+    with op.batch_alter_table("extraction_approvals") as batch:
+        batch.add_column(sa.Column("rejected", sa.Boolean(), nullable=False, server_default=sa.false()))
+        batch.create_check_constraint("ck_extraction_review_exclusive", "NOT (approved AND rejected)")
 
 
 def downgrade() -> None:
-    op.drop_constraint("ck_extraction_review_exclusive", "extraction_approvals", type_="check")
-    op.drop_column("extraction_approvals", "rejected")
+    with op.batch_alter_table("extraction_approvals") as batch:
+        batch.drop_constraint("ck_extraction_review_exclusive", type_="check")
+        batch.drop_column("rejected")

@@ -38,8 +38,8 @@ def test_point1_942_structured_label_and_shelfmark_for_hizzuk_emunah() -> None:
         "710$a": '"The Jewish Theological Seminary of America|Adler, Elkan Nathan"',
         "710$e": '"current owner|former owner"',
         "942$a": '"The Jewish Theological Seminary of America|Adler, Elkan Nathan"',
-        "942$x": '"New York, NY"',
-        "942$c": '"USA"',
+        "942$x": '"New York, NY|"',
+        "942$c": '"USA|"',
         "942$z": '"Ms. 2473|Ms. 4088"',
         "958$a": '"אשכנזית"',
     }

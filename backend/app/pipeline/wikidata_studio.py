@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 # v14: colophon field labels (957/590/500) stripped at ingest and the
 # record-author fallback limited to the main or sole content work
 # (Rule W-300) — cached rows built before those fixes must not upload.
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v21"
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v24"
 
 
 def _fingerprint_hash(value: Any) -> str:
@@ -104,6 +104,8 @@ def _fingerprint_override(override: Any) -> tuple[str, str, bool | None, str]:
             "accepted_foreign_qid": override.accepted_foreign_qid,
             **({"person_identity_choice": override.person_identity_choice}
                if getattr(override, "person_identity_choice", None) else {}),
+            **({"source_review_choices": override.source_review_choices}
+               if getattr(override, "source_review_choices", None) else {}),
         }),
     )
 
@@ -429,6 +431,12 @@ def _build_native_sync(
             ov = overrides.get(_local_id_for(it))
             if ov:
                 _apply_override(it, ov)
+                if ov.get("source_review_choices"):
+                    from app.pipeline.wikidata_source_choices import apply_choices
+
+                    apply_choices(it, ov["source_review_choices"], {
+                        str(record.get("_control_number") or record.get("001") or ""): record for record in records
+                    })
     return items
 
 

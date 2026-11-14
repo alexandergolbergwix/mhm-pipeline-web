@@ -143,6 +143,9 @@ P_COUNTRY_OF_CITIZENSHIP = "P27"
 # Catalog code
 P_CATALOG_CODE = "P528"
 P_CATALOG = "P972"
+# Reviewed descriptive publication; this does not identify the Ktiv collection.
+P_DESCRIBED_BY_SOURCE = "P1343"
+P_SOURCE_PAGES = "P304"  # pages within the cited publication
 
 # Scope and content (summary / abstract)
 P_SCOPE_AND_CONTENT = "P7535"
@@ -740,6 +743,7 @@ FRAGMENT_CONDITION_KEYWORDS: tuple[str, ...] = ("fragment", "קטע")
 # not here has to earn a channel row.
 
 QUALIFIER_ONLY_PIDS: frozenset[str] = frozenset({
+    P_SOURCE_PAGES,
     "P1319",   # earliest date — bounds on P571
     "P1326",   # latest date — bounds on P571
     "P1480",   # sourcing circumstances (circa)

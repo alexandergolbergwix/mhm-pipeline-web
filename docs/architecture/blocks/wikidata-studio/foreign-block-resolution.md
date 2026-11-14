@@ -1,5 +1,7 @@
 # Foreign-block resolution (F1–F4)
 
+> Current policy: [creator-only writes](creator-only-writes.md) supersedes the historical foreign-edit paths below.
+
 > Up: [Wikidata Studio](README.md) · Plan:
 > [docs/plans/publication-foreign-block-resolution.md](../../../../docs/plans/publication-foreign-block-resolution.md)
 

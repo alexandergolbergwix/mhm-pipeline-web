@@ -160,46 +160,35 @@ async def run(args: argparse.Namespace, cookie: str) -> int:
             or plan.get("project_id") != str(project_id)
         ):
             raise ValueError("The plan does not match the authenticated actor and project.")
+        from app.publication.historical_repairs import advance_repair_publication
+        from app.publication.sql_repository import SqlAlchemyPublicationRepository
+        from app.pipeline.wikidata_gila_execution import expected_entity, semantic_entity
+        from app.pipeline.wikidata_gila_repairs import entity_digest
+
+        if "before_entities" not in plan:
+            raise ValueError("Prepare a new plan with complete public before snapshots.")
         expected_sources = plan["source_sha256"]
-        authorized = frozenset(plan["authorized_qids"])
-        for proposal in plan["proposals"]:
-            qid = proposal["qid"]
-            async with session_scope() as db:
-                previous = (
-                    await db.execute(
-                        select(WikibaseCloudWrite)
-                        .where(
-                            WikibaseCloudWrite.channel == "wikidata_repair",
-                            WikibaseCloudWrite.run_id == run_id,
-                            WikibaseCloudWrite.target_key == qid,
-                        )
-                        .order_by(WikibaseCloudWrite.created_at.desc())
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
-                prior_outcome = "not_sent"
-                if previous is not None:
-                    state = json.loads(previous.outcome_message)
-                    if state.get("status") in {"intent", "uncertain"}:
-                        prior_outcome = "uncertain"
-                    elif state.get("entity_sha256") == proposal["entity_sha256"] and state.get(
-                        "corrected"
-                    ):
-                        prior_outcome = "applied"
-                await db.rollback()
-            receipt = await execute_repair(
-                proposal,
-                gateway,
-                authorized_qids=authorized,
-                source_check=source_check,
-                journal=journal,
-                apply=True,
-                prior_outcome=prior_outcome,
-            )
-            print_receipt(receipt)
-            if receipt["status"] != "verified":
-                return 2
-        return 0
+        async with session_scope() as db:
+            repository = SqlAlchemyPublicationRepository(db)
+            summary = await advance_repair_publication(plan, gateway, source_check, repository,
+                                                       actor_id=str(actor_id), run_id=str(run_id))
+            for proposal in plan["proposals"]:
+                qid = proposal["qid"]
+                intent = await repository.latest_write_intent(summary.execution_id, f"repair:{qid}") if summary.execution_id else None
+                after = await gateway.fetch(qid) if intent and intent.state == "succeeded" else None
+                before = plan["before_entities"][qid]
+                verified = bool(after and entity_digest(after) == intent.result_fingerprint
+                                and after["lastrevid"] > before["lastrevid"]
+                                and semantic_entity(after) == semantic_entity(expected_entity(proposal, before)))
+                receipt = {"qid": qid, "before_revision": before["lastrevid"],
+                           "after_revision": after.get("lastrevid") if verified else None,
+                           "status": "verified" if verified else intent.state if intent else "blocked",
+                           "corrected": verified, "entity_sha256": proposal["entity_sha256"],
+                           "publication_id": summary.publication_id, "execution_id": summary.execution_id,
+                           "detail": intent.detail if intent else "The exact repair Plan is blocked."}
+                await journal("result", receipt)
+                print_receipt(receipt)
+        return 0 if receipts and all(row.get("corrected") for row in receipts) else 2
 
     reviewed = json.loads(await asyncio.to_thread(Path(args.qids_from).read_text))
     if not isinstance(reviewed, list):
@@ -255,6 +244,7 @@ async def run(args: argparse.Namespace, cookie: str) -> int:
             "authorized_qids": sorted(authorized),
             "proposals": ready_proposals,
             "preflight": ready,
+            "before_entities": {row["qid"]: entities[row["qid"]] for row in ready_proposals},
             "blocked": blocked,
         },
     )

@@ -125,14 +125,15 @@ class WriteOutcome:
     qid: str | None = None
     fingerprint: str | None = None
     detail: str | None = None
+    retry_after_seconds: float | None = None
 
     @classmethod
     def succeeded(cls, *, qid: str, fingerprint: str) -> WriteOutcome:
         return cls(status="succeeded", qid=qid, fingerprint=fingerprint)
 
     @classmethod
-    def pre_send_retryable(cls, detail: str) -> WriteOutcome:
-        return cls(status="pre_send_retryable", detail=detail)
+    def pre_send_retryable(cls, detail: str, *, retry_after_seconds: float | None = None) -> WriteOutcome:
+        return cls(status="pre_send_retryable", detail=detail, retry_after_seconds=retry_after_seconds)
 
     @classmethod
     def outcome_unknown(cls, detail: str) -> WriteOutcome:

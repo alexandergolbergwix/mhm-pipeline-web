@@ -34,7 +34,8 @@ async def test_unknown_tier_model_rejected() -> None:
 
 
 @pytest.mark.asyncio
-async def test_gemini_tier_requires_gemini_key() -> None:
+async def test_gemini_tier_requires_gemini_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     auth = AsyncMock()
     auth.user.id = uuid.uuid4()
     auth.kek = b"x" * 32
@@ -51,7 +52,7 @@ async def test_gemini_tier_requires_gemini_key() -> None:
                 db, auth,
                 run_id=uuid.uuid4(),
                 kind=JOB_KIND_NER_VERIFY,
-                params={"action_id": "audit_ner_extraction"},
+                params={"action_id": "audit_ner_extraction", "tier_model": "gemini-3.5-flash"},
             )
     assert exc.value.status_code == 400
     assert "gemini" in str(exc.value.detail).lower()

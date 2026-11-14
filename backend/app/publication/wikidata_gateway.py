@@ -6,11 +6,12 @@ import asyncio
 import logging
 import re
 import threading
+
+import requests
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import TimeoutError as FutureTimeoutError
-from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Iterator, Literal, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from app.publication.digests import canonical_digest, thaw_json
 from app.publication.gateway import (
@@ -307,7 +308,7 @@ class _SafeWikidataGatewaySession:
                 f"The Wikidata write exceeded its {int(_WRITE_TIMEOUT_S)} s time budget"
             )
         except WikidataPreSendRetryableError as exc:
-            return WriteOutcome.pre_send_retryable(str(exc))
+            return WriteOutcome.pre_send_retryable(str(exc), retry_after_seconds=getattr(exc, "retry_after_seconds", None))
         except WikidataRevisionConflictError as exc:
             return WriteOutcome.blocked(str(exc))
         except WikidataAuthenticationError as exc:
@@ -346,6 +347,12 @@ class _SafeWikidataGatewaySession:
         self,
         mutation: GatewayMutation,
     ) -> WriteOutcome | None:
+        from app.pipeline.wikidata_source_choices import revalidate_payload_targets
+
+        try:
+            await revalidate_payload_targets(thaw_json(mutation.document))
+        except (ValueError, requests.RequestException) as exc:
+            return WriteOutcome.blocked(str(exc))
         if mutation.action == "create":
             entity = _publication_entity_from_mutation(mutation)
             try:
@@ -358,7 +365,7 @@ class _SafeWikidataGatewaySession:
                     "The final CREATE identity check exceeded its time budget"
                 )
             except WikidataPreSendRetryableError as exc:
-                return WriteOutcome.pre_send_retryable(str(exc))
+                return WriteOutcome.pre_send_retryable(str(exc), retry_after_seconds=getattr(exc, "retry_after_seconds", None))
             if len(observations) != 1 or observations[0].status == "unknown":
                 return WriteOutcome.pre_send_retryable(
                     "The final CREATE identity check is inconclusive"
@@ -383,7 +390,7 @@ class _SafeWikidataGatewaySession:
                 "The UPDATE target read exceeded its time budget"
             )
         except WikidataPreSendRetryableError as exc:
-            return WriteOutcome.pre_send_retryable(str(exc))
+            return WriteOutcome.pre_send_retryable(str(exc), retry_after_seconds=getattr(exc, "retry_after_seconds", None))
         if snapshot is None:
             return WriteOutcome.blocked("The planned UPDATE target no longer exists")
         if snapshot.revision != mutation.expected_revision:
@@ -512,7 +519,7 @@ class CurrentWikidataBoundary:
         qid = mutation.target_qid
         if not qid:
             return
-        if not mutation.allow_foreign_update and not self._creator_owned(qid):
+        if not self._creator_owned(qid):
             from converter.wikidata.uploader import UnauthorisedModificationError  # noqa: PLC0415
 
             raise UnauthorisedModificationError(qid=qid, stage="publication_pre_write")
@@ -794,8 +801,7 @@ class CurrentWikidataBoundary:
                 or mutation.expected_revision is None
             ):
                 raise WikidataPermanentError("Foreign consent requires an UPDATE target and revision")
-            with self._foreign_accept(mutation):
-                return self._write_authorized_sync(request, authorize)
+            return self._write_authorized_sync(request, authorize)
         except WikidataGatewayError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -805,23 +811,9 @@ class CurrentWikidataBoundary:
                 raise WikidataPermanentError(str(exc)) from exc
             raise _classify_write_exception(exc) from exc
 
-    @contextmanager
-    def _foreign_accept(self, mutation: GatewayMutation) -> Iterator[None]:
-        if not mutation.allow_foreign_update or not mutation.target_qid:
-            yield
-            return
-        qid = mutation.target_qid
-        self._uploader.register_foreign_accept(qid)
-        try:
-            yield
-        finally:
-            self._uploader._foreign_accept_qids.discard(qid)
-            self._uploader._is_our_item_cache.pop(qid, None)
-
     def _write_authorized_sync(self, request: GatewayWriteRequest, authorize: Callable[[], None]) -> str:
         mutation = request.mutation
-        # The uploader's internal build guard can use P3959. Check the
-        # creator or this mutation's consent before that guard runs.
+        # Historical plans can carry foreign approval; creator ownership is mandatory.
         self._assert_publication_modifiable(mutation)
         item = self._native_item_from_mutation(mutation)
         self._register_test_target(item, mutation)
@@ -852,6 +844,12 @@ class CurrentWikidataBoundary:
         result: object | None = None
         for write_attempt in range(2):
             authorize()
+            self._assert_publication_modifiable(mutation)
+            actual_qid = getattr(wbi_item, "id", None)
+            if actual_qid != mutation.target_qid:
+                raise WikidataPermanentError(
+                    "The actual write target differs from the planned target"
+                )
             try:
                 result = wbi_item.write(**kwargs)
                 break
@@ -926,9 +924,8 @@ class CurrentWikidataBoundary:
             else:
                 if resolved_qid != mutation.target_qid:
                     return MutationConfirmation.unknown("The read-back QID does not match the mutation")
-                with self._foreign_accept(mutation):
-                    self._assert_publication_modifiable(mutation)
-                    _, new_claims, _ = self._uploader._build_wbi_item(item)
+                self._assert_publication_modifiable(mutation)
+                _, new_claims, _ = self._uploader._build_wbi_item(item)
             if new_claims:
                 return MutationConfirmation.not_applied(
                     "The read-back still lacks claims from the planned mutation"
@@ -1206,7 +1203,6 @@ def _classify_write_exception(exc: Exception) -> WikidataGatewayError:
 
 
 def _retry_after_seconds(value: object, *, default: float) -> float:
-    try:
-        return max(0.0, float(value))
-    except (TypeError, ValueError):
-        return default
+    from converter.wikidata.retry_policy import retry_after_seconds
+
+    return retry_after_seconds(value, default=default)

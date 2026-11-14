@@ -21,8 +21,11 @@ import json
 import re
 import tempfile
 from collections.abc import Iterable
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
+
+from app.pipeline import marc_occurrences
 
 
 # Tabular column header → internal slot.
@@ -98,12 +101,16 @@ def parse_marc_upload(raw: bytes, *, filename: str | None = None) -> list[dict[s
         return _parse_json_like(raw, jsonl=(suffix == "jsonl"))
     if suffix in ("mrc", "marc"):
         return _parse_mrc_via_desktop(raw)
+    if suffix in ("xml", "marcxml"):
+        return _parse_marcxml(raw)
     if suffix == "tsv":
         return _parse_table(raw, delimiter="\t")
     if suffix == "csv":
         return _parse_table(raw, delimiter=",")
 
     head = raw.lstrip()[:200]
+    if head.startswith(b"<"):
+        return _parse_marcxml(raw)
     if head.startswith(b"{") or head.startswith(b"["):
         return _parse_json_like(raw, jsonl=False)
     if len(head) >= 5 and head[:5].isdigit():
@@ -120,6 +127,43 @@ def parse_marc_upload(raw: bytes, *, filename: str | None = None) -> list[dict[s
     return _parse_json_like(raw, jsonl=True)
 
 
+def _parse_marcxml(raw: bytes) -> list[dict[str, Any]]:
+    from xml.etree import ElementTree
+
+    text = raw.decode("utf-8-sig")
+    if "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper() or "\x00" in text:
+        raise ValueError("MARCXML must use UTF-8 without a DTD or entity declarations.")
+    try:
+        root = ElementTree.fromstring(text)
+    except ElementTree.ParseError as exc:
+        raise ValueError("The MARCXML document is invalid.") from exc
+    namespace = "{http://www.loc.gov/MARC21/slim}" if root.tag.startswith("{http://www.loc.gov/MARC21/slim}") else ""
+    if root.tag not in {namespace + "collection", namespace + "record"}:
+        raise ValueError("The XML root must be a MARC21 record or collection.")
+    records = [root] if root.tag == namespace + "record" else list(root)
+    rows = []
+    for entry in records:
+        if entry.tag != namespace + "record":
+            raise ValueError("A MARCXML collection can contain only records.")
+        row: dict[str, Any] = {"fields": [], "source_format": "marcxml"}
+        for field in entry:
+            if field.tag == namespace + "leader":
+                row["leader"] = field.text or ""
+            elif field.tag == namespace + "controlfield":
+                row["fields"].append({field.get("tag", ""): field.text or ""})
+            elif field.tag == namespace + "datafield":
+                if any(sf.tag != namespace + "subfield" for sf in field):
+                    raise ValueError("A MARCXML data field can contain only subfields.")
+                row["fields"].append({field.get("tag", ""): {
+                    "ind1": field.get("ind1", " "), "ind2": field.get("ind2", " "),
+                    "subfields": [{sf.get("code", ""): sf.text or ""} for sf in field],
+                }})
+            else:
+                raise ValueError("The MARCXML record contains an unsupported field.")
+        rows.append(row)
+    return _normalise_records(rows)
+
+
 # ── desktop-driven .mrc path ─────────────────────────────────────────────
 
 
@@ -133,9 +177,9 @@ def _parse_mrc_via_desktop(raw: bytes) -> list[dict[str, Any]]:
         f.write(raw)
         tmp = Path(f.name)
     try:
-        reader = UnifiedReader(str(tmp))
+        reader = UnifiedReader(tmp)
         out: list[dict[str, Any]] = []
-        for marc_record in reader:
+        for marc_record in reader.read_file():
             extracted = extract_all_data(marc_record)
             # ExtractedData is a dataclass with .to_dict() in desktop;
             # fall back to vars() if absent.
@@ -143,6 +187,9 @@ def _parse_mrc_via_desktop(raw: bytes) -> list[dict[str, Any]]:
                 rec = extracted.to_dict()
             else:
                 rec = dict(vars(extracted))
+            rec["_marc_derived_keys"] = list(rec)
+            rec["marc_occurrences"] = marc_occurrences.from_marc_record(marc_record)
+            rec["leader"] = marc_record.leader
             rec.setdefault("_control_number", _control_number_value(rec))
             out.append(rec)
         return _normalise_records(out)
@@ -248,6 +295,48 @@ def _split_multi(value: str) -> list[str]:
     return [unwrapped] if unwrapped else []
 
 
+def _aligned_person_dates(
+    record: dict[str, object], tag: str, names: list[str], raw_dates: str,
+) -> dict[int, str]:
+    """Retain date positions only when the source supplies every name slot."""
+    raw = _unwrap_marc_value(raw_dates)
+    if not raw:
+        return {}
+    values = [raw]
+    for delimiter in _MULTI_DELIMS:
+        if delimiter in raw:
+            values = [_unwrap_marc_value(part) for part in raw.split(delimiter)]
+            break
+    if len(values) == len(names):
+        return {index: value for index, value in enumerate(values) if value}
+    review = {
+        "source_field": f"{tag}$d", "names": list(names), "values": values,
+        "reason": "person_date_alignment_unproven",
+    }
+    existing = record.get("person_subfield_reviews")
+    reviews = list(existing) if isinstance(existing, list) else []
+    if review not in reviews:
+        reviews.append(review)
+    record["person_subfield_reviews"] = reviews
+    return {}
+
+
+def _aligned_person_roles(record: dict[str, Any], tag: str, names: list[str]) -> list[str]:
+    slots = marc_occurrences.split_slots(record.get(f"{tag}$e"))
+    if not slots:
+        return []
+    if len(slots) == len(names):
+        return slots
+    if not marc_occurrences.occurrences(record, tag):
+        review = {"source_field": f"{tag}$e", "names": names, "values": slots,
+                  "reason": "person_role_alignment_unproven"}
+        reviews = list(record.get("person_subfield_reviews") or [])
+        if review not in reviews:
+            reviews.append(review)
+        record["person_subfield_reviews"] = reviews
+    return []
+
+
 def _unwrap_marc_value(value: str) -> str:
     """Strip the quote wrappers TSV/JSON exports put around subfield values.
 
@@ -287,17 +376,21 @@ def _suffix(filename: str | None) -> str:
 def _normalise_records(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for i, row in enumerate(rows):
+        row = dict(row)
+        marc_occurrences.attach(row)
         cn = _control_number_value(row)
         if not cn:
             cn = f"row{i:04d}"
         record = dict(row)
         record["_control_number"] = str(cn).strip('"')
+        source_before = deepcopy(record)
         # If the record carries raw MARC subfield keys (``100$a``,
         # ``700$a``, ``600$a``, …) — typical of NLI-style TSV exports —
         # collapse them into the normalised authors/contributors/subjects
         # shape the entity extractor + the desktop item builder expect.
         if any("$" in k for k in row):
             _collapse_marc_subfields(record)
+        marc_occurrences.mark_derived(record, source_before)
         out.append(record)
     return out
 
@@ -361,8 +454,10 @@ def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
         if values:
             fields.setdefault(tag, {}).setdefault(code, []).extend(values)
     marc_fields: dict[str, list[MarcField]] = {}
+    marc_fields.update(marc_occurrences.as_marc_fields(record))
     for tag, subfields in fields.items():
-        marc_fields[tag] = [MarcField(tag=tag, subfields=subfields)]
+        if tag not in marc_fields:
+            marc_fields[tag] = [MarcField(tag=tag, subfields=subfields)]
     for tag, value in control_data.items():
         marc_fields[tag] = [MarcField(tag=tag, data=value)]
     if not marc_fields:
@@ -380,7 +475,7 @@ def _merge_desktop_extracted_fields(record: dict[str, Any]) -> None:
         if not _has_value(incoming):
             continue
         current = record.get(field_name)
-        if field_name in ("authors", "contributors") and current:
+        if field_name in ("authors", "contributors", "contents") and current:
             continue
         if isinstance(current, list) and isinstance(incoming, list):
             for value in incoming:
@@ -605,15 +700,29 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             record["title"] = main
             record["subtitle"] = sub
 
+    date_fields = {
+        f"{tag}$d"
+        for tag in (
+            "100", "110", "111", "700", "710", "711", "800", "810", "811", "600", "610", "611",
+        )
+        if f"{tag}$a" in record or f"{tag}$d" in record
+    }
+    date_fields.update(f"{tag}$e" for tag in ("100", "110", "111", "700", "710", "711", "800", "810", "811"))
+    if isinstance(record.get("person_subfield_reviews"), list):
+        record["person_subfield_reviews"] = [
+            row for row in record["person_subfield_reviews"]
+            if isinstance(row, dict) and row.get("source_field") not in date_fields
+        ]
+
     # ── Authors (MARC 100, 110, 111) ────────────────────────────────
     has_raw_authors = any(_str(record.get(f"{tag}$a")) for tag in ("100", "110", "111"))
     authors = [] if has_raw_authors else list(record.get("authors") or [])
     for tag in ("100", "110", "111"):
         a = _split_multi(_str(record.get(f"{tag}$a")))
         c = _split_multi(_str(record.get(f"{tag}$c")))
-        e = _split_multi(_str(record.get(f"{tag}$e")))
+        e = _aligned_person_roles(record, tag, a)
         # MARC $d carries birth/death dates — used by Mazal homonym resolution.
-        d = _split_multi(_str(record.get(f"{tag}$d")))
+        d = _aligned_person_dates(record, tag, a, _str(record.get(f"{tag}$d")))
         comma_indices = [idx for idx, val in enumerate(a) if val.strip().endswith(",")]
         c_by_idx: dict[int, str] = {}
         if len(c) == len(a):
@@ -630,7 +739,7 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
                 continue
             c_val = c_by_idx.get(i, "")
             full_name = f"{name.rstrip(' ,')} {c_val.rstrip(' ,.')}".strip() if c_val else name
-            role = e[i] if i < len(e) else "author"
+            role = (e[i] if i < len(e) else "") or "author"
             entry: dict[str, Any] = {
                 "name": normalize_entity_text(full_name),
                 "role": normalize_role(role),
@@ -639,8 +748,8 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             if c_val:
                 entry["raw_name_a"] = normalize_entity_text(name)
                 entry["title_associated"] = normalize_entity_text(c_val)
-            if i < len(d) and d[i].strip():
-                entry["dates"] = d[i].strip()
+            if i in d:
+                entry["dates"] = d[i]
             authors.append(entry)
     if authors:
         record["authors"] = authors
@@ -654,8 +763,8 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     for tag in ("700", "710", "711", "800", "810", "811"):
         a = _split_multi(_str(record.get(f"{tag}$a")))
         c = _split_multi(_str(record.get(f"{tag}$c")))
-        e = _split_multi(_str(record.get(f"{tag}$e")))
-        d = _split_multi(_str(record.get(f"{tag}$d")))
+        e = _aligned_person_roles(record, tag, a)
+        d = _aligned_person_dates(record, tag, a, _str(record.get(f"{tag}$d")))
         comma_indices = [idx for idx, val in enumerate(a) if val.strip().endswith(",")]
         c_by_idx = {}
         if tag in ("700", "800"):
@@ -673,7 +782,7 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
                 continue
             c_val = c_by_idx.get(i, "")
             full_name = f"{name.rstrip(' ,')} {c_val.rstrip(' ,.')}".strip() if c_val else name
-            role = e[i] if i < len(e) else "contributor"
+            role = (e[i] if i < len(e) else "") or "contributor"
             entry = {
                 "name": normalize_entity_text(full_name),
                 "role": normalize_role(role),
@@ -682,20 +791,26 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             if c_val:
                 entry["raw_name_a"] = normalize_entity_text(name)
                 entry["title_associated"] = normalize_entity_text(c_val)
-            if i < len(d) and d[i].strip():
-                entry["dates"] = d[i].strip()
+            if i in d:
+                entry["dates"] = d[i]
             contributors.append(entry)
     if contributors:
         record["contributors"] = contributors
 
     # ── Subjects ─────────────────────────────────────────────────────
-    subjects = list(record.get("subjects") or [])
+    raw_subject_tags = {
+        tag for tag in ("600", "610", "611") if _str(record.get(f"{tag}$a"))
+    }
+    subjects = [
+        row for row in record.get("subjects") or []
+        if not isinstance(row, dict) or str(row.get("field") or "") not in raw_subject_tags
+    ]
     # 600 = personal-name subject; 610 = corporate; 611 = meeting
     for tag, kind in (("600", "person"), ("610", "organization"), ("611", "meeting")):
         a_vals = _split_multi(_str(record.get(f"{tag}$a")))
+        d_vals = _aligned_person_dates(record, tag, a_vals, _str(record.get(f"{tag}$d")))
         if not a_vals:
             continue
-        d_vals = _split_multi(_str(record.get(f"{tag}$d")))
         auth_vals = _split_multi(_str(record.get(f"{tag}$0")))
         src_vals = _split_multi(_str(record.get(f"{tag}$2")))
         for i, name in enumerate(a_vals):
@@ -703,8 +818,8 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
             if not name:
                 continue
             entry: dict[str, Any] = {"name": name, "type": kind, "field": tag}
-            if i < len(d_vals) and d_vals[i].strip():
-                entry["dates"] = d_vals[i].strip()
+            if i in d_vals:
+                entry["dates"] = d_vals[i]
             if i < len(auth_vals) and auth_vals[i].strip():
                 entry["authority_id"] = auth_vals[i].strip()
             if i < len(src_vals) and src_vals[i].strip():
@@ -966,9 +1081,12 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
         parse_contents_entry,
     )
 
-    contents: list[dict[str, Any]] = list(record.get("contents") or [])
-    for chunk in _split_multi(str(record.get("505$a") or "")):
-        for raw_title in chunk.split("--"):
+    contents: list[dict[str, Any]] = [entry for entry in record.get("contents") or []
+                                   if not (("505$a" in record or marc_occurrences.occurrences(record, "505"))
+                                           and isinstance(entry, dict) and entry.get("source_field") == "505")]
+    for source_entry in marc_occurrences.content_inputs(record):
+        chunk = str(source_entry["text"])
+        for chunk_index, raw_title in enumerate(chunk.split("--"), 1):
             parsed = parse_contents_entry(raw_title.strip().strip(".,;:"))
             title = parsed["title"]
             if not title or is_descriptive_content_title(title):
@@ -979,7 +1097,19 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
                 "source_field": "505",
                 "candidate_kind": "named_work",
                 "source_text": parsed.get("raw") or raw_title,
+                "source_key": f'{source_entry["source_key"]}:{chunk_index}',
             }
+            if source_entry.get("author"):
+                entry["author"] = source_entry["author"]
+            if source_entry.get("scope_text"):
+                entry["scope_text"] = source_entry["scope_text"]
+                scope = str(source_entry["scope_text"]).strip()
+                if not source_entry.get("scope_alignment_unproven") and _re.fullmatch(
+                    r"(?:דף\s*)?\d+[אבrRvV]\s*[-–־]\s*\d+[אבrRvV]", scope,
+                ):
+                    entry["folio_range"] = _re.sub(r"^דף\s*", "", scope)
+                else:
+                    entry["scope_alignment_unproven"] = True
             if parsed.get("folio_range"):
                 entry["folio_range"] = parsed["folio_range"]
             if parsed.get("sequence") is not None:
@@ -1001,6 +1131,7 @@ def _collapse_marc_subfields(record: dict[str, Any]) -> None:
     # Final parity pass: fill any remaining structured gaps from the canonical
     # desktop handlers without overwriting web-specific derivations above.
     _merge_desktop_extracted_fields(record)
+    marc_occurrences.apply_people(record)
 
 
 def _first(v: Any) -> str | None:
@@ -1357,44 +1488,92 @@ _TITLE_PAGE_PREFIX_RE = _re.compile(
 
 def _extract_942_holdings(record: dict[str, Any]) -> None:
     """Extract current holding library, city, country, and shelfmarks from MARC 942."""
-    a942 = _split_multi(_str(record.get("942$a")))
-    x942 = _split_multi(_str(record.get("942$x")))
-    c942 = _split_multi(_str(record.get("942$c")))
-    z942 = _split_multi(_str(record.get("942$z")))
+    source_rows = marc_occurrences.occurrences(record, "942")
+    arrays = {code: marc_occurrences.split_slots(record.get(f"942${code}")) for code in ("a", "x", "c", "z")}
+    count = max((len(entries) for entries in arrays.values()), default=0)
+    previous_name = record.get("holding_942_name")
+    previous_shelf = record.get("holding_942_shelfmark")
+    if previous_name and record.get("holding_institution") == previous_name:
+        record.pop("holding_institution", None)
+    if previous_shelf and record.get("shelfmark") == previous_shelf:
+        record.pop("shelfmark", None)
+    for code in ("name", "city", "country", "shelfmark"):
+        record.pop(f"holding_942_{code}", None)
+    reviews: list[dict[str, object]] = []
+    record["holding_subfield_reviews"] = reviews
+    if not count:
+        return
+    if source_rows:
+        arrays = {code: [" ".join(marc_occurrences.values(row, code)) for row in source_rows] for code in arrays}
+    else:
+        for code, entries in arrays.items():
+            if entries and len(entries) != count:
+                reviews.append({"source_field": f"942${code}", "reason": "holding_subfield_alignment_unproven",
+                                "values": list(entries), "occurrence_count": count})
+            if len(entries) != count:
+                arrays[code] = [""] * count
+    a942, x942, c942, z942 = (arrays[code] for code in ("a", "x", "c", "z"))
     s090 = _split_multi(_str(record.get("090$a")))
 
     if not a942 and not z942:
         return
 
-    a710 = _split_multi(_str(record.get("710$a")))
-    e710 = _split_multi(_str(record.get("710$e")))
+    a710 = marc_occurrences.split_slots(record.get("710$a"))
+    e710 = marc_occurrences.split_slots(record.get("710$e"))
+    owner_rows = marc_occurrences.occurrences(record, "710")
+    if owner_rows:
+        owner_pairs = [(name, role) for row in owner_rows for name in marc_occurrences.values(row, "a")
+                       for role in marc_occurrences.values(row, "e") or [""]]
+    elif len(a710) == len(e710):
+        owner_pairs = list(zip(a710, e710, strict=True))
+    else:
+        owner_pairs = []
+        if e710:
+            reviews.append({"source_field": "710$e", "reason": "holding_role_alignment_unproven",
+                            "values": e710, "occurrence_count": len(a710)})
     current_owners = {
         a.strip().casefold()
-        for a, e in zip(a710, e710 + [""] * 99)
-        if "current owner" in e.lower() and "unknown library" not in a.lower()
+        for a, e in owner_pairs
+        if ("current owner" in e.lower() or "בעלים נוכחיים" in e) and "unknown library" not in a.lower()
     }
     former_owners = {
         a.strip().casefold()
-        for a, e in zip(a710, e710 + [""] * 99)
+        for a, e in owner_pairs
         if ("former owner" in e.lower() or "בעלים קודמים" in e.lower())
         and a.strip().casefold() not in current_owners
     }
 
     chosen_idx: int | None = None
-    for idx, inst in enumerate(a942):
-        low = inst.strip().casefold()
-        if "unknown library" in low or low.startswith(("catalogue ", "catalog ")) or low in former_owners:
-            continue
-        if current_owners and low in current_owners:
-            chosen_idx = idx
-            break
+    current_indices = [i for i, inst in enumerate(a942) if inst.strip().casefold() in current_owners]
+    if len(current_indices) == 1:
+        chosen_idx = current_indices[0]
+    elif len(current_indices) > 1:
+        reviews.append({"source_field": "942", "reason": "multiple_current_holdings",
+                        "candidates": [a942[i] for i in current_indices]})
+    reviewed = record.get("reviewed_holding_occurrence")
+    if reviewed and source_rows:
+        chosen_idx = next((i for i, row in enumerate(source_rows)
+                           if marc_occurrences.source_key(row) == reviewed), None)
+        if chosen_idx is None:
+            raise ValueError("The reviewed holding occurrence is absent from the current source.")
+    if reviewed and not source_rows:
+        if not isinstance(reviewed, str) or not reviewed.startswith("flat942:"):
+            raise ValueError("The reviewed holding occurrence is absent from the current source.")
+        chosen_idx = int(reviewed.split(":")[1]) - 1
+        if chosen_idx not in range(count) or not a942[chosen_idx] or not z942[chosen_idx]:
+            raise ValueError("The flattened holding lacks a proven name and shelfmark association.")
+    if reviewed and chosen_idx is not None and a942[chosen_idx].strip().casefold() in former_owners:
+        raise ValueError("A former owner cannot become the current holding without new source evidence.")
     if chosen_idx is None:
-        for idx, inst in enumerate(a942):
-            low = inst.strip().casefold()
-            if "unknown library" in low or low.startswith(("catalogue ", "catalog ")) or low in former_owners:
-                continue
-            chosen_idx = idx
-            break
+        eligible = [i for i, inst in enumerate(a942) if inst.strip()
+                    and "unknown library" not in inst.casefold()
+                    and not inst.casefold().startswith(("catalogue ", "catalog "))
+                    and inst.strip().casefold() not in former_owners]
+        if len(eligible) == 1:
+            chosen_idx = eligible[0]
+        elif eligible:
+            reviews.append({"source_field": "942", "reason": "current_holding_requires_review",
+                            "candidates": [a942[i] for i in eligible]})
 
     inst_name = (
         a942[chosen_idx].strip()
@@ -1406,17 +1585,17 @@ def _extract_942_holdings(record: dict[str, Any]) -> None:
     city = (
         x942[chosen_idx].strip()
         if chosen_idx is not None and chosen_idx < len(x942)
-        else (x942[0].strip() if x942 else "")
+        else ""
     )
     country = (
         c942[chosen_idx].strip()
         if chosen_idx is not None and chosen_idx < len(c942)
-        else (c942[0].strip() if c942 else "")
+        else ""
     )
     shelf = (
         z942[chosen_idx].strip().rstrip(" .,;:/-")
         if chosen_idx is not None and chosen_idx < len(z942)
-        else (z942[0].strip().rstrip(" .,;:/-") if z942 and not former_owners else "")
+        else (z942[0].strip().rstrip(" .,;:/-") if len(z942) == 1 and not former_owners else "")
     )
 
     if country and city:
@@ -1549,21 +1728,25 @@ def _extract_740_related_works(record: dict[str, Any]) -> None:
 
 def _extract_581_catalog_references(record: dict[str, Any]) -> None:
     """Extract bibliographic/catalog citations from MARC 581$a."""
-    vals = _split_multi(_str(record.get("581$a")))
-    if not vals:
-        return
-    refs: list[Any] = list(record.get("catalog_references") or [])
+    source_rows = marc_occurrences.occurrences(record, "581")
+    vals = [(marc_occurrences.source_key(row), text) for row in source_rows for text in marc_occurrences.values(row, "a")]
+    if not source_rows:
+        vals = [(f"581$a:{index}", text) for index, text in enumerate(_split_multi(_str(record.get("581$a"))), 1)]
+    refs: list[Any] = [ref for ref in record.get("catalog_references") or []
+                       if not ((source_rows or "581$a" in record) and isinstance(ref, dict) and ref.get("source_field") == "581")]
     existing = {
         str(r.get("catalog") or r.get("name") if isinstance(r, dict) else r).strip()
         for r in refs
     }
-    for val in vals:
+    for source_key, val in vals:
         clean = val.strip().replace('""', '"')
         if clean and clean not in existing:
-            refs.append({"catalog": clean, "text": clean, "source_field": "581"})
+            refs.append({"catalog": clean, "text": clean, "source_field": "581", "source_key": source_key})
             existing.add(clean)
     if refs:
-        record["catalog_references"] = refs
+        from converter.wikidata.catalog_references import structured_catalog_reference
+
+        record["catalog_references"] = [structured_catalog_reference(ref) for ref in refs]
 
 
 def _extract_590_record_notes(record: dict[str, Any]) -> None:
@@ -1571,7 +1754,7 @@ def _extract_590_record_notes(record: dict[str, Any]) -> None:
     vals = _split_multi(_str(record.get("590$a")))
     if not vals:
         return
-    status_notes: list[str] = list(record.get("record_status_notes") or [])
+    status_notes: list[str] = []
     for val in vals:
         clean = val.strip()
         if clean and clean not in status_notes:
@@ -1743,13 +1926,17 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
     is idempotent for all non-subfield-key paths.
     """
     row = dict(rec)
+    marc_occurrences.attach(row)
     row["_control_number"] = _control_number_value(row)
+    source_before = deepcopy(row)
     if any("$" in k for k in row):
         _collapse_marc_subfields(row)
     if row.get("contributors"):
-        row["contributors"] = _expand_pipe_delimited_entries(list(row["contributors"]))
+        row["contributors"] = _expand_pipe_delimited_entries(
+            list(row["contributors"]), review_record=row,
+        )
     if row.get("authors"):
-        row["authors"] = _expand_pipe_delimited_entries(list(row["authors"]))
+        row["authors"] = _expand_pipe_delimited_entries(list(row["authors"]), review_record=row)
     from converter.transformer.subject_records import (  # noqa: PLC0415
         normalize_genre_entries,
         normalize_subjects_list,
@@ -1771,6 +1958,7 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
     if row.get("related_works"):
         row["related_works"] = _normalize_related_works(list(row["related_works"]))
     _merge_work_mentions_into_contents(row)
+    marc_occurrences.mark_derived(row, source_before)
     return row
 
 
@@ -1881,7 +2069,9 @@ def _provenance_institution_candidates(record: dict[str, Any]) -> list[dict[str,
     return out
 
 
-def _expand_pipe_delimited_entries(entries: list[Any]) -> list[dict[str, Any]]:
+def _expand_pipe_delimited_entries(
+    entries: list[Any], *, review_record: dict[str, object] | None = None,
+) -> list[dict[str, Any]]:
     """Split ``name|name`` contributor/author dicts (desktop .mrc path)."""
     out: list[dict[str, Any]] = []
     for entry in entries:
@@ -1893,8 +2083,11 @@ def _expand_pipe_delimited_entries(entries: list[Any]) -> list[dict[str, Any]]:
             continue
         names = _split_multi(raw_name)
         roles = _split_multi(str(entry.get("role") or ""))
-        dates = _split_multi(str(entry.get("dates") or ""))
         field = str(entry.get("field") or "")
+        dates = _aligned_person_dates(
+            review_record if review_record is not None else {},
+            field, names, str(entry.get("dates") or ""),
+        )
         fallback_role = str(entry.get("role") or "contributor")
         for i, seg in enumerate(names):
             seg = normalize_entity_text(seg)
@@ -1906,7 +2099,7 @@ def _expand_pipe_delimited_entries(entries: list[Any]) -> list[dict[str, Any]]:
                 "role": normalize_role(role_raw),
                 "field": field,
             }
-            if i < len(dates) and dates[i].strip():
+            if i in dates:
                 new_entry["dates"] = normalize_entity_text(dates[i])
             out.append(new_entry)
     return out

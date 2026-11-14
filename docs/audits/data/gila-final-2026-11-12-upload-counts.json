@@ -1,0 +1,1370 @@
+{
+  "items": 2407,
+  "approved": 1691,
+  "upload_states": {
+    "new": 0,
+    "will_update": 0,
+    "updated": 1752,
+    "local_only": 0,
+    "needs_review": 356,
+    "reference_only": 292,
+    "failed": 0,
+    "outcome_unknown": 7
+  },
+  "by_entity_type": {
+    "work": {
+      "reference_only": 277,
+      "updated": 766,
+      "needs_review": 356,
+      "outcome_unknown": 7
+    },
+    "manuscript": {
+      "updated": 897
+    },
+    "person": {
+      "updated": 89,
+      "reference_only": 15
+    }
+  },
+  "need_ai_review": 2183,
+  "rebuild_required": 0,
+  "unknown": [
+    {
+      "local_id": "work:פרוש_משנה_תורה_(ספר_מדע)",
+      "qid": "Q141990660",
+      "message": "Wikidata write outcome unknown; the request may have succeeded. Do not retry until the outcome is resolved. Detail: The number of retries (1) have been reached."
+    },
+    {
+      "local_id": "work:פרקי_משה_(מאמר_יז-כ)",
+      "qid": "Q141990660",
+      "message": "Wikidata write outcome unknown; the request may have succeeded. Do not retry until the outcome is resolved. Detail: The number of retries (1) have been reached."
+    },
+    {
+      "local_id": "work:ברוך_אתה_ה'_אלהינו_ואלהי_אבותינו",
+      "qid": "Q141990236",
+      "message": "Wikidata write outcome unknown; the request may have succeeded. Do not retry until the outcome is resolved. Detail: The number of retries (1) have been reached."
+    },
+    {
+      "local_id": "work:בריתא_דמ_ט_מדות",
+      "qid": "Q141990239",
+      "message": "Wikidata write outcome unknown; the request may have succeeded. Do not retry until the outcome is resolved. Detail: The number of retries (1) have been reached."
+    },
+    {
+      "local_id": "work:ברית_חדשה_(בתרגום:_דומינקו_ירושלמי)",
+      "qid": "Q141990237",
+      "message": "Wikidata write outcome unknown; the request may have succeeded. Do not retry until the outcome is resolved. Detail: The number of retries (1) have been reached."
+    },
+    {
+      "local_id": "work:ברכות_ההנייה",
+      "qid": "Q141990241",
+      "message": "Wikidata write outcome unknown; the request may have succeeded. Do not retry until the outcome is resolved. Detail: The number of retries (1) have been reached."
+    },
+    {
+      "local_id": "work:בת_ציון_שמעתי_מררת",
+      "qid": "Q141990251",
+      "message": "Wikidata write outcome unknown; the request may have succeeded. Do not retry until the outcome is resolved. Detail: The number of retries (1) have been reached."
+    }
+  ],
+  "review_reasons": [
+    {
+      "message": "Work QID has conflicting or unverified author/source evidence; refusing adoption, UPDATE or CREATE until source review.",
+      "count": 32
+    },
+    {
+      "message": "Work identity for 'Dialogos Burlescos' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'Entretenimentes Gustosos' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'Index' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (אדרא רבא) פרשנות: צמח, יעקב בן חיים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'Ledger' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'Meir Netiv (translated by: Fuller, Nicholas)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר המרגלית' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אצילות הודך על מיחדך' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קטע נוסף בחשבון (כפל, חילוק והוצאת שורש) לאבן עזרא(?)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שיר לכבוד ספר הבדלות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אבינו רם מלכנו נעלה חטאנו לפניך חטאים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אברך ואהלל לסיבת כל סיבות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אגדלך אלהי כל נשמה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אגרות אל דוד אופנהים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אגרת אל פרופסור יוהנס בראון' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אדון רם שמעה תפלתי וחושה נא לעזרתי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אדני יודע תעלומת לב' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אדר יקר אורים גדולים פשטו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אדרת האזינו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אוצר החכמות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אוצר נחמד' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אילן הספירות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אלה הם שאלות תשובות להרב הגדול רבינו משה בן מימון ז\"ל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אלו הימים שהוקבעו בהם ר\"ח ולא בזולתם ; ואלו הימים שאין קובעים בהם המועדים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אלו הימים שנהגו שלא ליפול בהם על פניהם' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אל מול פני אל אראה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אם תשאל על מחזה סודות נבואה או חלום' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אמרי תבונה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אמת ליעקב (פרשת בראשית)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אנא אני מוליך בושתי וחרפתי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"אני אברהם ן' סמחון מתושבי פאס\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אני אקרא לאל נורא ואיום' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אנשי אמונים דרשו היטב' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אפטיר בשיר שפה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'אתה הוא יסוד היסודות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'באר הגולה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בחינות שיש בהם הפרש באדרא רבא בין א\"א לז\"א' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בית יוסף' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בית פרעה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בית שמואל (קטע)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בן רחל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בן שמואל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בני יחד יחידתך לצורך' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בעל הטורים (לקוטים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בעל הרמזים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'בער זצ\"ל בעל מתנות כהונה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'גדר פרץ' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'גורלות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'גלגולי קצת אנשי דורינו זה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'גלי עמיקתא' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'גלי רזיא' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דיאלוג בלשון עברי ממרים עם תינוק' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דיני קמעות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דקדוק ארמי בהולנדית' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרוש אדם קדמון (קצור)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרוש היכלות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרושי הקליפות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרושי מרכבת יחזקאל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרוש (קטע)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרכי משה הארוך (אורח חיים ויורה דעה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרכי משה הארוך (חשן משפט)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרכי משה (חשן משפט)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרשה לסיום מסכת' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרש לסעודת פורים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'דרש לסעודת פורים סדרו כה\"ר ר\\' חייא ב\"ר משה הלוי מערבי זלה\"ה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"הוספות, כנראה לס' שתיל פורח\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'היתר שחיטה ל\"אלישע סרוג משנת הת\"כ' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'הלכות הרי\"ף (נזיקין) (פרשנות: נסים בן ראובן גרונדי)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'הלכות הרי\"ף (פרשנות: דילוקיו, שמואל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'הלכות הרי\"ף (קצור: מנחם עזריה בן יצחק ברכיה מפנו)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'הסכמות שאלוניקי וקונסטנטינופולי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'הערה על ספר איוב' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'הערות בהלכה בערבית' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"העתק בשבועי' שבעי' דדניאל\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"העתק מן הכתב ששלח ר' אלי' בחור המדקדק לאיש נוצרי, בבאזיל ליד איש נבון וחכם אדוני זיבאשטיאנוש מנשטירוש\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'הקדמה (נתן העזתי)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'הקדמת שירת משה רבנו שתקנו קדמונינו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'הקפת המת' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'השבעות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'השם נפשינו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'השמע עם קול אלקים חיים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"ובספר יראת שמים שער א' ... פירשתי זה הפסוק\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'והחכם ר\\' יהודה אחי יצ\"ו פי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ותודיענו משפטי צדקך ותלמדנו לעשות חקי רצונך' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זאת הספירה נקראת כתר לפי שהיא מקפת כל הספירות כולן' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זבחי שלמי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זה הקונדריס מדבר בדברי מוסר וצוואה שצוה הרב הגדול רבינו משה בן מימון ז\"ל לבנו החכם ר\\' אברהם ומקצתו כתוב בו שאלות ותשובות מהרב הנזכר ז\"ל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (אדרא רבא) פרשנות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (אדרת האזינו) פרשנות: צמח, יעקב בן חיים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (מפתח: גלנטי, משה בן מרדכי)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (מפתחות: צרפתי, יוסף בן אהרן)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (ספרא דצניעותא) (פרשנות)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (ספרא דצניעותא) (פרשנות: לוריא, יצחק, האר\"י)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (ספר בראשית) פרשנות: איסרליש, משה בן ישראל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (ספר בראשית) פרשנות: לואנץ, אליהו בן משה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"זהר (ספר בראשית) פרשנות: מרג'י, יעקב מטאטואן\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (ספר שמות) פרשנות: גלנטי, אברהם' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (פרשנות)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (פרשנות: איסרלש, משה בן ישראל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (פרשנות: ויטל, חיים בן יוסף)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (פרשנות: לואנץ, אליהו בן משה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (פרשנות: צמח, יעקב בן חיים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זהר (תקונים) (פרשנות: לואנץ, אליהו בן משה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זמירות הלוי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'זמירות שבת להאר\"י (פרשנות: סרוג, ישראל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'חדושים על התלמוד (סדר מועד)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"חדשי השנה ומועדי ה' אשר בהם מן התורה ומן הנביאים\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'חובות הלבבות (קצור: זרח, מנחם בן אהרן אבן)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'חושבי שמו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'חזוק אמונה (בתרגום לספרדית: אטיאש, יצחק)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'חזוק אמונה (הקדמה: מלינובסקי, יוסף בן מרדכי)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'חשבון האותיות (קטע)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'חשבון מהלכות הכוכבים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'טור (חשן משפט) (פרשנות: איסרלש, משה בן ישראל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'טור (יורה דעה: פרשנות: איסרלש, משה בן ישראל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'טור (פרשנות: בואינו, יצחק בן אברהם)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'טור (פרשנות: שלחן מלכים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'יום אכפי הכבדתי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'יחיד הוא במלכות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ירד דודי לגנו לערוגות בשמו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כוונות העומר סגלות ומזמור' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כוונות של רחיצת המת' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כונות הטבילה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כונות התפלה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כונות לספירת העמר' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כונות רחיצת המת' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כונת קריאת שמע' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כללי הדקדוק' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כנף רננים (עליו)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כנפי יונה (לקוטים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כרוניקה על גזירות תתנ\"ו (קצור)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כשעלה במרום יתברך שמו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כתית למאור' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כתר מלכות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'כתר תורה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'להתחלת התורה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לוח ההפטרות כל הפרשיות כמנהג ק\"ק ספרד יע\"א' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לוח הימים אשר בהם מתפללים בחל המועד ברכת השנים בתפלה ואומרים אתו עד הפסח' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לוח לקביעת שנים פשוטות ומעוברות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לזכרון אכתוב המעשה העצום ונורא שנעשה בק\\' המבורג עם כמה\"ר אברהם כאשר ראיתיהו רשום בכתב אמת מגיסו כה\"ר מרדכי כץ י\"ץ' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לחם שלמה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לכיבוי האש' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'למען תדע אצילות העשר ספירות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לעצור דם' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לעצור דם המילה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לקוטים בין השאר מספר עץ חיים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לקוטים מספר עץ חיים עם שינוים מהמקור' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לשבח האיש השלם במיני השלימות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'לשונות רש\"י ז\"ל אשר באו לידי ועיינתים כיד ה\\' הטובה עלי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מאיר נתיב' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מאמר שבתות ה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מבוא שערים (קטע)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מדרש דוד (בראשית)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מדרש דוד (דברים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מדרש הגדול (בראשית) (פרשנות)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מדרש הגדול (פרשנות)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מדרש רבה (פרשנות: יששכר בר בן נפתלי הכהן)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"מילואי שמות ה' בכתיבה אחרת\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מכילתא (פרשנות: אוחנה, סולימן)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מכלל יופי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מלואי שמות ה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מלך כל הארץ הכל יוצר' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מלך שוכן השחקים הצילנו מחדק' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מנחת יהודה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מסעות משה הלוי הירושלמי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מסעות שמואל בן דוד הקראי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"מספר הכוכבים ושמותיהן לר' אברהם בר חייא\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מספר המתרגם על תלאותיו הקשות החל בעת גזירות קנ\"א בעיר מגוריו ברצלונה וכלה בגזירות השמד של הכומר ויסינטי פרר VICENTE FERRER בשנת N-N' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מספר כוכבי שבת שחקקו הקדמונים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מעשה בראשית' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מעשה בראשית (נוסח קצר)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מעשה ישו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מעשה רבי יהושע בן לוי (קטע)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מפתח הזהר' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מפתחות לחבור' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מפתח לספר מגיד מישרים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מרוב אח משמע נלאיתי ובאחיו התיכון הייתי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'מרקאת' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'משנה תורה (פרשנות: ספר זמנים, הלכות קדוש החודש)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'משקת שכורים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נדע כי כן נגזר במרומים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נזר קדש' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נחמת הפילוסופיה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נחמת הפילוסופיה (בתרגום: בנבנשתי, שמואל בן שמואל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נייר קטן' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נמוקי אליהו בחור על ספר השרשים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נמוקי יוסף (פרשנות: דילויקיו, שמואל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נערץ ונורא בחקירה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נפש הגר' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נצח סלה ועד יתהדר בפי כל הבריות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נר לרגלי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'נר מצוה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סגלה למגפה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"סדור ר' ישעיה הכהן\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סדר אלף בית על דרך הסוד' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סדר הא\"ב על דרך הסוד' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סדר קציצת הצפרנים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סדר קציצת צפורנים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סדר קריאת הפרשיות וההפטרות במועדי השנה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סדר תפלת הדרך' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סדר תקיעת שופר על דרך הקבלה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סדר תקיעת שופר על דרך הקבלה, בכתיבה שונה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סוד ברכת הלבנה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סודות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סוד שבעה מלכים דמיתו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סימני השנים הפשוטות וחילוק הפרשיות אשר בהם כמשפט' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סליחות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'סמנים על טענות כלליות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר הדקדוק' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר הדרושים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר החידות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר הכוזרי (מפתחות: מודינא, יהודה אריה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר הלקוטים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר המבחר' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר המבחר (פרשנות: תשבי, אליהו בן יהודה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר המרגלית (ויקרא, קטע)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר המרגלית (לקוטים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר המשקל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר הסודות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר הצווי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר יצירה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר יצירה (פרשנות: שער אריה, שמואל בן אלישע)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר מהרי\"ל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר סגלות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ספר רעמים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עזר האמונה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עיגול דרב נחשון גאון' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עיון הכוכבים המשרתים (בתרגום: מזרחי, אפרים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עיון הכוכבים המשרתים (פרשנות: דלקרוט, מתתיה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עין יעקב (מפתחות)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עין יעקב (פרשנות: ריאיטי, אליעזר בן יצחק)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עמק המלך' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ענין שיחת העופות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ענין תקון חצות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עניני הגלגולים אשר קבל הרמ\"ע מפאנו מהר\"ר ישראל סרוק' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עץ חיים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עשר ספירות (פרשנות)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'עשר ספירות (פרשנות: יעקב בן רפאל הלוי)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פזמון בערבית' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פיוטים לשלש רגלים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פיוטים (קטע)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פי\\' מוהר\"ר יעקב טעמרלי\"ש ז\"ל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"פירוש י' ספירות\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פירוש מאמרים מהאר\"י ז\"ל' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פירוש על המשנה הראשונה אשר מספר יצירה מלימודי האר\"י' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרדס רמונים (קצור: קורדובירו, משה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש הזהר (ספרא דצניעותא)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש הזהר (פרשת נח)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש המסרת' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש המשנה לעובדיה מברטנורא (הקדמה לסדר טהרות)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש התורה ליפת בן עלי (במדבר)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש התורה לרש\"י (פרשנות: שפירא, נתן, מיוחס לו)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש כתובים ליפת בן עלי (שיר השירים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש כתובים ליפת בן עלי (תהלים, ספר ב)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש מדרש הגדול (בראשית)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש מהלך האותיות (פרשנות: טמרליש, יעקב)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש משנה תורה (ספר זרעים, עבודה וקרבנות) בערבית' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש משנה תורה (ספר מדע-זמנים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש משנה תורה (ספר קדושה, הלכות שחיטה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש ספר יצירה (משנה ראשונה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש עיון הכוכבים המשרתים לגיאורג פורבך' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש עין יעקב' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרוש עשר ספירות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרקי אליהו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרקי משה (בתרגום: זרחיה בן יצחק בן שאלתיאל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'פרקי משה (בתרגום: נתן המאתי)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'צורת המנורה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ציור אילן הספירות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'צירופי אותיות למלת בראשית ולאותיות שם ה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קודם שיתפלל האדם בשחרית צריך לקבל עליו מצות עשה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קול אומר קרא בגרון על מות המלכה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קול בוכים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קולותינו שועתנו צור ישענו האזינה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קול ששון' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קטרת' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קמיעות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קמיע לכיבוי האש' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קץ הפלאות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קצור דיני האר\"י' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'קצור ספר הדרושים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ראיתי לכתוב בקיצור נמרץ ענין גזירה תתנ\"ו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ראשית חכמה (קצור: וידש, אליהו בן משה די)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'רוח האדון אל ביתי כי יבוא לעשות חבולתו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'ריכוז שמות החכמים הפיקטיביים שנזכרו בפרודיה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for \"רשות לסדר עבודה על סדר אלפבית לק' שלמה ן' גבירול\" needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'רשימות היסטוריות אנליות מן השנים תרפ\"א-תרפ\"ה (N-N) על מלחמות ומאבקים מזויינים במערב אירופה בגרמניה, צרפת, הולנד ועוד, בין השאר על המאבקים בין הקאתולים והפרוטסטנטים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'רשימת אירועים בתולדות העולם והיהדות מהמבול בשנת N לפ\"ק ועד הפרעות בפולין בשנת N' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שאלות ותשובות הרמב\"ם' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שאלות ותשובות מאת מאיר בן ברוך מרוטנבורג' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שובו נא שובו אחים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שושן סודות (לקוטים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שיר דעתיקא דעתיקין' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Uncertain live duplicate (verdict=unsure); refusing CREATE/UPDATE (Rule W-N).",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שלחן ערוך (ארח חיים, יורה דעה) (פרשנות: בואינו, יצחק בן אברהם)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שלחן ערוך (ארח חיים) (פרשנות)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שלחן ערוך (ארח חיים) (פרשנות: איסרליש, משה בן ישראל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שלחן ערוך (ארח חיים) (פרשנות: צמח, יעקב בן חיים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שלחן ערוך (יורה דעה) (פרשנות: רבקש, משה בן צבי נפתלי)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שלחן ערוך (פרשנות) (איסרלש, משה בן ישראל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שלשה עשר עקרים (פרשנות: ליטמריץ, בנימין וולף בן יצחק)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שמושי שמות ה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שמות לפי מסורת יעקב כהן מאיסטי' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שמן' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שני קטעי קבלה, האחד משער המצוות לרח\"ו (בכתיבה אחרת)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שעור קומה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שער הכללים, כמו שנדפס בראש ספר עץ חיים בקארעץ תקמ\"ב' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שער המצוות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שער הנבואה ורוח הקדש והיחודים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שער השמים' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שערי אורה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שערי ציון' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'שער שברי לוחות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תולדות אדם' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תפוחי זהב (בתרגום לאיטלקית: סליטי, בואנה וינטורה)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תפלה בלשון אבינו מלכנו' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תפלה לליל החבור' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תפלה קודם הלמוד' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תפסיר איכה' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תפסיר נביאים אחרונים (יחזקאל)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תקון' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תקוני עוונות' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תרגום ערבי לתורה (דברים, קטעים)' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תרגמאן צחאח' needs source review.",
+      "count": 1
+    },
+    {
+      "message": "Work identity for 'תשובות לנוצרים' needs source review.",
+      "count": 1
+    }
+  ]
+}

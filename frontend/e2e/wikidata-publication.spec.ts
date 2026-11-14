@@ -303,17 +303,14 @@ test(`a curator receives the asynchronous dry-run result: ${dryOutcome}`, async 
     await page.getByText("Publication details and manual actions", {exact: true}).click();
     await page.getByText(/Blocked actions \(first/).click();
     const consent = page.getByRole("checkbox", {name: "I reviewed Q123 and permit this Release to update it."});
-    await expect(consent).not.toBeChecked();
-    await expect(page.getByRole("checkbox", {name: /I reviewed/})).toHaveCount(1);
+    await expect(consent).toHaveCount(0);
+    await expect(page.getByRole("checkbox", {name: /I reviewed/})).toHaveCount(0);
     await expect(page.getByRole("link", {name: "Review Q123"})).toHaveAttribute("href", "https://www.wikidata.org/wiki/Q123");
-    await consent.check();
     await page.getByTestId("publication-dry-run").click();
     await expect.poll(() => commands.filter((command) => command.type === "dry_run").length).toBe(2);
-    expect(commands[2].foreign_qid_consents).toEqual([
-      {entity_key: "work-1", qid: "Q123", remote_revision: 7, entity_digest: "entity-7"},
-    ]);
+    expect(commands[2].foreign_qid_consents).toBeUndefined();
     await expect(page.getByTestId("publication-dry-run")).toBeEnabled({timeout: 15000});
-    await expect(consent).not.toBeChecked();
+    await expect(consent).toHaveCount(0);
     await expect(page.getByTestId("publication-publish")).toBeDisabled();
     return;
   }
@@ -443,9 +440,8 @@ test("AI report survives refresh and requires explicit approval before a fresh d
   await expect(page.getByTestId("publication-ai-report")).toContainText("The source does not establish identity.", {timeout: 20000});
   await page.getByText("Full AI report", {exact: true}).click();
   await expect(page.getByRole("link", {name: "Review Q123"})).toHaveAttribute("href", "https://www.wikidata.org/wiki/Q123");
-  await page.getByRole("button", {name: "Approve AI recommendations (1) and check again"}).click();
-  await expect.poll(() => commands.length).toBe(1);
-  expect(commands[0]).toMatchObject({type: "dry_run", force_refresh: true, foreign_qid_consents: [consent]});
+  await expect(page.getByRole("button", {name: /Approve AI recommendations/})).toHaveCount(0);
+  expect(commands).toHaveLength(0);
   await expect(page.getByTestId("publication-publish")).toBeDisabled();
 });
 

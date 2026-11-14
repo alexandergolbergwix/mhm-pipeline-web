@@ -58,7 +58,8 @@ Zero selected transfer failures does not certify the whole audit.
 ## Historical proposals
 
 `wikidata_gila_repairs.py` produces exact before/after claims and performs no writes.
-Reference proposals remove identical blocks and retain distinct sources, dates, qualifiers, ranks, and values.
+Reference proposals remove identical blocks and retain distinct sources, qualifiers, ranks, and values.
+The [retrieval rule](reference-retrievals.md) retains the latest recorded date when all other source snaks match.
 Colophon proposals require source text and a uniquely scoped retained statement.
 The retained and removed statements must have the same language, datatype, rank, and source scope.
 A deprecated retained statement or an invalid folio cannot support removal.
@@ -88,7 +89,8 @@ It disables reconciliation and performs no production cache write.
 It fails if canonical snapshots are absent instead of substituting a legacy result.
 The report exports fact comparisons, stage traces, historical proposals, and work partition reviews separately.
 The legacy mode remains available for comparison. Neither mode produces a corrected-QID receipt.
-Current versions: `source-aware-works-v21` and `hmo-wikidata-v23`.
+Current versions: `source-aware-works-v24` and `hmo-wikidata-v28`.
+The [completion packet](gila-completion-packet.md) retains date-alignment cases and checks current correction receipts.
 
 Explicit extraction rejection requires migration `0053_extraction_rejection`.
 See [the review-state contract](../extraction/rejection.md).

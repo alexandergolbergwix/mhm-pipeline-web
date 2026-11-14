@@ -173,7 +173,7 @@ class ReconcileOutcome:
 
 @dataclass
 class ForeignAccept:
-    """Per-item curator accept to modify a foreign Wikidata QID."""
+    """Legacy approval data for compatibility; it never authorizes a foreign write."""
 
     accept_foreign_modify: bool = False
     accepted_foreign_qid: str | None = None
@@ -308,13 +308,7 @@ def pass2_may_update_source(
         outcome.status in PASS2_OWN_UPDATE_STATUSES
         and (
             outcome.ownership == "own"
-            or (
-                outcome.ownership == "foreign"
-                and outcome.accepted_foreign_qid == target_qid
-                and accept is not None
-                and accept.accept_foreign_modify
-                and str(accept.accepted_foreign_qid or "").strip() == target_qid
-            )
+
         )
     ):
         return True
@@ -750,12 +744,12 @@ def _apply_existence_and_ownership(
     is_test: bool,
     existence_cache: dict[str, bool | None] | None = None,
 ) -> PreparedItem:
-    """Confirm QID alive + enforce create-or-own / explicit-foreign-accept policy."""
+    """Confirm QID alive and require creator ownership for every update."""
     from app.pipeline.wikidata_existence import (  # noqa: PLC0415
-        accept_allows_foreign_modify,
         confirm_qid_alive,
     )
 
+    prepared.allow_foreign_modify = False
     if prepared.blocked:
         return prepared
     qid = prepared.existing_qid
@@ -854,22 +848,6 @@ def _apply_existence_and_ownership(
         prepared.ownership = "own"
         return prepared
 
-    acc = accept or ForeignAccept()
-    if (
-        not is_test
-        and accept_allows_foreign_modify(
-            existing_qid=qid,
-            accept_foreign_modify=bool(acc.accept_foreign_modify),
-            accepted_foreign_qid=acc.accepted_foreign_qid,
-        )
-    ):
-        # Explicit per-QID accept is sufficient even without a live ownership
-        # classify (e.g. dry-run before token unwrap). Still fail-closed on
-        # missing/ghost QIDs above. Live only — test never UPDATEs foreign items.
-        prepared.ownership = "foreign"
-        prepared.allow_foreign_modify = True
-        return prepared
-
     if ownership_checker is None:
         prepared.ownership = "unknown"
         prepared.blocked = True
@@ -877,8 +855,7 @@ def _apply_existence_and_ownership(
         prepared.block_message = (
             f"Existing item {qid} matched via {prepared.method}, but no Wikidata "
             "token is available to verify ownership. Default policy: only CREATE "
-            "new items or UPDATE items you created — provide a token, or set "
-            "accept_foreign_modify bound to this QID after review."
+            "new items or UPDATE items you created. Provide a token to prove ownership."
         )
         return prepared
 
@@ -909,15 +886,13 @@ def _apply_existence_and_ownership(
     if ownership == "foreign":
         prepared.block_message = (
             f"Existing Wikidata item {qid} was not created by your account. "
-            "Default policy forbids modifying community items. To proceed, "
-            "open the item and explicitly accept modification of this QID "
-            f"(accept_foreign_modify + accepted_foreign_qid={qid}). "
-            "A duplicate CREATE is also refused."
+            "Creator-only policy forbids this update, including approved foreign edits. "
+            "Use the existing QID as a link target. A duplicate CREATE is also refused."
         )
     else:
         prepared.block_message = (
             f"Could not prove ownership of {qid}. Fail-closed: refusing "
-            "UPDATE/CREATE. Retry with a valid token or accept foreign modify."
+            "UPDATE/CREATE. Retry with a token that proves creator ownership."
         )
     return prepared
 
@@ -1803,27 +1778,18 @@ def _upload_sync(
                 added_properties=[], ownership=p.ownership,
             ))
             continue
+        if p.existing_qid and p.ownership != "own":
+            out.append(UploadOutcome(
+                local_id=p.local_id, label=p.label, entity_type=p.entity_type,
+                qid=p.existing_qid,
+                status="skipped" if p.ownership == "foreign" else "blocked",
+                message=(
+                    "Creator-only policy requires proof from the account that created the item."
+                ),
+                added_properties=[], ownership=p.ownership,
+            ))
+            continue
         try:
-            if p.allow_foreign_modify and p.existing_qid and not is_test:
-                accept = accepts.get(p.local_id) or ForeignAccept()
-                if (
-                    not accept.accept_foreign_modify
-                    or str(accept.accepted_foreign_qid or "").strip() != p.existing_qid
-                    or str(getattr(p.item, "existing_qid", "") or "").strip() != p.existing_qid
-                    or check_foreign_accept is None
-                    or not check_foreign_accept(p.local_id, p.existing_qid)
-                ):
-                    out.append(UploadOutcome(
-                        local_id=p.local_id, label=p.label, entity_type=p.entity_type,
-                        qid=p.existing_qid, status="blocked",
-                        message=(
-                            "Foreign modification requires current approval "
-                            "for the exact target QID."
-                        ),
-                        added_properties=[], ownership="foreign",
-                    ))
-                    continue
-                write_uploader.register_foreign_accept(p.existing_qid)
             result = write_uploader.upload_item(
                 p.item, created_qids=session_qids,
             )

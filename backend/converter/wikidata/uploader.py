@@ -15,6 +15,10 @@ import json
 import logging
 import re
 import threading
+
+from converter.wikidata.retry_policy import BULK_MAXLAG
+
+import requests
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
@@ -25,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 from converter.wikidata.item_builder import WikidataItem, WikidataStatement
 from converter.wikidata.item_models import validate_statement_references
 from converter.wikidata.property_mapping import repair_wikidata_time
+from converter.wikidata.reference_retrieval import current_reference_indices, reference_source_key
 from converter.wikidata.test_wiki_compat import LocalTargetQid, MappedTestQid
 
 if TYPE_CHECKING:
@@ -851,10 +856,7 @@ class WikidataUploader:
             wbi_config["WIKIBASE_URL"] = _WIKIDATA_URL
 
         # Limit retries to avoid infinite waits during server load
-        # Fix 2026-04-15 third audit Fix #16: maxlag=5 was too aggressive —
-        # edits fail frequently during server load and burn retries. Best
-        # practice for bots is maxlag >= 10s (Wikidata:Bots).
-        wbi_config["MAXLAG"] = 10
+        wbi_config["MAXLAG"] = BULK_MAXLAG
         wbi_config["BACKOFF_MAX_TRIES"] = 3  # Max 3 retries (default 5)
         wbi_config["BACKOFF_MAX_VALUE"] = 30  # Max 30s backoff (default 3600!)
 
@@ -1241,7 +1243,7 @@ class WikidataUploader:
                     options = {"mediawiki_api_url": _WIKIDATA_API, "allow_redirects": False} if owner_only else {}
                     wbi_item = wbi.item.get(
                         item.existing_qid,
-                        maxlag=20,
+                        maxlag=BULK_MAXLAG,
                         retry_after=5,
                         max_retries=4,
                         timeout=30,
@@ -1535,9 +1537,12 @@ class WikidataUploader:
                     if matches:
                         old = matches[0]
                         try:
-                            seen = {_reference_identity(ref.get_json()) for ref in old.references}
+                            reference_key = (
+                                _reference_identity if self._is_test else reference_source_key
+                            )
+                            seen = {reference_key(ref.get_json()) for ref in old.references}
                             for ref in claim.references:
-                                identity = _reference_identity(ref.get_json())
+                                identity = reference_key(ref.get_json())
                                 if identity not in seen:
                                     old.references.add(ref)
                                     seen.add(identity)
@@ -1561,22 +1566,13 @@ class WikidataUploader:
                         if _claim_identity(nc) == _claim_identity(ec):
                             existing_refs = list(ec.references or [])
                             replacement = References()
-                            seen_refs: set[str] = set()
-                            seen_existing: set[tuple[str, object]] = set()
-                            for reference in existing_refs:
-                                identity = _reference_identity(reference.get_json())
-                                key = (identity, reference.hash)
-                                if key in seen_existing:
-                                    continue
-                                seen_existing.add(key)
-                                seen_refs.add(identity)
-                                replacement.add(reference)
-                            for reference in nc.references or []:
-                                identity = _reference_identity(reference.get_json())
-                                if identity in seen_refs:
-                                    continue
-                                seen_refs.add(identity)
-                                replacement.add(reference)
+                            candidates = [*existing_refs, *(nc.references or [])]
+                            selected = current_reference_indices(
+                                [ref.get_json() for ref in candidates],
+                                merge_retrieval=not self._is_test,
+                            )
+                            for index in selected:
+                                replacement.add(candidates[index])
                             before = [(_reference_identity(ref.get_json()), ref.hash) for ref in existing_refs]
                             after = [(_reference_identity(ref.get_json()), ref.hash) for ref in replacement]
                             if after != before:
@@ -1631,9 +1627,23 @@ class WikidataUploader:
                         wbi_item.claims.add(claim, action_if_exists=ActionIfExists.FORCE_APPEND)
                         added_properties.append(pid)
                         continue
-                    seen = {_reference_identity(ref.get_json()) for ref in matching.references}
+                    if is_owned_by_us and not self._is_test:
+                        existing_refs = list(matching.references)
+                        candidates = [*existing_refs, *claim.references]
+                        replacement = References()
+                        selected = current_reference_indices([ref.get_json() for ref in candidates])
+                        for index in selected:
+                            replacement.add(candidates[index])
+                        if [ref.get_json() for ref in replacement] != [
+                            ref.get_json() for ref in existing_refs
+                        ]:
+                            matching.references = replacement
+                            added_properties.append(pid)
+                        continue
+                    reference_key = _reference_identity if self._is_test else reference_source_key
+                    seen = {reference_key(ref.get_json()) for ref in matching.references}
                     for ref in claim.references:
-                        identity = _reference_identity(ref.get_json())
+                        identity = reference_key(ref.get_json())
                         if identity not in seen:
                             matching.references.add(ref)
                             seen.add(identity)
@@ -1783,6 +1793,12 @@ class WikidataUploader:
                 seen_snaks.add(identity)
                 ref.add(ref_claim)
             refs.add(ref)
+
+        if not owner_only and not self._is_test:
+            source_refs = list(refs)
+            refs = References()
+            for index in current_reference_indices([ref.get_json() for ref in source_refs]):
+                refs.add(source_refs[index])
 
         value = stmt.value
         if isinstance(value, str) and value.startswith("__LOCAL:"):
@@ -2131,7 +2147,7 @@ class WikidataUploader:
             resp = session.get(
                 _WIKIDATA_API,
                 params={"action": "query", "prop": "revisions", "titles": qid,
-                        "rvprop": "user", "rvdir": "newer", "rvlimit": "1", "format": "json"},
+                        "rvprop": "ids|user|userid", "rvdir": "newer", "rvlimit": "1", "format": "json"},
                 headers={"User-Agent": "MHMPipeline/1.0 (shvedbook@gmail.com)"},
                 timeout=10,
                 allow_redirects=False,
@@ -2156,8 +2172,17 @@ class WikidataUploader:
                 and isinstance(revisions[0], dict)
                 and "userhidden" not in revisions[0]
                 and revisions[0].get("user") == user
+                and type(info.get("id")) is int and info["id"] > 0
+                and type(revisions[0].get("userid")) is int
+                and revisions[0].get("userid") == info["id"]
+                and type(revisions[0].get("revid")) is int and revisions[0]["revid"] > 0
             )
-            return entity["lastrevid"] if valid else None
+            if valid:
+                self._authenticated_user = user
+                self._creator_cache[qid] = user
+                self._is_our_item_cache[qid] = True
+                return entity["lastrevid"]
+            return None
         except Exception as exc:  # noqa: BLE001
             logger.warning("Owner-only verification failed for %s: %s", qid, exc)
             return None
@@ -2287,22 +2312,8 @@ class WikidataUploader:
             return False
 
     def register_foreign_accept(self, qid: str) -> None:
-        """Record curator accept for one foreign QID (live wikidata.org only).
-
-        Test uploads MUST NOT call this — they never UPDATE foreign items.
-        """
-        clean = str(qid or "").strip()
-        if not clean:
-            return
-        if self._is_test:
-            logger.warning(
-                "Ignoring accept_foreign_modify for %s on test.wikidata.org — "
-                "test uploads must not UPDATE foreign items",
-                clean,
-            )
-            return
-        logger.warning("FOREIGN_MODIFY_ACCEPTED qid=%s (live upload only)", clean)
-        self._foreign_accept_qids.add(clean)
+        """Ignore legacy approvals; foreign entities are never write targets."""
+        logger.warning("Foreign modification is disabled; ignored approval for %s", qid)
 
     def prime_entity_caches(
         self,
@@ -2642,15 +2653,54 @@ class WikidataUploader:
         missed check at the entry point cannot let an unauthorised edit
         slip through. Raises :class:`UnauthorisedModificationError` —
         the uploader catches it and converts to a ``skipped`` result
-        rather than a crash. A live curator accept authorizes only its exact
-        QID and does not change the creator ownership result.
+        rather than a crash. Legacy foreign approvals never authorize a write.
         """
         if not qid:
             return  # new-item creation path; no existing item at risk
-        if not self._is_test and qid in self._foreign_accept_qids:
-            return
-        if not self._is_our_item(qid, our_p3959=our_p3959):
+        user = self._get_authenticated_user()
+        if (
+            not user
+            or self._get_first_revision_author(qid) != user
+            or not self._is_our_item(qid, our_p3959=our_p3959)
+            or not self._creator_identity_matches(qid, user)
+        ):
             raise UnauthorisedModificationError(qid=qid, stage=stage)
+
+    def _creator_identity_matches(self, qid: str, user: str, *, required_user_id: int | None = None) -> bool:
+        """Use fresh account and first-revision IDs at the final write boundary."""
+        try:
+            info = self._query_userinfo_rights()
+            if not isinstance(info, dict) or info.get("name") != user or "anon" in info:
+                return False
+            uid = info.get("id")
+            if type(uid) is not int or uid <= 0 or (required_user_id is not None and uid != required_user_id):
+                return False
+            session = self._login.get_session()
+            api_url = _TEST_API if self._is_test else _WIKIDATA_API
+            response = session.get(api_url, params={
+                "action": "query", "prop": "revisions", "titles": qid, "rvprop": "ids|user|userid",
+                "rvdir": "newer", "rvlimit": "1", "format": "json",
+            }, headers={"User-Agent": "MHMPipeline/1.0 (shvedbook@gmail.com)", "Cache-Control": "no-cache"},
+                timeout=15, allow_redirects=False)
+            if response.status_code != 200:
+                return False
+            data = response.json()
+            query = data.get("query", {})
+            pages = query.get("pages", {})
+            if data.get("error") or query.get("redirects") or len(pages) != 1:
+                return False
+            page = next(iter(pages.values()))
+            revisions = page.get("revisions", [])
+            if (page.get("title") != qid or page.get("ns") != 0 or type(page.get("pageid")) is not int
+                    or page["pageid"] <= 0 or "missing" in page or "redirect" in page or len(revisions) != 1):
+                return False
+            first = revisions[0]
+            return bool("userhidden" not in first and type(first.get("userid")) is int
+                        and first["userid"] == uid and first.get("user") == user
+                        and type(first.get("revid")) is int and first["revid"] > 0)
+        except Exception as exc:  # noqa: BLE001 — missing identity evidence denies a write.
+            logger.warning("Creator identity proof failed for %s: %s", qid, exc)
+            return False
 
     def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:
         """Fetch entities from the current wiki. Empty dict on network failure."""
@@ -3386,7 +3436,7 @@ class WikidataUploader:
         For existing items: fetches current claims, compares with new claims,
         and only writes if there are actual changes (avoids duplicates).
 
-        Existing items require creator ownership or exact-QID curator approval.
+        Existing items require creator ownership. Foreign approvals have no effect.
 
         Returns:
             UploadResult with QID and status.
@@ -3489,15 +3539,20 @@ class WikidataUploader:
                 local_id=item.local_id, qid=item.existing_qid, status="blocked",
                 message="Test UPDATE target lacks exact test-ledger proof.",
             )
+        from app.pipeline.wikidata_source_choices import revalidate_payload_targets_sync
+
+        try:
+            revalidate_payload_targets_sync({"authority_evidence": item.authority_evidence})
+        except (ValueError, requests.RequestException) as exc:
+            return UploadResult(local_id=item.local_id, qid=item.existing_qid, status="blocked", message=str(exc))
         self._init_wbi()
 
         test_adapt_result = None
 
         # Ownership BEFORE test adapt: never stub-CREATE properties/classes
         # for an item we are about to skip (Rule W-184).
-        if item.existing_qid and not (
-            (not self._is_test and item.existing_qid in self._foreign_accept_qids)
-            or self._is_our_item(item.existing_qid, our_p3959=self._our_p3959(item))
+        if item.existing_qid and not self._is_our_item(
+            item.existing_qid, our_p3959=self._our_p3959(item),
         ):
             if self._is_test:
                 logger.info(
@@ -3675,11 +3730,11 @@ class WikidataUploader:
                 result = wbi_item.write(
                     summary=edit_summary,
                     is_bot=self._mark_as_bot,
-                    maxlag=20,
+                    maxlag=BULK_MAXLAG,
                     retry_after=0,
                     max_retries=1,
                     timeout=30,
-                    **owner_write_options,
+                    **({"allow_redirects": False} | owner_write_options),
                 )
                 qid = result.id if result else None
                 if not qid:

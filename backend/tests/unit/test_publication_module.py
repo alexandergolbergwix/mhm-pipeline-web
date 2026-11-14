@@ -328,14 +328,14 @@ async def test_dry_run_reconciles_and_creates_a_receipt_without_writes() -> None
     summary = await module.read(SummaryQuery(prepared.publication_id))
 
     assert operation.resource_type == "plan"
-    assert summary.state == "publishable"
+    assert summary.state == "dry_run_ready"
     assert summary.plan_id == operation.resource_id
     assert summary.plan_digest
     assert summary.dry_run_receipt_id
     assert summary.dry_run_receipt_digest
     assert summary.plan_create_count == 1
-    assert summary.plan_update_count == 1
-    assert summary.plan_blocked_count == 0
+    assert summary.plan_update_count == 0
+    assert summary.plan_blocked_count == 1
     assert gateway.open_count == 2
     assert gateway.write_calls == ()
 
@@ -540,22 +540,10 @@ async def test_foreign_p3959_requires_exact_consent_before_publish(consent_case:
         credential_ref="credential:wikidata:curator-1", actor_id="curator-1",
         idempotency_key="publish",
     )
-    if consent_case != "valid":
-        assert plan.plan_blocked_count == 1
-        with pytest.raises(ValueError, match="did not pass"):
-            await module.advance(prepared.publication_id, publish)
-        assert gateway.write_calls == ()
-        return
-    assert plan.plan_update_count == 1
-    execution = await module.advance(prepared.publication_id, publish)
-    await module.advance(prepared.publication_id, ResumeCommand(
-        execution_id=execution.resource_id, credential_ref="credential:wikidata:curator-1",
-        actor_id="worker", idempotency_key="resume",
-    ))
-    assert len(gateway.write_calls) == 1
-    assert gateway.write_calls[0].mutation.target_qid == "Q200"
-    assert gateway.write_calls[0].mutation.expected_revision == 91
-    assert gateway.write_calls[0].mutation.allow_foreign_update
+    assert plan.plan_blocked_count == 1
+    with pytest.raises(ValueError, match="did not pass"):
+        await module.advance(prepared.publication_id, publish)
+    assert gateway.write_calls == ()
 
 
 @pytest.mark.asyncio

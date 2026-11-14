@@ -239,6 +239,7 @@ async def load_wikidata_build_slice(
             "remove_statements": r.remove_statements,
             "statement_edits":   r.statement_edits,
             "person_identity_choice": getattr(r, "person_identity_choice", None),
+        "source_review_choices": getattr(r, "source_review_choices", None),
                 "approved": r.approved,
         }
         for r in override_rows
