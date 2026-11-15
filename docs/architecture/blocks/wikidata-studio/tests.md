@@ -340,3 +340,6 @@ W-326–W-329: `test_marc_occurrences.py`, `test_wikidata_source_choices.py`, `t
 W-330: `wikidataSourceReview.spec.tsx` rejects obsolete save callbacks and errors after a run change with the same local ID.
 
 W-331/W-332: `test_wikidata_source_choices.py` checks shared and unproven record scope, citation pages, exact sources, preserved ranks, historical shelfmarks, overlapping work choices, and a fresh-interpreter read.
+
+W-338: `test_publication_historical_repairs.py` checks automatic continuation, the durable retry date, the same execution, SQL checkpoints, cancellation, finite limits, changed creator/source/revision proof, and unknown outcomes.
+`test_gila_repair_cli.py` checks that invalid limits and a wait without `--apply` fail before a credential prompt.

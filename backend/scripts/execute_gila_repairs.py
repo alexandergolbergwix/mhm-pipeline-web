@@ -5,6 +5,7 @@ import asyncio
 import getpass
 import hashlib
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -40,7 +41,9 @@ def print_receipt(receipt: Mapping[str, object]) -> None:
                     "corrected",
                     "before_revision",
                     "after_revision",
+                    "next_attempt_at",
                 )
+                if key in receipt
             }
         ),
         flush=True,
@@ -51,7 +54,6 @@ async def run(args: argparse.Namespace, cookie: str) -> int:
     from app.auth.session import current_auth
     from app.db import session_scope
     from app.models.run import RunRecord
-    from app.models.wikibase_cloud_write import WikibaseCloudWrite
     from app.pipeline.marc_verify_context import canonical_control_number
     from app.pipeline.wikidata_gila_execution import (
         LiveRepairGateway,
@@ -160,32 +162,70 @@ async def run(args: argparse.Namespace, cookie: str) -> int:
             or plan.get("project_id") != str(project_id)
         ):
             raise ValueError("The plan does not match the authenticated actor and project.")
-        from app.publication.historical_repairs import advance_repair_publication
-        from app.publication.sql_repository import SqlAlchemyPublicationRepository
         from app.pipeline.wikidata_gila_execution import expected_entity, semantic_entity
         from app.pipeline.wikidata_gila_repairs import entity_digest
+        from app.publication.repair_retry_runner import RepairRetryWait, wait_for_repair_publication
+        from app.publication.sql_repository import SqlAlchemyPublicationRepository
 
         if "before_entities" not in plan:
             raise ValueError("Prepare a new plan with complete public before snapshots.")
         expected_sources = plan["source_sha256"]
+
+        def report_wait(wait: RepairRetryWait) -> None:
+            print(
+                json.dumps(
+                    {
+                        "status": "retry_wait",
+                        "publication_id": wait.publication_id,
+                        "execution_id": wait.execution_id,
+                        "next_attempt_at": wait.next_attempt_at.isoformat(),
+                        "seconds": wait.seconds,
+                    }
+                ),
+                flush=True,
+            )
+
         async with session_scope() as db:
             repository = SqlAlchemyPublicationRepository(db)
-            summary = await advance_repair_publication(plan, gateway, source_check, repository,
-                                                       actor_id=str(actor_id), run_id=str(run_id))
+            summary = await wait_for_repair_publication(
+                plan,
+                gateway,
+                source_check,
+                repository,
+                actor_id=str(actor_id),
+                run_id=str(run_id),
+                max_wait_seconds=args.wait_seconds,
+                on_wait=report_wait,
+            )
             for proposal in plan["proposals"]:
                 qid = proposal["qid"]
-                intent = await repository.latest_write_intent(summary.execution_id, f"repair:{qid}") if summary.execution_id else None
+                intent = (
+                    await repository.latest_write_intent(summary.execution_id, f"repair:{qid}")
+                    if summary.execution_id
+                    else None
+                )
                 after = await gateway.fetch(qid) if intent and intent.state == "succeeded" else None
                 before = plan["before_entities"][qid]
-                verified = bool(after and entity_digest(after) == intent.result_fingerprint
-                                and after["lastrevid"] > before["lastrevid"]
-                                and semantic_entity(after) == semantic_entity(expected_entity(proposal, before)))
-                receipt = {"qid": qid, "before_revision": before["lastrevid"],
-                           "after_revision": after.get("lastrevid") if verified else None,
-                           "status": "verified" if verified else intent.state if intent else "blocked",
-                           "corrected": verified, "entity_sha256": proposal["entity_sha256"],
-                           "publication_id": summary.publication_id, "execution_id": summary.execution_id,
-                           "detail": intent.detail if intent else "The exact repair Plan is blocked."}
+                verified = bool(
+                    after
+                    and entity_digest(after) == intent.result_fingerprint
+                    and after["lastrevid"] > before["lastrevid"]
+                    and semantic_entity(after) == semantic_entity(expected_entity(proposal, before))
+                )
+                receipt = {
+                    "qid": qid,
+                    "before_revision": before["lastrevid"],
+                    "after_revision": after.get("lastrevid") if verified else None,
+                    "status": "verified" if verified else intent.state if intent else "blocked",
+                    "corrected": verified,
+                    "entity_sha256": proposal["entity_sha256"],
+                    "publication_id": summary.publication_id,
+                    "execution_id": summary.execution_id,
+                    "next_attempt_at": intent.next_attempt_at.isoformat()
+                    if intent and intent.next_attempt_at
+                    else None,
+                    "detail": intent.detail if intent else "The exact repair Plan is blocked.",
+                }
                 await journal("result", receipt)
                 print_receipt(receipt)
         return 0 if receipts and all(row.get("corrected") for row in receipts) else 2
@@ -261,6 +301,13 @@ async def run(args: argparse.Namespace, cookie: str) -> int:
     return 0
 
 
+def wait_seconds(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number) or number < 0:
+        raise argparse.ArgumentTypeError("The wait limit must be finite and non-negative.")
+    return number
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-id", required=True)
@@ -269,8 +316,16 @@ def main() -> None:
     parser.add_argument("--plan", required=True)
     parser.add_argument("--receipts", required=True)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument(
+        "--wait-seconds",
+        type=wait_seconds,
+        default=0,
+        help="Resume confirmed rejections within this time limit; requires --apply.",
+    )
     parser.add_argument("--database-from-heroku", action="store_true")
     args = parser.parse_args()
+    if args.wait_seconds and not args.apply:
+        parser.error("--wait-seconds requires --apply")
     if args.database_from_heroku:
         heroku_path = shutil.which("heroku")
         if not heroku_path:

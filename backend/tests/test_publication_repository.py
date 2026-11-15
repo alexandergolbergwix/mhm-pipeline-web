@@ -366,6 +366,8 @@ async def test_sql_repository_persists_the_publication_lifecycle(
     future = now + timedelta(seconds=60)
     await repository.update_write_intent(replace(intent, state="pre_send_retryable", next_attempt_at=future))
     reopened = SqlAlchemyPublicationRepository(db_session)
+    restored = await reopened.latest_write_intent(completed.execution_id, "manuscript:1")
+    assert restored is not None and restored.next_attempt_at == future
     early = await reopened.claim_execution_actions(completed.execution_id, worker_id="restart-early", now=now,
         lease_duration=timedelta(minutes=1), limit=1, exclude_entity_keys=("work:2",))
     assert early == ()

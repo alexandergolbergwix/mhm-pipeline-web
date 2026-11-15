@@ -1,5 +1,6 @@
 import asyncio
 from copy import deepcopy
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -7,6 +8,7 @@ import pytest
 from app.pipeline.wikidata_gila_execution import WriteRejectedError, expected_entity
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals
 from app.publication.historical_repairs import advance_repair_publication
+from app.publication.repair_retry_runner import wait_for_repair_publication
 from app.publication.repository import InMemoryPublicationRepository
 from converter.wikidata.retry_policy import retry_after_seconds
 
@@ -231,3 +233,347 @@ def test_http_date_and_invalid_retry_headers():
     assert retry_after_seconds("Fri, 13 Nov 2026 00:01:00 GMT", now=now) == 60
     assert retry_after_seconds("nan") == 5
     assert retry_after_seconds("-1") == 0
+
+
+class RetryClock:
+    def __init__(self):
+        self.start = datetime(2026, 11, 14, tzinfo=UTC)
+        self.elapsed = 0.0
+        self.sleeps = []
+
+    def now(self):
+        return self.start + timedelta(seconds=self.elapsed)
+
+    async def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.elapsed += seconds
+
+
+async def wait_for_repair(reviewed, gateway, repo, timer, **options):
+    return await wait_for_repair_publication(
+        reviewed,
+        gateway,
+        source_check,
+        repo,
+        actor_id="actor-1",
+        run_id="run-1",
+        max_wait_seconds=options.pop("limit", 600),
+        clock=timer.now,
+        monotonic=lambda: timer.elapsed,
+        sleep=timer.sleep,
+        **options,
+    )
+
+
+@pytest.mark.asyncio
+async def test_automatic_retry_keeps_execution_and_honors_the_durable_date():
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    repo = InMemoryPublicationRepository()
+    timer = RetryClock()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=65)
+    first = await advance_repair_publication(
+        reviewed,
+        gateway,
+        source_check,
+        repo,
+        actor_id="actor-1",
+        run_id="run-1",
+        clock=timer.now,
+    )
+    original = await repo.latest_write_intent(first.execution_id, "repair:Q123")
+    waits = []
+
+    def on_wait(event):
+        waits.append(event)
+        assert gateway.writes == 1
+        assert event.execution_id == first.execution_id
+        assert event.next_attempt_at == original.next_attempt_at
+        gateway.error = None
+
+    final = await wait_for_repair(reviewed, gateway, repo, timer, on_wait=on_wait)
+    assert final.execution_status == "succeeded"
+    assert final.execution_id == first.execution_id and gateway.writes == 2
+    assert timer.now() >= original.next_attempt_at
+    assert waits and all(0 < seconds <= 30 for seconds in timer.sleeps)
+    await wait_for_repair(reviewed, gateway, repo, timer)
+    assert gateway.writes == 2
+
+
+@pytest.mark.asyncio
+async def test_retry_wait_releases_the_repository_transaction(monkeypatch):
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    repo = InMemoryPublicationRepository()
+    timer = RetryClock()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=60)
+    needs_checkpoint = False
+    real_latest = repo.latest_write_intent
+
+    async def latest(execution_id, entity_key):
+        nonlocal needs_checkpoint
+        intent = await real_latest(execution_id, entity_key)
+        needs_checkpoint = True
+        return intent
+
+    async def checkpoint():
+        nonlocal needs_checkpoint
+        needs_checkpoint = False
+
+    monkeypatch.setattr(repo, "checkpoint", checkpoint)
+    monkeypatch.setattr(repo, "latest_write_intent", latest)
+
+    def on_wait(event):
+        assert not needs_checkpoint
+        gateway.error = None
+
+    result = await wait_for_repair(reviewed, gateway, repo, timer, on_wait=on_wait)
+    assert result.execution_status == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_retry_limit_preserves_the_saved_pause_without_an_early_send():
+    gateway = Gateway()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=120)
+    repo = InMemoryPublicationRepository()
+    timer = RetryClock()
+    result = await wait_for_repair(plan(gateway), gateway, repo, timer, limit=30)
+    assert result.execution_status == "paused" and gateway.writes == 1
+    assert not timer.sleeps
+    intent = await repo.latest_write_intent(result.execution_id, "repair:Q123")
+    assert intent.state == "pre_send_retryable"
+    assert intent.next_attempt_at >= timer.now() + timedelta(seconds=120)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("defect", ["foreign", "revision", "source"])
+async def test_automatic_resume_rechecks_creator_revision_and_source(defect):
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    repo = InMemoryPublicationRepository()
+    timer = RetryClock()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=60)
+    changed = False
+
+    async def current_source(before, proposal):
+        evidence = await source_check(before, proposal)
+        return {**evidence, "source_sha256": "changed"} if changed else evidence
+
+    def on_wait(event):
+        nonlocal changed
+        gateway.error = None
+        if defect == "foreign":
+            gateway.allowed = False
+        elif defect == "revision":
+            gateway.entity["lastrevid"] = 11
+        else:
+            changed = True
+
+    result = await wait_for_repair_publication(
+        reviewed,
+        gateway,
+        current_source,
+        repo,
+        actor_id="actor-1",
+        run_id="run-1",
+        max_wait_seconds=600,
+        clock=timer.now,
+        monotonic=lambda: timer.elapsed,
+        sleep=timer.sleep,
+        on_wait=on_wait,
+    )
+    assert result.execution_blocked_count == 1
+    assert gateway.writes == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error", [TimeoutError("No response"), WriteRejectedError("blocked")])
+async def test_automatic_resume_stops_without_a_confirmed_retry_date(error):
+    gateway = Gateway()
+    gateway.error = error
+    timer = RetryClock()
+    result = await wait_for_repair(
+        plan(gateway),
+        gateway,
+        InMemoryPublicationRepository(),
+        timer,
+    )
+    assert result.execution_status in {"paused", "failed"}
+    assert gateway.writes == 1 and not timer.sleeps
+
+
+@pytest.mark.asyncio
+async def test_retry_cancellation_retains_the_existing_execution():
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    repo = InMemoryPublicationRepository()
+    timer = RetryClock()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=60)
+
+    async def cancelled_sleep(seconds):
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await wait_for_repair_publication(
+            reviewed,
+            gateway,
+            source_check,
+            repo,
+            actor_id="actor-1",
+            run_id="run-1",
+            max_wait_seconds=600,
+            clock=timer.now,
+            monotonic=lambda: timer.elapsed,
+            sleep=cancelled_sleep,
+        )
+    assert gateway.writes == 1
+    gateway.error = None
+    final = await wait_for_repair(reviewed, gateway, repo, timer)
+    assert final.execution_status == "succeeded" and gateway.writes == 2
+
+
+@pytest.mark.asyncio
+async def test_a_missing_retry_date_does_not_create_a_new_retry(monkeypatch):
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    repo = InMemoryPublicationRepository()
+    timer = RetryClock()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=60)
+    real_latest = repo.latest_write_intent
+
+    async def without_date(execution_id, entity_key):
+        intent = await real_latest(execution_id, entity_key)
+        return replace(intent, next_attempt_at=None) if intent else None
+
+    monkeypatch.setattr(repo, "latest_write_intent", without_date)
+    result = await wait_for_repair(reviewed, gateway, repo, timer)
+    assert result.execution_status == "paused"
+    assert gateway.writes == 1 and not timer.sleeps
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("limit", [-1, float("nan"), float("inf")])
+async def test_invalid_retry_budgets_cannot_reach_a_write(limit):
+    gateway = Gateway()
+    with pytest.raises(ValueError, match="wait limit"):
+        await wait_for_repair(
+            plan(gateway),
+            gateway,
+            InMemoryPublicationRepository(),
+            RetryClock(),
+            limit=limit,
+        )
+    assert gateway.writes == 0
+
+
+@pytest.mark.asyncio
+async def test_external_plan_changes_do_not_create_a_second_publication():
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    repo = InMemoryPublicationRepository()
+    timer = RetryClock()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=60)
+    execution_ids = set()
+
+    def on_wait(event):
+        execution_ids.add(event.execution_id)
+        reviewed["actor_user_id"] = "changed"
+        reviewed["authorized_qids"] = ["Q999"]
+        gateway.error = None
+
+    result = await wait_for_repair(reviewed, gateway, repo, timer, on_wait=on_wait)
+    assert result.execution_status == "succeeded" and gateway.writes == 2
+    assert execution_ids == {result.execution_id}
+
+
+@pytest.mark.asyncio
+async def test_persistent_maxlag_stops_at_the_budget_without_a_busy_loop():
+    gateway = Gateway()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=5)
+    timer = RetryClock()
+    result = await wait_for_repair(
+        plan(gateway),
+        gateway,
+        InMemoryPublicationRepository(),
+        timer,
+        limit=45,
+    )
+    assert result.execution_status == "paused"
+    assert gateway.writes == 4
+    assert 35 <= timer.elapsed <= 45
+    assert all(seconds > 0 for seconds in timer.sleeps)
+
+
+@pytest.mark.asyncio
+async def test_automatic_resume_uses_the_sql_retry_date(db_session, sample_run):
+    from app.publication.sql_repository import SqlAlchemyPublicationRepository
+
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    reviewed["run_id"] = str(sample_run["run_id"])
+    reviewed["actor_user_id"] = str(sample_run["user_id"])
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=65)
+    timer = RetryClock()
+    waits = []
+
+    def on_wait(event):
+        waits.append(event)
+        gateway.error = None
+
+    result = await wait_for_repair_publication(
+        reviewed,
+        gateway,
+        source_check,
+        SqlAlchemyPublicationRepository(db_session),
+        actor_id=reviewed["actor_user_id"],
+        run_id=reviewed["run_id"],
+        max_wait_seconds=600,
+        clock=timer.now,
+        monotonic=lambda: timer.elapsed,
+        sleep=timer.sleep,
+        on_wait=on_wait,
+    )
+    assert waits
+    assert result.execution_status == "succeeded" and gateway.writes == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mismatch", [{"attempt_count": 99}, {"state": "blocked"}])
+async def test_sql_does_not_attach_a_date_from_a_different_attempt_or_state(
+    db_session,
+    sample_run,
+    mismatch,
+):
+    import uuid
+
+    from sqlalchemy import update
+
+    from app.models.publication import PublicationExecutionAction
+    from app.publication.sql_repository import SqlAlchemyPublicationRepository
+
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    reviewed["run_id"] = str(sample_run["run_id"])
+    reviewed["actor_user_id"] = str(sample_run["user_id"])
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=65)
+    repo = SqlAlchemyPublicationRepository(db_session)
+    result = await wait_for_repair_publication(
+        reviewed,
+        gateway,
+        source_check,
+        repo,
+        actor_id=reviewed["actor_user_id"],
+        run_id=reviewed["run_id"],
+    )
+    intent = await repo.latest_write_intent(result.execution_id, "repair:Q123")
+    assert intent.next_attempt_at is not None
+    await db_session.execute(
+        update(PublicationExecutionAction)
+        .where(
+            PublicationExecutionAction.execution_id == uuid.UUID(result.execution_id),
+        )
+        .values(**mismatch)
+    )
+    await db_session.commit()
+    mismatched = await repo.latest_write_intent(result.execution_id, "repair:Q123")
+    assert mismatched.state == "pre_send_retryable" and mismatched.next_attempt_at is None

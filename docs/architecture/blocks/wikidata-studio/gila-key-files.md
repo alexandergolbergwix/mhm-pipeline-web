@@ -42,6 +42,7 @@
 | `backend/app/publication/gateway.py`, `wikidata_gateway.py` | Structured retry delay and target checks |
 | `backend/app/publication/core.py`, `repository.py`, `sql_repository.py` | Durable delayed eligibility and atomic result state |
 | `backend/app/publication/historical_repairs.py` | Exact repair projection and gateway through Publication |
+| `backend/app/publication/repair_retry_runner.py` | Bounded automatic resume at durable retry dates |
 | `backend/app/pipeline/wikidata_gila_execution.py` | Exact one-send transport and fixed creator ID for this repair scope |
 | `backend/app/services/wikibase_audit.py` | Bounded repair operation names and complete JSON receipts |
 | `backend/scripts/execute_gila_repairs.py` | SQL-backed Publication preparation and resume |

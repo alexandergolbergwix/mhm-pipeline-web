@@ -3993,3 +3993,23 @@ Do not infer its intended work from its old position.
 Do not delete the edit or change production data to obtain a clean measurement.
 A blocked legacy case is a review case, not a corrected public item.
 Tests: `test_wikidata_creation_safety.py`.
+
+### Rule W-338 — Automatic exact repairs retain the saved delay and execution (2026-11-14)
+
+Wikidata query-service lag repeatedly deferred the first reference repair.
+The durable retry date survived each process, but the operator had to start each retry manually.
+The SQL adapter also omitted the saved action date from the returned intent.
+
+Use `publication/repair_retry_runner.py` for optional bounded automatic continuation.
+Copy the reviewed plan once and resume its existing Publication execution.
+Restore the saved date only from the matching action, attempt, and state.
+Wait only for confirmed pre-send rejections with complete future retry dates.
+Respect `next_attempt_at`, `Retry-After`, and the existing backoff.
+Use a finite monotonic time budget and sleep steps of at most 30 seconds.
+Commit the repository checkpoint before a wait to release the SQL connection.
+Stop on absent retry metadata, an unknown outcome, or a blocked action.
+Retain the existing source, revision, exact-claim, and creator user-ID checks on every resume.
+Keep `maxlag=5` and creator user ID `6935067` for the historical Gila scope.
+Do not create a new intent after an uncertain response or guess a shorter delay.
+The foreground CLI creates no additional queue, daemon, or job kind.
+See [the retry contract](../blocks/wikidata-studio/repair-retries.md).

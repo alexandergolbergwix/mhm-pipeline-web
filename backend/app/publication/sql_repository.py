@@ -833,7 +833,16 @@ class SqlAlchemyPublicationRepository:
     ) -> WriteIntentRecord | None:
         row = (
             await self._session.execute(
-                select(WriteIntentRow)
+                select(WriteIntentRow, ExecutionActionRow.next_attempt_at)
+                .outerjoin(
+                    ExecutionActionRow,
+                    and_(
+                        ExecutionActionRow.execution_id == WriteIntentRow.execution_id,
+                        ExecutionActionRow.entity_key == WriteIntentRow.entity_key,
+                        ExecutionActionRow.attempt_count == WriteIntentRow.attempt,
+                        ExecutionActionRow.state == WriteIntentRow.state,
+                    ),
+                )
                 .where(
                     WriteIntentRow.execution_id == _uuid(execution_id),
                     WriteIntentRow.entity_key == entity_key,
@@ -841,8 +850,16 @@ class SqlAlchemyPublicationRepository:
                 .order_by(WriteIntentRow.attempt.desc())
                 .limit(1)
             )
-        ).scalar_one_or_none()
-        return self._write_intent_record(row) if row is not None else None
+        ).one_or_none()
+        if row is None:
+            return None
+        retry_at = row[1]
+        if retry_at is not None and retry_at.tzinfo is None:
+            if self._session.get_bind().dialect.name != "sqlite":
+                retry_at = None
+            else:
+                retry_at = retry_at.replace(tzinfo=UTC)
+        return self._write_intent_record(row[0], next_attempt_at=retry_at)
 
     async def add_write_intent(self, intent: WriteIntentRecord) -> None:
         row = WriteIntentRow(
@@ -1247,7 +1264,9 @@ class SqlAlchemyPublicationRepository:
         )
 
     @staticmethod
-    def _write_intent_record(row: WriteIntentRow) -> WriteIntentRecord:
+    def _write_intent_record(
+        row: WriteIntentRow, *, next_attempt_at: datetime | None = None,
+    ) -> WriteIntentRecord:
         return WriteIntentRecord(
             intent_id=str(row.id),
             execution_id=str(row.execution_id),
@@ -1261,6 +1280,7 @@ class SqlAlchemyPublicationRepository:
             detail=row.detail,
             result_qid=row.result_qid,
             result_fingerprint=row.result_fingerprint,
+            next_attempt_at=next_attempt_at,
         )
 
     @staticmethod

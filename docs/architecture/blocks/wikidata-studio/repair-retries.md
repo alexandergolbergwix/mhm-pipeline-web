@@ -54,3 +54,33 @@ That route selects only the `mhm-wikidata` profile (W-334).
 An operator repair retains its separate `gila-exact-repair` Publication and execution.
 The Studio cannot select that repair as its normal Release.
 `backend/tests/test_publication_router.py` checks a newer repair and a run with repairs only.
+
+## Automatic continuation (W-338)
+
+`publication/repair_retry_runner.py` adds a bounded wait loop around the existing Publication resume command.
+The CLI enables this loop with `--apply --wait-seconds 1800`.
+Without `--wait-seconds`, the CLI makes one advance and returns the current receipt.
+The limit must be finite and non-negative.
+The option requires `--apply` when its value exceeds zero.
+
+The loop copies the reviewed plan once and retains its Publication and execution.
+The SQL adapter restores the retry date from the matching execution action and attempt.
+The action state must also match the latest intent state.
+It waits only for confirmed `pre_send_retryable` intents with complete, future retry dates.
+It stops for a blocked action, an unknown outcome, or absent retry metadata.
+It never replaces a date with a guessed shorter delay.
+Each resume repeats the existing source, creator, revision, and exact-claim checks.
+The exact repair scope still requires creator user ID `6935067`.
+The loop does not change `maxlag=5`, the transport, or the guarded write path.
+
+The loop commits the repository checkpoint before each wait.
+It releases the SQL connection and sleeps for at most 30 seconds per step.
+The CLI prints `retry_wait`, the execution ID, and the saved next retry date.
+A monotonic clock bounds the process time between Publication advances.
+The loop returns the saved pause if the next retry exceeds the time budget.
+An API call that already started can finish after the budget.
+A process stop retains the durable intent for a later resume.
+This foreground command creates no daemon, schedule, route, or job kind.
+
+`test_publication_historical_repairs.py` covers execution reuse, deadline limits, cancellation, changed proof, and unknown outcomes.
+`test_gila_repair_cli.py` checks the CLI limits before authentication.

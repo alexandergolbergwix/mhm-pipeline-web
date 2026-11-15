@@ -87,5 +87,5 @@ Joined person-role descriptions: [description hygiene](blocks/wikidata-studio/pe
 | Task | Guide |
 |---|---|
 | Review a source occurrence or Gila coverage | [Source review](blocks/wikidata-studio/source-review.md) |
-| Resume an exact historical repair | [Repair retries](blocks/wikidata-studio/repair-retries.md) |
+| Resume an exact historical repair, with an optional finite wait | [Repair retries](blocks/wikidata-studio/repair-retries.md) |
 | Compare original MARC associations | [MARC occurrences](blocks/extraction/marc-occurrences.md) |
