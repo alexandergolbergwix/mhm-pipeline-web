@@ -3,6 +3,7 @@
 > Up: [Caching stack](README.md)
 
 - `backend/tests/unit/test_wikidata_mirror.py` — full snapshots, ranks, index replacement, stale data, bounded SQL, partial discovery, API failure, and reference-only candidates.
+  A 1,200-query scope requires at most four SQL reads when the request cap is one.
 
 - `backend/tests/test_inference_cache_helpers.py` — two-tier lookup, canonical hashing, skip-cache invalidation
 - `backend/tests/unit/test_inference_cache.py` — `cache_batch_warm` returns hits

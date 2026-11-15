@@ -1,6 +1,6 @@
 # Local Wikidata candidate mirror
 
-> Up: [Caching](README.md) · [Wikidata Studio](../wikidata-studio/README.md) · W-339
+> Up: [Caching](README.md) · [Wikidata Studio](../wikidata-studio/README.md) · W-339/W-340
 
 The mirror stores public candidate data in Postgres.
 Local SQL and Python apply exact filters to that data.
@@ -32,6 +32,8 @@ See the [official search syntax](https://www.mediawiki.org/wiki/Help:Extension:W
 It performs class, holder, shelfmark, and other conjunction checks locally.
 It includes candidates without a creator filter.
 The search cursor survives a page cap and a process restart.
+The client reads saved query scopes in groups of 500 before it applies the request cap.
+Fresh candidates from a completed query remain available beyond that cap.
 The scope records partial results; query completion never means complete Wikidata coverage.
 Entity reads request complete payloads in groups of at most 50 QIDs.
 The client uses no wiki credential and has no edit operation.

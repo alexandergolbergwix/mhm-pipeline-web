@@ -4024,12 +4024,30 @@ Use the public candidate mirror for discovery and local comparisons.
 Keep complete entity JSON, source revision, observation time, and active fact indexes.
 Replace a snapshot and its indexes atomically; reject revision or time regression.
 Preserve partial scopes, search continuation, caps, and unresolved redirects.
+
 A local miss cannot prove global absence.
 A local positive requires current identity confirmation before an adoption or reference choice.
 An owned item may reference a verified foreign QID, but the mirror never authorizes an edit or merge into it.
 The final public boundary retains the existing fresh existence, creator, source, revision, and exact-claim checks.
 The Gila repair creator remains Alexander Goldberg IL, user ID `6935067`.
+
 The first online SQLite run exposed an absent shared cache table.
 The shared cache now logs read failures and releases the transaction before the public request, as cache rule R3 requires.
 Identifier unions use native pipe syntax with quotes after the colon; generic OR and quotes after the equals sign can lose candidates.
+See [the mirror contract](../blocks/caching/wikidata-mirror.md).
+
+### Rule W-340 — Discovery request caps must also bound local scope reads (2026-11-15)
+
+The first production mirror resume planned 1,447 queries.
+Its request cap limited HTTP requests but left one SQL read for every planned query.
+Those reads continued after the client reached the request cap.
+
+Read saved query scopes in groups of at most 500.
+Release the SQL transaction before an HTTP request.
+Retain fresh candidates from completed queries beyond the request cap.
+Ignore stale scopes and bypass saved scopes for an explicit refresh.
+An unqueried scope remains partial; a cap never proves global absence.
+
+The 1,200-query regression uses at most four SQL reads with a request cap of one.
+The client still stops after an upstream error and retains saved progress.
 See [the mirror contract](../blocks/caching/wikidata-mirror.md).

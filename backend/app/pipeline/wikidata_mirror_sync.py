@@ -273,25 +273,42 @@ async def discover_candidates(
             value = statement.get("value") if isinstance(statement, dict) else None
             if isinstance(value, str) and QID.fullmatch(value):
                 qids.add(value)
-    queries = discovery_queries(items)
+    queries = [
+        (query, canonical_hash({"schema": "mirror-search-v1", "query": query}))
+        for query in discovery_queries(items)
+    ]
+    saved_scopes = {}
+    if not refresh:
+        cutoff = datetime.now(UTC) - timedelta(days=1)
+        async with db_factory() as db:
+            for start in range(0, len(queries), 500):
+                keys = [key for _, key in queries[start : start + 500]]
+                rows = (
+                    await db.execute(
+                        select(
+                            WikidataMirrorScope.scope_key,
+                            WikidataMirrorScope.status,
+                            WikidataMirrorScope.progress,
+                            WikidataMirrorScope.updated_at,
+                        ).where(WikidataMirrorScope.scope_key.in_(keys))
+                    )
+                ).all()
+                for key, status, progress, updated_at in rows:
+                    observed = (
+                        updated_at.replace(tzinfo=UTC)
+                        if updated_at.tzinfo is None
+                        else updated_at.astimezone(UTC)
+                    )
+                    if observed >= cutoff:
+                        saved_scopes[key] = (status, dict(progress))
+            await db.rollback()
     issued = 0
     partial = 0
-    for query in queries:
-        key = canonical_hash({"schema": "mirror-search-v1", "query": query})
-        async with db_factory() as db:
-            old = await db.get(WikidataMirrorScope, key)
-            progress = dict(old.progress) if old else {}
-            if (
-                old
-                and not refresh
-                and old.updated_at.replace(tzinfo=UTC) >= datetime.now(UTC) - timedelta(days=1)
-            ):
-                qids.update(progress.get("qids", []))
-                if old.status == "query_complete":
-                    continue
-            else:
-                progress = {}
-            await db.rollback()
+    for query, key in queries:
+        status, progress = saved_scopes.get(key, ("", {}))
+        qids.update(progress.get("qids", []))
+        if status == "query_complete":
+            continue
         if issued >= max_queries:
             partial += 1
             continue

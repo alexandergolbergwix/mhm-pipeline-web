@@ -390,6 +390,50 @@ def test_discovery_does_not_restrict_candidates_to_our_creator():
     assert all("Alexander" not in query and "P31" not in query for query in queries)
 
 
+@pytest.mark.asyncio
+async def test_discovery_batches_scope_reads_and_retains_fresh_candidates_past_the_cap(
+    monkeypatch, _sessionmaker, _engine,
+):
+    from app.pipeline import wikidata_mirror_sync as sync
+    from app.pipeline.inference_cache import canonical_hash
+
+    queries = [f"haswbstatement:P214={index}" for index in range(1200)]
+    monkeypatch.setattr(sync, "discovery_queries", lambda items: queries)
+    async with _sessionmaker() as db:
+        for query, qid, age in [(queries[-1], "Q456", 0), (queries[-2], "Q999", 2)]:
+            db.add(WikidataMirrorScope(
+                scope_key=canonical_hash({"schema": "mirror-search-v1", "query": query}),
+                source="broad_search", status="query_complete",
+                requested_count=0, stored_count=1,
+                progress={"qids": [qid], "next_offset": 0},
+                updated_at=datetime.now(UTC) - timedelta(days=age),
+            ))
+        await db.commit()
+    calls = []
+
+    async def read(*args, **kwargs):
+        calls.append(True)
+        return {"observed_at": datetime.now(UTC).isoformat(),
+                "response": {"query": {"search": []}}}
+
+    monkeypatch.setattr(sync, "cached_public_read", read)
+    selects = []
+
+    def observe(conn, cursor, statement, parameters, context, many):
+        if statement.lstrip().upper().startswith("SELECT"):
+            selects.append(statement)
+
+    event.listen(_engine.sync_engine, "before_cursor_execute", observe)
+    try:
+        result = await discover_candidates(_sessionmaker, [], max_queries=1)
+    finally:
+        event.remove(_engine.sync_engine, "before_cursor_execute", observe)
+    assert result["qids"] == ["Q456"]
+    assert result["partial_queries"] == 1198
+    assert calls == [True]
+    assert len(selects) <= 4
+
+
 def test_discovery_uses_native_statement_union_and_quotes_after_the_colon():
     items = [
         {

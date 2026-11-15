@@ -46,3 +46,4 @@
     request IDs, and fetch times. They MUST retain semantic date values. *Why:*
     metadata changed cache keys for unchanged content.
 12. **R12 — Local Wikidata data supplies candidates, never global absence or edit permission (W-339).** Preserve full snapshots and source time. Keep foreign targets read-only. *Why:* a partial local index cannot certify a new public item or authorize an edit.
+13. **R13 — Batch saved query scopes before the request cap (W-340).** Read at most 500 scopes per query. Retain fresh candidates beyond the cap. *Why:* one read per planned query made a capped production resume slow.
