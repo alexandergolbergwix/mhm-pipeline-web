@@ -85,6 +85,7 @@ From `backend/`, use the read-only measurement environment:
 ```
 
 Canonical mode reads durable HMO snapshots and curator overrides, then applies the current source projection.
+It uses `override_row_to_dict` to retain source choices, person choices, approval, accepted reference targets, and verdict metadata.
 It disables reconciliation and performs no production cache write.
 It fails if canonical snapshots are absent instead of substituting a legacy result.
 The report exports fact comparisons, stage traces, historical proposals, and work partition reviews separately.

@@ -345,3 +345,5 @@ W-338: `test_publication_historical_repairs.py` checks automatic continuation, t
 `test_gila_repair_cli.py` checks that invalid limits and a wait without `--apply` fail before a credential prompt.
 
 W-339: `test_wikidata_mirror.py` checks local candidates, freshness, scope, full references, revision monotonicity, and no cached adoption. `test_wikidata_creator_only.py` retains foreign-reference and foreign-edit refusal coverage.
+
+W-341: `test_local_measure_verify.py` reads a saved override through canonical measurement, retains all curator fields, and rejects SQL mutations.

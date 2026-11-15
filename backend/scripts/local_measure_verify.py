@@ -279,6 +279,7 @@ class WikidataChannel(Channel):
         from app.models.item_override import WikidataItemOverride
         from app.models.run import AuthorityMatch, RunRecord
         from app.pipeline import wikidata_studio
+        from app.pipeline.wikidata_item_merge import override_row_to_dict
         from sqlalchemy import inspect, text
         from sqlalchemy.orm import defer
 
@@ -361,14 +362,7 @@ class WikidataChannel(Channel):
                     WikidataItemOverride.run_id == run_id,
                 ))).scalars().all()
                 overrides = {
-                    row.local_id: {
-                        "labels": row.labels,
-                        "descriptions": row.descriptions,
-                        "aliases": row.aliases,
-                        "add_statements": row.add_statements,
-                        "remove_statements": row.remove_statements,
-                        "statement_edits": row.statement_edits,
-                    }
+                    row.local_id: override_row_to_dict(row)
                     for row in override_rows
                 }
 

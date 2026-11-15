@@ -94,6 +94,7 @@ The gate checks native items, serialized items, and current MARC source context.
 The report performs no live repair and always leaves `corrected_qids` empty.
 Use `--audit-projection canonical` to compare the final canonical path.
 That mode reads durable HMO snapshots and curator overrides without a cache write.
+It uses the production override serializer, including source choices, person choices, approval, and accepted reference targets (W-341).
 It fails when canonical snapshots are absent instead of using a legacy substitute.
 The output also contains `gila_source_facts.json`, `gila_historical_repairs.json`,
 and `gila_work_partition_reviews.json`. Historical proposals require separate review,

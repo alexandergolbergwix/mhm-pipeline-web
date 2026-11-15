@@ -33,6 +33,7 @@
 | `backend/app/pipeline/wikidata_canonical_enrichment.py` | Source-preserving author normalization around the merge |
 | `backend/app/pipeline/wikidata_gila_audit.py`, `wikidata_gila_completion.py` | Passage inventory and honest requirement counts |
 | `backend/scripts/export_gila_completion.py` | Source passage CSV and completion manifest |
+| `backend/scripts/local_measure_verify.py` | Read-only canonical measurement with the complete production override serializer |
 | `backend/converter/wikidata/retry_policy.py` | Bulk maxlag and Retry-After parser |
 | `backend/converter/wikidata/uploader.py` | Fresh creator user-ID proof and final CREATE checks |
 | `backend/app/pipeline/wikidata_creation_safety.py` | Shared semantic and fresh identity checks for public CREATE |

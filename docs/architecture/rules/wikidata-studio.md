@@ -4051,3 +4051,15 @@ An unqueried scope remains partial; a cap never proves global absence.
 The 1,200-query regression uses at most four SQL reads with a request cap of one.
 The client still stops after an upstream error and retains saved progress.
 See [the mirror contract](../blocks/caching/wikidata-mirror.md).
+
+### Rule W-341 — Local measurements must retain complete curator choices (2026-11-15)
+
+The Gila recheck found a partial override serializer in `WikidataChannel.build_measurement`.
+It retained six editorial fields but omitted source choices, person choices, approval, accepted reference targets, and verdict metadata.
+That measurement could disagree with the production projection before the audit started.
+
+Use `override_row_to_dict` for canonical measurement inputs.
+Do not maintain a separate list of override fields in the measurement tool.
+Keep source choices, person choices, and reference-only targets subject to the normal projection checks.
+The measurement must perform no database mutation or public edit.
+The regression reads a saved override through the measurement adapter and checks the complete state and the absence of SQL mutations.
