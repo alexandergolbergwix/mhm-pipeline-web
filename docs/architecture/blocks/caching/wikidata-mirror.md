@@ -26,7 +26,9 @@ A failed or incomplete response cannot invalidate that positive.
 
 ## Discovery and local filters
 
-`wikidata_mirror_sync.py` uses broad identifier OR queries and quoted name or title seeds.
+`wikidata_mirror_sync.py` uses broad identifier unions and quoted name or title seeds.
+It uses native `haswbstatement:"P214=id|P244=id"` syntax, with quotes after the colon.
+See the [official search syntax](https://www.mediawiki.org/wiki/Help:Extension:WikibaseCirrusSearch#haswbstatement).
 It performs class, holder, shelfmark, and other conjunction checks locally.
 It includes candidates without a creator filter.
 The search cursor survives a page cap and a process restart.
@@ -36,6 +38,8 @@ The client uses no wiki credential and has no edit operation.
 It retains `maxlag=5` and stops after an upstream error.
 
 New HTTP calls use `cache_http_call` and release the SQL transaction before the call.
+An absent cache table cannot block a public read in the local SQLite database.
+The shared helper logs the cache failure and releases its transaction before the request.
 `wikidata.mirror_entities` and `wikidata.mirror_search` have a one-day Postgres TTL and a one-hour Redis TTL.
 The payload retains its original observation time after a cache hit.
 A normal refresh reuses entity snapshots younger than one day.

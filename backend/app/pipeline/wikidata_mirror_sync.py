@@ -241,14 +241,14 @@ def discovery_queries(items: list[dict]) -> list[str]:
                 values = value.split("␟")
                 properties = pid.split("+")
                 if len(values) == len(properties):
-                    identifiers.add(
-                        f"haswbstatement:{properties[-1]}="
-                        f"{json.dumps(values[-1], ensure_ascii=False)}"
-                    )
+                    identifiers.add(f"{properties[-1]}={values[-1]}")
             else:
-                identifiers.add(f"haswbstatement:{pid}={json.dumps(value, ensure_ascii=False)}")
+                identifiers.add(f"{pid}={value}")
     seeds = sorted(identifiers)
-    return [" OR ".join(seeds[start : start + 20]) for start in range(0, len(seeds), 20)] + [
+    return [
+        "haswbstatement:" + json.dumps("|".join(seeds[start : start + 20]), ensure_ascii=False)
+        for start in range(0, len(seeds), 20)
+    ] + [
         json.dumps(name, ensure_ascii=False) for name in sorted(names) if name.strip()
     ]
 

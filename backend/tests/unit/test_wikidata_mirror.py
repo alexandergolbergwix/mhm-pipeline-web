@@ -390,6 +390,19 @@ def test_discovery_does_not_restrict_candidates_to_our_creator():
     assert all("Alexander" not in query and "P31" not in query for query in queries)
 
 
+def test_discovery_uses_native_statement_union_and_quotes_after_the_colon():
+    items = [
+        {
+            "entity_type": "person",
+            "statements": [
+                {"property_id": "P214", "value": "12345"},
+                {"property_id": "P244", "value": "n 12345"},
+            ],
+        }
+    ]
+    assert discovery_queries(items) == ['haswbstatement:"P214=12345|P244=n 12345"']
+
+
 @pytest.mark.parametrize(
     "params",
     [

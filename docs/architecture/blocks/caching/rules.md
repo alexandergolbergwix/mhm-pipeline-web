@@ -11,8 +11,9 @@
    *Why:* a stale cached answer would silently drive an irreversible write —
    see the docstring of `endpoint_query_summary` (`inference_cache.py:147`).
 3. **R3 — A cache failure MUST NEVER break the caller.** Redis GET/SET and
-   Postgres writes are wrapped in swallow-and-log; only `fetch()` errors
-   propagate. *Why:* the cache is an optimisation, not a dependency.
+   Postgres reads and writes log failures.
+   A failed read releases its transaction before `fetch()`.
+   Only `fetch()` errors propagate. *Why:* the cache is an optimisation, not a dependency.
 4. **R4 — Regular misses NEVER cache `None` / empty-list results.**
    *Why:* transient model/network errors must not become sticky negatives.
    (Only `skip_cache=True` writes empties — as deliberate invalidation.)

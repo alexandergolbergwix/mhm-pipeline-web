@@ -248,7 +248,15 @@ async def cache_lookup_or_call(
                 logger.warning("redis L1 GET failed (kind=%s): %s", kind, exc)
 
         # ── L2: Postgres ─────────────────────────────────────────────
-        hit = await _read(db, kind=kind, query_hash=query_hash, now=now)
+        try:
+            hit = await _read(db, kind=kind, query_hash=query_hash, now=now)
+        except Exception as error:  # noqa: BLE001 -- a cache read cannot block fetch
+            logger.warning(
+                "inference_cache postgres read failed (kind=%s): %s",
+                kind, type(error).__name__,
+            )
+            await db.rollback()
+            hit = None
         if hit is not None:
             # Backfill L1 so the next call doesn't touch Postgres.
             if redis is not None:

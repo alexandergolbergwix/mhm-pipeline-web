@@ -4029,4 +4029,7 @@ A local positive requires current identity confirmation before an adoption or re
 An owned item may reference a verified foreign QID, but the mirror never authorizes an edit or merge into it.
 The final public boundary retains the existing fresh existence, creator, source, revision, and exact-claim checks.
 The Gila repair creator remains Alexander Goldberg IL, user ID `6935067`.
+The first online SQLite run exposed an absent shared cache table.
+The shared cache now logs read failures and releases the transaction before the public request, as cache rule R3 requires.
+Identifier unions use native pipe syntax with quotes after the colon; generic OR and quotes after the equals sign can lose candidates.
 See [the mirror contract](../blocks/caching/wikidata-mirror.md).

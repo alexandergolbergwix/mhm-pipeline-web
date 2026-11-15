@@ -4,16 +4,61 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.inference_cache import InferenceCache
 from app.pipeline.inference_cache import (
     cache_batch_warm,
+    cache_http_call,
     canonical_hash,
     write_to_inference_cache,
 )
 
 KIND = "wikidata.duplicate_probe"
+
+
+@pytest.mark.parametrize("upstream_fails", [False, True])
+async def test_missing_cache_table_releases_transaction_and_preserves_fetch_result(
+    tmp_path, monkeypatch, caplog, upstream_fails,
+) -> None:
+    from app.cache import redis_client
+
+    async def no_redis():
+        return None
+
+    monkeypatch.setattr(redis_client, "get_redis", no_redis)
+    engine = create_async_engine("sqlite+aiosqlite:///" + str(tmp_path / "no-cache.sqlite"))
+    sessions = async_sessionmaker(engine)
+    expected = {"entities": {"Q123": {"id": "Q123"}}}
+    unavailable = RuntimeError("The upstream is unavailable.")
+    calls = []
+    try:
+        async with sessions() as db:
+            async def fetch():
+                assert not db.in_transaction()
+                calls.append(True)
+                if upstream_fails:
+                    raise unavailable
+                return expected
+
+            arguments = {
+                "kind": "wikidata.mirror_entities",
+                "endpoint": "https://www.wikidata.org/w/api.php",
+                "payload": {"action": "wbgetentities", "ids": "Q123"},
+                "fetch": fetch,
+            }
+            if upstream_fails:
+                with pytest.raises(RuntimeError) as caught:
+                    await cache_http_call(db, **arguments)
+                assert caught.value is unavailable
+            else:
+                assert await cache_http_call(db, **arguments) is expected
+    finally:
+        await engine.dispose()
+    assert calls == [True]
+    assert "inference_cache postgres read failed" in caplog.text
 
 
 async def test_cache_batch_warm_returns_hits_and_skips_misses(db_session) -> None:

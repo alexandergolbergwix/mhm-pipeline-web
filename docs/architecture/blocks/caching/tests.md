@@ -7,7 +7,8 @@
 - `backend/tests/test_inference_cache_helpers.py` — two-tier lookup, canonical hashing, skip-cache invalidation
 - `backend/tests/unit/test_inference_cache.py` — `cache_batch_warm` returns hits
   keyed by canonical hash, omits misses and expired rows, and updates hit count
-  and last-hit time for returned rows.
+  and last-hit time for returned rows. An absent cache table cannot block a request;
+  the helper preserves an upstream error.
 - `backend/tests/test_scoped_cache.py` — Tier-2 key shapes, memory fallback, invalidation
 - `backend/tests/test_extraction_entities_cache.py`, `test_extraction_entity_cache_invalidation.py` — run-scoped fingerprint/ETag + invalidation on mutation
 - `backend/tests/test_research_summary_cache.py` — fingerprint-keyed research kinds
