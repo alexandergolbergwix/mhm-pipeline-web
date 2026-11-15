@@ -2,6 +2,8 @@
 
 > Up: [Caching stack](README.md)
 
+Use the [Wikidata mirror playbook](wikidata-mirror.md) for snapshot imports, broad candidate discovery, and local filters.
+
 ### Skill: add a new cached inference kind
 
 1. Pick a namespaced kind string (`authority.newapi`, `research.newthing`).

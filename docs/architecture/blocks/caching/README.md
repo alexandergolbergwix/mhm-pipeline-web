@@ -11,7 +11,7 @@ TTL) — is served through a layered cache so the first call across the whole
 team pays the cost and everyone else gets an instant answer that survives
 Heroku dyno restarts.
 
-Three distinct cache families exist, and they must not be confused:
+Four distinct cache families exist, and they must not be confused:
 
 1. **Global inference cache** (`inference_cache` table + Redis L1) — keyed by
    `(kind, sha256(canonical_json(query_summary)))`, shared across users and runs.
@@ -20,16 +20,18 @@ Three distinct cache families exist, and they must not be confused:
    on context (e.g. the entity-table poll).
 3. **Durable build caches** (one Postgres table per build kind) — keyed by a
    SHA-256 *input fingerprint*; invalidation is purely "the inputs changed".
+4. **Public candidate mirror** — complete Wikidata snapshots and local indexes, with explicit partial coverage and fresh public write checks.
 
 ## Contents
 
 - [Key files](key-files.md) — every module, model, and job in this block
 - [How it works](how-it-works.md) — tier diagram, TTL table per kind, Redis
   client, Tier-2 scoped cache, fingerprint-keyed durable build caches
-- [Rules](rules.md) — R1–R9 invariants
+- [Rules](rules.md) — R1–R12 invariants
 - [Skills](skills.md) — add a cached kind / durable build cache / scoped
   cache; change a TTL
 - [Tests pinning this block](tests.md)
+- [Local Wikidata mirror](wikidata-mirror.md) — snapshot import, broad discovery, local filters, and reference-only candidates.
 
 ## Related blocks
 

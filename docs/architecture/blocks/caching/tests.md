@@ -2,6 +2,8 @@
 
 > Up: [Caching stack](README.md)
 
+- `backend/tests/unit/test_wikidata_mirror.py` — full snapshots, ranks, index replacement, stale data, bounded SQL, partial discovery, API failure, and reference-only candidates.
+
 - `backend/tests/test_inference_cache_helpers.py` — two-tier lookup, canonical hashing, skip-cache invalidation
 - `backend/tests/unit/test_inference_cache.py` — `cache_batch_warm` returns hits
   keyed by canonical hash, omits misses and expired rows, and updates hit count

@@ -93,10 +93,12 @@ from app.models.wikibase_entity_mapping import (
     WikibaseEntityMapping,
 )
 from app.models.wikibase_user_access import WikibaseUserAccess
+from app.models.wikidata_mirror import WikidataMirrorEntity, WikidataMirrorFact, WikidataMirrorScope
 from app.models.wikidata_studio_cache import WikidataStudioCache
 from app.models.wikidata_studio_item_row import WikidataStudioItemRow
 
 __all__ = [
+    "WikidataMirrorEntity", "WikidataMirrorFact", "WikidataMirrorScope",
     "ALL_ENTITY_TYPES",
     "ALL_OPS",
     "ALL_PROJECT_ROLES",

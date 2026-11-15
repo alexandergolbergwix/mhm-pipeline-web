@@ -43,6 +43,9 @@
 | `backend/app/publication/core.py`, `repository.py`, `sql_repository.py` | Durable delayed eligibility and atomic result state |
 | `backend/app/publication/historical_repairs.py` | Exact repair projection and gateway through Publication |
 | `backend/app/publication/repair_retry_runner.py` | Bounded automatic resume at durable retry dates |
+| `backend/app/pipeline/wikidata_mirror.py`, `wikidata_mirror_sync.py` | Local full candidate data, exact filters, and bounded public discovery |
+| `backend/app/models/wikidata_mirror.py`, migration `0056_wikidata_mirror.py`, `backend/app/models/__init__.py` | Registered snapshot, fact, and scope models |
+| `backend/scripts/sync_wikidata_mirror.py` | Read-only public mirror operator command |
 | `backend/app/pipeline/wikidata_gila_execution.py` | Exact one-send transport and fixed creator ID for this repair scope |
 | `backend/app/services/wikibase_audit.py` | Bounded repair operation names and complete JSON receipts |
 | `backend/scripts/execute_gila_repairs.py` | SQL-backed Publication preparation and resume |

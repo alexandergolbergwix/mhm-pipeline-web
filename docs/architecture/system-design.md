@@ -75,7 +75,7 @@ Shared by all five stages; understand these first:
 | Research surface | [blocks/research/](blocks/research/README.md) | Corpus analytics, chat+canvas Research Assistant, maps, SPARQL |
 | HMO Wikibase Studio | [blocks/hmo-wikibase-studio/](blocks/hmo-wikibase-studio/README.md) | Schema bootstrap, item build/reconcile/upload to Wikibase Cloud |
 | Wikidata Studio | [blocks/wikidata-studio/](blocks/wikidata-studio/README.md) | Fail-closed Wikidata writes: validator moat, reconcile-before-create |
-| Caching | [blocks/caching/](blocks/caching/README.md) | Redis L1 + Postgres inference cache + fingerprinted durable build caches |
+| Caching | [blocks/caching/](blocks/caching/README.md) | Redis L1, Postgres inference cache, durable builds, and a public candidate mirror |
 | Versioning & Export | [blocks/versioning-export/](blocks/versioning-export/README.md) | `project_events` log, snapshots, history API, JSON export bundles |
 | Platform & Security | [blocks/platform-security/](blocks/platform-security/README.md) | Auth/RBAC, public-endpoint defence stack, secrets, DB discipline |
 | Frontend | [blocks/frontend/](blocks/frontend/README.md) | SPA architecture, Zustand discipline, glass design system, test pyramid |

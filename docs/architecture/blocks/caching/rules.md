@@ -44,3 +44,4 @@
     Shared fingerprint projections MUST remove nested transport timestamps,
     request IDs, and fetch times. They MUST retain semantic date values. *Why:*
     metadata changed cache keys for unchanged content.
+12. **R12 — Local Wikidata data supplies candidates, never global absence or edit permission (W-339).** Preserve full snapshots and source time. Keep foreign targets read-only. *Why:* a partial local index cannot certify a new public item or authorize an edit.

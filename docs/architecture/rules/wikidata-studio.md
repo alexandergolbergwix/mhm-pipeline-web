@@ -4013,3 +4013,20 @@ Keep `maxlag=5` and creator user ID `6935067` for the historical Gila scope.
 Do not create a new intent after an uncertain response or guess a shorter delay.
 The foreground CLI creates no additional queue, daemon, or job kind.
 See [the retry contract](../blocks/wikidata-studio/repair-retries.md).
+
+### Rule W-339 — Local candidate snapshots cannot authorize absence or a foreign edit (2026-11-15)
+
+The Gila audit needed repeated comparisons over the same public candidate data.
+Cached query answers did not retain a complete local copy for those filters.
+The user requested local filters and confirmed that owned items must still reference verified foreign items.
+
+Use the public candidate mirror for discovery and local comparisons.
+Keep complete entity JSON, source revision, observation time, and active fact indexes.
+Replace a snapshot and its indexes atomically; reject revision or time regression.
+Preserve partial scopes, search continuation, caps, and unresolved redirects.
+A local miss cannot prove global absence.
+A local positive requires current identity confirmation before an adoption or reference choice.
+An owned item may reference a verified foreign QID, but the mirror never authorizes an edit or merge into it.
+The final public boundary retains the existing fresh existence, creator, source, revision, and exact-claim checks.
+The Gila repair creator remains Alexander Goldberg IL, user ID `6935067`.
+See [the mirror contract](../blocks/caching/wikidata-mirror.md).

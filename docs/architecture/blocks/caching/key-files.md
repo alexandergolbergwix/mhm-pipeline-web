@@ -4,6 +4,10 @@
 
 | File | Purpose |
 |---|---|
+| `backend/app/models/wikidata_mirror.py`, migration `0056_wikidata_mirror.py` | Public snapshots, active fact indexes, and partial scope progress |
+| `backend/app/pipeline/wikidata_mirror.py` | Atomic snapshot/index replacement and bounded local filters |
+| `backend/app/pipeline/wikidata_mirror_sync.py` | Cached broad discovery and complete public entity reads |
+| `backend/scripts/sync_wikidata_mirror.py` | Import, resume, refresh, and local query command |
 | `backend/app/pipeline/inference_cache.py` | `cache_lookup_or_call`, `cache_http_call`, `canonical_hash`, `KIND_TTL`, `_REDIS_TTL_SECONDS`, direct read/write helpers |
 | `backend/app/pipeline/ai_verdict_cache_common.py` | Shared normalization and volatile-metadata stripping for content fingerprints (Rule W-208) |
 | `backend/app/cache/redis_client.py` | `get_redis()` lazy singleton (returns `None` without `REDIS_URL`), health-check/retry hardened shared pool (W-297), `close_redis()` |

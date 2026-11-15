@@ -75,6 +75,8 @@ logger = logging.getLogger(__name__)
 # Authority calls expire because upstream registries mutate over time.
 # ai_verdict expires after 90 days to force a refresh when the model changes.
 KIND_TTL: dict[str, timedelta | None] = {
+    "wikidata.mirror_entities": timedelta(days=1),
+    "wikidata.mirror_search": timedelta(days=1),
     "ner.person":         None,
     "ner.provenance":     None,
     "ner.contents":       None,
@@ -107,6 +109,8 @@ KIND_TTL: dict[str, timedelta | None] = {
 # Redis TTL in seconds — None = no expiry (SET without EX).
 # Authority kinds use a 24 h hot-window; Postgres remains the ground truth.
 _REDIS_TTL_SECONDS: dict[str, int | None] = {
+    "wikidata.mirror_entities": 3600,
+    "wikidata.mirror_search": 3600,
     "ner.person":         None,
     "ner.provenance":     None,
     "ner.contents":       None,

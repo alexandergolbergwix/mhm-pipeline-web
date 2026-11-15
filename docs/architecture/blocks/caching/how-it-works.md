@@ -2,6 +2,10 @@
 
 > Up: [Caching stack](README.md)
 
+The [Wikidata mirror](wikidata-mirror.md) supplies positive local candidate evidence before another remote probe.
+Its two HTTP cache kinds use a one-day Postgres TTL and a one-hour Redis TTL.
+The mirror retains full entity data separately from cached query answers.
+
 ### Tier diagram — global inference cache
 
 ```

@@ -381,8 +381,7 @@ def _claims_url(qid: str) -> str:
     params = urllib.parse.urlencode({
         "action": "wbgetentities",
         "ids": qid,
-        "props": "claims|labels|descriptions",
-        "languages": "en|he",
+        "props": "info|claims|labels|descriptions|aliases|sitelinks",
         "format": "json",
         "formatversion": "2",
         "maxlag": "5",
@@ -398,8 +397,7 @@ def _entities_url(qids: list[str]) -> str:
     params = urllib.parse.urlencode({
         "action": "wbgetentities",
         "ids": "|".join(qids),
-        "props": "claims|labels|aliases",
-        "languages": "en|he",
+        "props": "info|claims|labels|descriptions|aliases|sitelinks",
         "format": "json",
         "formatversion": "2",
         "maxlag": "5",
@@ -1156,6 +1154,11 @@ async def attach_cached_duplicate_evidence(
         for key, row in cached.items()
         if (candidates := cached_pair_candidates(row)) is not None
     }
+    from app.pipeline.wikidata_mirror import local_probe_candidates
+
+    local_candidates = await local_probe_candidates(db_factory, sorted(pending))
+    for key, candidates in local_candidates.items():
+        answered[key] = list(answered.get(key, [])) + candidates
     deferred_reasons = {
         key: reason
         for key, row in cached.items()
@@ -1339,6 +1342,27 @@ async def attach_duplicate_evidence(
     stats = {
         "probed": 0, "duplicates": 0, "unavailable": 0, "skipped": 0, "cached": 0,
     }
+    from datetime import UTC, datetime
+
+    from app.pipeline.wikidata_mirror import local_probe_candidates, store_entities, validate_entity
+
+    collected = {}
+    original_fetch = fetch or _fetch_json
+
+    def collect_entities(url, *, timeout):
+        payload = original_fetch(url, timeout=timeout)
+        observed_at = datetime.now(UTC)
+        for qid, entity in ((payload or {}).get("entities") or {}).items():
+            if not isinstance(entity, dict):
+                continue
+            try:
+                validate_entity(entity)
+            except ValueError:
+                continue
+            collected[qid] = (entity, observed_at)
+        return payload
+
+    fetch = collect_entities
     if not probe_enabled():
         for item in items:
             item["_wikidata_existence"] = {
@@ -1421,6 +1445,15 @@ async def attach_duplicate_evidence(
         apply(key, candidates)
     stats["cached"] = len(answered_keys)
 
+    local_candidates = await local_probe_candidates(db_factory, pairs)
+    for key, candidates in local_candidates.items():
+        apply(key, candidates)
+        answered_keys.add(key)
+        for item in pending[key]:
+            item["_wikidata_existence"]["coverage"] = "local_partial"
+    if local_candidates:
+        stats["local_mirror"] = len(local_candidates)
+
     misses = [key for key in pairs if key not in answered_keys]
     # Identifier keys pack many to a request; composite and title keys batch too,
     # but by group (see probe_composites_batch / probe_titles_batch), so they are
@@ -1443,6 +1476,13 @@ async def attach_duplicate_evidence(
     def mark_unavailable(keys: list[tuple[str, str]], exc: Exception) -> None:
         for key in keys:
             for item in pending[key]:
+                current = item.get("_wikidata_existence") or {}
+                if any(
+                    row.get("evidence_source") == "local_mirror"
+                    for row in current.get("candidates", [])
+                ):
+                    current.setdefault("errors", []).append(f"{key[0]}: {type(exc).__name__}")
+                    continue
                 item["_wikidata_existence"] = {
                     "status": STATUS_UNAVAILABLE,
                     "candidates": [],
@@ -1561,6 +1601,17 @@ async def attach_duplicate_evidence(
                 existence["reason"] = "capped"
 
     await _write_cached_pairs(db_factory, fresh, deferred=deferred)
+    if db_factory is not None and collected:
+        try:
+            async with db_factory() as db:
+                snapshots = list(collected.values())
+                for start in range(0, len(snapshots), 50):
+                    chunk = snapshots[start:start + 50]
+                    await store_entities(db, [entity for entity, _ in chunk],
+                        observed_at=min(at for _, at in chunk), source=_API)
+                await db.commit()
+        except Exception as error:
+            logger.warning("Local Wikidata snapshot write failed: %s", type(error).__name__)
 
     # A key that never answered means duplication was not ruled out. Reporting
     # `absent` off a partial probe is the exact false negative Rule W-144 forbids.
