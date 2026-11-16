@@ -89,5 +89,5 @@ Joined person-role descriptions: [description hygiene](blocks/wikidata-studio/pe
 | Review a source occurrence or Gila coverage | [Source review](blocks/wikidata-studio/source-review.md) |
 | Resume an exact historical repair, with an optional finite wait | [Repair retries](blocks/wikidata-studio/repair-retries.md) |
 | Store Wikidata candidates and apply filters locally | [Local Wikidata mirror](blocks/caching/wikidata-mirror.md); optional [QLever discovery](blocks/caching/wikidata-qlever.md) |
-| Apply one explicitly confirmed reference correction while the user waits | [Foreground reference repair](blocks/wikidata-studio/foreground-reference-repair.md); automatic repairs retain maxlag |
+| Apply confirmed reference corrections to one item while the user waits | [Foreground reference repair](blocks/wikidata-studio/foreground-reference-repair.md); automatic repairs retain maxlag |
 | Compare original MARC associations | [MARC occurrences](blocks/extraction/marc-occurrences.md) |

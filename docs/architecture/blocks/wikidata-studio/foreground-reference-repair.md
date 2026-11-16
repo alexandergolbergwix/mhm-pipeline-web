@@ -2,7 +2,7 @@
 
 > Up: [Wikidata Studio](README.md) · W-343 · R193
 
-An explicit user request can authorize one reviewed reference correction while the user waits.
+An explicit user request can authorize the reviewed reference corrections on one item while the user waits.
 The [MediaWiki maxlag manual](https://www.mediawiki.org/wiki/Manual:Maxlag_parameter) permits interactive requests to omit maxlag.
 This mode does not convert the automatic repair queue to an interactive queue.
 The automatic transport and retry runner retain `maxlag=5`.
@@ -11,17 +11,18 @@ The automatic transport and retry runner retain `maxlag=5`.
 
 `ForegroundReferenceGateway` extends the normal live repair gateway.
 The caller supplies a complete plan with `execution_mode="foreground_reference"`.
-The plan has one authorized QID, one proposal, and one reference change.
+The plan has one authorized QID, one proposal, and one or more reference changes.
 The caller also supplies the explicitly confirmed QID and proposal digest.
-The constructor validates the proposal against the complete before snapshot.
+The constructor validates the full proposal against the complete before snapshot.
+It checks every change and seals the complete list in the confirmed payload.
 Only exact duplicate references or equivalent retrieval-date variants qualify.
-The title, value, rank, qualifiers, and other statement fields cannot change.
+Every change must preserve the title, value, rank, qualifiers, and other statement fields.
 
 The gateway seals the plan digest, QID, revision, and exact claim payload.
 Its confirmation expires after five minutes of monotonic time.
 Its lock permits one write attempt, including concurrent calls.
 A rejection, timeout, or lost response does not restore that attempt.
-The foreground parameter method removes only maxlag from the normal request.
+The foreground parameter method omits maxlag and supplies a reference correction summary.
 It retains the same endpoint, authentication, CSRF token, baserevid, and transport timeout.
 The HTTP adapter must have zero write retries.
 
@@ -60,5 +61,5 @@ summary = await advance_repair_publication(
 ```
 
 The caller must not place this block inside a batch or retry loop.
-A later correction requires another explicit user request and a new current proposal.
+A later item or another write requires another explicit user request and a new current proposal.
 Tests: `backend/tests/unit/test_wikidata_foreground_repair.py`.

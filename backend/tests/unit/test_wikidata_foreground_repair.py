@@ -26,6 +26,24 @@ def plan_fixture():
             "proposals": [proposal], "before_entities": {"Q123": entity}}
 
 
+def multiple_reference_plan():
+    plan = plan_fixture()
+    entity = plan["before_entities"]["Q123"]
+    author = deepcopy(entity["claims"]["P1476"][0])
+    author["id"] = "Q123$author"
+    author["mainsnak"] = {"snaktype": "value", "property": "P50",
+                          "datavalue": {"value": {"id": "Q456"}}}
+    author["qualifiers"] = {"P1932": [{"snaktype": "value", "datavalue": {
+        "value": "Source author name",
+    }}]}
+    distinct = deepcopy(author["references"][0])
+    distinct["snaks"]["P958"] = [{"snaktype": "value", "datavalue": {"value": "f. 1"}}]
+    author["references"].append(distinct)
+    entity["claims"]["P50"] = [author]
+    plan["proposals"] = build_gila_repair_proposals({"Q123": entity})
+    return plan
+
+
 def uploader_fixture():
     response = requests.Response()
     response.status_code = 200
@@ -63,6 +81,55 @@ async def test_foreground_omits_maxlag_for_one_exact_post_but_bulk_keeps_five():
     session.post.assert_called_once()
     await LiveRepairGateway(uploader).write("Q123", 10, claims)
     assert session.post.call_args.kwargs["data"]["maxlag"] == 5
+
+
+@pytest.mark.asyncio
+async def test_one_item_keeps_all_confirmed_reference_corrections_in_one_post():
+    plan = multiple_reference_plan()
+    uploader, session = uploader_fixture()
+    gateway = foreground(plan, uploader)
+    claims = repair_claims(plan["proposals"][0])
+    assert len(claims) == 2
+    assert await gateway.write("Q123", 10, claims) == 11
+    session.post.assert_called_once()
+    payload = session.post.call_args.kwargs["data"]
+    assert json.loads(payload["data"]) == {"claims": claims}
+    assert "maxlag" not in payload and "colophon" not in payload["summary"]
+    before_author = plan["before_entities"]["Q123"]["claims"]["P50"][0]
+    after_author = next(claim for claim in claims if claim["id"] == "Q123$author")
+    assert after_author["mainsnak"] == before_author["mainsnak"]
+    assert after_author["qualifiers"] == before_author["qualifiers"]
+    assert len(after_author["references"]) == 2
+    assert after_author["references"][-1] == before_author["references"][-1]
+    with pytest.raises(ValueError, match="attempt"):
+        await gateway.write("Q123", 10, claims)
+    session.post.assert_called_once()
+
+
+@pytest.mark.parametrize("field", ["rank", "mainsnak", "qualifiers", "kind"])
+def test_a_valid_first_change_cannot_hide_an_unsafe_later_change(field):
+    plan = multiple_reference_plan()
+    change = plan["proposals"][0]["changes"][1]
+    if field == "kind":
+        change["kind"] = "remove_duplicate_colophon"
+    elif field == "rank":
+        change["after"][field] = "preferred"
+    else:
+        change["after"][field] = {}
+    uploader, session = uploader_fixture()
+    with pytest.raises(ValueError):
+        foreground(plan, uploader)
+    session.post.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_partial_change_list_cannot_replace_the_confirmed_item_payload():
+    plan = multiple_reference_plan()
+    uploader, session = uploader_fixture()
+    gateway = foreground(plan, uploader)
+    with pytest.raises(ValueError):
+        await gateway.write("Q123", 10, repair_claims(plan["proposals"][0])[:1])
+    session.post.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -148,13 +215,15 @@ async def test_normal_gateway_cannot_execute_a_foreground_plan():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("multiple", [False, True])
 @pytest.mark.parametrize("failure", [None, "foreign", "lost_before_apply", "lost_after_apply"])
-async def test_foreground_publication_retains_intent_creator_and_recovery_guards(failure):
+async def test_foreground_publication_retains_intent_creator_and_recovery_guards(failure, multiple):
     from app.pipeline.wikidata_gila_execution import expected_entity
     from app.publication.historical_repairs import advance_repair_publication
     from app.publication.repository import InMemoryPublicationRepository
 
-    plan = {**plan_fixture(), "actor_user_id": "actor", "run_id": "run",
+    plan = {**(multiple_reference_plan() if multiple else plan_fixture()),
+            "actor_user_id": "actor", "run_id": "run",
             "preflight": [{"qid": "Q123", "source_evidence": {"control_number": "990001"}}]}
     uploader, session = uploader_fixture()
     state = [deepcopy(plan["before_entities"]["Q123"])]

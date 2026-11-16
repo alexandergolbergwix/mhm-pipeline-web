@@ -4087,12 +4087,16 @@ The suite also checks the Postgres transaction before the first read and keeps t
 
 Persistent query-service lag deferred the automatic reference repair queue.
 The user requested the documented interactive exception for one prepared correction.
+After the title canary, the user requested one confirmation for all remaining reference corrections on that item.
 The MediaWiki maxlag manual permits that exception while a user waits.
 It does not permit an automatic queue to claim interactive status.
 
-Use `ForegroundReferenceGateway` only for one explicitly confirmed reference correction.
+Use `ForegroundReferenceGateway` only for reference corrections on one explicitly confirmed item.
+One proposal can contain several reference corrections on that item.
+Validate every change and retain the complete list in the sealed payload.
+Reject a non-reference change even when another change is a valid reference correction.
 Seal the complete plan, target QID, proposal digest, public revision, and exact claim payload.
-Reject a batch, colophon cleanup, another claim field, or a changed confirmation.
+Reject multiple item targets, colophon cleanup, another claim field, or a changed confirmation.
 Expire the in-process confirmation after five minutes.
 Consume its one attempt immediately before the sole POST, including on rejection or timeout.
 Only this path omits maxlag; normal repairs retain `maxlag=5`.

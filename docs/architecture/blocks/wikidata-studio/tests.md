@@ -353,3 +353,5 @@ It also checks the Postgres transaction before the first read and the separate H
 
 W-343: `test_wikidata_foreground_repair.py` checks one exact POST, normal bulk maxlag, changed target/revision/payload, expiry, creator refusal, and a consumed attempt after timeout.
 The Publication tests check the separate profile, intent before send, full readback, lost-response recovery, and no blind resend.
+The same suite checks several reference corrections in one POST, distinct source blocks, a changed later claim, and a partial payload.
+It checks creator refusal and uncertain-result recovery for plans with one claim or several claims on one item.

@@ -1,4 +1,4 @@
-"""One explicitly confirmed reference correction while the user waits."""
+"""Reference corrections on one explicitly confirmed item while the user waits."""
 
 import re
 import threading
@@ -26,16 +26,18 @@ class ForegroundReferenceGateway(LiveRepairGateway):
             raise ValueError("The foreground proposal differs from the confirmation.")
         validate_gila_repair_proposal(proposal, plan["before_entities"][confirmed_qid])
         changes = proposal.get("changes", [])
-        if len(changes) != 1 or changes[0].get("kind") not in {
-            "deduplicate_exact_references", "coalesce_retrieval_references",
-        }:
-            raise ValueError("A foreground repair permits one reference correction.")
-        change = changes[0]
-        before, after = change["before"], change["after"]
-        if {k: v for k, v in before.items() if k != "references"} != {
-            k: v for k, v in after.items() if k != "references"
-        }:
-            raise ValueError("A foreground repair cannot change another claim field.")
+        if not changes:
+            raise ValueError("A foreground repair needs reference corrections.")
+        for change in changes:
+            if change.get("kind") not in {
+                "deduplicate_exact_references", "coalesce_retrieval_references",
+            }:
+                raise ValueError("A foreground repair permits only reference corrections.")
+            before, after = change["before"], change["after"]
+            if {k: v for k, v in before.items() if k != "references"} != {
+                k: v for k, v in after.items() if k != "references"
+            }:
+                raise ValueError("A foreground repair cannot change another claim field.")
         super().__init__(uploader)
         self._plan_digest = entity_digest(plan)
         self._qid = confirmed_qid
@@ -61,6 +63,9 @@ class ForegroundReferenceGateway(LiveRepairGateway):
                 raise ValueError("The foreground write differs from its confirmation.")
             parameters = super()._write_parameters(qid, revision, claims, token)
             parameters.pop("maxlag")
+            parameters["summary"] = (
+                "Consolidate equivalent duplicate source references on one reviewed item"
+            )
             self._attempted = True
             return parameters
 

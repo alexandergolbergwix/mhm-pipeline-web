@@ -95,7 +95,7 @@ Rule W-324 makes creator proof mandatory without an exception.
 Historical foreign approval fields remain readable but cannot authorize an edit.
 P3959 and a ledger mapping establish identity, not creator ownership.
 Publication and bulk upload apply the same creator-only rule.
-The [foreground reference mode](architecture/blocks/wikidata-studio/foreground-reference-repair.md) permits one explicitly confirmed correction while the user waits. Automatic repairs retain `maxlag=5`.
+The [foreground reference mode](architecture/blocks/wikidata-studio/foreground-reference-repair.md) permits reference corrections on one explicitly confirmed item while the user waits. Automatic repairs retain `maxlag=5`.
 QuickStatements emits no existing-item edit commands because it has no authenticated creator proof.
 
 ---
