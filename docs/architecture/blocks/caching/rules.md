@@ -47,3 +47,4 @@
     metadata changed cache keys for unchanged content.
 12. **R12 — Local Wikidata data supplies candidates, never global absence or edit permission (W-339).** Preserve full snapshots and source time. Keep foreign targets read-only. *Why:* a partial local index cannot certify a new public item or authorize an edit.
 13. **R13 — Batch saved query scopes before the request cap (W-340).** Read at most 500 scopes per query. Retain fresh candidates beyond the cap. *Why:* one read per planned query made a capped production resume slow.
+14. **R14 — An alternate index supplies partial candidates only.** QLever uses fixed SELECT batches and separate cache/scope keys. A result at the row cap stays partial. Public entity reads and all write guards remain mandatory. *Why:* an alternate index has its own limits and update delay.

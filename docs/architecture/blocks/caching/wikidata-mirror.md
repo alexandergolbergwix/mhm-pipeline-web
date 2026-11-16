@@ -26,6 +26,7 @@ A failed or incomplete response cannot invalidate that positive.
 
 ## Discovery and local filters
 
+The [QLever option](wikidata-qlever.md) uses a separate public index for explicit candidate discovery.
 `wikidata_mirror_sync.py` uses broad identifier unions and quoted name or title seeds.
 It uses native `haswbstatement:"P214=id|P244=id"` syntax, with quotes after the colon.
 See the [official search syntax](https://www.mediawiki.org/wiki/Help:Extension:WikibaseCirrusSearch#haswbstatement).

@@ -260,10 +260,20 @@ async def discover_candidates(
     max_pages: int = 5,
     max_queries: int = 100,
     refresh: bool = False,
+    provider: str = "wikidata",
     on_progress=None,
 ) -> dict:
     if not 1 <= max_pages <= 100 or not 1 <= max_queries <= 10000:
         raise ValueError("The discovery limits are invalid.")
+    if provider not in {"wikidata", "qlever"}:
+        raise ValueError("The discovery provider is unsupported.")
+    qlever_batches = {}
+    if provider == "qlever":
+        from app.pipeline import wikidata_mirror_qlever
+
+        qlever_batches = {
+            batch.sparql(): batch for batch in wikidata_mirror_qlever.discovery_batches(items)
+        }
     qids = set()
     for item in items:
         existing = item.get("existing_qid")
@@ -274,8 +284,11 @@ async def discover_candidates(
             if isinstance(value, str) and QID.fullmatch(value):
                 qids.add(value)
     queries = [
-        (query, canonical_hash({"schema": "mirror-search-v1", "query": query}))
-        for query in discovery_queries(items)
+        (query, canonical_hash(
+            {"schema": "mirror-qlever-v1", "endpoint": wikidata_mirror_qlever.API, "query": query}
+            if provider == "qlever" else {"schema": "mirror-search-v1", "query": query}
+        ))
+        for query in (qlever_batches if provider == "qlever" else discovery_queries(items))
     ]
     saved_scopes = {}
     if not refresh:
@@ -309,6 +322,9 @@ async def discover_candidates(
         qids.update(progress.get("qids", []))
         if status == "query_complete":
             continue
+        if provider == "qlever" and status == "query_capped":
+            partial += 1
+            continue
         if issued >= max_queries:
             partial += 1
             continue
@@ -318,7 +334,9 @@ async def discover_candidates(
         finished = False
         for _ in range(max_pages):
             try:
-                envelope = await cached_public_read(
+                envelope = await wikidata_mirror_qlever.cached_read(
+                    db_factory, qlever_batches[query], refresh=refresh,
+                ) if provider == "qlever" else await cached_public_read(
                     db_factory,
                     {
                         "action": "query",
@@ -340,8 +358,9 @@ async def discover_candidates(
                         raise MirrorReadUnavailableError("The search response has an invalid item.")
                     discovered.add(qid)
                 continuation = response.get("continue", {}).get("sroffset")
+                capped = provider == "qlever" and response.get("limit_reached") is True
                 if continuation is None:
-                    finished = True
+                    finished = not capped
                 elif type(continuation) is not int or continuation <= offset:
                     raise MirrorReadUnavailableError("The search continuation did not advance.")
                 else:
@@ -350,20 +369,23 @@ async def discover_candidates(
                     await db.merge(
                         WikidataMirrorScope(
                             scope_key=key,
-                            source="broad_search",
-                            status="query_complete" if finished else "partial",
+                            source="qlever_search" if provider == "qlever" else "broad_search",
+                            status=("query_complete" if finished
+                                    else "query_capped" if capped else "partial"),
                             requested_count=0,
                             stored_count=len(discovered),
                             progress={
                                 "query": query,
                                 "qids": sorted(discovered),
                                 "next_offset": offset,
+                                "negative_identity_proof": False,
+                                "excluded_non_item_rows": response.get("excluded_non_item_rows", 0),
                             },
                             updated_at=datetime.fromisoformat(envelope["observed_at"]),
                         )
                     )
                     await db.commit()
-                if finished:
+                if finished or capped:
                     break
             except Exception as error:
                 raise MirrorReadUnavailableError(
@@ -380,6 +402,7 @@ async def discover_candidates(
                     "candidate_qids": len(qids),
                     "partial_queries": partial,
                     "coverage": "candidate_search_only",
+                    "provider": provider,
                 }
             )
     return {
@@ -387,4 +410,5 @@ async def discover_candidates(
         "queries": issued,
         "partial_queries": partial,
         "coverage": "candidate_search_only",
+        "provider": provider,
     }

@@ -5,6 +5,7 @@
 The [Wikidata mirror](wikidata-mirror.md) supplies positive local candidate evidence before another remote probe.
 Its two HTTP cache kinds use a one-day Postgres TTL and a one-hour Redis TTL.
 The mirror retains full entity data separately from cached query answers.
+The optional [QLever provider](wikidata-qlever.md) supplies candidate QIDs before the normal full entity reads.
 
 ### Tier diagram — global inference cache
 

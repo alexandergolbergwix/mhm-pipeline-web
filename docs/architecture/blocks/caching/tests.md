@@ -4,6 +4,7 @@
 
 - `backend/tests/unit/test_wikidata_mirror.py` — full snapshots, ranks, index replacement, stale data, bounded SQL, partial discovery, API failure, and reference-only candidates.
   A 1,200-query scope requires at most four SQL reads when the request cap is one.
+- `backend/tests/unit/test_wikidata_mirror_qlever.py` — literal-safe SELECT batches, fixed transport, invalid responses, non-item URIs, row caps, error stops, durable resume, and cache separation.
 
 - `backend/tests/test_inference_cache_helpers.py` — two-tier lookup, canonical hashing, skip-cache invalidation
 - `backend/tests/unit/test_inference_cache.py` — `cache_batch_warm` returns hits

@@ -3,6 +3,7 @@
 > Up: [Caching stack](README.md)
 
 Use the [Wikidata mirror playbook](wikidata-mirror.md) for snapshot imports, broad candidate discovery, and local filters.
+Use the [QLever playbook](wikidata-qlever.md) for explicit alternate discovery without a change to the public write path.
 
 ### Skill: add a new cached inference kind
 

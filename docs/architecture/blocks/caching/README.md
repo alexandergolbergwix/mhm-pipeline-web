@@ -27,11 +27,12 @@ Four distinct cache families exist, and they must not be confused:
 - [Key files](key-files.md) — every module, model, and job in this block
 - [How it works](how-it-works.md) — tier diagram, TTL table per kind, Redis
   client, Tier-2 scoped cache, fingerprint-keyed durable build caches
-- [Rules](rules.md) — R1–R13 invariants
+- [Rules](rules.md) — R1–R14 invariants
 - [Skills](skills.md) — add a cached kind / durable build cache / scoped
   cache; change a TTL
 - [Tests pinning this block](tests.md)
 - [Local Wikidata mirror](wikidata-mirror.md) — snapshot import, broad discovery, local filters, and reference-only candidates.
+- [QLever discovery](wikidata-qlever.md) — optional public SELECT batches and durable partial scopes.
 
 ## Related blocks
 

@@ -128,6 +128,7 @@ async def run(args) -> None:
             max_pages=args.max_pages,
             max_queries=args.max_queries,
             refresh=args.refresh,
+            provider=args.discovery_provider,
             on_progress=report,
         )
         qids.extend(discovery["qids"])
@@ -176,6 +177,7 @@ def main() -> None:
     target.add_argument("--database-from-heroku", action="store_true")
     parser.add_argument("--snapshot", type=Path)
     parser.add_argument("--items", type=Path)
+    parser.add_argument("--discovery-provider", choices=("wikidata", "qlever"), default="wikidata")
     parser.add_argument("--qids", type=Path)
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--max-pages", type=int, default=5)
