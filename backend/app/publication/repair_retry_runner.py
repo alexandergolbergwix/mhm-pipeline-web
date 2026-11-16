@@ -39,6 +39,8 @@ async def wait_for_repair_publication(
     """Keep the same reviewed plan; stop on ambiguity or a finite time limit."""
     if not math.isfinite(max_wait_seconds) or max_wait_seconds < 0:
         raise ValueError("The repair wait limit must be finite and non-negative.")
+    if plan.get("execution_mode") == "foreground_reference":
+        raise ValueError("The automatic retry runner cannot accept a foreground plan.")
     plan = deepcopy(plan)
     now = clock or (lambda: datetime.now(UTC))
     deadline = monotonic() + max_wait_seconds

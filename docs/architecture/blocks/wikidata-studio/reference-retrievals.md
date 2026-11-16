@@ -42,6 +42,7 @@ A successful GET alone does not prove that the POST lag gate will permit an edit
 Keep `maxlag=5` on bulk edits and respect `Retry-After` after a confirmed rejection.
 Check the exact entity after an uncertain outcome before another attempt.
 MediaWiki permits individual interactive requests to omit `maxlag`; this exception does not apply to an unattended bulk process.
+The [foreground mode](foreground-reference-repair.md) enforces one confirmed claim, a separate durable profile, and one write attempt.
 See the [official guidance](https://www.mediawiki.org/wiki/Manual:Maxlag_parameter)
 and the [verified cleanup receipts](../../../audits/creator-scoped-cleanup-2026-11-12.md).
 

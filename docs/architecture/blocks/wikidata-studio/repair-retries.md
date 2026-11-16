@@ -51,7 +51,7 @@ Resume the same execution after its retry date.
 
 The Studio uses `GET /api/runs/{runId}/wikidata-publications/latest`.
 That route selects only the `mhm-wikidata` profile (W-334).
-An operator repair retains its separate `gila-exact-repair` Publication and execution.
+An operator repair retains its separate `gila-exact-repair` or `gila-foreground-reference` Publication and execution.
 The Studio cannot select that repair as its normal Release.
 `backend/tests/test_publication_router.py` checks a newer repair and a run with repairs only.
 
@@ -72,6 +72,7 @@ It never replaces a date with a guessed shorter delay.
 Each resume repeats the existing source, creator, revision, and exact-claim checks.
 The exact repair scope still requires creator user ID `6935067`.
 The loop does not change `maxlag=5`, the transport, or the guarded write path.
+The [foreground mode](foreground-reference-repair.md) uses a separate profile and cannot enter this retry runner.
 
 The loop commits the repository checkpoint before each wait.
 It releases the SQL connection and sleeps for at most 30 seconds per step.

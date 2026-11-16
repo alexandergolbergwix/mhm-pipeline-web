@@ -350,3 +350,6 @@ W-341: `test_local_measure_verify.py` reads a saved override through canonical m
 
 W-342: The same suite reads 205 complete canonical snapshots in five pages. It checks UUID order, nested authority evidence, run scope, and zero SQL mutations.
 It also checks the Postgres transaction before the first read and the separate HMO measurement entry path.
+
+W-343: `test_wikidata_foreground_repair.py` checks one exact POST, normal bulk maxlag, changed target/revision/payload, expiry, creator refusal, and a consumed attempt after timeout.
+The Publication tests check the separate profile, intent before send, full readback, lost-response recovery, and no blind resend.

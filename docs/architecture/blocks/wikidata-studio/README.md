@@ -42,13 +42,14 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R192) and known gaps.
+- [Rules](rules.md) — the invariants (R1–R193) and known gaps.
 - [Local candidate mirror](../caching/wikidata-mirror.md) — full public snapshots and local filters; foreign QIDs remain reference targets only.
 - [Reference blocks](reference-blocks.md) — source grouping, old-data gates, deferred links, test wiki, and export limits (W-304).
 - [CREATE guards](creation-safety.md) — final semantics, fresh identity, current shelfmark, and the nine-point prevention matrix.
 - [Repeated retrievals](reference-retrievals.md) — one current date per identical citation, append-only limits, and exact repair proposals (W-323).
 - [Studio cache freshness](studio-cache-freshness.md) — build fingerprint, override application, and the Rebuild required badge.
 - [Creator-only writes](creator-only-writes.md) — mandatory creator proof; no foreign-edit exception (W-324).
+- [Foreground reference repair](foreground-reference-repair.md) — one confirmed correction while the user waits; no automatic retry (W-343).
 - [Person descriptions](person-description-hygiene.md) — exclude joined generic role lists (W-325).
 - [Upload write guards](upload-write-guards.md) — Studio source recheck before each bulk write, and the owned-item rule.
 - [Test-ledger local targets](test-ledger-local-targets.md) — sealed test QIDs and `publication_local_targets` registered before build.

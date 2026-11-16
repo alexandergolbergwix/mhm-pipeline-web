@@ -4009,7 +4009,8 @@ Use a finite monotonic time budget and sleep steps of at most 30 seconds.
 Commit the repository checkpoint before a wait to release the SQL connection.
 Stop on absent retry metadata, an unknown outcome, or a blocked action.
 Retain the existing source, revision, exact-claim, and creator user-ID checks on every resume.
-Keep `maxlag=5` and creator user ID `6935067` for the historical Gila scope.
+Keep `maxlag=5` and creator user ID `6935067` for the automatic historical Gila scope.
+The separate foreground exception in W-343 requires one explicit user confirmation.
 Do not create a new intent after an uncertain response or guess a shorter delay.
 The foreground CLI creates no additional queue, daemon, or job kind.
 See [the retry contract](../blocks/wikidata-studio/repair-retries.md).
@@ -4081,3 +4082,26 @@ Keep the complete curator serializer and the normal export quality gate.
 The regression measures 205 snapshots across five bounded reads.
 It checks exact order, nested evidence, exclusion of another run, and zero SQL mutations.
 The suite also checks the Postgres transaction before the first read and keeps this guard outside the HMO measurement channel.
+
+### Rule W-343 — A foreground reference repair has one confirmed attempt (2026-11-16)
+
+Persistent query-service lag deferred the automatic reference repair queue.
+The user requested the documented interactive exception for one prepared correction.
+The MediaWiki maxlag manual permits that exception while a user waits.
+It does not permit an automatic queue to claim interactive status.
+
+Use `ForegroundReferenceGateway` only for one explicitly confirmed reference correction.
+Seal the complete plan, target QID, proposal digest, public revision, and exact claim payload.
+Reject a batch, colophon cleanup, another claim field, or a changed confirmation.
+Expire the in-process confirmation after five minutes.
+Consume its one attempt immediately before the sole POST, including on rejection or timeout.
+Only this path omits maxlag; normal repairs retain `maxlag=5`.
+
+Use the separate `gila-foreground-reference` Publication profile.
+Retain the normal source, actor, creator ID `6935067`, bot-exclusion, revision, and exact-claim checks.
+Commit the durable intent before the write and verify the complete public readback.
+The automatic retry runner rejects this mode, including a zero wait budget.
+An uncertain outcome requires the normal read-only recovery; it cannot grant another send.
+The foreground gateway cannot execute an automatic plan, and the normal gateway cannot execute a foreground plan.
+
+Tests: `test_wikidata_foreground_repair.py` plus the existing historical repair and creator suites.

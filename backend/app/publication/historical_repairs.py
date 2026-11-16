@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator, Mapping
 from copy import deepcopy
 
+from app.pipeline.wikidata_foreground_repair import MODE, PROFILE, profile_for_gateway
 from app.pipeline.wikidata_gila_execution import (
     RepairGateway,
     SourceCheck,
@@ -22,6 +23,9 @@ TARGET = TargetRef(site="www.wikidata.org", environment="production")
 class RepairProjectionSource:
     def __init__(self, plan: Mapping[str, object], source_check: SourceCheck):
         self.plan = deepcopy(dict(plan))
+        self.profile_name = (
+            PROFILE if self.plan.get("execution_mode") == MODE else "gila-exact-repair"
+        )
         self.digest = entity_digest(self.plan)
         self.source_check = source_check
         self.documents = []
@@ -49,7 +53,7 @@ class RepairProjectionSource:
     ) -> AsyncIterator[tuple[PublicationEntityInput, ...]]:
         if (
             source_snapshot.digest != self.digest
-            or profile.name != "gila-exact-repair"
+            or profile.name != self.profile_name
             or profile.version != "1"
         ):
             raise ValueError("The repair plan or profile changed.")
@@ -97,6 +101,7 @@ async def advance_repair_publication(
 
     if plan.get("actor_user_id") != actor_id or plan.get("run_id") != run_id:
         raise ValueError("The repair plan belongs to a different actor or run.")
+    profile_name = profile_for_gateway(plan, gateway)
     source = RepairProjectionSource(plan, source_check)
     credential_ref = f"historical-repair:{actor_id}"
     adapter = RepairPublicationGateway(
@@ -112,7 +117,7 @@ async def advance_repair_publication(
         PrepareRequest(
             run_id=run_id,
             source_snapshot=SourceSnapshotRef(source.digest, "1", source.digest),
-            profile=ProfileRef("gila-exact-repair", "1"),
+            profile=ProfileRef(profile_name, "1"),
             target=TARGET,
             actor_id=actor_id,
             idempotency_key=f"repair-prepare:{source.digest}",

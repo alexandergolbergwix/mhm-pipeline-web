@@ -213,6 +213,15 @@ class LiveRepairGateway:
     def __init__(self, uploader: WikidataUploader) -> None:
         self.uploader = uploader
 
+    def _write_parameters(self, qid, revision, claims, token) -> dict:
+        return {
+            "action": "wbeditentity", "id": qid, "baserevid": revision,
+            "data": json.dumps({"claims": claims}, ensure_ascii=False),
+            "summary": "Repair exact duplicate source references or "
+            "a source-verified duplicate colophon",
+            "token": token, "format": "json", "maxlag": BULK_MAXLAG,
+        }
+
     async def fetch(self, qid: str) -> dict[str, object]:
         def read() -> dict[str, object]:
             self.uploader._prefetched_entities.pop(qid, None)
@@ -261,19 +270,7 @@ class LiveRepairGateway:
             self.uploader._assert_modifiable(qid, stage="exact_repair_pre_write")
             response = session.post(
                 API_URL,
-                data={
-                    "action": "wbeditentity",
-                    "id": qid,
-                    "baserevid": revision,
-                    "data": json.dumps({"claims": claims}, ensure_ascii=False),
-                    "summary": (
-                        "Repair exact duplicate source references or "
-                        "a source-verified duplicate colophon"
-                    ),
-                    "token": token,
-                    "format": "json",
-                    "maxlag": BULK_MAXLAG,
-                },
+                data=self._write_parameters(qid, revision, claims, token),
                 allow_redirects=False,
                 timeout=30,
             )

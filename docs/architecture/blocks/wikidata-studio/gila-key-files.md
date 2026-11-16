@@ -49,6 +49,7 @@
 | `backend/app/models/wikidata_mirror.py`, migration `0056_wikidata_mirror.py`, `backend/app/models/__init__.py` | Registered snapshot, fact, and scope models |
 | `backend/scripts/sync_wikidata_mirror.py` | Read-only public mirror operator command |
 | `backend/app/pipeline/wikidata_gila_execution.py` | Exact one-send transport and fixed creator ID for this repair scope |
+| `backend/app/pipeline/wikidata_foreground_repair.py` | One confirmed reference correction; sealed target, revision, payload, and single attempt |
 | `backend/app/services/wikibase_audit.py` | Bounded repair operation names and complete JSON receipts |
 | `backend/scripts/execute_gila_repairs.py` | SQL-backed Publication preparation and resume |
 | `frontend/src/api/wikidataSourceReview.ts` | Typed source-review client |
