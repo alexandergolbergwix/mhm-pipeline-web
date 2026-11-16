@@ -84,7 +84,7 @@ From `backend/`, use the read-only measurement environment:
   --output-dir state/gila-canonical-audit
 ```
 
-Canonical mode reads durable HMO snapshots and curator overrides, then applies the current source projection.
+Canonical mode reads complete snapshots in UUID pages of 50 and keeps Postgres inputs in one read-only repeatable-read transaction (W-342).
 It uses `override_row_to_dict` to retain source choices, person choices, approval, accepted reference targets, and verdict metadata.
 It disables reconciliation and performs no production cache write.
 It fails if canonical snapshots are absent instead of substituting a legacy result.

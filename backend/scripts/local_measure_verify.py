@@ -284,6 +284,10 @@ class WikidataChannel(Channel):
         from sqlalchemy.orm import defer
 
         async with session_scope() as db:
+            if self.audit_projection == "canonical" and db.get_bind().dialect.name == "postgresql":
+                await db.execute(text(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+                ))
             records = (await db.execute(
                 select(RunRecord).where(RunRecord.run_id == run_id)
                 .order_by(RunRecord.control_number.asc())
@@ -354,10 +358,23 @@ class WikidataChannel(Channel):
             canonical_snapshots = []
             overrides = {}
             if self.audit_projection == "canonical":
-                canonical_snapshots = list((await db.execute(
-                    select(HmoCanonicalEntity.snapshot).where(HmoCanonicalEntity.run_id == run_id)
-                    .order_by(HmoCanonicalEntity.id),
-                )).scalars().all())
+                after_id = None
+                while True:
+                    query = (
+                        select(HmoCanonicalEntity.id, HmoCanonicalEntity.snapshot)
+                        .where(HmoCanonicalEntity.run_id == run_id)
+                        .order_by(HmoCanonicalEntity.id)
+                        .limit(50)
+                    )
+                    if after_id is not None:
+                        query = query.where(HmoCanonicalEntity.id > after_id)
+                    page = (await db.execute(query)).all()
+                    canonical_snapshots.extend(row.snapshot for row in page)
+                    if page and (len(canonical_snapshots) % 500 == 0 or len(page) < 50):
+                        print(f"[build] Canonical snapshots read: {len(canonical_snapshots)}")
+                    if len(page) < 50:
+                        break
+                    after_id = page[-1].id
                 override_rows = (await db.execute(select(WikidataItemOverride).where(
                     WikidataItemOverride.run_id == run_id,
                 ))).scalars().all()

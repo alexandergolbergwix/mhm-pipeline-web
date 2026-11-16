@@ -347,3 +347,6 @@ W-338: `test_publication_historical_repairs.py` checks automatic continuation, t
 W-339: `test_wikidata_mirror.py` checks local candidates, freshness, scope, full references, revision monotonicity, and no cached adoption. `test_wikidata_creator_only.py` retains foreign-reference and foreign-edit refusal coverage.
 
 W-341: `test_local_measure_verify.py` reads a saved override through canonical measurement, retains all curator fields, and rejects SQL mutations.
+
+W-342: The same suite reads 205 complete canonical snapshots in five pages. It checks UUID order, nested authority evidence, run scope, and zero SQL mutations.
+It also checks the Postgres transaction before the first read and the separate HMO measurement entry path.

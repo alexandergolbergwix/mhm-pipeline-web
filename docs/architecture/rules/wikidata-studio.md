@@ -4063,3 +4063,21 @@ Do not maintain a separate list of override fields in the measurement tool.
 Keep source choices, person choices, and reference-only targets subject to the normal projection checks.
 The measurement must perform no database mutation or public edit.
 The regression reads a saved override through the measurement adapter and checks the complete state and the absence of SQL mutations.
+
+### Rule W-342 — Canonical measurement reads stay bounded and consistent (2026-11-16)
+
+The current-source Gila measurement stopped during its sixth SELECT.
+That query requested every canonical snapshot in one result.
+The measurement stopped before the quality gate could run.
+
+Read complete canonical snapshots in pages of at most 50 rows.
+Use the UUID primary key as a cursor and retain the run filter on every page.
+Do not truncate a snapshot or drop its source and authority evidence.
+Postgres canonical measurements use one read-only repeatable-read transaction for all inputs.
+Keep that transaction through every page so concurrent changes cannot mix input versions.
+Report progress after each 500 snapshots and after the final short page.
+Keep the complete curator serializer and the normal export quality gate.
+
+The regression measures 205 snapshots across five bounded reads.
+It checks exact order, nested evidence, exclusion of another run, and zero SQL mutations.
+The suite also checks the Postgres transaction before the first read and keeps this guard outside the HMO measurement channel.
