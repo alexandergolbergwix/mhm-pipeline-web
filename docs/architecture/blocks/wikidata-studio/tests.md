@@ -355,3 +355,5 @@ W-343: `test_wikidata_foreground_repair.py` checks one exact POST, normal bulk m
 The Publication tests check the separate profile, intent before send, full readback, lost-response recovery, and no blind resend.
 The same suite checks several reference corrections in one POST, distinct source blocks, a changed later claim, and a partial payload.
 It checks creator refusal and uncertain-result recovery for plans with one claim or several claims on one item.
+
+W-344: `test_publication_historical_repairs.py` simulates a slow commit at and after a saved retry date. It checks the same execution, no unnecessary sleep, current creator/source/revision refusals, and an expired budget.

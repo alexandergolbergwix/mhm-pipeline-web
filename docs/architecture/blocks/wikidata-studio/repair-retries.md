@@ -1,6 +1,6 @@
 # Durable exact repairs and creator IDs
 
-> Up: [Wikidata Studio](README.md) · Rule W-328
+> Up: [Wikidata Studio](README.md) · Rules W-328, W-338, W-344
 
 `publication/historical_repairs.py` projects an exact repair plan into the existing Publication module.
 The plan retains the full public before snapshots, exact proposals, source proofs, run, actor, and authorized QIDs.
@@ -66,7 +66,9 @@ The option requires `--apply` when its value exceeds zero.
 The loop copies the reviewed plan once and retains its Publication and execution.
 The SQL adapter restores the retry date from the matching execution action and attempt.
 The action state must also match the latest intent state.
-It waits only for confirmed `pre_send_retryable` intents with complete, future retry dates.
+It accepts only confirmed `pre_send_retryable` intents with complete timezone-aware retry dates.
+It waits for a future date and resumes an already-due action within the finite budget.
+A slow commit can finish after the saved date; that date remains valid.
 It stops for a blocked action, an unknown outcome, or absent retry metadata.
 It never replaces a date with a guessed shorter delay.
 Each resume repeats the existing source, creator, revision, and exact-claim checks.
@@ -78,10 +80,10 @@ The loop commits the repository checkpoint before each wait.
 It releases the SQL connection and sleeps for at most 30 seconds per step.
 The CLI prints `retry_wait`, the execution ID, and the saved next retry date.
 A monotonic clock bounds the process time between Publication advances.
-The loop returns the saved pause if the next retry exceeds the time budget.
+The loop returns the saved pause if the next retry exceeds the time budget or that budget has expired.
 An API call that already started can finish after the budget.
 A process stop retains the durable intent for a later resume.
 This foreground command creates no daemon, schedule, route, or job kind.
 
-`test_publication_historical_repairs.py` covers execution reuse, deadline limits, cancellation, changed proof, and unknown outcomes.
+`test_publication_historical_repairs.py` covers execution reuse, deadline limits, cancellation, changed proof, due dates after slow commits, elapsed budgets, and unknown outcomes.
 `test_gila_repair_cli.py` checks the CLI limits before authentication.

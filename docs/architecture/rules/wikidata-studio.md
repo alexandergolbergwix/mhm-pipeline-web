@@ -4109,3 +4109,24 @@ An uncertain outcome requires the normal read-only recovery; it cannot grant ano
 The foreground gateway cannot execute an automatic plan, and the normal gateway cannot execute a foreground plan.
 
 Tests: `test_wikidata_foreground_repair.py` plus the existing historical repair and creator suites.
+
+
+### Rule W-344 — A due repair retry survives a slow commit (2026-11-16)
+
+The normal reference queue received a confirmed `maxlag` rejection on Q141175480.
+Its saved retry date was 12:30:52 UTC, but the runner returned at 12:30:56 UTC.
+The execution remained paused and the intent remained `pre_send_retryable`.
+The runner treated an already-due date as a reason to stop.
+A slow commit could therefore defeat the explicit finite wait budget.
+
+Accept a timezone-aware saved date that is future or already due.
+Release the repository transaction before the wait or resume.
+Wait until a future date without a shorter delay.
+Resume an already-due action through the same Publication execution when the monotonic budget permits it.
+Keep the current source, creator, revision, exact payload, and unknown-outcome checks.
+Keep `maxlag=5` and reject foreground plans in the automatic runner.
+Never guess an absent retry date or resume after the finite budget expires.
+
+The regression simulates a commit that finishes at or after the saved date.
+It requires a successful resume without a second execution or an unnecessary sleep.
+Companion cases retain creator, source, revision, and elapsed-budget refusals.

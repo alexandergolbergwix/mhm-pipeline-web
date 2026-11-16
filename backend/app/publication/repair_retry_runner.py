@@ -75,8 +75,6 @@ async def wait_for_repair_publication(
         if len(retry_dates) != summary.execution_pre_send_retryable_count:
             return summary
         next_attempt = min(retry_dates)
-        if next_attempt <= now():
-            return summary
         # Release the SQL transaction and its connection before the wait.
         await repository.checkpoint()
         while True:

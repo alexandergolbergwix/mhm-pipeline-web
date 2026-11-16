@@ -577,3 +577,97 @@ async def test_sql_does_not_attach_a_date_from_a_different_attempt_or_state(
     await db_session.commit()
     mismatched = await repo.latest_write_intent(result.execution_id, "repair:Q123")
     assert mismatched.state == "pre_send_retryable" and mismatched.next_attempt_at is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("elapsed_after_due", [0, 1, 60])
+async def test_retry_resumes_when_commit_finishes_after_the_saved_date(
+    monkeypatch, elapsed_after_due
+):
+    import app.publication.repair_retry_runner as runner
+
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    repo = InMemoryPublicationRepository()
+    timer = RetryClock()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=5)
+    real_advance = runner.advance_repair_publication
+    execution_ids = []
+
+    async def slow_commit(*args, **kwargs):
+        result = await real_advance(*args, **kwargs)
+        execution_ids.append(result.execution_id)
+        if len(execution_ids) == 1:
+            intent = await repo.latest_write_intent(result.execution_id, "repair:Q123")
+            assert intent.state == "pre_send_retryable"
+            timer.elapsed = (
+                intent.next_attempt_at - timer.start
+            ).total_seconds() + elapsed_after_due
+            gateway.error = None
+        return result
+
+    monkeypatch.setattr(runner, "advance_repair_publication", slow_commit)
+    result = await wait_for_repair(reviewed, gateway, repo, timer)
+
+    assert result.execution_status == "succeeded"
+    assert gateway.writes == 2
+    assert len(execution_ids) == 2 and len(set(execution_ids)) == 1
+    assert not timer.sleeps
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("defect", ["foreign", "revision", "source", "budget"])
+async def test_elapsed_retry_date_preserves_current_proof_and_budget(monkeypatch, defect):
+    import app.publication.repair_retry_runner as runner
+
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    repo = InMemoryPublicationRepository()
+    timer = RetryClock()
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=5)
+    real_advance = runner.advance_repair_publication
+    changed = False
+    commits = 0
+
+    async def current_source(before, proposal):
+        evidence = await source_check(before, proposal)
+        return {**evidence, "source_sha256": "changed"} if changed else evidence
+
+    async def slow_commit(*args, **kwargs):
+        nonlocal changed, commits
+        result = await real_advance(*args, **kwargs)
+        commits += 1
+        if commits == 1:
+            intent = await repo.latest_write_intent(result.execution_id, "repair:Q123")
+            timer.elapsed = (intent.next_attempt_at - timer.start).total_seconds() + 1
+            gateway.error = None
+            if defect == "foreign":
+                gateway.allowed = False
+            elif defect == "revision":
+                gateway.entity["lastrevid"] += 1
+            elif defect == "source":
+                changed = True
+            else:
+                timer.elapsed = 601
+        return result
+
+    monkeypatch.setattr(runner, "advance_repair_publication", slow_commit)
+    result = await wait_for_repair_publication(
+        reviewed,
+        gateway,
+        current_source,
+        repo,
+        actor_id="actor-1",
+        run_id="run-1",
+        max_wait_seconds=600,
+        clock=timer.now,
+        monotonic=lambda: timer.elapsed,
+        sleep=timer.sleep,
+    )
+
+    assert gateway.writes == 1
+    assert not timer.sleeps
+    if defect == "budget":
+        assert result.execution_status == "paused"
+    else:
+        assert result.execution_blocked_count == 1
