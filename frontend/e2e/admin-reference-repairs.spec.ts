@@ -29,7 +29,7 @@ test("an administrator confirms the exact backend repair scope", async ({page}) 
   await page.getByRole("checkbox", {name: "I authorize the reviewed reference repairs only."}).check();
   await expect(start).toBeEnabled();
   await start.click();
-  await expect(page.getByRole("button", {name: "Backend repairs are active"})).toBeDisabled();
+  await expect(page.getByRole("button", {name: "Job in queue"})).toBeDisabled();
   await expect(page.getByText("The backend runs the reviewed queue.", {exact: false})).toBeVisible();
 });
 
@@ -56,4 +56,38 @@ test("an editor cannot mount the repair inventory through a direct URL", async (
   await page.goto(`/runs/${TEST_RUN_ID}/wikidata-studio/repair-plan`);
   await expect(page).toHaveURL(/\/$/);
   expect(requests).toBe(0);
+});
+
+test("live progress follows backend states without another start request", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  await page.route("**/api/auth/me", route => route.fulfill({json: {
+    id: "admin", role: "admin", name: "Admin", email: "admin@example.com",
+  }}));
+  await page.route("**/api/admin/stats", route => route.fulfill({json: {pending_access_requests: 0}}));
+  let phase = "queued";
+  let verified = 1;
+  let starts = 0;
+  await page.route("**/api/admin/wikidata-reference-repairs/start", route => {
+    starts++;
+    return route.abort();
+  });
+  await page.route("**/api/admin/wikidata-reference-repairs", route => route.fulfill({json: {
+    ...status, verified, completed: verified, already_clean: 0,
+    job: {id: "job", status: phase === "queued" ? "queued" : "running", progress: {
+      phase, current_qid: "Q123", next_attempt_at: new Date(Date.now() + 60000).toISOString(),
+    }},
+  }}));
+  await page.goto("/admin/wikidata-reference-repairs");
+  const progress = page.getByRole("progressbar", {name: "Confirmed reference repair progress"});
+  await expect(page.getByRole("heading", {name: "In queue", exact: true})).toBeVisible();
+  await expect(progress).toHaveAttribute("value", "1");
+  phase = "service_delay";
+  await expect(page.getByRole("heading", {name: "Wikidata delay", exact: true})).toBeVisible();
+  await expect(page.getByText(/Next retry in/)).toBeVisible();
+  await expect(progress).toHaveAttribute("value", "1");
+  verified = 2;
+  phase = "active";
+  await expect(progress).toHaveAttribute("value", "2");
+  await expect(page.getByRole("heading", {name: "Repairs in progress", exact: true})).toBeVisible();
+  expect(starts).toBe(0);
 });

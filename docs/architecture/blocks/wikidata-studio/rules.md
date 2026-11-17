@@ -1343,3 +1343,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 198. **R198 — The local queue control preserves the reviewed reference scope.** Require its exact manifest, local key, Origin, consent, and existing queue lock. Keep project access, creator proof, and maxlag in the normal queue. Reject another start after an uncertain checkpoint. *Why:* an operator control must not widen the repair scope or repeat a delayed write.
 
 199. **R199 — Production reference controls require an administrator and a durable backend job.** Keep private exact plans in Postgres before each write. Recheck current authority and use a direct Postgres lease across hosts. Hide all controls from other users. *Why:* a local process and loopback key cannot implement a production administrator control.
+
+200. **R200 — Live repair progress counts confirmed outcomes only.** Separate the queue, active work, and a service delay. Keep private plans out of the public summary. Clear protected state after access denial. *Why:* a live display must not imply a write or lose confirmed progress after a network error.

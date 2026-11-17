@@ -76,3 +76,5 @@ This change requires a Heroku release. It does not require a Modal release.
 - `test_reference_repair_worker.py`: restored plan and pre-write checkpoint tests.
 - `test_reference_cloud_checkpoint.py`: role revocation, cancellation, and lease tests.
 - `admin-reference-repairs.spec.ts`: mocked administrator controls and non-administrator redirects.
+
+The [live progress view](live-reference-progress.md) uses project job events and a two-second fallback refresh. It reports confirmed receipts, queue phases, retry time, connection state, and bounded recent results.

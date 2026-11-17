@@ -81,3 +81,5 @@ The Wikidata item drawer, Publication controls, blocked-action drawer, and AI re
 `backend/scripts/gila_repair_controls.js` supplies the separate [local operator controls](../wikidata-studio/local-reference-repair-ui.md). It does not replace the authenticated React Studio page.
 
 `AdminRoute.tsx` and `admin/AdminReferenceRepairs.tsx` provide the protected [backend repair controls](../wikidata-studio/admin-reference-repairs.md). `api/runJobs.ts` names the new job kind. The Admin sidebar links to the page.
+
+`useReferenceRepairStatus.ts`, `api/referenceRepairs.ts`, and `ReferenceRepairProgress.tsx` supply [live administrator reference progress](../wikidata-studio/live-reference-progress.md).

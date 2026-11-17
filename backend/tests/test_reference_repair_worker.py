@@ -48,6 +48,8 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
     monkeypatch.setattr(worker, "load_seed", lambda: (seed, "digest"))
     finish = AsyncMock()
     monkeypatch.setattr(worker, "finish_job", finish)
+    updates = AsyncMock()
+    monkeypatch.setattr(worker, "update_job_progress", updates)
 
     async def run(args, qids, **options):
         import json
@@ -60,6 +62,17 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
         async with session_scope() as db:
             saved = await db.get(RunJob, job.id)
             assert saved.params["_reference_checkpoint"]["current_plan"] == plan
+        import asyncio
+
+        options["on_event"](
+            {
+                "qid": "Q123",
+                "status": "service_delay",
+                "ordinal": 999,
+                "next_attempt_at": "2026-11-17T18:00:00Z",
+            }
+        )
+        await asyncio.sleep(1.05)
         result = {"qid": "Q123", "status": "verified", "corrected": True}
         await options["on_checkpoint"]("Q123", [result], args.state_dir)
         return {"status": "complete", "results": [result]}
@@ -69,6 +82,16 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
     finish.assert_awaited_once()
     assert finish.call_args.kwargs["status"] == "succeeded"
     assert finish.call_args.kwargs["result"]["verified"] == 1
+    assert finish.call_args.kwargs["progress"]["processed"] == 1
+    assert finish.call_args.kwargs["progress"]["verified"] == 1
+    delayed = [
+        call.args[1]
+        for call in updates.call_args_list
+        if call.args[1].get("phase") == "service_delay"
+    ]
+    assert delayed
+    assert delayed[0]["processed"] == 0
+    assert delayed[0]["verified"] == 0
     await db_session.refresh(job)
     assert job.params["_reference_checkpoint"]["current_plan"] is None
     assert job.params["_reference_checkpoint"]["results"][0]["corrected"] is True

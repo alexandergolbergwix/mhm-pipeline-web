@@ -371,3 +371,5 @@ The [repair plan tests](repair-plan.md#files-and-tests) cover bounded SQL reads,
 `test_gila_repair_ui.py` checks local key and origin guards, fixed scope, concurrent starts, current process detection, and checkpoint counters. `gila-local-repair-ui.spec.ts` checks the operator click path with mocked API calls.
 
 The [administrator backend tests](admin-reference-repairs.md#files-and-tests) cover role revocation, private checkpoint restore, creator-preserving queue reuse, and generic-job bypass refusal.
+
+The [live progress tests](live-reference-progress.md#files-and-tests) check committed counters, serial reads, event refreshes, countdowns, access denial, and connection recovery.

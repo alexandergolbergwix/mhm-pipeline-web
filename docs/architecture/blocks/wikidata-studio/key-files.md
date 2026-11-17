@@ -141,3 +141,5 @@ The [repair plan](repair-plan.md) lists its backend router, typed client, separa
 The [local reference-repair UI](local-reference-repair-ui.md) lists its separate operator server, browser controls, and tests.
 
 The [administrator backend repairs](admin-reference-repairs.md) page lists the protected router, worker, lease, seed, role gate, UI, and tests.
+
+The [live progress view](live-reference-progress.md) lists the typed client, status hook, progress component, and tests.

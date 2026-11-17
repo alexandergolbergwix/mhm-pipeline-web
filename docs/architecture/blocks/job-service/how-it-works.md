@@ -134,3 +134,5 @@ The strict boolean `extract_provenance_prose=false` skips that phase and preserv
 **Wikidata pass two.** The upload job uses the [complete source payload](../wikidata-studio/upload-counts-and-resolution.md) for each connection write (W-315). No job kind changes.
 
 The [administrator reference job](../wikidata-studio/admin-reference-repairs.md) stays on Heroku in the upload slot. Its private Postgres checkpoint restores the current exact plan after a process restart. A direct session lease excludes another host.
+
+The [live reference view](../wikidata-studio/live-reference-progress.md) receives normal job events. The worker publishes the initial phase and committed counters; the protected summary supplies bounded recent receipts.

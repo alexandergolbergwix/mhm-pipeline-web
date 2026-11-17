@@ -96,3 +96,5 @@ CI uses one browser worker to limit competition for the software renderer.
 `e2e/gila-local-repair-ui.spec.ts` targets the separate loopback UI with `GILA_LOCAL_UI_URL`. It checks explicit reference consent, the exact start body, active-process controls, and no resend after a refused start. It mocks every API request.
 
 `e2e/admin-reference-repairs.spec.ts` checks the backend start payload, scope consent, active state, and non-administrator redirects with mocked APIs.
+
+`referenceRepairProgress.spec.tsx` and `referenceRepairStatus.spec.tsx` check confirmed counts, countdowns, matching job events, and read races. The administrator browser spec also follows queue, delay, and active states without another POST.

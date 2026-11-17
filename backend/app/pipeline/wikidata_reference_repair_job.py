@@ -98,6 +98,13 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                 raise ReferenceJobCancelledError()
 
         latest = {}
+        counts = {
+            "processed": len(checkpoint.get("results", [])),
+            "verified": sum(row.get("corrected") is True for row in checkpoint.get("results", [])),
+            "already_clean": sum(
+                row.get("status") == "already_clean" for row in checkpoint.get("results", [])
+            ),
+        }
 
         def event(value):
             latest.clear()
@@ -112,6 +119,24 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                 await assert_admin_job(db, job_id, actor)
                 row.params = {**row.params, "_reference_checkpoint": snapshot}
                 await db.commit()
+            counts.update(
+                processed=len(snapshot["results"]),
+                verified=sum(row.get("corrected") is True for row in snapshot["results"]),
+                already_clean=sum(
+                    row.get("status") == "already_clean" for row in snapshot["results"]
+                ),
+            )
+
+        await update_job_progress(
+            job_id,
+            {
+                **counts,
+                "phase": "start",
+                "total": len(manifest["qids"]),
+                "unit": "items",
+                "message": "Check the next reviewed item.",
+            },
+        )
 
         with tempfile.TemporaryDirectory(prefix=f"reference-job-{job_id}-") as temporary:
             directory = Path(temporary)
@@ -158,16 +183,16 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                         job_id,
                         {
                             "phase": saved.get("status", "active"),
-                            "processed": max(
-                                0,
-                                int(saved.get("ordinal", 1))
-                                - (saved.get("status") not in {"verified", "already_clean"}),
-                            ),
+                            **counts,
                             "total": len(manifest["qids"]),
                             "unit": "items",
                             "current_qid": saved.get("qid"),
                             "next_attempt_at": saved.get("next_attempt_at"),
-                            "message": "Process the reviewed reference repairs on the backend.",
+                            "message": (
+                                "Wait for the saved Wikidata retry time."
+                                if saved.get("status") in {"service_delay", "retry_wait"}
+                                else "Check the current reference repair."
+                            ),
                         },
                     )
             result = await runner
@@ -184,6 +209,17 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     "total": len(manifest["qids"]),
                 },
                 error=None if complete else "The reference queue paused or requires review.",
+                progress={
+                    **counts,
+                    "total": len(manifest["qids"]),
+                    "unit": "items",
+                    "phase": "succeeded" if complete else result["status"],
+                    "current_qid": (result.get("current") or {}).get("qid"),
+                    "next_attempt_at": (result.get("current") or {}).get("next_attempt_at"),
+                    "message": "The reviewed queue is complete."
+                    if complete
+                    else "The queue paused or requires review.",
+                },
             )
     except ReferenceJobCancelledError:
         await finish_job(

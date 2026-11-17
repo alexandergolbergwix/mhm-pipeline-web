@@ -42,7 +42,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R199) and known gaps.
+- [Rules](rules.md) — the invariants (R1–R200) and known gaps.
 - [Local candidate mirror](../caching/wikidata-mirror.md) — full public snapshots and local filters; foreign QIDs remain reference targets only.
 - [Reference blocks](reference-blocks.md) — source grouping, old-data gates, deferred links, test wiki, and export limits (W-304).
 - [CREATE guards](creation-safety.md) — final semantics, fresh identity, current shelfmark, and the nine-point prevention matrix.
@@ -50,6 +50,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Studio cache freshness](studio-cache-freshness.md) — build fingerprint, override application, and the Rebuild required badge.
 - [Creator-only writes](creator-only-writes.md) — mandatory creator proof; no foreign-edit exception (W-324).
 - [Foreground reference repair](foreground-reference-repair.md) — confirmed reference corrections on one item while the user waits; no automatic retry (W-343).
+- [Live reference progress](live-reference-progress.md) — confirmed counters, project events, retry countdown, and connection recovery.
 - [Administrator backend repairs](admin-reference-repairs.md) — persistent reference jobs with administrator-only controls.
 - [Local reference-repair UI](local-reference-repair-ui.md) — loopback control for the existing reviewed queue, with duplicate-start guards.
 - [Sequential reference repairs](reference-repair-queue.md) — one item at a time, explicit service delays, durable retries, and an exact local checkpoint.

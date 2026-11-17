@@ -39,6 +39,48 @@ async def reviewed_scope(sample_run, db_session, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_live_status_counts_confirmed_results_and_limits_public_history(
+    sample_run,
+    db_session,
+    monkeypatch,
+):
+    user, _ = await reviewed_scope(sample_run, db_session, monkeypatch)
+    router.load_seed()[0]["manifest"]["qids"] = [f"Q{i}" for i in range(1, 8)]
+    results = [
+        {
+            "qid": f"Q{i}",
+            "status": "verified",
+            "corrected": True,
+            "after_revision": i,
+            "private_plan": "excluded",
+        }
+        for i in range(1, 7)
+    ]
+    results.append({"qid": "Q7", "status": "already_clean", "corrected": False})
+    job = RunJob(
+        project_id=sample_run["project_id"],
+        run_id=sample_run["run_id"],
+        created_by=user.id,
+        kind="wikidata_reference_repair",
+        status="running",
+        params={"_reference_checkpoint": {"results": results}},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    response = await sample_run["client"].get("/api/admin/wikidata-reference-repairs")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["verified"] == 6
+    assert body["already_clean"] == 1
+    assert body["completed"] == 7
+    assert len(body["recent_results"]) == 5
+    assert body["recent_results"][0]["qid"] == "Q3"
+    assert body["project_id"] == str(sample_run["project_id"])
+    assert body["observed_at"].endswith("+00:00")
+    assert "private_plan" not in response.text
+
+
+@pytest.mark.asyncio
 async def test_admin_start_uses_durable_job_and_does_not_launch_a_second_one(
     sample_run,
     db_session,

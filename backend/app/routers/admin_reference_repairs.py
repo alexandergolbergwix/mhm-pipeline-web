@@ -1,6 +1,7 @@
 """Administrator-only controls for the reviewed backend reference job."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -46,7 +47,7 @@ async def latest(db, run_id):
 async def status(auth: Admin, db: Database):
     seed, digest = load_seed()
     run_id = uuid.UUID(seed["manifest"]["run_id"])
-    await _lookup_run_with_access(db, run_id, auth, write=False)
+    run = await _lookup_run_with_access(db, run_id, auth, write=False)
     job = await latest(db, run_id)
     checkpoint = (
         job.params.get("_reference_checkpoint", seed["checkpoint"]) if job else seed["checkpoint"]
@@ -55,8 +56,21 @@ async def status(auth: Admin, db: Database):
         "enabled": get_settings().gila_reference_cloud_enabled,
         "scope_digest": digest,
         "run_id": str(run_id),
+        "project_id": str(run.project_id),
+        "observed_at": datetime.now(UTC).isoformat(),
         "total": len(seed["manifest"]["qids"]),
         "verified": sum(row.get("corrected") is True for row in checkpoint.get("results", [])),
+        "already_clean": sum(
+            row.get("status") == "already_clean" for row in checkpoint.get("results", [])
+        ),
+        "completed": len(checkpoint.get("results", [])),
+        "recent_results": [
+            {key: row.get(key) for key in ("qid", "status", "after_revision")}
+            for row in checkpoint.get("results", [])[-5:]
+        ],
+        "worker_heartbeat_at": (
+            job.executor_heartbeat_at.isoformat() if job and job.executor_heartbeat_at else None
+        ),
         "job": serialise_job(job) if job else None,
         "halted_status": checkpoint.get("halted_status"),
         "creator_uid": 6935067,

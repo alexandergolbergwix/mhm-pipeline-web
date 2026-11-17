@@ -98,3 +98,5 @@ For a separate repair inventory, see the [repair plan](blocks/wikidata-studio/re
 To control an existing reviewed reference queue from the local browser, use the [local reference-repair UI](blocks/wikidata-studio/local-reference-repair-ui.md).
 
 To deploy administrator-only reference controls, use [administrator backend repairs](blocks/wikidata-studio/admin-reference-repairs.md).
+
+For live administrator repair counters and retry states, use [live reference progress](blocks/wikidata-studio/live-reference-progress.md).
