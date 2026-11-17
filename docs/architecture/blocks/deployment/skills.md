@@ -98,3 +98,5 @@ The normal release phase must apply it before the source-review API serves reque
 Deploy the same committed backend to Heroku and Modal before a new build.
 Expected build versions: `source-aware-works-v25` and `hmo-wikidata-v29`.
 The [CREATE guards](../wikidata-studio/creation-safety.md) require both services to use the same release before a new public CREATE.
+
+For the [administrator reference job](../wikidata-studio/admin-reference-repairs.md), stop the local queue before the seed transfer. Deploy Heroku, then enable `GILA_REFERENCE_CLOUD_ENABLED`. Modal does not execute this job kind.

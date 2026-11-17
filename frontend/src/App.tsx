@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 
+import {AdminRoute} from "@/components/AdminRoute";
+import AdminReferenceRepairs from "@/routes/admin/AdminReferenceRepairs";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import AcceptInvite from "@/routes/AcceptInvite";
 import AccessRequestsQueue from "@/routes/admin/AccessRequestsQueue";
@@ -26,6 +28,7 @@ import StageExtraction from "@/routes/StageExtraction";
 import StageRdf from "@/routes/StageRdf";
 import WikidataStudio from "@/routes/WikidataStudio";
 import WikidataPublicationAudit from "@/routes/WikidataPublicationAudit";
+import WikidataRepairPlan from "@/routes/WikidataRepairPlan";
 import ResearchAssistant from "@/routes/ResearchAssistant";
 import EntityPage from "@/routes/EntityPage";
 import { useAuth } from "@/stores/auth";
@@ -54,11 +57,13 @@ export default function App() {
       <Route path="/runs/:runId/extraction"      element={<ProtectedRoute><StageExtraction /></ProtectedRoute>} />
       <Route path="/runs/:runId/rdf"             element={<ProtectedRoute><StageRdf /></ProtectedRoute>} />
       <Route path="/runs/:runId/wikidata-studio"        element={<ProtectedRoute><WikidataStudio /></ProtectedRoute>} />
+      <Route path="/runs/:runId/wikidata-studio/repair-plan" element={<AdminRoute><WikidataRepairPlan /></AdminRoute>} />
       <Route path="/runs/:runId/wikidata-studio/publications/:publicationId/audit" element={<ProtectedRoute><WikidataPublicationAudit /></ProtectedRoute>} />
       <Route path="/runs/:runId/hmo-studio"             element={<ProtectedRoute><HmoStudio /></ProtectedRoute>} />
       <Route path="/runs/:runId/linked-data-explorer"   element={<ProtectedRoute><ResearchAssistant /></ProtectedRoute>} />
       <Route path="/projects/:projectId/entity"         element={<ProtectedRoute><EntityPage /></ProtectedRoute>} />
       <Route path="/settings"                    element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      <Route path="/admin/wikidata-reference-repairs" element={<AdminRoute><AdminReferenceRepairs /></AdminRoute>} />
       <Route path="/admin"                       element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/users"                 element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
       <Route path="/admin/users/:userId"         element={<ProtectedRoute><AdminUserDetail /></ProtectedRoute>} />

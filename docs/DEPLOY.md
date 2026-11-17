@@ -483,3 +483,5 @@ Step up to Essential-1 the moment you intend to load the full Mazal dump.
   project member.
 * **Release-phase migrations**: `scripts/release.sh` runs Alembic on
   every deploy so the schema and the code never disagree.
+
+The [administrator reference job](architecture/blocks/wikidata-studio/admin-reference-repairs.md) is Heroku-only. Enable `GILA_REFERENCE_CLOUD_ENABLED` after the local handoff and successful release. The normal Publication token remains required.

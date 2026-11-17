@@ -136,3 +136,5 @@
   *Why:* target selection and creator checks must share the restricted scope.
 
 - **R43 — Publication retries retain their future eligibility (W-328).** Commit the intent result and `next_attempt_at` together. Resume must honor that date. Keep uncertain repair outcomes in recovery. *Why:* a process restart must not shorten a server delay or duplicate an uncertain edit.
+
+44. **R44 — Administrator reference jobs preserve their exact private checkpoint.** Require current administrator authority, persist before each public write, and retain the Publication retry identity. Exclude the kind from generic starts and non-administrator reads or cancellation. *Why:* an ordinary run member must not control an administrator repair.

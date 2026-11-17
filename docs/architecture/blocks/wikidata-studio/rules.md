@@ -1331,3 +1331,15 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 193. **R193 — Foreground repairs require one exact confirmation (W-343).** Bind the complete reference corrections on one item to its target, revision, payload, and short lifetime. Validate every change. Permit one attempt through a separate Publication profile. Keep the automatic retry runner closed to this mode. *Why:* the interactive API exception cannot become an unattended batch.
 
 194. **R194 — A due saved retry remains eligible after a slow commit (W-344).** Resume the same execution within the finite budget. Retain all current proof checks. *Why:* a commit outlasted the server delay, and the automatic runner stopped before its next attempt.
+
+195. **R195 — Automatic reference repairs remain sequential and restart from exact plans.** Bind the ordered QIDs and actor to one locked state directory. Reuse the existing Publication execution and saved retry date. Preserve `maxlag=5`. Stop before another item after changed evidence, a foreign target, or an uncertain outcome. *Why:* automatic continuation must retain the source, creator, revision, and resource guards. See [Sequential reference repairs](reference-repair-queue.md).
+
+196. **R196 — A service delay retains exact recovery (W-345).** Preserve typed lag fields in the existing intent detail. Show the current item and saved retry date. Use a finite 24-hour default. Return a resumable pause at expiry. Keep all write guards.
+
+    *Why:* The old queue hid the WDQS delay and stopped after one hour. See [Sequential reference repairs](reference-repair-queue.md).
+
+197. **R197 — The repair plan does not grant repair authority.** Read bounded saved rows through project access. Require a build token for the next page. Report public proof as unchecked. Keep all mutations in the normal Studio and Publication controls. *Why:* a local inventory cannot prove source identity, creator authority, or public completion.
+
+198. **R198 — The local queue control preserves the reviewed reference scope.** Require its exact manifest, local key, Origin, consent, and existing queue lock. Keep project access, creator proof, and maxlag in the normal queue. Reject another start after an uncertain checkpoint. *Why:* an operator control must not widen the repair scope or repeat a delayed write.
+
+199. **R199 — Production reference controls require an administrator and a durable backend job.** Keep private exact plans in Postgres before each write. Recheck current authority and use a direct Postgres lease across hosts. Hide all controls from other users. *Why:* a local process and loopback key cannot implement a production administrator control.

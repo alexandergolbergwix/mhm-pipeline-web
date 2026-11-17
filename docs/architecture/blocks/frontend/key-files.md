@@ -75,3 +75,9 @@ The Wikidata item drawer, Publication controls, blocked-action drawer, and AI re
 | `frontend/src/components/wikidata/WikidataSourceReview.tsx` | Per-manuscript source choices, requirement states, citations, catalogue notes, and stale-proof controls |
 | `frontend/src/api/wikidataSourceReview.ts` | Typed local source-review API |
 | `frontend/src/routes/ProjectDetail.tsx` | MARCXML upload option |
+
+`frontend/src/routes/WikidataRepairPlan.tsx` and `frontend/src/api/wikidataRepairPlan.ts` provide the separate [read-only repair plan](../wikidata-studio/repair-plan.md). `frontend/src/App.tsx` registers the protected route.
+
+`backend/scripts/gila_repair_controls.js` supplies the separate [local operator controls](../wikidata-studio/local-reference-repair-ui.md). It does not replace the authenticated React Studio page.
+
+`AdminRoute.tsx` and `admin/AdminReferenceRepairs.tsx` provide the protected [backend repair controls](../wikidata-studio/admin-reference-repairs.md). `api/runJobs.ts` names the new job kind. The Admin sidebar links to the page.

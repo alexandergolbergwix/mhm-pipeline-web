@@ -3,6 +3,7 @@ import {NavLink} from "react-router-dom";
 
 import {Layout} from "@/components/Layout";
 import {Admin} from "@/api/admin";
+import {useAuth} from "@/stores/auth";
 import {Glass, GlassPill} from "@/components/glass";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function AdminLayout({children}: Props) {
+  const administrator = useAuth(state => state.user?.role === "admin");
   const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
@@ -48,6 +50,7 @@ export function AdminLayout({children}: Props) {
               )}
             </span>
           </SideNavLink>
+          {administrator && <SideNavLink to="/admin/wikidata-reference-repairs">Reference repairs</SideNavLink>}
           <SideNavLink to="/admin/users">Users</SideNavLink>
           <SideNavLink to="/admin/projects">Projects</SideNavLink>
           <SideNavLink to="/admin/invites">Invites</SideNavLink>

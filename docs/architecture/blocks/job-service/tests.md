@@ -26,3 +26,5 @@
   fresh), `test_fresh_executor_heartbeat_blocks_redispatch`, and
   `test_owner_heartbeat_does_not_extend_wait_past_budget` (the poller's wait
   expires once the executor heartbeat is dead).
+
+`test_admin_reference_repairs.py`, `test_reference_repair_worker.py`, and `test_reference_cloud_checkpoint.py` check the administrator reference job. The existing recovery tests cover claim and restart behavior.

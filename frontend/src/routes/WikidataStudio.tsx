@@ -1,3 +1,4 @@
+import {useAuth} from "@/stores/auth";
 import {useCallback, useEffect, useMemo, useState} from "react";
 import {Link, useParams} from "react-router-dom";
 
@@ -60,6 +61,7 @@ type SortDir      = "asc" | "desc";
 
 
 export default function WikidataStudio() {
+  const user = useAuth(state => state.user);
   const { runId } = useParams<{ runId: string }>();
   const [build, setBuild] = useState<StudioBuild | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -457,6 +459,7 @@ export default function WikidataStudio() {
         <Glass as="section" className="p-6 space-y-2">
           <div className="kicker">
             Wikidata Studio · <Link to={`/runs/${runId}/overview`} className="hover:text-ink underline">back to run</Link>
+            {user?.role === "admin" && <>{" · "}<Link to={`/runs/${runId}/wikidata-studio/repair-plan`} className="hover:text-ink underline">Repair plan</Link></>}
           </div>
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <h2 className="text-2xl font-semibold">Items ready to upload</h2>

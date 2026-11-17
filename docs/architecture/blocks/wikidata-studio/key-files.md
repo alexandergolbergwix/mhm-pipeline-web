@@ -4,6 +4,7 @@
 
 | File | Purpose |
 |---|---|
+| `backend/app/publication/reference_repair_queue.py`, `backend/scripts/run_gila_reference_queue.py` | Sequential reference repairs, exact plans, one-process lock, explicit service delays, and normal durable retries (R195–R196) |
 | `backend/tests/unit/test_wikidata_creator_only.py` | Mandatory creator proof, stale approvals, invalid caches, and safe QID references (W-324) |
 | `backend/converter/wikidata/reference_retrieval.py` | Current reference selection; preserves distinct sources and ambiguous dates (W-323) |
 | `backend/converter/wikidata/work_candidates.py` | Source eligibility, citation word boundaries, and explicit policy reasons |
@@ -134,3 +135,9 @@
 - `backend/app/pipeline/wikidata_person_identity_choice.py` validates source-scoped public person proofs. Migration `0054_person_identity_choice` stores each reviewed proof.
 
 See [Gila implementation files](gila-key-files.md) for the source-choice, coverage, MARC, bibliography, and exact-repair extensions.
+
+The [repair plan](repair-plan.md) lists its backend router, typed client, separate page, and tests.
+
+The [local reference-repair UI](local-reference-repair-ui.md) lists its separate operator server, browser controls, and tests.
+
+The [administrator backend repairs](admin-reference-repairs.md) page lists the protected router, worker, lease, seed, role gate, UI, and tests.

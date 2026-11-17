@@ -2,6 +2,8 @@
 
 > Up: [Wikidata Studio](README.md)
 
+For an automatic sequence of exact reference repairs, use the [sequential operator command](reference-repair-queue.md).
+
 ### Skill: rebuild a subset without a full build
 
 1. Filter the review table to the items you want recomputed (search /
@@ -299,3 +301,13 @@ See [source repair safeguards](source-repair-safeguards.md) for W-311–W-314, t
 For receipt counts, terminal refresh, and complete connection repairs, follow [upload counts and source resolution](upload-counts-and-resolution.md).
 
 For a Gila source decision, open a manuscript drawer and use [Source review](source-review.md). Supply the exact target, evidence URL, and reason. Rebuild the items. Review and approve the new result. Use [durable exact repairs](repair-retries.md) for a previously reviewed repair plan; an early resume retains the server delay.
+
+
+For persistent `maxlag`, inspect `progress.json` and its `current.retry` object (W-345).
+The queue keeps `maxlag=5` and waits for the durable date.
+Its default limit is 24 hours per item; exit code 75 means a resumable pause.
+Restart with the same candidate file and state directory.
+A blocked or unknown outcome requires review.
+See [Sequential reference repairs](reference-repair-queue.md).
+
+For a read-only inventory and the normal operator sequence, use the [repair plan](repair-plan.md). The page does not execute repairs.

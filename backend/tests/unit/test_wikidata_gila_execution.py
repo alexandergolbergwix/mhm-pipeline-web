@@ -214,7 +214,12 @@ async def test_live_transport_classifies_errors_without_a_second_post(
 
     response = requests.Response()
     response.status_code = 200
-    response._content = json.dumps({"error": {"code": code}}).encode()
+    response._content = json.dumps({"error": {
+        "code": code, "host": "wdqs1014", "type": "wikibase-queryservice",
+        "lag": 15.0666666667, "queryserviceLag": 904,
+        "info": "untrusted-private-response", "token": "untrusted-private-value",
+    }}).encode()
+    response.headers["Retry-After"] = "60"
     session = requests.Session()
     session.post = Mock(return_value=response)
     login = SimpleNamespace(
@@ -228,9 +233,17 @@ async def test_live_transport_classifies_errors_without_a_second_post(
         await gateway.write("Q123", 10, [{"id": "Q123$duplicate", "remove": ""}])
     if rejected:
         assert code in str(error.value)
+        if code == "maxlag":
+            diagnostics = error.value.diagnostics
+            assert diagnostics.host == "wdqs1014"
+            assert diagnostics.queryservice_lag_seconds == 904
+            assert diagnostics.lag_type == "wikibase-queryservice"
+            assert diagnostics.retry_after_seconds == 60
+            assert "untrusted-private" not in error.value.retry_detail
     session.post.assert_called_once()
     kwargs = session.post.call_args.kwargs
     assert kwargs["allow_redirects"] is False
+    assert kwargs["data"]["maxlag"] == 5
     assert kwargs["data"]["baserevid"] == 10
     assert json.loads(kwargs["data"]["data"]) == {
         "claims": [{"id": "Q123$duplicate", "remove": ""}]

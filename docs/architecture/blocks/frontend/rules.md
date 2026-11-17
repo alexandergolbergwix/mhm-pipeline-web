@@ -98,3 +98,5 @@ alone still permits unnecessary requests and connection pressure.
 39. **R39 — Source review never grants publication approval (W-327).** Send the exact candidate key, source hash, evidence URL, and reason. Expose stale proof and rebuild requirements. *Why:* a local source decision does not establish a public correction.
 
 40. **R40 — Source-review callbacks stay in their original view (W-330).** Key the view by run and local item. Ignore save results after that view unmounts. *Why:* a late result from another run could show an obsolete error or call the wrong save callback.
+
+41. **R41 — Administrator repair pages require a role gate before mount.** Hide the links from other users and preserve server-side administrator checks. *Why:* a hidden link alone does not protect a direct URL.

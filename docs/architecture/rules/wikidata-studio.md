@@ -4130,3 +4130,29 @@ Never guess an absent retry date or resume after the finite budget expires.
 The regression simulates a commit that finishes at or after the saved date.
 It requires a successful resume without a second execution or an unnecessary sleep.
 Companion cases retain creator, source, revision, and elapsed-budget refusals.
+
+
+### Rule W-345 — A shared lag pause retains diagnostics and exact recovery (2026-11-17)
+
+The automatic reference queue completed one of 1,602 candidates before repeated shared WDQS delays.
+A 62-byte anonymous request also received `maxlag`, with raw `queryserviceLag=904` seconds.
+The gateway retained the delay but discarded the host, lag type, and lag values.
+The one-hour limit then reported a retryable pause as a stop.
+
+Retain only typed, bounded API fields and the UTC observation time.
+Store a versioned JSON envelope in the existing Publication intent detail.
+Do not persist raw responses, arbitrary headers, tokens, or API info text.
+Restore that evidence through SQL and the normal retry runner.
+Expose `service_delay` for confirmed maxlag, the current item, and the durable next retry date.
+Do not count a delayed item as complete.
+
+The sequential CLI defaults to a finite 24-hour wait per item.
+An explicit shorter limit remains valid.
+On expiry, return `paused` with exit code 75 and the exact checkpoint.
+A restart reuses the same plan and execution and honors the saved date.
+Unknown outcomes, changed evidence, foreign creators, and absent retry dates still stop the queue.
+Keep `maxlag=5`, creator user ID `6935067`, and every existing write guard.
+A client status change does not prove that Wikimedia resolved its service delay.
+
+Tests simulate a delay beyond one hour, SQL restoration, expiry, restart, safe diagnostics, and the unchanged refusal paths.
+See [Sequential reference repairs](../blocks/wikidata-studio/reference-repair-queue.md).

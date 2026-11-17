@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     env: str = Field(default="development")
     frontend_origin: str = Field(default="http://localhost:5173")
     cookie_secure: bool = Field(default=False)
+    gila_reference_cloud_enabled: bool = Field(default=False)
     session_ttl_hours: int = Field(default=12)
 
     # ── Database ──────────────────────────────────────────────────────

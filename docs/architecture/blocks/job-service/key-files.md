@@ -57,3 +57,5 @@ Publication restore (W-219) includes completed job progress and errors. The curr
 
 The automatic Publication job uses three isolated assessments and one coordinator for durable report updates.
 `backend/tests/unit/test_publication_parallel_assessments.py` covers the task limit and cancellation.
+
+`wikidata_reference_repair_job.py` owns the [administrator reference job](../wikidata-studio/admin-reference-repairs.md). `run_job_params.py` rejects generic starts. The job stays on Heroku in the upload slot.

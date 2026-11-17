@@ -2,6 +2,8 @@
 
 > Up: [Wikidata Studio](README.md)
 
+The [sequential queue tests](reference-repair-queue.md#files-and-tests) cover exact restart, due dates, changed evidence, foreign targets, and uncertain writes.
+
 The [CREATE guard tests](creation-safety.md#tests) cover final semantics, identity conflicts, and unresolved current shelfmarks (W-335/W-336).
 
 The [completion packet tests](gila-completion-packet.md#files-and-tests) cover source cases, receipt revisions, and the exact Troki authority.
@@ -357,3 +359,15 @@ The same suite checks several reference corrections in one POST, distinct source
 It checks creator refusal and uncertain-result recovery for plans with one claim or several claims on one item.
 
 W-344: `test_publication_historical_repairs.py` simulates a slow commit at and after a saved retry date. It checks the same execution, no unnecessary sleep, current creator/source/revision refusals, and an expired budget.
+
+
+W-345: `test_wikidata_retry_diagnostics.py` excludes raw response fields, invalid numbers, and malformed old detail.
+`test_wikidata_gila_execution.py` checks typed lag fields and `maxlag=5` at the real POST boundary.
+`test_publication_historical_repairs.py` checks SQL restoration and the same execution after a delay beyond one hour.
+`test_reference_repair_queue.py` checks the 24-hour default, durable service status, finite pause, and exact restart.
+
+The [repair plan tests](repair-plan.md#files-and-tests) cover bounded SQL reads, project access, stale builds, cursor requests, and visible errors.
+
+`test_gila_repair_ui.py` checks local key and origin guards, fixed scope, concurrent starts, current process detection, and checkpoint counters. `gila-local-repair-ui.spec.ts` checks the operator click path with mocked API calls.
+
+The [administrator backend tests](admin-reference-repairs.md#files-and-tests) cover role revocation, private checkpoint restore, creator-preserving queue reuse, and generic-job bypass refusal.

@@ -14,6 +14,7 @@ from app.pipeline.wikidata_gila_repairs import (
     entity_digest,
     validate_gila_repair_proposal,
 )
+from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
 from converter.wikidata.catalog_notes import is_catalog_note_placeholder
 from converter.wikidata.retry_policy import BULK_MAXLAG
 from converter.wikidata.uploader import WikidataUploader
@@ -71,10 +72,20 @@ def validate_source_colophons(
 class WriteRejectedError(RuntimeError):
     """The API confirms rejection without a successful edit."""
 
-    def __init__(self, message: str, *, code: str = "", retry_after_seconds: float | None = None):
+    def __init__(
+        self, message: str, *, code: str = "", retry_after_seconds: float | None = None,
+        diagnostics: ApiRetryDiagnostics | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.retry_after_seconds = retry_after_seconds
+        self.diagnostics = diagnostics or ApiRetryDiagnostics.from_error(
+            {"code": code}, retry_after_seconds=retry_after_seconds,
+        )
+
+    @property
+    def retry_detail(self) -> str:
+        return self.diagnostics.to_detail(str(self)) if self.diagnostics else str(self)
 
 
 class RepairGateway(Protocol):
@@ -290,6 +301,9 @@ class LiveRepairGateway:
                     raise WriteRejectedError(
                         f"The API rejected the exact repair before the edit ({code}).",
                         code=code, retry_after_seconds=delay,
+                        diagnostics=ApiRetryDiagnostics.from_error(
+                            error, retry_after_seconds=delay,
+                        ),
                     )
                 raise RuntimeError("The API returned an uncertain write outcome.")
             response.raise_for_status()

@@ -32,3 +32,7 @@
 | `backend/app/services/auth_me.py` | Builds `LoginResponse`/`MeResponse` incl. Wikibase access fields |
 | `backend/app/services/wikibase_user_access.py` | Per-user Wikibase authorize + best-effort wiki provision (login/invite only; 5 s cap; failed is no-retry — Rule W-123) |
 | `backend/app/db.py` | Async engine (`pool_size=5, max_overflow=10`), forced SSL on managed Postgres, 120 s `idle_in_transaction_session_timeout` backstop |
+
+`backend/scripts/serve_gila_repair_ui.py` is a separate [loopback operator helper](../wikidata-studio/local-reference-repair-ui.md). Its per-process key and Origin checks do not replace the normal queue access and creator checks. It adds no public FastAPI route.
+
+`admin_reference_repairs.py` uses `require_admin` plus project access for the [backend repair controls](../wikidata-studio/admin-reference-repairs.md). The generic job routes also exclude this kind from non-administrators.

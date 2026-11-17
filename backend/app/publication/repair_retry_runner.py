@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from app.pipeline.wikidata_gila_execution import RepairGateway, SourceCheck
+from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
 from app.publication.historical_repairs import advance_repair_publication
 from app.publication.repository import PublicationRepository
 from app.publication.types import PublicationSummary
@@ -20,6 +21,7 @@ class RepairRetryWait:
     execution_id: str
     next_attempt_at: datetime
     seconds: float
+    diagnostics: ApiRetryDiagnostics | None = None
 
 
 async def wait_for_repair_publication(
@@ -62,7 +64,7 @@ async def wait_for_repair_publication(
         and not summary.execution_blocked_count
         and not summary.plan_blocked_count
     ):
-        retry_dates = []
+        retry_intents = []
         for proposal in plan["proposals"]:
             intent = await repository.latest_write_intent(
                 summary.execution_id,
@@ -71,10 +73,12 @@ async def wait_for_repair_publication(
             if intent is not None and intent.state == "pre_send_retryable":
                 if intent.next_attempt_at is None or intent.next_attempt_at.tzinfo is None:
                     return summary
-                retry_dates.append(intent.next_attempt_at)
-        if len(retry_dates) != summary.execution_pre_send_retryable_count:
+                retry_intents.append(intent)
+        if len(retry_intents) != summary.execution_pre_send_retryable_count:
             return summary
-        next_attempt = min(retry_dates)
+        next_intent = min(retry_intents, key=lambda intent: intent.next_attempt_at)
+        next_attempt = next_intent.next_attempt_at
+        diagnostics = ApiRetryDiagnostics.from_detail(next_intent.detail)
         # Release the SQL transaction and its connection before the wait.
         await repository.checkpoint()
         while True:
@@ -92,6 +96,7 @@ async def wait_for_repair_publication(
                         summary.execution_id,
                         next_attempt,
                         seconds,
+                        diagnostics,
                     )
                 )
             await sleep(seconds)

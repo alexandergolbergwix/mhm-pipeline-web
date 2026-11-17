@@ -50,7 +50,11 @@ async def prepare_job_params(
             detail=f"unsupported job kind {kind!r}",
         )
 
-    if kind in {"wikidata_publication_prepare", "wikidata_publication_execution", "wikidata_publication_dry_run", "wikidata_publication_ai_review"}:
+    if kind in {
+        "wikidata_reference_repair", "wikidata_publication_prepare",
+        "wikidata_publication_execution", "wikidata_publication_dry_run",
+        "wikidata_publication_ai_review",
+    }:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Wikidata Publication jobs start only through the Publication API.",

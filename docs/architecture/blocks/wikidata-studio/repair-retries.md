@@ -1,6 +1,6 @@
 # Durable exact repairs and creator IDs
 
-> Up: [Wikidata Studio](README.md) · Rules W-328, W-338, W-344
+> Up: [Wikidata Studio](README.md) · Rules W-328, W-338, W-344, W-345
 
 `publication/historical_repairs.py` projects an exact repair plan into the existing Publication module.
 The plan retains the full public before snapshots, exact proposals, source proofs, run, actor, and authorized QIDs.
@@ -87,3 +87,8 @@ This foreground command creates no daemon, schedule, route, or job kind.
 
 `test_publication_historical_repairs.py` covers execution reuse, deadline limits, cancellation, changed proof, due dates after slow commits, elapsed budgets, and unknown outcomes.
 `test_gila_repair_cli.py` checks the CLI limits before authentication.
+
+The exact gateway retains bounded lag evidence through `pipeline/wikidata_retry_diagnostics.py` (W-345).
+A versioned JSON envelope uses the existing intent `detail` field and needs no migration.
+`RepairRetryWait.diagnostics` restores the code, UTC time, host, type, scaled lag, raw lag, and retry delay.
+The [sequential queue](reference-repair-queue.md) exposes this evidence as `service_delay` and retains its exact checkpoint after a finite wait limit.

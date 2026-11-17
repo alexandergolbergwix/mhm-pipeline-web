@@ -38,6 +38,7 @@ from app.models.run_job import (
     JOB_KIND_RDF_BUILD,
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
     JOB_KIND_WIKIDATA_UPLOAD,
+    JOB_KIND_WIKIDATA_REFERENCE_REPAIR,
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
     JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
@@ -97,6 +98,7 @@ _BUILD_KINDS = frozenset({
     JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
 })
 _UPLOAD_KINDS = frozenset({
+    JOB_KIND_WIKIDATA_REFERENCE_REPAIR,
     JOB_KIND_HMO_ITEM_UPLOAD,
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
@@ -968,6 +970,12 @@ async def _execute_job(job_id: uuid.UUID) -> None:
         elif kind == JOB_KIND_WIKIDATA_UPLOAD:
             from app.pipeline.wikidata_upload_job import run_wikidata_upload_job  # noqa: PLC0415
             await run_wikidata_upload_job(job_id)
+        elif kind == JOB_KIND_WIKIDATA_REFERENCE_REPAIR:
+            from app.pipeline.wikidata_reference_repair_job import (
+                run_reference_job,
+            )
+
+            await run_reference_job(job_id)
         elif kind == JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION:
             from app.pipeline.wikidata_publication_execution_job import (  # noqa: PLC0415
                 run_wikidata_publication_execution_job,

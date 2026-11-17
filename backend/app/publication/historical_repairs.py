@@ -301,7 +301,7 @@ class RepairPublicationGateway:
         except WriteRejectedError as exc:
             if exc.retry_after_seconds is not None:
                 return WriteOutcome.pre_send_retryable(
-                    str(exc), retry_after_seconds=exc.retry_after_seconds
+                    exc.retry_detail, retry_after_seconds=exc.retry_after_seconds
                 )
             return WriteOutcome.blocked(str(exc))
         except Exception as exc:

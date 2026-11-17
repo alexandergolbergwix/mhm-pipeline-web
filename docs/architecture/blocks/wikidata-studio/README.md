@@ -42,7 +42,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   AI review + autofix.
 - [Production publication](production-publication.md) — immutable Release,
   digest-bound Review, dry-run Plan, queued Execution, and recovery.
-- [Rules](rules.md) — the invariants (R1–R194) and known gaps.
+- [Rules](rules.md) — the invariants (R1–R199) and known gaps.
 - [Local candidate mirror](../caching/wikidata-mirror.md) — full public snapshots and local filters; foreign QIDs remain reference targets only.
 - [Reference blocks](reference-blocks.md) — source grouping, old-data gates, deferred links, test wiki, and export limits (W-304).
 - [CREATE guards](creation-safety.md) — final semantics, fresh identity, current shelfmark, and the nine-point prevention matrix.
@@ -50,6 +50,9 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Studio cache freshness](studio-cache-freshness.md) — build fingerprint, override application, and the Rebuild required badge.
 - [Creator-only writes](creator-only-writes.md) — mandatory creator proof; no foreign-edit exception (W-324).
 - [Foreground reference repair](foreground-reference-repair.md) — confirmed reference corrections on one item while the user waits; no automatic retry (W-343).
+- [Administrator backend repairs](admin-reference-repairs.md) — persistent reference jobs with administrator-only controls.
+- [Local reference-repair UI](local-reference-repair-ui.md) — loopback control for the existing reviewed queue, with duplicate-start guards.
+- [Sequential reference repairs](reference-repair-queue.md) — one item at a time, explicit service delays, durable retries, and an exact local checkpoint.
 - [Person descriptions](person-description-hygiene.md) — exclude joined generic role lists (W-325).
 - [Upload write guards](upload-write-guards.md) — Studio source recheck before each bulk write, and the owned-item rule.
 - [Test-ledger local targets](test-ledger-local-targets.md) — sealed test QIDs and `publication_local_targets` registered before build.
@@ -66,6 +69,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
   the accepted model, and the full-run review report (W-296).
 - [Gila audit risks](gila-audit-risks.md) — open work-identity, folio, and historical reference-data gaps.
 - [Gila completion packet](gila-completion-packet.md) — all nine points, source cases, exact revisions, and correction receipts.
+- [Repair plan](repair-plan.md) — separate read-only inventory and operator steps through normal Studio controls.
 - [Review page reads](review-pages.md) — cache metadata and bounded SQL reads (W-309).
 - [Canonical source identity](canonical-source-identity.md) — current-source author proof and exact graph title forms (W-308).
 - [Upload counts and source resolution](upload-counts-and-resolution.md) — receipt states, refresh, complete connection payloads, and exact audit proof (W-315–W-318).

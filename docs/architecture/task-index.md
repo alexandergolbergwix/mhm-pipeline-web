@@ -87,7 +87,14 @@ Joined person-role descriptions: [description hygiene](blocks/wikidata-studio/pe
 | Task | Guide |
 |---|---|
 | Review a source occurrence or Gila coverage | [Source review](blocks/wikidata-studio/source-review.md) |
-| Resume an exact historical repair, with an optional finite wait | [Repair retries](blocks/wikidata-studio/repair-retries.md); retain due dates after slow commits (W-344) |
+| Resume an exact historical repair, with an optional finite wait | [Repair retries](blocks/wikidata-studio/repair-retries.md); retain due dates after slow commits and typed service-delay evidence (W-344–W-345) |
+| Run reviewed reference repairs one item at a time | [Sequential reference repairs](blocks/wikidata-studio/reference-repair-queue.md); exact checkpoints, creator checks, and normal maxlag |
 | Store Wikidata candidates and apply filters locally | [Local Wikidata mirror](blocks/caching/wikidata-mirror.md); optional [QLever discovery](blocks/caching/wikidata-qlever.md) |
 | Apply confirmed reference corrections to one item while the user waits | [Foreground reference repair](blocks/wikidata-studio/foreground-reference-repair.md); automatic repairs retain maxlag |
 | Compare original MARC associations | [MARC occurrences](blocks/extraction/marc-occurrences.md) |
+
+For a separate repair inventory, see the [repair plan](blocks/wikidata-studio/repair-plan.md). Retain normal source and Publication review.
+
+To control an existing reviewed reference queue from the local browser, use the [local reference-repair UI](blocks/wikidata-studio/local-reference-repair-ui.md).
+
+To deploy administrator-only reference controls, use [administrator backend repairs](blocks/wikidata-studio/admin-reference-repairs.md).

@@ -123,6 +123,10 @@ def create_app() -> FastAPI:
     app.include_router(wikidata_studio.router, prefix="/api")
     from app.routers import wikidata_source_review
     app.include_router(wikidata_source_review.router, prefix="/api")
+    from app.routers import admin_reference_repairs
+    app.include_router(admin_reference_repairs.router, prefix="/api")
+    from app.routers import wikidata_repair_plan
+    app.include_router(wikidata_repair_plan.router, prefix="/api")
     app.include_router(publication.router, prefix="/api")
     from app.routers import publication_ai_review
     app.include_router(publication_ai_review.router, prefix="/api")

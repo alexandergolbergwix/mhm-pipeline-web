@@ -671,3 +671,52 @@ async def test_elapsed_retry_date_preserves_current_proof_and_budget(monkeypatch
         assert result.execution_status == "paused"
     else:
         assert result.execution_blocked_count == 1
+
+
+@pytest.mark.asyncio
+async def test_sql_resume_retains_safe_lag_diagnostics(db_session, sample_run):
+    from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
+    from app.publication.sql_repository import SqlAlchemyPublicationRepository
+
+    timer = RetryClock()
+    diagnostics = ApiRetryDiagnostics.from_error({
+        "code": "maxlag", "host": "wdqs1014", "type": "wikibase-queryservice",
+        "lag": 15.0666666667, "queryserviceLag": 904,
+        "info": "private-response", "token": "private-value",
+    }, retry_after_seconds=3700, observed_at=timer.now())
+    gateway = Gateway()
+    reviewed = plan(gateway)
+    reviewed["run_id"] = str(sample_run["run_id"])
+    reviewed["actor_user_id"] = str(sample_run["user_id"])
+    gateway.error = WriteRejectedError("maxlag", code="maxlag", retry_after_seconds=3700,
+                                       diagnostics=diagnostics)
+    repo = SqlAlchemyPublicationRepository(db_session)
+    first = await advance_repair_publication(
+        reviewed, gateway, source_check, repo,
+        actor_id=reviewed["actor_user_id"], run_id=reviewed["run_id"], clock=timer.now,
+    )
+    db_session.expunge_all()
+    restored = SqlAlchemyPublicationRepository(db_session)
+    intent = await restored.latest_write_intent(first.execution_id, "repair:Q123")
+    assert ApiRetryDiagnostics.from_detail(intent.detail) == diagnostics
+    assert "private-" not in intent.detail
+    waits = []
+
+    def on_wait(event):
+        assert event.diagnostics == diagnostics
+        assert gateway.writes == 1
+        waits.append(event)
+        gateway.error = None
+
+    final = await wait_for_repair_publication(
+        reviewed, gateway, source_check, restored,
+        actor_id=reviewed["actor_user_id"], run_id=reviewed["run_id"],
+        max_wait_seconds=4000, clock=timer.now, monotonic=lambda: timer.elapsed,
+        sleep=timer.sleep, on_wait=on_wait,
+    )
+    assert final.execution_status == "succeeded"
+    assert final.execution_id == first.execution_id
+    assert timer.elapsed >= 3700 and gateway.writes == 2
+    assert waits and all(0 < seconds <= 30 for seconds in timer.sleeps)
+    successful = await restored.latest_write_intent(final.execution_id, "repair:Q123")
+    assert ApiRetryDiagnostics.from_detail(successful.detail) is None

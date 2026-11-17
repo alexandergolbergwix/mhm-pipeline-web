@@ -132,3 +132,5 @@ Wikidata source builds keep their publisher and heartbeat through optional prose
 The strict boolean `extract_provenance_prose=false` skips that phase and preserves the complete core build.
 
 **Wikidata pass two.** The upload job uses the [complete source payload](../wikidata-studio/upload-counts-and-resolution.md) for each connection write (W-315). No job kind changes.
+
+The [administrator reference job](../wikidata-studio/admin-reference-repairs.md) stays on Heroku in the upload slot. Its private Postgres checkpoint restores the current exact plan after a process restart. A direct session lease excludes another host.

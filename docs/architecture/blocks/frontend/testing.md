@@ -90,3 +90,9 @@ The functional Playwright suite requests reduced motion to omit the decorative c
 The native deployed UI check retains the normal display behavior.
 The shared fixture returns a terminal `wikidata_verify` job and its verdict snapshot for the exact requested item IDs.
 CI uses one browser worker to limit competition for the software renderer.
+
+`frontend/e2e/wikidata-repair-plan.spec.ts` checks bounded GET requests, cursor tokens, refresh, Studio navigation, and visible read errors. The test uses mocked backend responses.
+
+`e2e/gila-local-repair-ui.spec.ts` targets the separate loopback UI with `GILA_LOCAL_UI_URL`. It checks explicit reference consent, the exact start body, active-process controls, and no resend after a refused start. It mocks every API request.
+
+`e2e/admin-reference-repairs.spec.ts` checks the backend start payload, scope consent, active state, and non-administrator redirects with mocked APIs.

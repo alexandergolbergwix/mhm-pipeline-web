@@ -33,3 +33,5 @@
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_NOTIFICATION_EMAIL`, `TURNSTILE_SECRET_KEY`/`SITE_KEY` | email/turnstile services | Unset → log-only mail / Turnstile bypass (dev) |
 | `WIKIBASE_CLOUD_OAUTH_CLIENT_ID`, `WIKIBASE_CLOUD_OAUTH_CLIENT_SECRET`, `WIKIBASE_CLOUD_OAUTH_ACCESS_TOKEN` | `settings.py` | Server-held OAuth for HMO Wikibase Cloud writes; an access token or a client ID/secret pair configures the connection |
 | `GEMINI_API_KEY`, `QUBRID_API_KEY`, `TYPESAFE_API_KEY`, `HF_*_REPO`, `MHM_MODEL_DIR`, `KIMA_DB_PATH`, `MAZAL_DB_PATH`, `DISABLE_VIAF/KIMA/WIKIDATA`, `MHM_NO_NETWORK`, `DISABLE_PG_LISTENER` | pipeline modules | Judge keys, model/data locations and kill switches. The web tier-1 registry defaults to Qubrid `moonshotai/Kimi-K2.5`; Qubrid also serves DeepSeek V4 Flash, Gemini can use the curator's key or `GEMINI_API_KEY`, and Jev uses server `TYPESAFE_API_KEY` (Rule W-46 / R44) |
+
+`GILA_REFERENCE_CLOUD_ENABLED` enables the [administrator backend reference job](../wikidata-studio/admin-reference-repairs.md). The default is false. Enable it only after the local handoff and successful Heroku release.
