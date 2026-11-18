@@ -53,6 +53,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Live reference progress](live-reference-progress.md) — confirmed counters, project events, retry countdown, and connection recovery.
 - [Administrator backend repairs](admin-reference-repairs.md) — persistent reference jobs with administrator-only controls.
 - [Local reference-repair UI](local-reference-repair-ui.md) — loopback control for the existing reviewed queue, with duplicate-start guards.
+- [REST reference test](rest-reference-canary.md) — exact reference removal on test Wikidata.
 - [Sequential reference repairs](reference-repair-queue.md) — one item at a time, explicit service delays, durable retries, and an exact local checkpoint.
 - [Person descriptions](person-description-hygiene.md) — exclude joined generic role lists (W-325).
 - [Upload write guards](upload-write-guards.md) — Studio source recheck before each bulk write, and the owned-item rule.
