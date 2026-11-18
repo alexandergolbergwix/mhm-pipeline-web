@@ -13,6 +13,7 @@ from app.pipeline.wikidata_gila_execution import (
     semantic_entity,
 )
 from app.pipeline.wikidata_gila_repairs import entity_digest, validate_gila_repair_proposal
+from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
 from app.publication.digests import canonical_digest, thaw_json
 from app.publication.gateway import GatewayMutation, TargetObservation, WriteOutcome
 from app.publication.types import PublicationEntityInput, SourceSnapshotRef, TargetRef
@@ -82,7 +83,8 @@ class RepairProjectionSource:
 
 
 async def advance_repair_publication(
-    plan, gateway, source_check, repository, *, actor_id: str, run_id: str, clock=None
+    plan, gateway, source_check, repository, *, actor_id: str, run_id: str, clock=None,
+    probe_maxlag: bool = False, defer_existing_maxlag: bool = False,
 ):
     """Resume durable intents. A future retry date leaves the execution paused."""
     import uuid
@@ -110,8 +112,13 @@ async def advance_repair_publication(
         credential_ref=credential_ref,
         authorized_qids=frozenset(plan["authorized_qids"]),
     )
+    if (probe_maxlag or defer_existing_maxlag) and (
+        plan.get("execution_mode") == MODE or len(plan["proposals"]) != 1
+    ):
+        raise ValueError("Lag probes require one automatic reference repair.")
     module = PublicationModule(
-        projection_source=source, repository=repository, gateway=adapter, clock=clock
+        projection_source=source, repository=repository, gateway=adapter, clock=clock,
+        maxlag_backoff_cap_seconds=60.0 if probe_maxlag else None,
     )
     operation = await module.prepare(
         PrepareRequest(
@@ -166,6 +173,16 @@ async def advance_repair_publication(
             ),
         )
     summary = await module.read(query)
+    if defer_existing_maxlag and summary.execution_status == "paused" and summary.execution_id:
+        intent = await repository.latest_write_intent(
+            summary.execution_id, f"repair:{plan['proposals'][0]['qid']}"
+        )
+        diagnostics = ApiRetryDiagnostics.from_detail(intent.detail) if intent else None
+        if (
+            intent and intent.state == "pre_send_retryable"
+            and diagnostics and diagnostics.code == "maxlag"
+        ):
+            return summary
     if summary.execution_status in {"paused", "running", "queued"}:
         await module.advance(
             summary.publication_id,

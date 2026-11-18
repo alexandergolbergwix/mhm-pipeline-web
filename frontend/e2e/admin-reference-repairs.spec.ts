@@ -75,6 +75,10 @@ test("live progress follows backend states without another start request", async
     ...status, verified, completed: verified, already_clean: 0,
     job: {id: "job", status: phase === "queued" ? "queued" : "running", progress: {
       phase, current_qid: "Q123", next_attempt_at: new Date(Date.now() + 60000).toISOString(),
+      lag_probe_status: "delayed", next_lag_probe_at: new Date(Date.now() + 60000).toISOString(),
+      mirror_scan: {status: "complete", reviewed: 1601, total: 1601,
+        candidates: 18, seen_clean: 250, unchecked: 1333},
+
     }},
   }}));
   await page.goto("/admin/wikidata-reference-repairs");
@@ -84,6 +88,9 @@ test("live progress follows backend states without another start request", async
   phase = "service_delay";
   await expect(page.getByRole("heading", {name: "Wikidata delay", exact: true})).toBeVisible();
   await expect(page.getByText(/Next retry in/)).toBeVisible();
+  await expect(page.getByText(/Wikidata still requests a delay/)).toBeVisible();
+  await expect(page.getByText(/18 possible repairs · 250 appear clean · 1333 unavailable/))
+    .toBeVisible();
   await expect(progress).toHaveAttribute("value", "1");
   verified = 2;
   phase = "active";

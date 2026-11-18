@@ -51,6 +51,12 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
     updates = AsyncMock()
     monkeypatch.setattr(worker, "update_job_progress", updates)
 
+    async def mirror_scan(remaining):
+        assert remaining == ["Q123"]
+        yield {"total": 1, "reviewed": 1, "candidates": 1, "seen_clean": 0, "unchecked": 0}
+
+    monkeypatch.setattr(worker, "scan_reference_mirror", mirror_scan)
+
     async def run(args, qids, **options):
         import json
 
@@ -70,6 +76,8 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
                 "status": "service_delay",
                 "ordinal": 999,
                 "next_attempt_at": "2026-11-17T18:00:00Z",
+                "lag_probe_status": "delayed",
+                "next_lag_probe_at": "2026-11-17T18:01:00Z",
             }
         )
         await asyncio.sleep(1.05)
@@ -92,6 +100,8 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
     assert delayed
     assert delayed[0]["processed"] == 0
     assert delayed[0]["verified"] == 0
+    assert delayed[0]["lag_probe_status"] == "delayed"
+    assert delayed[0]["mirror_scan"]["candidates"] == 1
     await db_session.refresh(job)
     assert job.params["_reference_checkpoint"]["current_plan"] is None
     assert job.params["_reference_checkpoint"]["results"][0]["corrected"] is True

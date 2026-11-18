@@ -52,6 +52,10 @@ export function ReferenceRepairProgress({state, lastSync, connectionError}: {
         : paused ? "The checkpoint is saved. Resume will retain the same retry time."
           : "The counts below include confirmed results only.";
   const retry = job?.progress.next_attempt_at ? Date.parse(job.progress.next_attempt_at) : NaN;
+  const probe = job?.progress.lag_probe_status;
+  const probeDate = job?.progress.next_lag_probe_at;
+  const nextProbe = probeDate ? Date.parse(probeDate) : NaN;
+  const scan = job?.progress.mirror_scan;
   const elapsedStart = job?.started_at || job?.created_at;
   const elapsed = elapsedStart ? now - Date.parse(elapsedStart) : NaN;
   const workerDates = [state.worker_heartbeat_at, job?.status === "queued" ? null : job?.updated_at]
@@ -78,9 +82,22 @@ export function ReferenceRepairProgress({state, lastSync, connectionError}: {
     <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
       {job?.progress.current_qid && <p>Current item: <span className="font-mono">{job.progress.current_qid}</span></p>}
       {active && Number.isFinite(elapsed) && <p>{queued ? "Time in queue" : "Elapsed"}: {duration(elapsed)}</p>}
-      {delayed && Number.isFinite(retry) && <p>{retry > now ? `Next retry in ${duration(retry - now)}` : "Retry is due. Wait for the next backend update."}</p>}
+      {delayed && Number.isFinite(retry) && <p>{retry > now ? `Next retry in ${duration(retry - now)}` : probe && probe !== "ready" ? "The retry time has passed. The worker needs a successful lag check."
+        : "Retry is due. Wait for the next backend update."}</p>}
     </div>
-    {(delayed || paused) && Number.isFinite(retry) && <p className="text-sm muted">Retry at {time(retry)} Israel time. This delay does not advance the progress bar.</p>}
+    {(delayed || paused) && Number.isFinite(retry) && <p className="text-sm muted">Retry at or after {time(retry)} Israel time. This delay does not advance the progress bar.</p>}
+    {delayed && (probe || Number.isFinite(nextProbe)) && <p className="text-sm muted">
+      Read-only lag check: {probe === "ready" ? "Wikidata accepted the check"
+        : probe === "delayed" ? "Wikidata still requests a delay"
+          : probe === "unavailable" ? "No reliable result" : "No result yet"}.
+      {Number.isFinite(nextProbe) && ` Next check at ${time(nextProbe)} Israel time.`}
+    </p>}
+    {scan?.status && <div className="text-sm muted">
+      <p>{scan.status === "unavailable" ? "The scan of saved snapshots could not finish."
+        : `Saved snapshots: checked ${scan.reviewed ?? 0} of ${scan.total ?? 0} items.`}</p>
+      {scan.reviewed != null && <p>{scan.candidates ?? 0} possible repairs · {scan.seen_clean ?? 0} appear clean · {scan.unchecked ?? 0} unavailable.</p>}
+      <p>The scan does not verify public repairs.</p>
+    </div>}
     <p className="text-xs muted">This bar covers the reference queue. It does not measure all Gila requirements.</p>
     <div className="flex flex-wrap justify-between gap-2 text-xs muted">
       <span>Last sync: {time(lastSync)} Israel time</span>

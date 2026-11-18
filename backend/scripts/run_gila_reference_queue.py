@@ -68,6 +68,7 @@ async def _run(
     on_event=None,
     dispose_engine=True,
     authorize_session=None,
+    lag_probe=None,
 ):
     from sqlalchemy import select
 
@@ -267,6 +268,7 @@ async def _run(
                 on_event=on_event or (lambda event: print(json.dumps(event), flush=True)),
                 on_checkpoint=on_checkpoint,
                 resume_results=resume_results,
+                lag_probe=lag_probe,
             )
     finally:
         if dispose_engine:

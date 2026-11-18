@@ -9,6 +9,16 @@ export interface ReferenceRepairJob {
     message?: string;
     current_qid?: string;
     next_attempt_at?: string;
+    lag_probe_status?: "ready" | "delayed" | "unavailable" | null;
+    next_lag_probe_at?: string | null;
+    mirror_scan?: {
+      status?: "scanning" | "complete" | "unavailable";
+      reviewed?: number;
+      total?: number;
+      candidates?: number;
+      seen_clean?: number;
+      unchecked?: number;
+    };
   };
   created_at?: string | null;
   started_at?: string | null;

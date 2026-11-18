@@ -43,3 +43,7 @@ It does not expose source text or the private exact plan.
 - `backend/tests/test_reference_repair_worker.py`: committed counts during a service delay.
 
 These changes do not alter the reviewed queue, administrator checks, creator proof, or maxlag.
+
+During a delay, the page shows the read-only probe result and the next probe time when available.
+The saved retry time is the earliest time the worker can try the edit.
+The scan of saved snapshots shows separate counts and does not change the repair bar.

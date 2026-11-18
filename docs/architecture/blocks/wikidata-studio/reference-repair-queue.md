@@ -57,6 +57,17 @@ The `retry` object retains the code, UTC observation, host, type, scaled lag, ra
 The existing intent detail stores this bounded, versioned JSON evidence; no database migration is necessary.
 Raw API info, arbitrary headers, and credentials remain excluded.
 A later successful attempt clears the old retry evidence.
+
+The backend worker uses a read-only POST to check a confirmed maxlag delay.
+It uses `maxlag=5` without credentials, a QID, or an edit payload.
+The same worker waits at least one minute between probes.
+It honors a longer `Retry-After` during that run.
+A successful probe cannot shorten the saved retry date.
+After that date, only a successful probe can release a confirmed maxlag retry.
+The worker keeps the existing execution and rechecks the complete write boundary.
+It caps its backoff for new maxlag refusals at 60 seconds before server delays and jitter.
+Other refusals and the local CLI keep their prior retry policy.
+The worker stops after its existing finite wait limit.
 The existing Publication tables retain the durable intent, retry date, and execution.
 The command creates no second retry store.
 
@@ -76,6 +87,9 @@ Source imports, identity decisions, and the six Studio corrections retain their 
 ## Files and tests
 
 - `backend/app/publication/reference_repair_queue.py` owns validation, exact plans, locks, and sequential control.
+- `backend/app/publication/reference_recovery.py` defines the read-only probe and mirror scan.
+- `backend/tests/unit/test_reference_recovery.py` checks the probe and snapshot classifications.
+- `backend/tests/unit/test_publication_historical_repairs.py` checks saved dates, probe delays, and replay.
 - `backend/scripts/run_gila_reference_queue.py` supplies server credentials, project access, current sources, and audit records.
 - `backend/tests/unit/test_reference_repair_queue.py` covers restart, due dates, foreign targets, changed evidence, and uncertain writes.
 - Existing historical-repair and creator tests retain the transport and ownership boundaries.

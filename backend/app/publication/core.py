@@ -17,6 +17,7 @@ from typing import (
     cast,
 )
 
+from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
 from app.publication.digests import (
     CanonicalSequenceDigest,
     ReleaseDigestAccumulator,
@@ -138,6 +139,7 @@ class PublicationModule:
         clock: Callable[[], datetime] | None = None,
         dry_run_progress: Callable[[int, int], Awaitable[None]] | None = None,
         execution_progress: Callable[[int, int], Awaitable[None]] | None = None,
+        maxlag_backoff_cap_seconds: float | None = None,
     ) -> None:
         self._projection_source = projection_source
         self._repository = repository
@@ -145,6 +147,7 @@ class PublicationModule:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._dry_run_progress = dry_run_progress
         self._execution_progress = execution_progress
+        self._maxlag_backoff_cap_seconds = maxlag_backoff_cap_seconds
 
     async def prepare(self, request: PrepareRequest) -> OperationRef:
         prior = await self._repository.find_prepared(
@@ -1171,6 +1174,10 @@ class PublicationModule:
             if not math.isfinite(delay) or delay < 0:
                 delay = 5.0
             backoff = min(300.0, 5.0 * 2 ** min(intent.attempt - 1, 6))
+            if self._maxlag_backoff_cap_seconds is not None:
+                diagnostics = ApiRetryDiagnostics.from_detail(outcome.detail)
+                if diagnostics and diagnostics.code == "maxlag":
+                    backoff = min(backoff, self._maxlag_backoff_cap_seconds)
             next_attempt_at = self._clock() + timedelta(seconds=max(delay, backoff) + random.SystemRandom().uniform(0, 1))
         updated = replace(
             intent,

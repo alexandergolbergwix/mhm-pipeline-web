@@ -12,12 +12,14 @@ from contextlib import suppress
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 from sqlalchemy import select
 
 from app.db import session_scope
 from app.models.run_job import RunJob
 from app.models.user import ROLE_ADMIN, User
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
+from app.publication.reference_recovery import probe_reference_lag, scan_reference_mirror
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -69,6 +71,8 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
     manifest = seed["manifest"]
     actor = uuid.UUID(manifest["actor_user_id"])
     runner = None
+    scan = None
+    client = None
     try:
         if not get_settings().gila_reference_cloud_enabled:
             raise ValueError("The backend reference worker is disabled.")
@@ -98,6 +102,22 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                 raise ReferenceJobCancelledError()
 
         latest = {}
+        scan_progress = {}
+        scan_changed = False
+
+        async def inspect_mirror():
+            nonlocal scan_changed
+            try:
+                remaining = manifest["qids"][len(checkpoint.get("results", [])) :]
+                async for progress in scan_reference_mirror(remaining):
+                    scan_progress.update(status="scanning", **progress)
+                    scan_changed = True
+                scan_progress["status"] = "complete"
+            except Exception:
+                logger.exception("The reference mirror scan did not finish.")
+                scan_progress["status"] = "unavailable"
+            scan_changed = True
+
         counts = {
             "processed": len(checkpoint.get("results", [])),
             "verified": sum(row.get("corrected") is True for row in checkpoint.get("results", [])),
@@ -159,6 +179,18 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                 apply=True,
                 wait_seconds=86400,
             )
+            client = httpx.AsyncClient(
+                headers={
+                    "User-Agent": "MHMPipeline/1.0 (https://mhm-pipeline.org; reference lag check)"
+                },
+                timeout=8.0,
+            )
+
+            async def check_lag():
+                if await is_cancel_requested(job_id):
+                    raise ReferenceJobCancelledError()
+                return await probe_reference_lag(client)
+
             runner = asyncio.create_task(
                 run(
                     args,
@@ -169,16 +201,21 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     on_event=event,
                     dispose_engine=False,
                     authorize_session=authorize,
+                    lag_probe=check_lag,
                 )
             )
+            scan = asyncio.create_task(inspect_mirror())
+            saved = {"status": "start"}
             while not runner.done():
                 await asyncio.wait({runner}, timeout=1)
                 if await is_cancel_requested(job_id):
                     runner.cancel()
                     raise ReferenceJobCancelledError()
-                if latest:
-                    saved = dict(latest)
-                    latest.clear()
+                if latest or scan_changed:
+                    if latest:
+                        saved = dict(latest)
+                        latest.clear()
+                    scan_changed = False
                     await update_job_progress(
                         job_id,
                         {
@@ -188,6 +225,9 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                             "unit": "items",
                             "current_qid": saved.get("qid"),
                             "next_attempt_at": saved.get("next_attempt_at"),
+                            "lag_probe_status": saved.get("lag_probe_status"),
+                            "next_lag_probe_at": saved.get("next_lag_probe_at"),
+                            "mirror_scan": dict(scan_progress),
                             "message": (
                                 "Wait for the saved Wikidata retry time."
                                 if saved.get("status") in {"service_delay", "retry_wait"}
@@ -216,6 +256,7 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     "phase": "succeeded" if complete else result["status"],
                     "current_qid": (result.get("current") or {}).get("qid"),
                     "next_attempt_at": (result.get("current") or {}).get("next_attempt_at"),
+                    "mirror_scan": dict(scan_progress),
                     "message": "The reviewed queue is complete."
                     if complete
                     else "The queue paused or requires review.",
@@ -231,7 +272,10 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
             job_id, status="failed", error=f"Reference queue stopped: {type(error).__name__}"
         )
     finally:
-        if runner is not None and not runner.done():
-            runner.cancel()
-            with suppress(asyncio.CancelledError):
-                await runner
+        for task in (runner, scan):
+            if task is not None and not task.done():
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+        if client is not None:
+            await client.aclose()

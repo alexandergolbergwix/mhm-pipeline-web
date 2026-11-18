@@ -720,3 +720,98 @@ async def test_sql_resume_retains_safe_lag_diagnostics(db_session, sample_run):
     assert waits and all(0 < seconds <= 30 for seconds in timer.sleeps)
     successful = await restored.latest_write_intent(final.execution_id, "repair:Q123")
     assert ApiRetryDiagnostics.from_detail(successful.detail) is None
+
+
+@pytest.mark.asyncio
+async def test_backend_recovery_obeys_saved_date_and_probe_retry_after():
+    from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
+    from app.publication.reference_recovery import LagProbeResult
+
+    gateway, timer, repo = Gateway(), RetryClock(), InMemoryPublicationRepository()
+    reviewed = plan(gateway)
+    gateway.error = WriteRejectedError(
+        "maxlag", code="maxlag", retry_after_seconds=90,
+        diagnostics=ApiRetryDiagnostics.from_error(
+            {"code": "maxlag"}, observed_at=timer.now(), retry_after_seconds=90
+        ),
+    )
+    first = await wait_for_repair(reviewed, gateway, repo, timer, limit=0)
+    saved = await repo.latest_write_intent(first.execution_id, "repair:Q123")
+    probes = []
+    gateway.error = None
+
+    async def probe():
+        probes.append(timer.elapsed)
+        assert gateway.writes == 1
+        if len(probes) == 1:
+            return LagProbeResult("delayed", 125)
+        return LagProbeResult("ready")
+
+    final = await wait_for_repair(reviewed, gateway, repo, timer, lag_probe=probe)
+    assert len(probes) == 2
+    assert probes[0] >= 90
+    assert probes[1] - probes[0] >= 125
+    assert final.execution_status == "succeeded"
+    assert final.execution_id == first.execution_id
+    assert timer.now() >= saved.next_attempt_at
+    assert gateway.writes == 2
+
+
+@pytest.mark.asyncio
+async def test_backend_recovery_restarts_a_due_retry_only_after_probe_success():
+    from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
+    from app.publication.reference_recovery import LagProbeResult
+
+    gateway, timer, repo = Gateway(), RetryClock(), InMemoryPublicationRepository()
+    reviewed = plan(gateway)
+    gateway.error = WriteRejectedError(
+        "maxlag", code="maxlag", retry_after_seconds=5,
+        diagnostics=ApiRetryDiagnostics.from_error(
+            {"code": "maxlag"}, observed_at=timer.now(), retry_after_seconds=5
+        ),
+    )
+    first = await wait_for_repair(reviewed, gateway, repo, timer, limit=0)
+    timer.elapsed = 600
+    gateway.error = None
+
+    async def unavailable():
+        assert gateway.writes == 1
+        return LagProbeResult("unavailable")
+
+    paused = await wait_for_repair(reviewed, gateway, repo, timer, limit=125, lag_probe=unavailable)
+    assert paused.execution_status == "paused"
+    assert paused.execution_id == first.execution_id
+    assert gateway.writes == 1
+
+    async def ready():
+        assert gateway.writes == 1
+        return LagProbeResult("ready")
+
+    final = await wait_for_repair(reviewed, gateway, repo, timer, lag_probe=ready)
+    assert final.execution_status == "succeeded"
+    assert final.execution_id == first.execution_id
+    assert gateway.writes == 2
+
+
+@pytest.mark.parametrize(
+    ("code", "server_delay", "expected_gap"),
+    [("maxlag", 5, 60), ("maxlag", 80, 80), ("ratelimited", 5, 300)],
+)
+@pytest.mark.asyncio
+async def test_new_backend_backoff_caps_only_maxlag_and_keeps_server_delay(
+    code, server_delay, expected_gap,
+):
+    gateway, timer, repo = Gateway(), RetryClock(), InMemoryPublicationRepository()
+    reviewed = plan(gateway)
+    gateway.error = WriteRejectedError(code, code=code, retry_after_seconds=server_delay)
+    summary = None
+    for _ in range(7):
+        summary = await advance_repair_publication(
+            reviewed, gateway, source_check, repo, actor_id="actor-1", run_id="run-1",
+            clock=timer.now, probe_maxlag=True,
+        )
+        intent = await repo.latest_write_intent(summary.execution_id, "repair:Q123")
+        gap = (intent.next_attempt_at - timer.now()).total_seconds()
+        timer.elapsed += gap + 1
+    assert intent.attempt == 7
+    assert expected_gap <= gap <= expected_gap + 1

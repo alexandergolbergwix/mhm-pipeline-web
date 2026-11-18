@@ -27,6 +27,9 @@ The existing claim, heartbeat, admission, progress, and cancellation services ow
 The job uses the upload slot and stays on Heroku.
 It does not use Modal or a local process.
 The administrator can close the browser after the job starts.
+A separate task scans the remaining QIDs in the Postgres mirror in groups of 50.
+It reports possible repairs, snapshots without visible duplicates, and unavailable snapshots.
+It does not skip queue items, change a plan, grant write authority, or count a completed repair.
 
 `gila_reference_seed.json` contains the existing reviewed queue and its stopped local checkpoint.
 It contains public entity data and source hashes, not credentials.

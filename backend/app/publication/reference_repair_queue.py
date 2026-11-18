@@ -23,6 +23,7 @@ from app.pipeline.wikidata_gila_repairs import (
     validate_gila_repair_proposal,
 )
 from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
+from app.publication.reference_recovery import LagProbeResult, LagProbeSchedule
 from app.publication.repair_retry_runner import RepairRetryWait, wait_for_repair_publication
 from app.publication.repository import PublicationRepository
 from converter.wikidata.work_identity import reference_control_numbers
@@ -117,6 +118,7 @@ async def run_reference_repair_queue(
     on_receipt: Callable[[dict], Awaitable[None]] | None = None,
     on_checkpoint: Callable[[str, list[dict], Path], Awaitable[None]] | None = None,
     resume_results: Sequence[dict] = (),
+    lag_probe: Callable[[], Awaitable[LagProbeResult]] | None = None,
 ) -> dict:
     """Retain each exact plan and stop before the next item after any unsafe result."""
     qids = candidate_qids(list(qids))
@@ -140,6 +142,7 @@ async def run_reference_repair_queue(
     ):
         raise ValueError("The saved completed prefix does not match the reviewed queue.")
     completed = len(results)
+    lag_probe_schedule = LagProbeSchedule()
 
     async def preview_journal(phase, receipt):
         return None
@@ -236,6 +239,9 @@ async def run_reference_repair_queue(
                             "next_attempt_at": event.next_attempt_at.isoformat(),
                             "seconds": event.seconds,
                             "retry": event.diagnostics.to_dict() if event.diagnostics else None,
+                            "lag_probe_status": event.lag_probe.status if event.lag_probe else None,
+                            "next_lag_probe_at": event.next_probe_at.isoformat()
+                            if event.next_probe_at else None,
                         }
                         write_json(
                             state_dir / "progress.json",
@@ -256,6 +262,8 @@ async def run_reference_repair_queue(
                         run_id=run_id,
                         max_wait_seconds=wait_seconds,
                         on_wait=report_wait,
+                        lag_probe=lag_probe,
+                        lag_probe_schedule=lag_probe_schedule,
                     )
                     intent = (
                         await repository.latest_write_intent(summary.execution_id, f"repair:{qid}")

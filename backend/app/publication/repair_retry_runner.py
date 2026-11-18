@@ -6,11 +6,16 @@ import time
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.pipeline.wikidata_gila_execution import RepairGateway, SourceCheck
 from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
 from app.publication.historical_repairs import advance_repair_publication
+from app.publication.reference_recovery import (
+    LAG_PROBE_INTERVAL,
+    LagProbeResult,
+    LagProbeSchedule,
+)
 from app.publication.repository import PublicationRepository
 from app.publication.types import PublicationSummary
 
@@ -22,6 +27,8 @@ class RepairRetryWait:
     next_attempt_at: datetime
     seconds: float
     diagnostics: ApiRetryDiagnostics | None = None
+    lag_probe: LagProbeResult | None = None
+    next_probe_at: datetime | None = None
 
 
 async def wait_for_repair_publication(
@@ -37,6 +44,8 @@ async def wait_for_repair_publication(
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     monotonic: Callable[[], float] = time.monotonic,
     on_wait: Callable[[RepairRetryWait], None] | None = None,
+    lag_probe: Callable[[], Awaitable[LagProbeResult]] | None = None,
+    lag_probe_schedule: LagProbeSchedule | None = None,
 ) -> PublicationSummary:
     """Keep the same reviewed plan; stop on ambiguity or a finite time limit."""
     if not math.isfinite(max_wait_seconds) or max_wait_seconds < 0:
@@ -46,6 +55,8 @@ async def wait_for_repair_publication(
     plan = deepcopy(plan)
     now = clock or (lambda: datetime.now(UTC))
     deadline = monotonic() + max_wait_seconds
+    if max_wait_seconds == 0:
+        lag_probe = None
     summary = await advance_repair_publication(
         plan,
         gateway,
@@ -54,7 +65,10 @@ async def wait_for_repair_publication(
         actor_id=actor_id,
         run_id=run_id,
         clock=now,
+        probe_maxlag=lag_probe is not None,
+        defer_existing_maxlag=lag_probe is not None,
     )
+    schedule = lag_probe_schedule or LagProbeSchedule()
     while (
         max_wait_seconds > 0
         and summary.execution_status == "paused"
@@ -81,14 +95,33 @@ async def wait_for_repair_publication(
         diagnostics = ApiRetryDiagnostics.from_detail(next_intent.detail)
         # Release the SQL transaction and its connection before the wait.
         await repository.checkpoint()
+        probe = lag_probe if diagnostics and diagnostics.code == "maxlag" else None
+        if probe is not None and diagnostics is not None:
+            since_refusal = (now() - diagnostics.observed_at).total_seconds()
+            schedule.next_monotonic = max(
+                schedule.next_monotonic,
+                monotonic() + max(5.0, diagnostics.retry_after_seconds or 0) - since_refusal,
+            )
+        # An earlier probe cannot cover a new refusal.
+        last_probe = None
         while True:
             remaining = deadline - monotonic()
             delay = max(0.0, (next_attempt - now()).total_seconds())
             if remaining <= 0 or delay > remaining:
                 return summary
-            if delay <= 0:
+            if probe is not None and monotonic() >= schedule.next_monotonic:
+                last_probe = await probe()
+                schedule.next_monotonic = monotonic() + max(
+                    LAG_PROBE_INTERVAL, last_probe.retry_after
+                )
+                continue
+            ready = probe is None or (last_probe is not None and last_probe.status == "ready")
+            if delay <= 0 and ready:
                 break
-            seconds = min(delay, 30.0, remaining)
+            probe_delay = (
+                max(0.0, schedule.next_monotonic - monotonic()) if probe is not None else 0.0
+            )
+            seconds = min([30.0, remaining] + [d for d in (delay, probe_delay) if d > 0])
             if on_wait is not None:
                 on_wait(
                     RepairRetryWait(
@@ -97,6 +130,9 @@ async def wait_for_repair_publication(
                         next_attempt,
                         seconds,
                         diagnostics,
+                        last_probe,
+                        now() + timedelta(seconds=probe_delay)
+                        if probe is not None and probe_delay <= remaining else None,
                     )
                 )
             await sleep(seconds)
@@ -108,5 +144,6 @@ async def wait_for_repair_publication(
             actor_id=actor_id,
             run_id=run_id,
             clock=now,
+            probe_maxlag=lag_probe is not None,
         )
     return summary

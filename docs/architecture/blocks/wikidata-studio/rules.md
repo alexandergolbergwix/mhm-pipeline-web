@@ -1345,3 +1345,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 199. **R199 — Production reference controls require an administrator and a durable backend job.** Keep private exact plans in Postgres before each write. Recheck current authority and use a direct Postgres lease across hosts. Hide all controls from other users. *Why:* a local process and loopback key cannot implement a production administrator control.
 
 200. **R200 — Live repair progress counts confirmed outcomes only.** Separate the queue, active work, and a service delay. Keep private plans out of the public summary. Clear protected state after access denial. *Why:* a live display must not imply a write or lose confirmed progress after a network error.
+
+201. **R201 — Read-only recovery checks never grant write authority.** Honor the saved retry date and `Retry-After`. Require a successful probe before the backend retries confirmed maxlag. Keep the snapshot scan separate from confirmed repairs. *Why:* brief lag recovery does not verify a public edit or make saved evidence current.
