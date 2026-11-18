@@ -30,7 +30,7 @@ It uses `wbgetentities` first to preserve exact plan fingerprints.
 A temporary failure can use `Special:EntityData` for the current revision.
 The reader verifies the QID, revision, and complete item fields before it returns a snapshot.
 An API refusal, a server delay, or invalid item data stops the read.
-The reader has no edit credentials and cannot grant write authority.
+The reader has no edit credentials and sends no cookies. It cannot grant write authority.
 The separate authenticated gateway retains the existing creator, lag, and revision checks.
 Read success does not establish edit availability.
 

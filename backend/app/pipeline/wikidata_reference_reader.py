@@ -68,6 +68,7 @@ class ReferenceItemReader:
     async def _get(client: httpx.AsyncClient, url: str, params: dict[str, str]) -> dict:
         try:
             async with asyncio.timeout(_READ_TIMEOUT):
+                client.cookies.clear()
                 response = await client.get(url, params=params)
         except (httpx.TransportError, TimeoutError) as error:
             raise _ReadUnavailableError("The Wikidata read is temporarily unavailable.") from error

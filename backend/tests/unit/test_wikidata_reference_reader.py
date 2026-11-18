@@ -51,9 +51,13 @@ async def test_fallback_pins_current_revision_and_rejects_other_revisions(docume
             return httpx.Response(503)
         if action == "query":
             assert request.url.params["titles"] == "Q123"
-            return httpx.Response(200, json={"query": {"pages": [
-                {"title": "Q123", "ns": 0, "revisions": [{"revid": 42}]},
-            ]}})
+            return httpx.Response(
+                200,
+                headers={"Set-Cookie": "read-test=fixture; Path=/"},
+                json={"query": {"pages": [
+                    {"title": "Q123", "ns": 0, "revisions": [{"revid": 42}]},
+                ]}},
+            )
         assert request.url.path == "/wiki/Special:EntityData/Q123.json"
         assert request.url.params["revision"] == "42"
         return httpx.Response(200, json={"entities": {"Q123": entity(document_revision)}})
