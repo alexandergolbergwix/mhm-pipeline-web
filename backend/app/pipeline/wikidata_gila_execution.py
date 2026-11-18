@@ -221,8 +221,14 @@ async def execute_repair(
 class LiveRepairGateway:
     """Reuse the normal uploader authentication and ownership guards."""
 
-    def __init__(self, uploader: WikidataUploader) -> None:
+    def __init__(
+        self,
+        uploader: WikidataUploader,
+        *,
+        read_item: Callable[[str], Awaitable[dict[str, object]]] | None = None,
+    ) -> None:
         self.uploader = uploader
+        self._read_item = read_item
 
     def _write_parameters(self, qid, revision, claims, token) -> dict:
         return {
@@ -234,6 +240,9 @@ class LiveRepairGateway:
         }
 
     async def fetch(self, qid: str) -> dict[str, object]:
+        if self._read_item is not None:
+            return await self._read_item(qid)
+
         def read() -> dict[str, object]:
             self.uploader._prefetched_entities.pop(qid, None)
             entities = self.uploader._wbgetentities(

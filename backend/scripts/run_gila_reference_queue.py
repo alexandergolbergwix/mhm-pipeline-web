@@ -82,6 +82,7 @@ async def _run(
     from app.pipeline.marc_verify_context import canonical_control_number
     from app.pipeline.wikidata_gila_execution import LiveRepairGateway
     from app.pipeline.wikidata_gila_repairs import entity_digest
+    from app.pipeline.wikidata_reference_reader import ReferenceItemReader
     from app.publication.credentials import ServerPublicationCredentialResolver
     from app.publication.reference_repair_queue import (
         reference_source_controls,
@@ -137,7 +138,8 @@ async def _run(
                     token=material.secret,
                     allow_live=True,
                     mark_as_bot=False,
-                )
+                ),
+                read_item=ReferenceItemReader().fetch,
             )
             del material
             rows = (

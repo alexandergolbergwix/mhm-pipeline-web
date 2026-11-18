@@ -206,7 +206,7 @@ async def test_live_transport_classifies_errors_without_a_second_post(
 ) -> None:
     import json
     from types import SimpleNamespace
-    from unittest.mock import Mock
+    from unittest.mock import AsyncMock, Mock
 
     import requests
 
@@ -228,7 +228,11 @@ async def test_live_transport_classifies_errors_without_a_second_post(
         get_edit_token=lambda: "fixture-edit-token",
     )
     uploader = SimpleNamespace(_login=login, _rate_limit=Mock(), _assert_modifiable=Mock())
-    gateway = LiveRepairGateway(uploader)
+    read_item = AsyncMock(return_value={"id": "Q123", "lastrevid": 10})
+    gateway = LiveRepairGateway(uploader, read_item=read_item)
+    assert await gateway.fetch("Q123") == {"id": "Q123", "lastrevid": 10}
+    read_item.assert_awaited_once_with("Q123")
+    session.post.assert_not_called()
     with pytest.raises(WriteRejectedError if rejected else RuntimeError) as error:
         await gateway.write("Q123", 10, [{"id": "Q123$duplicate", "remove": ""}])
     if rejected:

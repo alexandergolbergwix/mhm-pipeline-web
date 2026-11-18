@@ -1,6 +1,6 @@
 # Sequential reference repairs
 
-> Up: [Wikidata Studio](README.md) · R195–R196 · W-324, W-328, W-338, W-343, W-345
+> Up: [Wikidata Studio](README.md) · R195–R196, R201 · W-324, W-328, W-338, W-343, W-345
 
 `backend/scripts/run_gila_reference_queue.py` processes reviewed QIDs one at a time.
 The command uses the normal Publication path and `maxlag=5`.
@@ -23,6 +23,17 @@ The operator needs authorized server access and a configured live Publication cr
 The command keeps credentials out of arguments, output, and queue files.
 Without this option, the command uses the configured server environment.
 
+## Item reads and edits
+
+`wikidata_reference_reader.py` reads full item data through public GET requests.
+It uses `wbgetentities` first to preserve exact plan fingerprints.
+A temporary failure can use `Special:EntityData` for the current revision.
+The reader verifies the QID, revision, and complete item fields before it returns a snapshot.
+An API refusal, a server delay, or invalid item data stops the read.
+The reader has no edit credentials and cannot grant write authority.
+The separate authenticated gateway retains the existing creator, lag, and revision checks.
+Read success does not establish edit availability.
+
 ## Preview
 
 From the repository root:
@@ -42,12 +53,10 @@ Use the same command with `--apply` for an authorized repair scope.
 Use `--wait-seconds 3600` for an explicit one-hour limit.
 Use the same candidate file and state directory after exit code 75 or a process stop.
 An early restart cannot shorten the saved server delay.
-The local command uses POSIX file locks; run it on macOS or Linux.
 
 ## Exact scope and restart
 
 `queue.json` binds the ordered QIDs, run, actor, and project.
-A different input or actor requires a separate review.
 The file lock permits one process per state directory and releases after a crash.
 Each item retains `plan-QID.json` and `receipt-QID.json`.
 `progress.json` records the results of the current invocation.
@@ -56,7 +65,6 @@ The current delayed item does not enter the completed count.
 The `retry` object retains the code, UTC observation, host, type, scaled lag, raw `queryserviceLag`, and retry delay.
 The existing intent detail stores this bounded, versioned JSON evidence; no database migration is necessary.
 Raw API info, arbitrary headers, and credentials remain excluded.
-A later successful attempt clears the old retry evidence.
 
 The backend worker uses a read-only POST to check a confirmed maxlag delay.
 It uses `maxlag=5` without credentials, a QID, or an edit payload.
@@ -69,7 +77,6 @@ It caps its backoff for new maxlag refusals at 60 seconds before server delays a
 Other refusals and the local CLI keep their prior retry policy.
 The worker stops after its existing finite wait limit.
 The existing Publication tables retain the durable intent, retry date, and execution.
-The command creates no second retry store.
 
 A saved plan remains immutable.
 The runner reuses that plan and its execution after a confirmed API rejection.
@@ -80,7 +87,6 @@ The runner never advances to another QID after a failed or uncertain item.
 
 The correction scope covers equivalent reference blocks only.
 Every correction preserves values, qualifiers, ranks, and distinct source identities.
-Success requires a complete public entity match against the expected result.
 An item that already has clean references receives `already_clean`; this status is not a correction receipt.
 Source imports, identity decisions, and the six Studio corrections retain their normal review paths.
 
@@ -88,10 +94,7 @@ Source imports, identity decisions, and the six Studio corrections retain their 
 
 - `backend/app/publication/reference_repair_queue.py` owns validation, exact plans, locks, and sequential control.
 - `backend/app/publication/reference_recovery.py` defines the read-only probe and mirror scan.
-- `backend/tests/unit/test_reference_recovery.py` checks the probe and snapshot classifications.
-- `backend/tests/unit/test_publication_historical_repairs.py` checks saved dates, probe delays, and replay.
+- `test_reference_recovery.py` and `test_wikidata_reference_reader.py` check the probe, snapshot scan, and GET fallback.
 - `backend/scripts/run_gila_reference_queue.py` supplies server credentials, project access, current sources, and audit records.
 - `backend/tests/unit/test_reference_repair_queue.py` covers restart, due dates, foreign targets, changed evidence, and uncertain writes.
-- Existing historical-repair and creator tests retain the transport and ownership boundaries.
-
 The [local operator UI](local-reference-repair-ui.md) can start the existing reviewed queue. It preserves the same command, access checks, locks, and retry state. It excludes the six Studio corrections.
