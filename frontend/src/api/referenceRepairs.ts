@@ -10,6 +10,7 @@ export interface ReferenceRepairJob {
     current_qid?: string;
     next_attempt_at?: string;
     lag_probe_status?: "ready" | "delayed" | "unavailable" | null;
+    lag_probe_seconds?: number | null;
     next_lag_probe_at?: string | null;
     mirror_scan?: {
       status?: "scanning" | "complete" | "unavailable";

@@ -1,5 +1,6 @@
 """Read-only lag and mirror checks for the reviewed reference queue."""
 
+import math
 from collections import Counter
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ class LagProbeSchedule:
 class LagProbeResult:
     status: Literal["ready", "delayed", "unavailable"]
     retry_after: float = 0.0
+    lag_seconds: float | None = None
 
 
 async def probe_reference_lag(client: httpx.AsyncClient) -> LagProbeResult:
@@ -57,7 +59,10 @@ async def probe_reference_lag(client: httpx.AsyncClient) -> LagProbeResult:
         return LagProbeResult("unavailable", delay)
     error = data.get("error")
     if isinstance(error, dict) and error.get("code") == "maxlag":
-        return LagProbeResult("delayed", delay)
+        lag = error.get("lag")
+        if type(lag) not in (int, float) or not 0 <= lag <= 1_000_000 or not math.isfinite(lag):
+            lag = None
+        return LagProbeResult("delayed", delay, lag)
     query = data.get("query")
     if (
         "error" not in data and "errors" not in data and not delay

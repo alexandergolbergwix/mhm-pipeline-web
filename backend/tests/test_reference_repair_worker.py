@@ -77,6 +77,7 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
                 "ordinal": 999,
                 "next_attempt_at": "2026-11-17T18:00:00Z",
                 "lag_probe_status": "delayed",
+                "lag_probe_seconds": 7.97,
                 "next_lag_probe_at": "2026-11-17T18:01:00Z",
             }
         )
@@ -101,6 +102,7 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
     assert delayed[0]["processed"] == 0
     assert delayed[0]["verified"] == 0
     assert delayed[0]["lag_probe_status"] == "delayed"
+    assert delayed[0]["lag_probe_seconds"] == 7.97
     assert delayed[0]["mirror_scan"]["candidates"] == 1
     await db_session.refresh(job)
     assert job.params["_reference_checkpoint"]["current_plan"] is None

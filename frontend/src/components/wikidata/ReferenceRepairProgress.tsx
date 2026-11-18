@@ -56,6 +56,11 @@ export function ReferenceRepairProgress({state, lastSync, connectionError}: {
   const probeDate = job?.progress.next_lag_probe_at;
   const nextProbe = probeDate ? Date.parse(probeDate) : NaN;
   const scan = job?.progress.mirror_scan;
+  const lag = job?.progress.lag_probe_seconds;
+  const waitsForLag = phase === "service_delay" && probe !== "ready";
+  const retryMessage = retry > now ? `Next retry in ${duration(retry - now)}`
+    : waitsForLag ? "The worker needs a successful lag check before it can retry."
+      : "The worker can retry. Wait for the next update.";
   const elapsedStart = job?.started_at || job?.created_at;
   const elapsed = elapsedStart ? now - Date.parse(elapsedStart) : NaN;
   const workerDates = [state.worker_heartbeat_at, job?.status === "queued" ? null : job?.updated_at]
@@ -75,22 +80,27 @@ export function ReferenceRepairProgress({state, lastSync, connectionError}: {
     <progress className="w-full h-3 accent-biu-sky" aria-label="Confirmed reference repair progress"
       max={Math.max(1, progress.total)} value={progress.completed} />
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {[["Verified corrections", progress.verified], ["Already clean", progress.clean], ["Left to check", progress.remaining]].map(([label, value]) =>
+      {[["Verified corrections", progress.verified], ["Already clean", progress.clean], ["Items remaining", progress.remaining]].map(([label, value]) =>
         <div key={label} className="rounded-xl border border-white/15 p-3"><div className="text-2xl font-semibold">{typeof value === "number" ? value.toLocaleString() : value}</div><div className="text-sm muted">{label}</div></div>,
       )}
     </div>
     <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
       {job?.progress.current_qid && <p>Current item: <span className="font-mono">{job.progress.current_qid}</span></p>}
       {active && Number.isFinite(elapsed) && <p>{queued ? "Time in queue" : "Elapsed"}: {duration(elapsed)}</p>}
-      {delayed && Number.isFinite(retry) && <p>{retry > now ? `Next retry in ${duration(retry - now)}` : probe && probe !== "ready" ? "The retry time has passed. The worker needs a successful lag check."
-        : "Retry is due. Wait for the next backend update."}</p>}
+      {delayed && Number.isFinite(retry) && <p>{retryMessage}</p>}
     </div>
-    {(delayed || paused) && Number.isFinite(retry) && <p className="text-sm muted">Retry at or after {time(retry)} Israel time. This delay does not advance the progress bar.</p>}
-    {delayed && (probe || Number.isFinite(nextProbe)) && <p className="text-sm muted">
+    {(delayed || paused) && Number.isFinite(retry) && <p className="text-sm muted">
+      Earliest edit retry: {time(retry)} Israel time.
+    </p>}
+    {delayed && phase === "service_delay" && <p className="text-sm muted">
       Read-only lag check: {probe === "ready" ? "Wikidata accepted the check"
         : probe === "delayed" ? "Wikidata still requests a delay"
           : probe === "unavailable" ? "No reliable result" : "No result yet"}.
-      {Number.isFinite(nextProbe) && ` Next check at ${time(nextProbe)} Israel time.`}
+      {probe === "delayed" && typeof lag === "number" && Number.isFinite(lag)
+        && ` Reported lag: ${lag.toFixed(2)}. Edit limit: 5.`}
+      {Number.isFinite(nextProbe) && (nextProbe > now
+        ? ` Next check in ${duration(nextProbe - now)} (${time(nextProbe)} Israel time).`
+        : " The next check is due.")}
     </p>}
     {scan?.status && <div className="text-sm muted">
       <p>{scan.status === "unavailable" ? "The scan of saved snapshots could not finish."

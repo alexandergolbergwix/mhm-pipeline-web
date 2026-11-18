@@ -240,6 +240,8 @@ async def run_reference_repair_queue(
                             "seconds": event.seconds,
                             "retry": event.diagnostics.to_dict() if event.diagnostics else None,
                             "lag_probe_status": event.lag_probe.status if event.lag_probe else None,
+                            "lag_probe_seconds": event.lag_probe.lag_seconds
+                            if event.lag_probe else None,
                             "next_lag_probe_at": event.next_probe_at.isoformat()
                             if event.next_probe_at else None,
                         }

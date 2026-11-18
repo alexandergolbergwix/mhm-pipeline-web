@@ -226,6 +226,7 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                             "current_qid": saved.get("qid"),
                             "next_attempt_at": saved.get("next_attempt_at"),
                             "lag_probe_status": saved.get("lag_probe_status"),
+                            "lag_probe_seconds": saved.get("lag_probe_seconds"),
                             "next_lag_probe_at": saved.get("next_lag_probe_at"),
                             "mirror_scan": dict(scan_progress),
                             "message": (

@@ -17,6 +17,8 @@ from tests.unit.test_reference_repair_queue import Gateway
     [
         (200, {"query": {"general": {}}}, None, LagProbeResult("ready")),
         (200, {"error": {"code": "maxlag"}}, "90", LagProbeResult("delayed", 90)),
+        (200, {"error": {"code": "maxlag", "lag": 7.9}}, "5", LagProbeResult("delayed", 5, 7.9)),
+        (200, {"error": {"code": "maxlag", "lag": "private"}}, None, LagProbeResult("delayed")),
         (200, {"errors": [{"code": "maxlag"}]}, None, LagProbeResult("unavailable")),
         (200, {"query": {"general": []}}, None, LagProbeResult("unavailable")),
         (200, {"query": {"general": {}}}, "90", LagProbeResult("unavailable", 90)),

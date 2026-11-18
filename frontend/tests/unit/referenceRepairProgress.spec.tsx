@@ -32,16 +32,20 @@ describe("confirmed reference progress", () => {
     vi.setSystemTime(new Date("2026-11-17T16:00:00Z"));
     render(<ReferenceRepairProgress state={{...base, job: {
       id: "job", status: "running", progress: {phase: "service_delay", current_qid: "Q123",
-        next_attempt_at: "2026-11-17T16:00:10Z"},
+        next_attempt_at: "2026-11-17T16:00:10Z",
+        lag_probe_status: "delayed", lag_probe_seconds: 7.9666,
+        next_lag_probe_at: "2026-11-17T16:01:00Z"},
     }}} lastSync={Date.now()} connectionError={false} />);
     expect(screen.getByRole("heading", {name: "Wikidata delay"})).toBeTruthy();
     expect(screen.getByText("Next retry in 10s")).toBeTruthy();
-    expect(screen.getByText(/Retry at 18:00:10 Israel time/)).toBeTruthy();
+    expect(screen.getByText(/Earliest edit retry: 18:00:10 Israel time/)).toBeTruthy();
     act(() => vi.advanceTimersByTime(4000));
     expect(screen.getByText("Next retry in 6s")).toBeTruthy();
     expect(screen.getByRole("progressbar").getAttribute("value")).toBe("10");
     act(() => vi.advanceTimersByTime(7000));
-    expect(screen.getByText(/Retry is due/)).toBeTruthy();
+    expect(screen.getByText(/needs a successful lag check/)).toBeTruthy();
+    expect(screen.getByText(/Reported lag: 7.97. Edit limit: 5/)).toBeTruthy();
+    expect(screen.getByText(/Next check in 49s/)).toBeTruthy();
   });
 
   it("retains the last confirmed bar when the connection fails", () => {
