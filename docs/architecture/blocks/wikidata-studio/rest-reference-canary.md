@@ -22,3 +22,13 @@ cd backend
 
 The tests in `test_wikidata_rest_reference_canary.py` use a simulated REST service.
 A successful canary does not permit the production queue to bypass a lag delay.
+
+## Local result on November 18, 2026
+
+A disposable Wikibase with MediaWiki 1.46 accepted the item patch with HTTP 200.
+Fixture `Q6` went from revision 16 to revision 17.
+The patch removed the older catalogue reference and kept the other two.
+The full item matched the expected result, including the qualifier and preferred rank.
+A repeat patch with revision 16 returned HTTP 412 and left revision 17 unchanged.
+This run used a local session.
+It did not test Wikimedia OAuth, live Wikidata, or the production queue.

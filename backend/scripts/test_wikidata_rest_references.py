@@ -132,7 +132,10 @@ def run(client):
     def send(rev, ops):
         return client.patch(
             url,
-            headers={"If-Match": f'"{rev}"'},
+            headers={
+                "If-Match": f'"{rev}"',
+                "Content-Type": "application/json-patch+json",
+            },
             json={"patch": ops, "comment": "Check exact MHM test reference repair"},
         )
 

@@ -30,6 +30,7 @@ def test_canary_checks_creator_and_keeps_the_revision_precondition(creator_id, c
             item["statements"]["P31"][0]["id"] = "Q123$test"
             return httpx.Response(201, json=item)
         if request.method == "PATCH":
+            assert request.headers["Content-Type"] == "application/json-patch+json"
             before_refs = deepcopy(item["statements"]["P31"][0]["references"])
             ops = json.loads(request.content)["patch"]
             edits.append(request.headers["If-Match"])
