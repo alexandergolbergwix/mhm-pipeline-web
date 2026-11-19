@@ -15,8 +15,11 @@ export default function AdminReferenceRepairs() {
   const queued = state?.job?.status === "queued";
   const active = queued || state?.job?.status === "running";
   const complete = state?.job?.status === "succeeded";
-  const checkPreviousRepair = state?.halted_status === "blocked";
-  const blocked = state?.halted_status && !checkPreviousRepair && state.halted_status !== "pre_send_retryable";
+  const resume = state?.resume_action === "resume";
+  const checkPreviousRepair = state?.resume_action === "check_repair";
+  const blocked = state?.resume_action === "review";
+  const currentItem = state?.halted_qid;
+  const legacyStopMessage = state?.job?.error === "The reference queue paused or requires review.";
 
   async function start() {
     if (!state || !consent || busy || active || complete || blocked || refreshError) return;
@@ -50,14 +53,16 @@ export default function AdminReferenceRepairs() {
       {!state.enabled && <p>The backend handoff is not enabled.</p>}
       {blocked && <p>The previous outcome requires inspection before another start.</p>}
       {checkPreviousRepair && <p>The backend can resume if the previous repair matches the live item.</p>}
-      {state.job?.error && <p className="text-danger">{state.job.error}</p>}
+      {resume && currentItem && <p>Resume from {currentItem}. The worker checks the saved result and current item before any edit.</p>}
+      {state.job?.error && (!legacyStopMessage || !resume) && <p className="text-danger">{state.job.error}</p>}
     </>}
     {state && !active && !complete && <label className="flex gap-2 items-center text-sm"><input type="checkbox" checked={consent}
       onChange={event => setConsent(event.target.checked)} />
       I authorize the reviewed reference repairs only.</label>}
     <button className="button-primary" disabled={!state?.enabled || !consent || busy || active || complete || Boolean(blocked) || Boolean(refreshError)}
       onClick={() => void start()}>{busy ? "Please wait…" : queued ? "Job in queue" : active ? "Backend repairs are active"
-        : complete ? "Reference queue complete" : checkPreviousRepair ? "Check previous repair and resume" : "Start backend reference repairs"}</button>
+        : complete ? "Reference queue complete" : checkPreviousRepair ? "Check previous repair and resume"
+        : resume ? "Resume reference repairs" : "Start backend reference repairs"}</button>
     {error && <p role="alert" className="text-danger">{error} No automatic resend will occur.</p>}
     <details className="text-sm"><summary className="cursor-pointer">Repair scope and safeguards</summary>
       <div className="space-y-2 mt-3 muted">

@@ -19,7 +19,8 @@ The page distinguishes the queue, start checks, active repairs, Wikidata delays,
 The queue message explains the wait for a worker or capacity.
 The worker publishes its initial phase before a remote check.
 The worker publishes counts only after the private checkpoint commits.
-The terminal snapshot retains the counters and saved retry time.
+The terminal snapshot retains the counters, current QID, and saved retry time.
+The status API tells the page whether Resume can repeat preflight or must check a previous repair.
 
 A Wikidata delay shows the current QID and a countdown.
 The countdown updates each second.

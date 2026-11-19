@@ -162,6 +162,52 @@ async def test_revoked_admin_cannot_start_a_backend_writer(sample_run, db_sessio
 
 
 @pytest.mark.asyncio
+async def test_worker_resumes_before_an_edit_plan_was_saved(sample_run, db_session, monkeypatch):
+    user = await db_session.get(User, sample_run["user_id"])
+    user.role = "admin"
+    completed = {"qid": "Q123", "status": "already_clean", "corrected": False}
+    manifest = {
+        "run_id": str(sample_run["run_id"]), "actor_user_id": str(user.id),
+        "qids": ["Q123", "Q456"],
+    }
+    seed = {
+        "manifest": manifest, "build_job_id": manifest["run_id"],
+        "checkpoint": {"results": [completed], "halted_status": "blocked", "current_plan": None},
+    }
+    job = RunJob(
+        project_id=sample_run["project_id"], run_id=sample_run["run_id"], created_by=user.id,
+        kind=worker.KIND, status="running", params={"scope_digest": "digest"},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    monkeypatch.setattr(worker, "get_settings", lambda: SimpleNamespace(gila_reference_cloud_enabled=True))
+    monkeypatch.setattr(worker, "load_seed", lambda: (seed, "digest"))
+    recover = AsyncMock()
+    finish = AsyncMock()
+    monkeypatch.setattr(worker, "recover_blocked_checkpoint", recover)
+    monkeypatch.setattr(worker, "finish_job", finish)
+    monkeypatch.setattr(worker, "update_job_progress", AsyncMock())
+
+    async def scan(remaining):
+        assert remaining == ["Q456"]
+        yield {"reviewed": 1}
+
+    async def run(args, qids, **options):
+        assert qids == ["Q123", "Q456"]
+        assert options["resume_results"] == [completed]
+        assert not (args.state_dir / "plan-Q456.json").exists()
+        result = {"qid": "Q456", "status": "verified", "corrected": True}
+        await options["on_checkpoint"]("Q456", [completed, result], args.state_dir)
+        return {"status": "complete", "results": [completed, result]}
+
+    monkeypatch.setattr(worker, "scan_reference_mirror", scan)
+    monkeypatch.setattr("scripts.run_gila_reference_queue.run", run)
+    await worker.run_reference_job(job.id)
+    recover.assert_not_awaited()
+    assert finish.call_args.kwargs["status"] == "succeeded"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("proof", ["verified", "missing", "changed", "unresolved"])
 async def test_worker_recovers_only_with_the_exact_public_result_and_receipt(
     sample_run, db_session, monkeypatch, proof,

@@ -178,6 +178,33 @@ async def test_admin_start_uses_durable_job_and_does_not_launch_a_second_one(
 
 
 @pytest.mark.asyncio
+async def test_resume_rechecks_the_same_item_when_no_plan_was_saved(sample_run, db_session, monkeypatch):
+    user, _ = await reviewed_scope(sample_run, db_session, monkeypatch)
+    router.load_seed()[0]["manifest"]["qids"] = ["Q123", "Q456"]
+    checkpoint = {
+        "results": [{"qid": "Q123", "status": "already_clean", "corrected": False}],
+        "halted_status": "blocked", "current_plan": None,
+    }
+    job = RunJob(
+        project_id=sample_run["project_id"], run_id=sample_run["run_id"], created_by=user.id,
+        kind=router.KIND, status="failed",
+        params={"scope_digest": "a" * 64, "_reference_checkpoint": checkpoint},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    client = sample_run["client"]
+    path = "/api/admin/wikidata-reference-repairs"
+    state = (await client.get(path)).json()
+    assert state["resume_action"] == "resume"
+    assert state["halted_qid"] == "Q456"
+    response = await client.post(path + "/start", json={"confirmed": True, "scope_digest": "a" * 64})
+    assert response.status_code == 200
+    new_job = await db_session.get(RunJob, uuid.UUID(response.json()["id"]))
+    assert new_job.id != job.id
+    assert new_job.params["_reference_checkpoint"] == checkpoint
+
+
+@pytest.mark.asyncio
 async def test_nonadmins_cannot_start_read_cancel_or_use_generic_job_path(
     sample_run,
     db_session,

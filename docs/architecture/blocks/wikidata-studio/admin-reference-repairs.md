@@ -17,7 +17,8 @@ The POST also requires editor access and the original administrator for this sea
 Extra fields, commands, QIDs, and source changes are forbidden.
 An active or completed job does not create another job.
 An uncertain checkpoint requires inspection before another start.
-For a blocked checkpoint, an administrator can select **Check previous repair and resume**.
+If the worker stopped before it saved a plan, an administrator can select **Resume reference repairs**.
+The worker repeats the checks on the same item. For a saved blocked plan, select **Check previous repair and resume**.
 The generic job endpoint cannot create this job kind.
 Non-administrators cannot list, read, or cancel this job through the generic job routes.
 
@@ -50,6 +51,8 @@ The worker requires a successful foreground receipt for the same run, administra
 It stops if a write intent remains unresolved or the proof differs.
 It records the verified item in the new checkpoint before it starts the remaining queue.
 The previous job and its Publication records retain their history.
+The status API reports the next blocked QID and the permitted resume action.
+Rule W-350 lets a later verified update clear a known legacy rejection from the checks for a fresh edit.
 
 A session advisory lock permits one reference queue per run across hosts.
 The lock uses a direct Postgres connection in autocommit mode.
@@ -82,6 +85,7 @@ This change requires a Heroku release. It does not require a Modal release.
 - `backend/app/routers/admin_reference_repairs.py`: administrator API and idempotent start.
 - `backend/app/pipeline/wikidata_reference_repair_job.py`: checkpoint restore, role checks, and progress.
 - `backend/app/publication/reference_queue_lease.py`: cross-host exclusion through direct Postgres.
+- `backend/app/publication/reference_repair_prior_writes.py`: proof for older writes before a fresh repair.
 - `backend/app/data/gila_reference_seed.json`: reviewed handoff scope and current sealed plan.
 - `frontend/src/components/AdminRoute.tsx`: role gate before a protected page mounts.
 - `frontend/src/routes/admin/AdminReferenceRepairs.tsx`: backend controls and status.

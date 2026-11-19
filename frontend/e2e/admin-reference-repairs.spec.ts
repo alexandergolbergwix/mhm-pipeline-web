@@ -41,7 +41,7 @@ test("an administrator can request recovery of a blocked repair", async ({page})
   await page.route("**/api/admin/stats", route => route.fulfill({json: {pending_access_requests: 0}}));
   let started = false;
   await page.route("**/api/admin/wikidata-reference-repairs", route => route.fulfill({json: {
-    ...status, halted_status: "blocked",
+    ...status, halted_status: "blocked", resume_action: started ? null : "check_repair",
     job: started ? {id: "new-job", status: "queued", progress: {}} : {id: "old-job", status: "failed", progress: {}},
   }}));
   await page.route("**/api/admin/wikidata-reference-repairs/start", route => {
@@ -52,6 +52,34 @@ test("an administrator can request recovery of a blocked repair", async ({page})
   await page.goto("/admin/wikidata-reference-repairs");
   const resume = page.getByRole("button", {name: "Check previous repair and resume"});
   await expect(resume).toBeDisabled();
+  await page.getByRole("checkbox", {name: "I authorize the reviewed reference repairs only."}).check();
+  await resume.click();
+  await expect(page.getByRole("button", {name: "Job in queue"})).toBeDisabled();
+});
+
+test("an administrator can resume an item that stopped before a plan", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  await page.route("**/api/auth/me", route => route.fulfill({json: {
+    id: "admin", role: "admin", name: "Admin", email: "admin@example.com",
+  }}));
+  await page.route("**/api/admin/stats", route => route.fulfill({json: {pending_access_requests: 0}}));
+  let started = false;
+  await page.route("**/api/admin/wikidata-reference-repairs", route => route.fulfill({json: {
+    ...status, halted_status: "blocked", halted_qid: "Q123", resume_action: started ? null : "resume",
+    job: started ? {id: "new", status: "queued", progress: {}} : {
+      id: "old", status: "failed", progress: {}, error: "The reference queue paused or requires review.",
+    },
+  }}));
+  await page.route("**/api/admin/wikidata-reference-repairs/start", route => {
+    expect(route.request().postDataJSON()).toEqual({confirmed: true, scope_digest: status.scope_digest});
+    started = true;
+    return route.fulfill({json: {id: "new", status: "queued", progress: {}}});
+  });
+  await page.goto("/admin/wikidata-reference-repairs");
+  const resume = page.getByRole("button", {name: "Resume reference repairs"});
+  await expect(resume).toBeDisabled();
+  await expect(page.getByText(/Resume from Q123/)).toBeVisible();
+  await expect(page.getByText("The reference queue paused or requires review.")).toHaveCount(0);
   await page.getByRole("checkbox", {name: "I authorize the reviewed reference repairs only."}).check();
   await resume.click();
   await expect(page.getByRole("button", {name: "Job in queue"})).toBeDisabled();

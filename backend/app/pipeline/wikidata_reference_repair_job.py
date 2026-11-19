@@ -61,13 +61,23 @@ def checkpoint_for(qid, results, directory):
     path = directory / f"plan-{qid}.json"
     pending = len(completed) == len(results) and qid not in {r["qid"] for r in completed}
     halted = results[-1].get("status") if len(completed) < len(results) else None
-    return {
+    checkpoint = {
         "results": completed,
         "current_plan": json.loads(path.read_text())
         if path.exists() and (pending or halted)
         else None,
         "halted_status": halted,
     }
+    if halted and results[-1].get("halt_reason") == "prior_write_unresolved":
+        checkpoint["halt_reason"] = "prior_write_unresolved"
+    return checkpoint
+
+
+def reference_resume_action(checkpoint: dict) -> str:
+    halted = checkpoint.get("halted_status")
+    if halted == "blocked":
+        return "resume" if checkpoint.get("current_plan") is None else "check_repair"
+    return "resume" if halted in {None, "pre_send_retryable"} else "review"
 
 
 def _timing_value(value: object) -> datetime | None:
@@ -234,14 +244,15 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
             else:
                 await db.rollback()
 
-        if checkpoint.get("halted_status") == "blocked":
+        resume_action = reference_resume_action(checkpoint)
+        if resume_action == "check_repair":
             checkpoint = await recover_blocked_checkpoint(checkpoint, manifest, project_id)
             async with session_scope() as db:
                 job = await db.get(RunJob, job_id, with_for_update=True)
                 await assert_admin_job(db, job_id, actor)
                 job.params = {**job.params, "_reference_checkpoint": checkpoint}
                 await db.commit()
-        elif checkpoint.get("halted_status") not in {None, "pre_send_retryable"}:
+        elif resume_action == "review":
             raise ReferenceCheckpointUnverifiedError()
 
         async def authorize(db, current_actor):
@@ -402,6 +413,17 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     )
             result = await runner
             complete = result["status"] == "complete"
+            current = result.get("current") or {}
+            message = "The reviewed queue is complete."
+            if not complete:
+                if current.get("halt_reason") == "prior_write_unresolved":
+                    message = "An earlier Wikidata write needs proof before this repair can proceed."
+                elif result["status"] == "paused":
+                    message = "The queue saved the retry time. Resume will use that time."
+                elif current.get("status") in {"outcome_unknown", "verification_failed"}:
+                    message = "Review the result of the last Wikidata write before another attempt."
+                else:
+                    message = "The worker stopped while it checked the current item."
             await finish_job(
                 job_id,
                 status="succeeded" if complete else "failed",
@@ -413,18 +435,16 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     ),
                     "total": len(manifest["qids"]),
                 },
-                error=None if complete else "The reference queue paused or requires review.",
+                error=None if complete else message,
                 progress={
                     **counts,
                     "total": len(manifest["qids"]),
                     "unit": "items",
                     "phase": "succeeded" if complete else result["status"],
-                    "current_qid": (result.get("current") or {}).get("qid"),
-                    "next_attempt_at": (result.get("current") or {}).get("next_attempt_at"),
+                    "current_qid": current.get("qid"),
+                    "next_attempt_at": current.get("next_attempt_at"),
                     "mirror_scan": dict(scan_progress),
-                    "message": "The reviewed queue is complete."
-                    if complete
-                    else "The queue paused or requires review.",
+                    "message": message,
                 },
             )
     except ReferenceJobCancelledError:

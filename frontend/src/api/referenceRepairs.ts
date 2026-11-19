@@ -42,6 +42,8 @@ export interface ReferenceRepairStatus {
   worker_heartbeat_at?: string | null;
   recent_results?: Array<{qid: string; status: string; after_revision: number | null}>;
   halted_status: string | null;
+  halted_qid?: string | null;
+  resume_action?: "resume" | "check_repair" | "review" | null;
   job: ReferenceRepairJob | null;
 }
 

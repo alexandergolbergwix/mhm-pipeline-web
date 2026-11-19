@@ -1357,3 +1357,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 205. **R205 — Use one lag limit for the administrator reference queue (W-349).** Apply 20 to the probe and edit. Report 20 in the status API. Other bulk writes use 5. *Why:* a probe with a different limit can hold the queue when the edit would proceed.
 
 206. **R206 — Estimate completion from recent confirmed results.** Use the newest quarter of the job's elapsed time. Include delays. Require a complete window and confirmed progress. *Why:* inherited results and incomplete timestamps can give a false rate.
+
+207. **R207 — Resume a preflight stop from the same item (W-350).** Keep the completed prefix. Repeat the prior-write and fresh evidence checks. Require a later verified receipt at a newer base revision before accepting the known legacy rejection. *Why:* stale type errors can block a new exact repair.

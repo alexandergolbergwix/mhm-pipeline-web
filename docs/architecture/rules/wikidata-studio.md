@@ -4210,3 +4210,17 @@ Keep the saved retry date, server delays, exact plan, and creator checks.
 The CLI and other bulk writes use 5.
 
 See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).
+
+### Rule W-350 — Resume the same item after a preflight stop (2026-11-19)
+
+The queue stopped at Q141175804 before it saved a plan.
+Three older Publication attempts still showed an unknown outcome. Each stored the same deterministic datatype rejection.
+Later runs verified updates to the same item at newer base revisions.
+
+Show Resume when the worker stopped before it saved a plan. Keep the verified prefix and rerun every check for the next item.
+Keep the verified foreground receipt path for a saved blocked plan.
+Treat the known legacy datatype rejection as superseded only when a later successful Publication receipt binds the same item, entity key, actor, site, and environment.
+Require a newer base revision and a matching receipt fingerprint in the successful intent.
+Keep older Publication records. Preserve the checks for pending writes, current uncertain outcomes, and public verification.
+
+See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).

@@ -31,6 +31,10 @@ from converter.wikidata.work_identity import reference_control_numbers
 DEFAULT_WAIT_SECONDS = 24 * 60 * 60
 
 
+class ReferencePriorWriteUnresolvedError(ValueError):
+    """An earlier write still lacks a conclusive result."""
+
+
 def candidate_qids(value: object) -> tuple[str, ...]:
     if not isinstance(value, list) or not value:
         raise ValueError("The candidate file must contain a nonempty list.")
@@ -315,6 +319,8 @@ async def run_reference_repair_queue(
                     "corrected": False,
                     "error_type": type(error).__name__,
                 }
+                if isinstance(error, ReferencePriorWriteUnresolvedError):
+                    row["halt_reason"] = "prior_write_unresolved"
             results.append(row)
             resumable = row["status"] == "pre_send_retryable" and bool(row.get("next_attempt_at"))
             status = (
@@ -325,6 +331,8 @@ async def run_reference_repair_queue(
                 else "stopped"
             )
             progress = {"status": status, "results": results}
+            if status == "stopped":
+                progress["current"] = row
             if resumable:
                 retry = row.get("retry")
                 progress["current"] = {

@@ -19,6 +19,7 @@ from app.pipeline.wikidata_reference_repair_job import (
     REFERENCE_JOB_MAXLAG,
     load_seed,
     reference_eta_seconds,
+    reference_resume_action,
 )
 from app.routers.runs import _lookup_run_with_access
 from app.settings import get_settings
@@ -59,7 +60,8 @@ async def status(auth: Admin, db: Database):
     )
     now = datetime.now(UTC)
     results = checkpoint.get("results", [])
-    total = len(seed["manifest"]["qids"])
+    qids = seed["manifest"]["qids"]
+    total = len(qids)
     return {
         "enabled": get_settings().gila_reference_cloud_enabled,
         "scope_digest": digest,
@@ -82,6 +84,8 @@ async def status(auth: Admin, db: Database):
         ),
         "job": serialise_job(job) if job else None,
         "halted_status": checkpoint.get("halted_status"),
+        "halted_qid": qids[len(results)] if checkpoint.get("halted_status") and len(results) < total else None,
+        "resume_action": reference_resume_action(checkpoint) if job and job.status in {"failed", "cancelled"} else None,
         "creator_uid": 6935067,
         "maxlag": REFERENCE_JOB_MAXLAG,
     }
@@ -108,7 +112,7 @@ async def start(body: StartReferenceRepairs, auth: Admin, db: Database):
     )
     if prior and (prior.created_by != auth.user.id or prior.params.get("scope_digest") != digest):
         raise HTTPException(409, "The previous job has another actor or scope.")
-    if checkpoint.get("halted_status") not in {None, "pre_send_retryable", "blocked"}:
+    if reference_resume_action(checkpoint) == "review":
         raise HTTPException(409, "The previous outcome requires inspection before another start.")
     try:
         job = await create_job(

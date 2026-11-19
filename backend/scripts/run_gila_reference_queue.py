@@ -77,7 +77,6 @@ async def _run(
     import converter.wikidata.item_builder  # noqa: F401 — initialize shared source parsers
     from app.db import engine, session_scope
     from app.models.project import Membership, Project
-    from app.models.publication import PublicationWriteIntent
     from app.models.run import Run, RunRecord
     from app.models.run_job import RunJob
     from app.models.wikibase_cloud_write import WikibaseCloudWrite
@@ -86,7 +85,9 @@ async def _run(
     from app.pipeline.wikidata_gila_repairs import entity_digest
     from app.pipeline.wikidata_reference_reader import ReferenceItemReader
     from app.publication.credentials import ServerPublicationCredentialResolver
+    from app.publication.reference_repair_prior_writes import has_unresolved_prior_write
     from app.publication.reference_repair_queue import (
+        ReferencePriorWriteUnresolvedError,
         reference_source_controls,
         run_reference_repair_queue,
     )
@@ -162,16 +163,7 @@ async def _run(
                 await before_item_hook(qid)
             async with session_scope() as db:
                 await access(db)
-                unknown = (
-                    await db.execute(
-                        select(PublicationWriteIntent.id)
-                        .where(
-                            PublicationWriteIntent.target_qid == qid,
-                            PublicationWriteIntent.state.in_(["pending", "outcome_unknown"]),
-                        )
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
+                unknown = await has_unresolved_prior_write(db, qid, str(actor))
                 prior = (
                     await db.execute(
                         select(WikibaseCloudWrite.outcome_message)
@@ -193,7 +185,7 @@ async def _run(
                     "outcome_unknown",
                 }
             ):
-                raise ValueError("A prior uncertain write requires recovery.")
+                raise ReferencePriorWriteUnresolvedError("A prior uncertain write requires recovery.")
 
         async def source_check(entity, proposal):
             controls = reference_source_controls(proposal)
