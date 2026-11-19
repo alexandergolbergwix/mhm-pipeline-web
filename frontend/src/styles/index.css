@@ -241,6 +241,23 @@ body::before {
 
 .muted { color: var(--muted); }
 
+.reference-repair-bar {
+  display: block;
+  width: 100%;
+  height: 0.625rem;
+  appearance: none;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: var(--line);
+  color: var(--biu-sky);
+  accent-color: var(--biu-sky);
+}
+
+.reference-repair-bar::-webkit-progress-bar { background: transparent; }
+.reference-repair-bar::-webkit-progress-value { background: currentColor; border-radius: 999px; }
+.reference-repair-bar::-moz-progress-bar { background: currentColor; border-radius: 999px; }
+
 /* AgentFlowDiagram (AI verify) — theme-aware SVG colours. The diagram used
    hard-coded white-on-dark text that was illegible on the light glass panel. */
 .flow-edge { stroke: rgba(255, 255, 255, 0.18); }

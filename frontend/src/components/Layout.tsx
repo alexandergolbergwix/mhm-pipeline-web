@@ -14,20 +14,20 @@ interface Props {
 export function Layout({children}: Props) {
   const {user, logout} = useAuth();
   return (
-    <div className="min-h-screen p-6 md:p-10 max-w-6xl mx-auto space-y-6">
-      <Glass as="header" className="px-6 py-4 flex flex-wrap items-center gap-4 justify-between">
+    <div className="mx-auto min-h-screen max-w-6xl space-y-6 p-4 sm:p-6 md:p-10">
+      <Glass as="header" contentClassName="flex flex-wrap items-center justify-between gap-3">
         <Link to="/" className="flex flex-col">
           <span className="kicker">Bar-Ilan University · MHM</span>
           <span className="text-lg font-semibold">MHM Pipeline</span>
         </Link>
 
-        <nav className="flex items-center gap-3 text-sm">
+        <nav className="flex flex-wrap items-center gap-1 text-sm sm:gap-3">
           <NavItem to="/">Projects</NavItem>
           {user?.role === "admin" && <NavItem to="/admin">Admin</NavItem>}
           <NavItem to="/settings">Settings</NavItem>
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <ThemeToggle />
           <span className="text-sm muted hidden md:inline">
             {user?.name} <span className="opacity-60">· {user?.email}</span>

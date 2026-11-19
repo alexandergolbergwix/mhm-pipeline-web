@@ -36,26 +36,28 @@ export function AdminLayout({children}: Props) {
 
   return (
     <Layout>
-      <div className="flex gap-6 min-h-[60vh]">
-        <Glass as="aside" className="p-4 rounded-2xl flex-shrink-0 w-44 space-y-1 self-start">
-          <div className="kicker px-2 pb-2">Admin</div>
-          <SideNavLink to="/admin" end>Dashboard</SideNavLink>
-          <SideNavLink to="/admin/access-requests">
-            <span className="flex items-center justify-between gap-2 w-full">
-              <span>Access Requests</span>
-              {pendingCount > 0 && (
-                <GlassPill className="text-xs badge-warn px-1.5 py-0.5 min-w-[1.4rem] text-center" data-testid="admin-pending-badge">
-                  {pendingCount}
-                </GlassPill>
-              )}
-            </span>
-          </SideNavLink>
-          {administrator && <SideNavLink to="/admin/wikidata-reference-repairs">Reference repairs</SideNavLink>}
-          <SideNavLink to="/admin/users">Users</SideNavLink>
-          <SideNavLink to="/admin/projects">Projects</SideNavLink>
-          <SideNavLink to="/admin/invites">Invites</SideNavLink>
+      <div className="flex min-h-[60vh] flex-col gap-4 md:flex-row md:gap-6">
+        <Glass as="aside" variant="compact" className="w-full shrink-0 md:w-44 md:self-start">
+          <div className="kicker hidden px-3 py-2 md:block">Admin</div>
+          <nav aria-label="Admin navigation" className="flex flex-wrap gap-1 md:flex-col">
+            <SideNavLink to="/admin" end>Dashboard</SideNavLink>
+            <SideNavLink to="/admin/access-requests">
+              <span className="flex items-center justify-between gap-2 w-full">
+                <span>Access Requests</span>
+                {pendingCount > 0 && (
+                  <GlassPill className="text-xs badge-warn px-1.5 py-0.5 min-w-[1.4rem] text-center" data-testid="admin-pending-badge">
+                    {pendingCount}
+                  </GlassPill>
+                )}
+              </span>
+            </SideNavLink>
+            {administrator && <SideNavLink to="/admin/wikidata-reference-repairs">Reference repairs</SideNavLink>}
+            <SideNavLink to="/admin/users">Users</SideNavLink>
+            <SideNavLink to="/admin/projects">Projects</SideNavLink>
+            <SideNavLink to="/admin/invites">Invites</SideNavLink>
+          </nav>
         </Glass>
-        <main className="flex-1 min-w-0">{children}</main>
+        <div className="min-w-0 flex-1">{children}</div>
       </div>
     </Layout>
   );
@@ -74,8 +76,8 @@ function SideNavLink({to, end, children}: SideNavLinkProps) {
       end={end}
       className={({isActive}) =>
         [
-          "flex items-center px-3 py-2 rounded-xl text-sm transition w-full",
-          isActive ? "bg-white/10 text-ink" : "muted hover:text-ink hover:bg-white/5",
+          "flex items-center rounded-xl px-3 py-2 text-sm transition md:w-full",
+          isActive ? "bg-[var(--nav-active-bg)] font-medium text-ink" : "muted hover:bg-[var(--surface-inset)] hover:text-ink",
         ].join(" ")
       }
     >

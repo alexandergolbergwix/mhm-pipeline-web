@@ -14,7 +14,10 @@ An old response cannot replace a newly accepted job.
 
 The bar counts verified correction receipts and already-clean items.
 It does not count the current ordinal, queued work, or an unconfirmed write.
-The cards show verified corrections, already-clean items, and items remaining.
+One panel groups the queue state, confirmed progress, and three totals.
+The totals show verified corrections, already-clean items, and items remaining.
+The start or resume action appears beside the required confirmation.
+The action appears only when the administrator can request it.
 The page distinguishes the queue, start checks, active repairs, Wikidata delays, and terminal states.
 The queue message explains the wait for a worker or capacity.
 The worker publishes its initial phase before a remote check.
@@ -31,7 +34,7 @@ The window includes Wikidata delays. It counts verified edits and already-clean 
 The status API divides the items left by that rate and returns `eta_seconds`.
 The page shows the estimate only for a live job with a complete window of timed history and recent progress.
 Retry and update times use `Asia/Jerusalem`.
-The last API sync and last worker contact remain separate.
+The Queue details section shows the last API sync, last worker contact, and saved snapshot counts.
 The protected summary exposes at most five recent confirmed results.
 It does not expose source text or the private exact plan.
 

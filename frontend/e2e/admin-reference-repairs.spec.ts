@@ -29,8 +29,8 @@ test("an administrator confirms the exact backend repair scope", async ({page}) 
   await page.getByRole("checkbox", {name: "I authorize the reviewed reference repairs only."}).check();
   await expect(start).toBeEnabled();
   await start.click();
-  await expect(page.getByRole("button", {name: "Job in queue"})).toBeDisabled();
-  await expect(page.getByText("The backend runs the reviewed queue.", {exact: false})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "In queue", exact: true})).toBeVisible();
+  await expect(start).toHaveCount(0);
 });
 
 test("an administrator can request recovery of a blocked repair", async ({page}) => {
@@ -54,7 +54,7 @@ test("an administrator can request recovery of a blocked repair", async ({page})
   await expect(resume).toBeDisabled();
   await page.getByRole("checkbox", {name: "I authorize the reviewed reference repairs only."}).check();
   await resume.click();
-  await expect(page.getByRole("button", {name: "Job in queue"})).toBeDisabled();
+  await expect(page.getByRole("heading", {name: "In queue", exact: true})).toBeVisible();
 });
 
 test("an administrator can resume an item that stopped before a plan", async ({page}) => {
@@ -82,7 +82,7 @@ test("an administrator can resume an item that stopped before a plan", async ({p
   await expect(page.getByText("The reference queue paused or requires review.")).toHaveCount(0);
   await page.getByRole("checkbox", {name: "I authorize the reviewed reference repairs only."}).check();
   await resume.click();
-  await expect(page.getByRole("button", {name: "Job in queue"})).toBeDisabled();
+  await expect(page.getByRole("heading", {name: "In queue", exact: true})).toBeVisible();
 });
 
 test("an editor cannot mount the administrator repair page or request its data", async ({page}) => {
@@ -143,6 +143,7 @@ test("live progress follows backend states without another start request", async
   await expect(page.getByText(/Reported lag: 20.50. Edit limit: 20/)).toBeVisible();
   await page.getByText("Repair scope and safeguards", {exact: true}).click();
   await expect(page.getByText("The queue uses maxlag=20 for Wikidata edits.")).toBeVisible();
+  await page.getByText("Queue details", {exact: true}).click();
   await expect(page.getByText(/18 possible repairs · 250 appear clean · 1333 unavailable/))
     .toBeVisible();
   await expect(progress).toHaveAttribute("value", "1");

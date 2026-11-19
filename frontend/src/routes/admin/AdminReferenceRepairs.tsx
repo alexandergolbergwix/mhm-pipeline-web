@@ -12,17 +12,20 @@ export default function AdminReferenceRepairs() {
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const queued = state?.job?.status === "queued";
-  const active = queued || state?.job?.status === "running";
+  const active = state?.job?.status === "queued" || state?.job?.status === "running";
   const complete = state?.job?.status === "succeeded";
   const resume = state?.resume_action === "resume";
   const checkPreviousRepair = state?.resume_action === "check_repair";
   const blocked = state?.resume_action === "review";
   const currentItem = state?.halted_qid;
   const legacyStopMessage = state?.job?.error === "The reference queue paused or requires review.";
+  const showAction = state?.enabled && !active && !complete && !blocked;
+  const stopMessage = legacyStopMessage && (resume || checkPreviousRepair || blocked) ? null : state?.job?.error;
+  const actionLabel = checkPreviousRepair ? "Check previous repair and resume"
+    : resume ? "Resume reference repairs" : "Start backend reference repairs";
 
   async function start() {
-    if (!state || !consent || busy || active || complete || blocked || refreshError) return;
+    if (!state || !showAction || !consent || busy || refreshError) return;
     setBusy(true);
     setError("");
     try {
@@ -37,34 +40,46 @@ export default function AdminReferenceRepairs() {
     }
   }
 
-  return <AdminLayout><Glass as="section" className="p-6 space-y-5">
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="space-y-2"><div className="kicker">Admin · Backend job</div>
-        <h1 className="text-2xl font-semibold">Wikidata reference repairs</h1>
-        <p className="text-sm muted">The backend runs the reviewed queue. You can close this page after the job starts.</p>
+  return <AdminLayout><Glass as="section" contentClassName="space-y-5">
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold sm:text-3xl">Wikidata reference repairs</h1>
+        <p className="text-sm muted">The queue runs even if you close this page.</p>
       </div>
-      <button className="button-ghost text-sm" onClick={refresh}>Refresh now</button>
-    </div>
-    {refreshError && <p role="alert" className="text-danger">Status refresh failed: {refreshError}{state ? " The last confirmed progress remains below." : ""}</p>}
+      <button className="button-ghost shrink-0 text-sm" onClick={refresh}>Refresh now</button>
+    </header>
+    {refreshError && <p role="alert" className="rounded-xl bg-[var(--danger-bg)] px-4 py-3 text-sm text-danger">
+      Status refresh failed: {refreshError}{state ? " The page shows the last confirmed progress." : ""}
+    </p>}
     {!state && !refreshError && <p role="status">Please wait for the queue status.</p>}
     {state && <>
-      <ReferenceRepairProgress state={state} lastSync={lastSync} connectionError={Boolean(refreshError)} />
-      <Link className="text-biu-sky underline text-sm" to={`/runs/${state.run_id}/wikidata-studio/repair-plan`}>View saved repair inventory</Link>
-      {!state.enabled && <p>The backend handoff is not enabled.</p>}
-      {blocked && <p>The previous outcome requires inspection before another start.</p>}
-      {checkPreviousRepair && <p>The backend can resume if the previous repair matches the live item.</p>}
-      {resume && currentItem && <p>Resume from {currentItem}. The worker checks the saved result and current item before any edit.</p>}
-      {state.job?.error && (!legacyStopMessage || !resume) && <p className="text-danger">{state.job.error}</p>}
+      <ReferenceRepairProgress state={state} lastSync={lastSync} connectionError={Boolean(refreshError)}>
+        {(!state.enabled || blocked || showAction || stopMessage || error) &&
+          <div className="space-y-3 rounded-b-2xl border-t border-glass-line bg-[var(--surface-inset)] p-4 text-sm sm:px-6">
+            {!state.enabled && <p className="muted">This environment does not allow reference repairs.</p>}
+            {blocked && <p>Review the previous result{currentItem && <> for <span className="font-mono">{currentItem}</span></>} before you restart the queue.</p>}
+            {checkPreviousRepair && showAction &&
+              <p>The worker can resume if the previous repair{currentItem && <> for <span className="font-mono">{currentItem}</span></>} matches the live item.</p>}
+            {resume && currentItem && showAction &&
+              <p>Resume from <span className="font-mono">{currentItem}</span>. The worker checks the saved result and current item before any edit.</p>}
+            {stopMessage && <p className="text-danger">{stopMessage}</p>}
+            {showAction && <div className="flex flex-col items-start gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+              <label className="flex min-h-10 cursor-pointer items-center gap-2">
+                <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} />
+                I authorize the reviewed reference repairs only.
+              </label>
+              <button className="button-primary w-full sm:w-auto" disabled={!consent || busy || Boolean(refreshError)}
+                onClick={() => void start()}>{busy ? "Please wait…" : actionLabel}</button>
+            </div>}
+            {error && <p role="alert" className="text-danger">{error} No automatic resend will occur.</p>}
+          </div>}
+      </ReferenceRepairProgress>
+      <Link className="link-accent inline-block text-sm font-medium underline underline-offset-4" to={`/runs/${state.run_id}/wikidata-studio/repair-plan`}>
+        View saved repair inventory
+      </Link>
     </>}
-    {state && !active && !complete && <label className="flex gap-2 items-center text-sm"><input type="checkbox" checked={consent}
-      onChange={event => setConsent(event.target.checked)} />
-      I authorize the reviewed reference repairs only.</label>}
-    <button className="button-primary" disabled={!state?.enabled || !consent || busy || active || complete || Boolean(blocked) || Boolean(refreshError)}
-      onClick={() => void start()}>{busy ? "Please wait…" : queued ? "Job in queue" : active ? "Backend repairs are active"
-        : complete ? "Reference queue complete" : checkPreviousRepair ? "Check previous repair and resume"
-        : resume ? "Resume reference repairs" : "Start backend reference repairs"}</button>
-    {error && <p role="alert" className="text-danger">{error} No automatic resend will occur.</p>}
-    <details className="text-sm"><summary className="cursor-pointer">Repair scope and safeguards</summary>
+    <details className="border-t border-glass-line pt-3 text-sm">
+      <summary className="cursor-pointer font-medium">Repair scope and safeguards</summary>
       <div className="space-y-2 mt-3 muted">
         <p>Only items created by Alexander Goldberg IL can change. The worker checks creator UID 6935067 before each write.</p>
         <p>The queue removes equivalent reference blocks. It preserves values, qualifiers, ranks, and distinct sources.</p>

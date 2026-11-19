@@ -11,6 +11,9 @@ config, no lazy-loading indirection. Public pages (`/login`,
 Bare `/runs/:runId` immediately redirects to `hmo-studio` (retired Authority
 bookmark compatibility). Project pages under `/projects/:projectId{,/history,/entity}`; admin under
 `/admin/*`. Adding a page = one file in `src/routes/` + one line in `App.tsx`.
+
+The header wraps its controls on small screens. The admin layout shows the navigation above the page.
+
 **Run overview.** The `RunOverview` page shows saved stage counts and the next step. The Wikidata tile reads the Studio status endpoint (W-348).
 
 **Wikidata Studio workflow.** The modern review surface defaults to the
@@ -108,7 +111,9 @@ or `?glass=off`. Every frosted surface is `<Glass>` (variants `panel` |
 both thin wrappers over `LiquidGlassSurface`, which does SVG
 `feDisplacementMap` backdrop refraction on Chromium and falls back to CSS
 frosted glass on Safari/Firefox. The inner layer uses `glassSafeInset`
-(`liquidGlassMath.ts`) so labels are not clipped by the curve (R21).
+(`liquidGlassMath.ts`) so labels fit inside the curve (R21).
+Use `contentClassName` for layout that arranges the children.
+Shell padding adds to the inset.
 Displacement maps are memoised in `glassMapCache.ts`. Raw
 `className="glass"` / `glass-pill` are deprecated legacy aliases; form
 fields keep the plain-CSS `input-glass`. Theming runs through CSS custom
