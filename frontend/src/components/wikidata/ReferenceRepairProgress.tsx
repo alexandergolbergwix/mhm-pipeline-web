@@ -92,7 +92,7 @@ export function ReferenceRepairProgress({state, lastSync, connectionError}: {
     {job?.status === "running" && progress.remaining > 0 && <p className="text-sm muted">
       {state.eta_seconds == null || !live
         ? "Completion estimate needs recent confirmed progress."
-        : `Estimated time left is ${duration(state.eta_seconds * 1000)}. The estimate uses the last 25% of elapsed time.`}
+        : `Estimated time left is ${duration(state.eta_seconds * 1000)}.`}
     </p>}
     {(delayed || paused) && Number.isFinite(retry) && <p className="text-sm muted">
       Earliest edit retry: {time(retry)} Israel time.

@@ -55,7 +55,7 @@ describe("confirmed reference progress", () => {
     const lastSync = Date.now();
     const {rerender} = render(<ReferenceRepairProgress state={state} lastSync={lastSync}
       connectionError={false} />);
-    expect(screen.getByText(/Estimated time left is 25m 0s.*last 25% of elapsed time/)).toBeTruthy();
+    expect(screen.getByText("Estimated time left is 25m 0s.")).toBeTruthy();
 
     rerender(<ReferenceRepairProgress state={state} lastSync={lastSync} connectionError />);
     expect(screen.queryByText(/Estimated time left/)).toBeNull();
