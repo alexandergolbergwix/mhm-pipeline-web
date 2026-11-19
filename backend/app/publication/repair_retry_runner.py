@@ -12,7 +12,6 @@ from app.pipeline.wikidata_gila_execution import RepairGateway, SourceCheck
 from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
 from app.publication.historical_repairs import advance_repair_publication
 from app.publication.reference_recovery import (
-    LAG_PROBE_INTERVAL,
     LagProbeResult,
     LagProbeSchedule,
 )
@@ -111,9 +110,7 @@ async def wait_for_repair_publication(
                 return summary
             if probe is not None and monotonic() >= schedule.next_monotonic:
                 last_probe = await probe()
-                schedule.next_monotonic = monotonic() + max(
-                    LAG_PROBE_INTERVAL, last_probe.retry_after
-                )
+                schedule.next_monotonic = monotonic() + last_probe.next_probe_delay()
                 continue
             ready = probe is None or (last_probe is not None and last_probe.status == "ready")
             if delay <= 0 and ready:

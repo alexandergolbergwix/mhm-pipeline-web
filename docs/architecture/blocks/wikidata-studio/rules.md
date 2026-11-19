@@ -1349,3 +1349,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 201. **R201 — Read-only recovery checks never grant write authority.** Honor the saved retry date and `Retry-After`. Require a successful probe before the backend retries confirmed maxlag. Keep the snapshot scan separate from confirmed repairs. *Why:* brief lag recovery does not verify a public edit or make saved evidence current.
 
 202. **R202 — Resume a blocked item only from a verified repair (W-346).** Match the next item, the saved exact result, and the successful foreground receipt for the same run and actor. Reject an unresolved intent. Save the recovered checkpoint before the queue advances. *Why:* an old plan stopped the queue after an interactive edit completed the item.
+
+203. **R203 — Check for brief recovery near the lag limit (W-347).** Use 30 seconds when a confirmed probe reports lag above 5 and at most 6. Use 60 seconds for all other results. Honor longer server delays. *Why:* a one-minute interval can miss a short recovery window.

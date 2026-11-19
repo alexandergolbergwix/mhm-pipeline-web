@@ -4173,3 +4173,16 @@ Retain the previous job and Publication history.
 Keep `maxlag=5` and the existing write checks for all subsequent automatic edits.
 
 See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).
+
+### Rule W-347 — Check for brief recovery near the edit limit (2026-11-19)
+
+The automatic reference job verified five edits in 25 seconds before Wikidata refused the next edit.
+A test reproduces how a one-minute probe interval can miss a 25-second recovery window.
+
+Use a 30-second read-only probe interval when Wikidata reports lag above 5 and at most 6.
+Use a 60-second interval for other probe results.
+Honor a longer `Retry-After` and the saved edit retry date.
+Require a successful probe and apply `maxlag=5` to the edit.
+Keep the same execution and the existing write checks.
+
+See [Recovery checks](../blocks/wikidata-studio/repair-retries.md#recovery-checks-w-347).

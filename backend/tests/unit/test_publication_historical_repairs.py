@@ -757,6 +757,46 @@ async def test_backend_recovery_obeys_saved_date_and_probe_retry_after():
     assert gateway.writes == 2
 
 
+@pytest.mark.parametrize(
+    ("lag_seconds", "retry_after", "recovery_start", "recovery_end", "expected_gap"),
+    [(5.2, 5, 25, 50, 30), (8.0, 5, 55, 70, 60), (5.2, 90, 85, 100, 90)],
+)
+@pytest.mark.asyncio
+async def test_backend_probe_resumes_in_a_short_recovery_window(
+    lag_seconds, retry_after, recovery_start, recovery_end, expected_gap,
+):
+    from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
+    from app.publication.reference_recovery import LagProbeResult
+
+    gateway, timer, repo = Gateway(), RetryClock(), InMemoryPublicationRepository()
+    reviewed = plan(gateway)
+    gateway.error = WriteRejectedError(
+        "maxlag", code="maxlag", retry_after_seconds=5,
+        diagnostics=ApiRetryDiagnostics.from_error(
+            {"code": "maxlag"}, observed_at=timer.now(), retry_after_seconds=5
+        ),
+    )
+    first = await wait_for_repair(reviewed, gateway, repo, timer, limit=0)
+    timer.elapsed = 600
+    gateway.error = None
+    probes = []
+
+    async def probe():
+        assert gateway.writes == 1
+        probes.append(timer.elapsed)
+        seconds_since_first_probe = probes[-1] - probes[0]
+        if recovery_start <= seconds_since_first_probe < recovery_end:
+            return LagProbeResult("ready")
+        return LagProbeResult("delayed", retry_after, lag_seconds)
+
+    final = await wait_for_repair(reviewed, gateway, repo, timer, limit=110, lag_probe=probe)
+
+    assert final.execution_status == "succeeded"
+    assert final.execution_id == first.execution_id
+    assert probes == [600, 600 + expected_gap]
+    assert gateway.writes == 2
+
+
 @pytest.mark.asyncio
 async def test_backend_recovery_restarts_a_due_retry_only_after_probe_success():
     from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics

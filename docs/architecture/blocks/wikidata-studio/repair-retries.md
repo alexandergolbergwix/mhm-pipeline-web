@@ -92,3 +92,9 @@ The exact gateway retains bounded lag evidence through `pipeline/wikidata_retry_
 A versioned JSON envelope uses the existing intent `detail` field and needs no migration.
 `RepairRetryWait.diagnostics` restores the code, UTC time, host, type, scaled lag, raw lag, and retry delay.
 The [sequential queue](reference-repair-queue.md) exposes this evidence as `service_delay` and retains its exact checkpoint after a finite wait limit.
+
+## Recovery checks (W-347)
+
+The backend checks again after 30 seconds if the reported lag is above 5 and at most 6.
+It uses 60 seconds for all other probe results and honors a longer `Retry-After`.
+A [regression test](../../../../backend/tests/unit/test_publication_historical_repairs.py) checks a 25-second recovery window, high lag, and a longer delay.

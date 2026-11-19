@@ -1,6 +1,6 @@
 # Sequential reference repairs
 
-> Up: [Wikidata Studio](README.md) · R195–R196, R201 · W-324, W-328, W-338, W-343, W-345
+> Up: [Wikidata Studio](README.md) · R195–R196, R201, R203 · W-324, W-328, W-338, W-343, W-345, W-347
 
 `backend/scripts/run_gila_reference_queue.py` processes reviewed QIDs one at a time.
 The command uses the normal Publication path and `maxlag=5`.
@@ -68,15 +68,13 @@ Raw API info, arbitrary headers, and credentials remain excluded.
 
 The backend worker uses a read-only POST to check a confirmed maxlag delay.
 It uses `maxlag=5` without credentials, a QID, or an edit payload.
-The same worker waits at least one minute between probes.
-It honors a longer `Retry-After` during that run.
+See [Recovery checks](repair-retries.md#recovery-checks-w-347) for the probe interval and server delays.
 A successful probe cannot shorten the saved retry date.
 After that date, only a successful probe can release a confirmed maxlag retry.
 The worker keeps the existing execution and rechecks the complete write boundary.
 It caps its backoff for new maxlag refusals at 60 seconds before server delays and jitter.
-Other refusals and the local CLI keep their prior retry policy.
-The worker stops after its existing finite wait limit.
-The existing Publication tables retain the durable intent, retry date, and execution.
+Other refusals and the local CLI keep their retry policy. The worker keeps its finite wait limit.
+The Publication tables retain the intent, retry date, and execution.
 
 A saved plan remains immutable.
 The runner reuses that plan and its execution after a confirmed API rejection.

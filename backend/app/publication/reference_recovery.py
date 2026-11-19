@@ -16,6 +16,7 @@ from app.pipeline.wikidata_mirror import validate_entity
 from converter.wikidata.retry_policy import BULK_MAXLAG, retry_after_seconds
 
 LAG_PROBE_INTERVAL = 60.0
+NEAR_LIMIT_PROBE_INTERVAL = 30.0
 _API = "https://www.wikidata.org/w/api.php"
 
 
@@ -29,6 +30,16 @@ class LagProbeResult:
     status: Literal["ready", "delayed", "unavailable"]
     retry_after: float = 0.0
     lag_seconds: float | None = None
+
+    def next_probe_delay(self) -> float:
+        interval = LAG_PROBE_INTERVAL
+        if (
+            self.status == "delayed"
+            and self.lag_seconds is not None
+            and BULK_MAXLAG < self.lag_seconds <= BULK_MAXLAG + 1
+        ):
+            interval = NEAR_LIMIT_PROBE_INTERVAL
+        return max(interval, self.retry_after)
 
 
 async def probe_reference_lag(client: httpx.AsyncClient) -> LagProbeResult:
