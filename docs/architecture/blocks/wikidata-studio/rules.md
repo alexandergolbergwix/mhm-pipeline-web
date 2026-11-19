@@ -1355,3 +1355,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 204. **R204 — Bound the Studio views on the web dyno (W-348).** Read saved counts for the run overview. Use the paginated table above the sidebar size limit. Skip the canonical scan after a verified enrichment change. *Why:* full-view requests can exhaust memory on the web dyno.
 
 205. **R205 — Use one lag limit for the administrator reference queue (W-349).** Apply 20 to the probe and edit. Report 20 in the status API. Other bulk writes use 5. *Why:* a probe with a different limit can hold the queue when the edit would proceed.
+
+206. **R206 — Estimate completion from recent confirmed results.** Use the newest quarter of the job's elapsed time. Include delays. Require a complete window and confirmed progress. *Why:* inherited results and incomplete timestamps can give a false rate.

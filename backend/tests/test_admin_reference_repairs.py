@@ -1,5 +1,6 @@
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -72,6 +73,7 @@ async def test_live_status_counts_confirmed_results_and_limits_public_history(
     body = response.json()
     assert body["verified"] == 6
     assert body["maxlag"] == 20
+    assert body["eta_seconds"] is None
     assert body["already_clean"] == 1
     assert body["completed"] == 7
     assert len(body["recent_results"]) == 5
@@ -79,6 +81,74 @@ async def test_live_status_counts_confirmed_results_and_limits_public_history(
     assert body["project_id"] == str(sample_run["project_id"])
     assert body["observed_at"].endswith("+00:00")
     assert "private_plan" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_eta_uses_confirmed_items_in_the_last_elapsed_quarter(
+    sample_run, db_session, monkeypatch,
+):
+    user, _ = await reviewed_scope(sample_run, db_session, monkeypatch)
+    router.load_seed()[0]["manifest"]["qids"] = [f"Q{i}" for i in range(1, 11)]
+    start = datetime(2026, 11, 19, 8, tzinfo=UTC)
+    now = start + timedelta(minutes=40)
+
+    class FixedClock:
+        @staticmethod
+        def now(tz):
+            return now
+
+    monkeypatch.setattr(router, "datetime", FixedClock)
+    results = [
+        {"qid": "Q1", "status": "verified", "corrected": True},
+        {
+            "qid": "Q2", "status": "verified", "corrected": True,
+            "completed_at": (start + timedelta(minutes=30)).isoformat(),
+        },
+        {
+            "qid": "Q3", "status": "already_clean", "corrected": False,
+            "completed_at": (start + timedelta(minutes=32)).isoformat(),
+        },
+        {
+            "qid": "Q4", "status": "verified", "corrected": True,
+            "completed_at": (start + timedelta(minutes=39)).isoformat(),
+        },
+    ]
+    job = RunJob(
+        project_id=sample_run["project_id"], run_id=sample_run["run_id"], created_by=user.id,
+        kind=router.KIND, status="running", started_at=start,
+        params={
+            "_reference_checkpoint": {"results": results},
+            "_reference_timing_started_at": start.isoformat(),
+        },
+    )
+    db_session.add(job)
+    await db_session.commit()
+    client = sample_run["client"]
+    path = "/api/admin/wikidata-reference-repairs"
+    response = await client.get(path)
+    assert response.status_code == 200
+    assert response.json()["eta_seconds"] == 1800
+    assert "_reference_timing_started_at" not in response.text
+    assert "completed_at" not in response.text
+
+    job.params = {
+        **job.params,
+        "_reference_timing_started_at": (start + timedelta(minutes=35)).isoformat(),
+    }
+    await db_session.commit()
+    assert (await client.get(path)).json()["eta_seconds"] is None
+
+    job.params = {
+        **job.params, "_reference_timing_started_at": start.isoformat(),
+        "_reference_checkpoint": {"results": results[:2]},
+    }
+    await db_session.commit()
+    assert (await client.get(path)).json()["eta_seconds"] is None
+
+    job.status = "failed"
+    job.params = {**job.params, "_reference_checkpoint": {"results": results}}
+    await db_session.commit()
+    assert (await client.get(path)).json()["eta_seconds"] is None
 
 
 @pytest.mark.asyncio

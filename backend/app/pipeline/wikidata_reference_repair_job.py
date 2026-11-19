@@ -6,9 +6,11 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import tempfile
 import uuid
 from contextlib import suppress
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -37,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 KIND = "wikidata_reference_repair"
 REFERENCE_JOB_MAXLAG = 20
+_TIMING_STARTED_AT = "_reference_timing_started_at"
 SEED_PATH = Path(__file__).resolve().parents[1] / "data/gila_reference_seed.json"
 
 
@@ -65,6 +68,40 @@ def checkpoint_for(qid, results, directory):
         else None,
         "halted_status": halted,
     }
+
+
+def _timing_value(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        timestamp = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return timestamp if timestamp.tzinfo is not None else None
+
+
+def reference_eta_seconds(
+    job: RunJob | None, results: list[dict], total: int, now: datetime,
+) -> int | None:
+    """Estimate from confirmed items in the newest quarter of wall-clock time."""
+    if job is None or job.status != "running" or job.started_at is None or len(results) >= total:
+        return None
+    started_at = job.started_at
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=UTC)
+    window = (now - started_at) / 4
+    window_start = now - window
+    tracked_since = _timing_value(job.params.get(_TIMING_STARTED_AT))
+    if window.total_seconds() <= 0 or tracked_since is None or tracked_since > window_start:
+        return None
+    completed_in_window = sum(
+        window_start < completed_at <= now
+        for row in results
+        if (completed_at := _timing_value(row.get("completed_at"))) is not None
+    )
+    if not completed_in_window:
+        return None
+    return math.ceil((total - len(results)) * window.total_seconds() / completed_in_window)
 
 
 async def assert_admin_job(db, job_id, actor):
@@ -158,6 +195,7 @@ async def recover_blocked_checkpoint(checkpoint, manifest, project_id):
                 "corrected": True,
                 "before_revision": before["lastrevid"],
                 "after_revision": current["lastrevid"],
+                "completed_at": datetime.now(UTC).isoformat(),
             },
         ],
         "current_plan": None,
@@ -190,7 +228,11 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
             await assert_admin_job(db, job_id, actor)
             checkpoint = job.params.get("_reference_checkpoint", seed["checkpoint"])
             project_id = job.project_id
-            await db.rollback()
+            if _TIMING_STARTED_AT not in job.params:
+                job.params = {**job.params, _TIMING_STARTED_AT: datetime.now(UTC).isoformat()}
+                await db.commit()
+            else:
+                await db.rollback()
 
         if checkpoint.get("halted_status") == "blocked":
             checkpoint = await recover_blocked_checkpoint(checkpoint, manifest, project_id)
@@ -249,6 +291,15 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     await db.execute(select(RunJob).where(RunJob.id == job_id).with_for_update())
                 ).scalar_one()
                 await assert_admin_job(db, job_id, actor)
+                saved_results = row.params.get("_reference_checkpoint", checkpoint)["results"]
+                completed_at = datetime.now(UTC).isoformat()
+                snapshot["results"] = [
+                    *saved_results,
+                    *[
+                        {**result, "completed_at": completed_at}
+                        for result in snapshot["results"][len(saved_results):]
+                    ],
+                ]
                 row.params = {**row.params, "_reference_checkpoint": snapshot}
                 await db.commit()
             counts.update(

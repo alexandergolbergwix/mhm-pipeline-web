@@ -48,6 +48,19 @@ describe("confirmed reference progress", () => {
     expect(screen.getByText(/Next check in 49s/)).toBeTruthy();
   });
 
+  it("shows the completion estimate for a live job and hides a stale estimate", () => {
+    const state: ReferenceRepairStatus = {...base, eta_seconds: 1500, job: {
+      id: "job", status: "running", progress: {phase: "active"},
+    }};
+    const lastSync = Date.now();
+    const {rerender} = render(<ReferenceRepairProgress state={state} lastSync={lastSync}
+      connectionError={false} />);
+    expect(screen.getByText(/Estimated time left is 25m 0s.*last 25% of elapsed time/)).toBeTruthy();
+
+    rerender(<ReferenceRepairProgress state={state} lastSync={lastSync} connectionError />);
+    expect(screen.queryByText(/Estimated time left/)).toBeNull();
+  });
+
   it("retains the last confirmed bar when the connection fails", () => {
     render(<ReferenceRepairProgress state={base} lastSync={Date.now()} connectionError />);
     expect(screen.getByText("Connection issue")).toBeTruthy();

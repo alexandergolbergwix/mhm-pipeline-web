@@ -25,7 +25,10 @@ A Wikidata delay shows the current QID and a countdown.
 The countdown updates each second.
 The countdown does not advance the progress bar or submit another request.
 A past edit retry date shows whether the worker still needs a successful lag check.
-The UI does not invent a total completion estimate.
+The completion estimate uses the average rate of confirmed results in the latest 25% of the job's elapsed time.
+The window includes Wikidata delays. It counts verified edits and already-clean items.
+The status API divides the items left by that rate and returns `eta_seconds`.
+The page shows the estimate only for a live job with a complete window of timed history and recent progress.
 Retry and update times use `Asia/Jerusalem`.
 The last API sync and last worker contact remain separate.
 The protected summary exposes at most five recent confirmed results.
@@ -35,7 +38,7 @@ It does not expose source text or the private exact plan.
 
 - `frontend/src/api/referenceRepairs.ts`: typed summary and explicit start command.
 - `frontend/src/hooks/useReferenceRepairStatus.ts`: serial refresh, event updates, recovery, and stale-response guards.
-- `frontend/src/components/wikidata/ReferenceRepairProgress.tsx`: confirmed bar, phases, countdown, and recent results.
+- `frontend/src/components/wikidata/ReferenceRepairProgress.tsx`: confirmed bar, phases, countdown, estimate, and recent results.
 - `frontend/tests/unit/referenceRepairProgress.spec.tsx`: queue, receipt counts, countdown, and connection errors.
 - `frontend/tests/unit/referenceRepairStatus.spec.tsx`: pushes, serial reads, role revocation, recovery, and stale responses.
 - `frontend/e2e/admin-reference-repairs.spec.ts`: backend phase changes without another start request.

@@ -14,7 +14,12 @@ from app.auth.session import AuthContext
 from app.db import get_session
 from app.models.run_job import RunJob
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
-from app.pipeline.wikidata_reference_repair_job import KIND, REFERENCE_JOB_MAXLAG, load_seed
+from app.pipeline.wikidata_reference_repair_job import (
+    KIND,
+    REFERENCE_JOB_MAXLAG,
+    load_seed,
+    reference_eta_seconds,
+)
 from app.routers.runs import _lookup_run_with_access
 from app.settings import get_settings
 
@@ -52,21 +57,25 @@ async def status(auth: Admin, db: Database):
     checkpoint = (
         job.params.get("_reference_checkpoint", seed["checkpoint"]) if job else seed["checkpoint"]
     )
+    now = datetime.now(UTC)
+    results = checkpoint.get("results", [])
+    total = len(seed["manifest"]["qids"])
     return {
         "enabled": get_settings().gila_reference_cloud_enabled,
         "scope_digest": digest,
         "run_id": str(run_id),
         "project_id": str(run.project_id),
-        "observed_at": datetime.now(UTC).isoformat(),
-        "total": len(seed["manifest"]["qids"]),
-        "verified": sum(row.get("corrected") is True for row in checkpoint.get("results", [])),
+        "observed_at": now.isoformat(),
+        "total": total,
+        "eta_seconds": reference_eta_seconds(job, results, total, now),
+        "verified": sum(row.get("corrected") is True for row in results),
         "already_clean": sum(
-            row.get("status") == "already_clean" for row in checkpoint.get("results", [])
+            row.get("status") == "already_clean" for row in results
         ),
-        "completed": len(checkpoint.get("results", [])),
+        "completed": len(results),
         "recent_results": [
             {key: row.get(key) for key in ("qid", "status", "after_revision")}
-            for row in checkpoint.get("results", [])[-5:]
+            for row in results[-5:]
         ],
         "worker_heartbeat_at": (
             job.executor_heartbeat_at.isoformat() if job and job.executor_heartbeat_at else None

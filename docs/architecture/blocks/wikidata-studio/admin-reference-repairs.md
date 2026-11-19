@@ -39,6 +39,9 @@ The current plan retains its original Publication identity and retry state.
 The worker stores the completed prefix and current exact plan in private job parameters.
 It commits the current plan before a public write.
 Completed plans leave the checkpoint; verified receipts remain.
+The worker saves a UTC completion time with each new confirmed result.
+The job records when it starts to track completion times and keeps that date across process restarts.
+Older receipts retain their counts. The estimate waits for a complete window of timed history.
 The public job serializer excludes these private parameters.
 Temporary files are a working copy, not the durable checkpoint.
 A restart restores the current exact plan from Postgres.

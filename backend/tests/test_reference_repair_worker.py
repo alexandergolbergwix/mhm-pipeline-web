@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -90,6 +91,15 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
         await asyncio.sleep(1.05)
         result = {"qid": "Q123", "status": "verified", "corrected": True}
         await options["on_checkpoint"]("Q123", [result], args.state_dir)
+        async with session_scope() as db:
+            saved = await db.get(RunJob, job.id)
+            timestamp = saved.params["_reference_checkpoint"]["results"][0]["completed_at"]
+            timing_started = saved.params["_reference_timing_started_at"]
+            assert datetime.fromisoformat(timing_started) <= datetime.fromisoformat(timestamp)
+        await options["on_checkpoint"]("Q123", [result], args.state_dir)
+        async with session_scope() as db:
+            saved = await db.get(RunJob, job.id)
+            assert saved.params["_reference_checkpoint"]["results"][0]["completed_at"] == timestamp
         return {"status": "complete", "results": [result]}
 
     monkeypatch.setattr("scripts.run_gila_reference_queue.run", run)
@@ -235,10 +245,12 @@ async def test_worker_recovers_only_with_the_exact_public_result_and_receipt(
     async def run(args, qids, **options):
         assert qids == [qid, "Q456"]
         assert not (args.state_dir / f"plan-{qid}.json").exists()
-        assert options["resume_results"] == [{
+        result, = options["resume_results"]
+        assert {key: value for key, value in result.items() if key != "completed_at"} == {
             "qid": qid, "status": "verified", "corrected": True,
             "before_revision": 10, "after_revision": 11,
-        }]
+        }
+        assert datetime.fromisoformat(result["completed_at"]).tzinfo is not None
         async with session_scope() as db:
             saved = await db.get(RunJob, job.id)
             assert saved.params["_reference_checkpoint"]["current_plan"] is None

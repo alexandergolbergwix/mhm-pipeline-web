@@ -33,6 +33,7 @@ export interface ReferenceRepairStatus {
   run_id: string;
   project_id?: string;
   total: number;
+  eta_seconds?: number | null;
   verified: number;
   maxlag: number;
   completed?: number;
