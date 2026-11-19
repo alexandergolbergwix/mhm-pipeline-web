@@ -62,7 +62,8 @@ export default function AdminReferenceRepairs() {
     <details className="text-sm"><summary className="cursor-pointer">Repair scope and safeguards</summary>
       <div className="space-y-2 mt-3 muted">
         <p>Only items created by Alexander Goldberg IL can change. The worker checks creator UID 6935067 before each write.</p>
-        <p>The queue removes equivalent reference blocks. It preserves values, qualifiers, ranks, distinct sources, and maxlag=5.</p>
+        <p>The queue removes equivalent reference blocks. It preserves values, qualifiers, ranks, and distinct sources.</p>
+        {state && <p>The queue uses maxlag={state.maxlag} for Wikidata edits.</p>}
         <p>The six Studio corrections, source imports, and identity decisions remain outside this queue.</p>
         <p>A verified receipt records a past correction. It does not prove that all Gila requirements now pass.</p>
       </div>

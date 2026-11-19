@@ -11,7 +11,7 @@ const steps = [
   ["Rebuild and verify", "Rebuild the canonical items. Run the quality checks and review each unresolved case."],
   ["Review the release", "Prepare a Publication release. Review its exact items and changes."],
   ["Run the dry run", "Confirm fresh creator proof and source evidence. Foreign items can serve as link targets only."],
-  ["Publish the reviewed changes", "Use the normal Publication controls. Automatic repairs retain maxlag=5 and the saved retry time."],
+  ["Publish the reviewed changes", "Use the normal Publication controls. Automatic repairs use the lag limit for their repair path and honor the saved retry time."],
   ["Verify the public result", "Read each corrected item again. Retain its revision and receipt. Report each unresolved case."],
 ];
 
