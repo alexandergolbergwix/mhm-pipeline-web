@@ -67,7 +67,7 @@ The existing intent detail stores this bounded, versioned JSON evidence; no data
 Raw API info, arbitrary headers, and credentials remain excluded.
 
 The backend worker uses a read-only POST to check a confirmed maxlag delay.
-It uses `maxlag=5` without credentials, a QID, or an edit payload.
+It checks the administrator queue limit of `maxlag=20` without credentials, a QID, or an edit payload.
 See [Recovery checks](repair-retries.md#recovery-checks-w-347) for the probe interval and server delays.
 A successful probe cannot shorten the saved retry date.
 After that date, only a successful probe can release a confirmed maxlag retry.

@@ -45,7 +45,7 @@ The response always reports `mode=read_only` and `public_verification=not_checke
 No percentage or empty page certifies Gila completion.
 Foreign-created items remain read-only relation targets.
 Normal public writes retain fresh creator proof for UID 6935067.
-Automatic reference repairs retain `maxlag=5` and the existing retry state.
+Automatic reference repairs retain the edit limit for their path and the existing retry state.
 This page does not remove an access block or grant a foreground exception.
 
 ## Files and tests

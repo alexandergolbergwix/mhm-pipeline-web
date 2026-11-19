@@ -4,7 +4,7 @@ import {installStudioMocks, makeBuildResponse, TEST_RUN_ID} from "./fixtures/wik
 
 const status = {
   enabled: true, scope_digest: "a".repeat(64), run_id: TEST_RUN_ID,
-  total: 1602, verified: 1, halted_status: null, job: null,
+  total: 1602, verified: 1, halted_status: null, job: null, maxlag: 20,
 };
 
 test("an administrator confirms the exact backend repair scope", async ({page}) => {

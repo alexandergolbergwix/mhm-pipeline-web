@@ -226,9 +226,11 @@ class LiveRepairGateway:
         uploader: WikidataUploader,
         *,
         read_item: Callable[[str], Awaitable[dict[str, object]]] | None = None,
+        maxlag: int = BULK_MAXLAG,
     ) -> None:
         self.uploader = uploader
         self._read_item = read_item
+        self._maxlag = maxlag
 
     def _write_parameters(self, qid, revision, claims, token) -> dict:
         return {
@@ -236,7 +238,7 @@ class LiveRepairGateway:
             "data": json.dumps({"claims": claims}, ensure_ascii=False),
             "summary": "Repair exact duplicate source references or "
             "a source-verified duplicate colophon",
-            "token": token, "format": "json", "maxlag": BULK_MAXLAG,
+            "token": token, "format": "json", "maxlag": self._maxlag,
         }
 
     async def fetch(self, qid: str) -> dict[str, object]:

@@ -30,19 +30,22 @@ class LagProbeResult:
     status: Literal["ready", "delayed", "unavailable"]
     retry_after: float = 0.0
     lag_seconds: float | None = None
+    maxlag: int = BULK_MAXLAG
 
     def next_probe_delay(self) -> float:
         interval = LAG_PROBE_INTERVAL
         if (
             self.status == "delayed"
             and self.lag_seconds is not None
-            and BULK_MAXLAG < self.lag_seconds <= BULK_MAXLAG + 1
+            and self.maxlag < self.lag_seconds <= self.maxlag + 1
         ):
             interval = NEAR_LIMIT_PROBE_INTERVAL
         return max(interval, self.retry_after)
 
 
-async def probe_reference_lag(client: httpx.AsyncClient) -> LagProbeResult:
+async def probe_reference_lag(
+    client: httpx.AsyncClient, *, maxlag: int = BULK_MAXLAG,
+) -> LagProbeResult:
     """Ask the edit endpoint about lag without credentials or an edit payload."""
     try:
         response = await client.post(
@@ -52,35 +55,35 @@ async def probe_reference_lag(client: httpx.AsyncClient) -> LagProbeResult:
                 "meta": "siteinfo",
                 "siprop": "general",
                 "format": "json",
-                "maxlag": str(BULK_MAXLAG),
+                "maxlag": str(maxlag),
                 "maxage": "0",
                 "smaxage": "0",
             },
         )
     except httpx.RequestError:
-        return LagProbeResult("unavailable")
+        return LagProbeResult("unavailable", maxlag=maxlag)
     delay = retry_after_seconds(response.headers.get("Retry-After"), default=0)
     if not response.is_success:
-        return LagProbeResult("unavailable", delay)
+        return LagProbeResult("unavailable", delay, maxlag=maxlag)
     try:
         data = response.json()
     except (ValueError, RecursionError):
-        return LagProbeResult("unavailable", delay)
+        return LagProbeResult("unavailable", delay, maxlag=maxlag)
     if not isinstance(data, dict):
-        return LagProbeResult("unavailable", delay)
+        return LagProbeResult("unavailable", delay, maxlag=maxlag)
     error = data.get("error")
     if isinstance(error, dict) and error.get("code") == "maxlag":
         lag = error.get("lag")
         if type(lag) not in (int, float) or not 0 <= lag <= 1_000_000 or not math.isfinite(lag):
             lag = None
-        return LagProbeResult("delayed", delay, lag)
+        return LagProbeResult("delayed", delay, lag, maxlag)
     query = data.get("query")
     if (
         "error" not in data and "errors" not in data and not delay
         and isinstance(query, dict) and isinstance(query.get("general"), dict)
     ):
-        return LagProbeResult("ready")
-    return LagProbeResult("unavailable", delay)
+        return LagProbeResult("ready", maxlag=maxlag)
+    return LagProbeResult("unavailable", delay, maxlag=maxlag)
 
 
 def classify_reference_snapshot(

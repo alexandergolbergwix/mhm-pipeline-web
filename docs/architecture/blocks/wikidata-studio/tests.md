@@ -362,7 +362,7 @@ W-344: `test_publication_historical_repairs.py` simulates a slow commit at and a
 
 
 W-345: `test_wikidata_retry_diagnostics.py` excludes raw response fields, invalid numbers, and malformed old detail.
-`test_wikidata_gila_execution.py` checks typed lag fields and `maxlag=5` at the real POST boundary.
+`test_wikidata_gila_execution.py` checks typed lag fields and the default and administrator limits at the POST boundary.
 `test_publication_historical_repairs.py` checks SQL restoration and the same execution after a delay beyond one hour.
 `test_reference_repair_queue.py` checks the 24-hour default, durable service status, finite pause, and exact restart.
 

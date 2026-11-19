@@ -14,7 +14,7 @@ from app.auth.session import AuthContext
 from app.db import get_session
 from app.models.run_job import RunJob
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
-from app.pipeline.wikidata_reference_repair_job import KIND, load_seed
+from app.pipeline.wikidata_reference_repair_job import KIND, REFERENCE_JOB_MAXLAG, load_seed
 from app.routers.runs import _lookup_run_with_access
 from app.settings import get_settings
 
@@ -74,7 +74,7 @@ async def status(auth: Admin, db: Database):
         "job": serialise_job(job) if job else None,
         "halted_status": checkpoint.get("halted_status"),
         "creator_uid": 6935067,
-        "maxlag": 5,
+        "maxlag": REFERENCE_JOB_MAXLAG,
     }
 
 

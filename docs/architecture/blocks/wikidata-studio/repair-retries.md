@@ -73,7 +73,7 @@ It stops for a blocked action, an unknown outcome, or absent retry metadata.
 It never replaces a date with a guessed shorter delay.
 Each resume repeats the existing source, creator, revision, and exact-claim checks.
 The exact repair scope still requires creator user ID `6935067`.
-The loop does not change `maxlag=5`, the transport, or the guarded write path.
+The loop keeps the limit supplied by the caller. The CLI uses `maxlag=5`.
 The [foreground mode](foreground-reference-repair.md) uses a separate profile and cannot enter this retry runner.
 
 The loop commits the repository checkpoint before each wait.
@@ -95,6 +95,6 @@ The [sequential queue](reference-repair-queue.md) exposes this evidence as `serv
 
 ## Recovery checks (W-347)
 
-The backend checks again after 30 seconds if the reported lag is above 5 and at most 6.
+The backend checks again after 30 seconds if lag exceeds the edit limit by at most one point.
 It uses 60 seconds for all other probe results and honors a longer `Retry-After`.
 A [regression test](../../../../backend/tests/unit/test_publication_historical_repairs.py) checks a 25-second recovery window, high lag, and a longer delay.

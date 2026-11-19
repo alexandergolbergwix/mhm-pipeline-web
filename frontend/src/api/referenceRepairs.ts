@@ -34,6 +34,7 @@ export interface ReferenceRepairStatus {
   project_id?: string;
   total: number;
   verified: number;
+  maxlag: number;
   completed?: number;
   already_clean?: number;
   observed_at?: string;

@@ -36,6 +36,7 @@ from app.settings import get_settings
 logger = logging.getLogger(__name__)
 
 KIND = "wikidata_reference_repair"
+REFERENCE_JOB_MAXLAG = 20
 SEED_PATH = Path(__file__).resolve().parents[1] / "data/gila_reference_seed.json"
 
 
@@ -300,7 +301,7 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
             async def check_lag():
                 if await is_cancel_requested(job_id):
                     raise ReferenceJobCancelledError()
-                return await probe_reference_lag(client)
+                return await probe_reference_lag(client, maxlag=REFERENCE_JOB_MAXLAG)
 
             runner = asyncio.create_task(
                 run(
@@ -313,6 +314,7 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     dispose_engine=False,
                     authorize_session=authorize,
                     lag_probe=check_lag,
+                    maxlag=REFERENCE_JOB_MAXLAG,
                 )
             )
             scan = asyncio.create_task(inspect_mirror())

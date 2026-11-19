@@ -14,6 +14,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.publication.reference_repair_queue import DEFAULT_WAIT_SECONDS
+from converter.wikidata.retry_policy import BULK_MAXLAG
 from scripts.execute_gila_repairs import wait_seconds
 
 
@@ -69,6 +70,7 @@ async def _run(
     dispose_engine=True,
     authorize_session=None,
     lag_probe=None,
+    maxlag: int = BULK_MAXLAG,
 ):
     from sqlalchemy import select
 
@@ -140,6 +142,7 @@ async def _run(
                     mark_as_bot=False,
                 ),
                 read_item=ReferenceItemReader().fetch,
+                maxlag=maxlag,
             )
             del material
             rows = (

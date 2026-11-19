@@ -13,7 +13,7 @@ vi.mock("@/stores/runJobs", () => ({useRunJobs: {getState: () => ({upsertJob: vi
 
 const status: ReferenceRepairStatus = {
   enabled: true, scope_digest: "scope", run_id: "run", total: 100,
-  verified: 5, halted_status: null, job: null,
+  verified: 5, halted_status: null, job: null, maxlag: 20,
 };
 
 beforeEach(() => vi.clearAllMocks());

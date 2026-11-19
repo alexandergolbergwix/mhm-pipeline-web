@@ -42,7 +42,7 @@ It does not expose source text or the private exact plan.
 - `backend/tests/test_admin_reference_repairs.py`: bounded public counters and private-plan exclusion.
 - `backend/tests/test_reference_repair_worker.py`: committed counts during a service delay.
 
-These changes do not alter the reviewed queue, administrator checks, creator proof, or maxlag.
+The page shows the lag limit from the status API. The worker uses that limit for the probe and edit (W-349).
 
 During a delay, the page shows the probe result, reported lag, edit limit, and next check time.
 The worker exposes only a bounded numeric lag value from the public probe.

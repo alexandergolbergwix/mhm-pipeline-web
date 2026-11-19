@@ -201,8 +201,9 @@ async def test_preflight_and_prior_uncertainty_cannot_write() -> None:
         ("unknown-error", False),
     ],
 )
+@pytest.mark.parametrize("maxlag", [None, 20])
 async def test_live_transport_classifies_errors_without_a_second_post(
-    code: str, rejected: bool
+    code: str, rejected: bool, maxlag: int | None,
 ) -> None:
     import json
     from types import SimpleNamespace
@@ -229,7 +230,8 @@ async def test_live_transport_classifies_errors_without_a_second_post(
     )
     uploader = SimpleNamespace(_login=login, _rate_limit=Mock(), _assert_modifiable=Mock())
     read_item = AsyncMock(return_value={"id": "Q123", "lastrevid": 10})
-    gateway = LiveRepairGateway(uploader, read_item=read_item)
+    options = {} if maxlag is None else {"maxlag": maxlag}
+    gateway = LiveRepairGateway(uploader, read_item=read_item, **options)
     assert await gateway.fetch("Q123") == {"id": "Q123", "lastrevid": 10}
     read_item.assert_awaited_once_with("Q123")
     session.post.assert_not_called()
@@ -247,7 +249,7 @@ async def test_live_transport_classifies_errors_without_a_second_post(
     session.post.assert_called_once()
     kwargs = session.post.call_args.kwargs
     assert kwargs["allow_redirects"] is False
-    assert kwargs["data"]["maxlag"] == 5
+    assert kwargs["data"]["maxlag"] == (maxlag or 5)
     assert kwargs["data"]["baserevid"] == 10
     assert json.loads(kwargs["data"]["data"]) == {
         "claims": [{"id": "Q123$duplicate", "remove": ""}]

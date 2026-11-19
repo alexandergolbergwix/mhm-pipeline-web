@@ -58,11 +58,15 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
         yield {"total": 1, "reviewed": 1, "candidates": 1, "seen_clean": 0, "unchecked": 0}
 
     monkeypatch.setattr(worker, "scan_reference_mirror", mirror_scan)
+    lag_probe = AsyncMock()
+    monkeypatch.setattr(worker, "probe_reference_lag", lag_probe)
 
     async def run(args, qids, **options):
         import json
 
         assert qids == ["Q123"]
+        assert options["maxlag"] == 20
+        await options["lag_probe"]()
         assert json.loads((args.state_dir / "plan-Q123.json").read_text()) == plan
         async with session_scope() as db:
             await options["authorize_session"](db, user.id)
@@ -79,7 +83,7 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
                 "ordinal": 999,
                 "next_attempt_at": "2026-11-17T18:00:00Z",
                 "lag_probe_status": "delayed",
-                "lag_probe_seconds": 7.97,
+                "lag_probe_seconds": 20.97,
                 "next_lag_probe_at": "2026-11-17T18:01:00Z",
             }
         )
@@ -91,6 +95,8 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
     monkeypatch.setattr("scripts.run_gila_reference_queue.run", run)
     await worker.run_reference_job(job.id)
     finish.assert_awaited_once()
+    lag_probe.assert_awaited_once()
+    assert lag_probe.await_args.kwargs == {"maxlag": 20}
     assert finish.call_args.kwargs["status"] == "succeeded"
     assert finish.call_args.kwargs["result"]["verified"] == 1
     assert finish.call_args.kwargs["progress"]["processed"] == 1
@@ -104,7 +110,7 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
     assert delayed[0]["processed"] == 0
     assert delayed[0]["verified"] == 0
     assert delayed[0]["lag_probe_status"] == "delayed"
-    assert delayed[0]["lag_probe_seconds"] == 7.97
+    assert delayed[0]["lag_probe_seconds"] == 20.97
     assert delayed[0]["mirror_scan"]["candidates"] == 1
     await db_session.refresh(job)
     assert job.params["_reference_checkpoint"]["current_plan"] is None

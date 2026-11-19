@@ -3841,7 +3841,7 @@ A cached creator name also lacked an immutable identity check at the final send.
 
 Use the existing Publication intents, checkpoints, receipts, and action queue for exact historical repairs.
 Retain the complete public before entity and exact authorized QID.
-Use `BULK_MAXLAG = 5` and retain numeric or HTTP-date Retry-After values.
+Use `BULK_MAXLAG = 5` by default and retain numeric or HTTP-date Retry-After values. See W-349 for the administrator queue.
 Commit the intent result and `next_attempt_at` together.
 A resumed worker must honor that date.
 A confirmed rejection may retry after the delay.
@@ -4009,7 +4009,7 @@ Use a finite monotonic time budget and sleep steps of at most 30 seconds.
 Commit the repository checkpoint before a wait to release the SQL connection.
 Stop on absent retry metadata, an unknown outcome, or a blocked action.
 Retain the existing source, revision, exact-claim, and creator user-ID checks on every resume.
-Keep `maxlag=5` and creator user ID `6935067` for the automatic historical Gila scope.
+Keep the lag limit for the repair path and creator user ID `6935067` for the automatic historical Gila scope.
 The separate foreground exception in W-343 requires one explicit user confirmation.
 Do not create a new intent after an uncertain response or guess a shorter delay.
 The foreground CLI creates no additional queue, daemon, or job kind.
@@ -4099,7 +4099,7 @@ Seal the complete plan, target QID, proposal digest, public revision, and exact 
 Reject multiple item targets, colophon cleanup, another claim field, or a changed confirmation.
 Expire the in-process confirmation after five minutes.
 Consume its one attempt immediately before the sole POST, including on rejection or timeout.
-Only this path omits maxlag; normal repairs retain `maxlag=5`.
+Only the foreground path omits maxlag. Automatic repairs use the limit for their repair path.
 
 Use the separate `gila-foreground-reference` Publication profile.
 Retain the normal source, actor, creator ID `6935067`, bot-exclusion, revision, and exact-claim checks.
@@ -4124,7 +4124,7 @@ Release the repository transaction before the wait or resume.
 Wait until a future date without a shorter delay.
 Resume an already-due action through the same Publication execution when the monotonic budget permits it.
 Keep the current source, creator, revision, exact payload, and unknown-outcome checks.
-Keep `maxlag=5` and reject foreground plans in the automatic runner.
+Keep the lag limit for the repair path. Reject foreground plans in the automatic runner.
 Never guess an absent retry date or resume after the finite budget expires.
 
 The regression simulates a commit that finishes at or after the saved date.
@@ -4151,7 +4151,7 @@ An explicit shorter limit remains valid.
 On expiry, return `paused` with exit code 75 and the exact checkpoint.
 A restart reuses the same plan and execution and honors the saved date.
 Unknown outcomes, changed evidence, foreign creators, and absent retry dates still stop the queue.
-Keep `maxlag=5`, creator user ID `6935067`, and every existing write guard.
+Keep the lag limit for the repair path, creator user ID `6935067`, and every existing write guard.
 A client status change does not prove that Wikimedia resolved its service delay.
 
 Tests simulate a delay beyond one hour, SQL restoration, expiry, restart, safe diagnostics, and the unchanged refusal paths.
@@ -4170,7 +4170,7 @@ Require a successful foreground repair receipt that matches the current item fin
 Keep a blocked item in place if an unresolved intent exists or proof is missing.
 Commit the confirmed result in the new checkpoint before the next item can enter the queue.
 Retain the previous job and Publication history.
-Keep `maxlag=5` and the existing write checks for all subsequent automatic edits.
+Apply the lag limit and the existing write checks for all subsequent automatic edits.
 
 See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).
 
@@ -4179,10 +4179,10 @@ See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-re
 The automatic reference job verified five edits in 25 seconds before Wikidata refused the next edit.
 A test reproduces how a one-minute probe interval can miss a 25-second recovery window.
 
-Use a 30-second read-only probe interval when Wikidata reports lag above 5 and at most 6.
+Use a 30-second read-only probe interval when Wikidata reports lag above the edit limit by at most one point.
 Use a 60-second interval for other probe results.
 Honor a longer `Retry-After` and the saved edit retry date.
-Require a successful probe and apply `maxlag=5` to the edit.
+Require a successful probe and apply the same maxlag to the edit.
 Keep the same execution and the existing write checks.
 
 See [Recovery checks](../blocks/wikidata-studio/repair-retries.md#recovery-checks-w-347).
@@ -4200,3 +4200,13 @@ Serve the last saved items and suppress QuickStatements. Use the normal freshnes
 Keep the full freshness check for upload and Publication writes.
 
 See [Studio cache freshness](../blocks/wikidata-studio/studio-cache-freshness.md#web-memory-limits-w-348).
+
+### Rule W-349 — Use one lag limit for the administrator reference queue (2026-11-19)
+
+The operator chose 20 for the reviewed administrator queue after Wikidata refused requests at 5 during Query Service lag.
+Use 20 for each read-only probe and edit in this queue. Report the same value in the status API.
+Adjust the near-limit check interval relative to 20.
+Keep the saved retry date, server delays, exact plan, and creator checks.
+The CLI and other bulk writes use 5.
+
+See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).

@@ -97,7 +97,7 @@ export function ReferenceRepairProgress({state, lastSync, connectionError}: {
         : probe === "delayed" ? "Wikidata still requests a delay"
           : probe === "unavailable" ? "No reliable result" : "No result yet"}.
       {probe === "delayed" && typeof lag === "number" && Number.isFinite(lag)
-        && ` Reported lag: ${lag.toFixed(2)}. Edit limit: 5.`}
+        && ` Reported lag: ${lag.toFixed(2)}. Edit limit: ${state.maxlag}.`}
       {Number.isFinite(nextProbe) && (nextProbe > now
         ? ` Next check in ${duration(nextProbe - now)} (${time(nextProbe)} Israel time).`
         : " The next check is due.")}

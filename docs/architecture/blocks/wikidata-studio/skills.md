@@ -304,7 +304,7 @@ For a Gila source decision, open a manuscript drawer and use [Source review](sou
 
 
 For persistent `maxlag`, inspect `progress.json` and its `current.retry` object (W-345).
-The queue keeps `maxlag=5` and waits for the durable date.
+The queue uses its configured edit limit and waits for the saved retry date.
 Its default limit is 24 hours per item; exit code 75 means a resumable pause.
 Restart with the same candidate file and state directory.
 A blocked or unknown outcome requires review.

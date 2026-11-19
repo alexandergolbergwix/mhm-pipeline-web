@@ -1332,7 +1332,7 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 
 194. **R194 — A due saved retry remains eligible after a slow commit (W-344).** Resume the same execution within the finite budget. Retain all current proof checks. *Why:* a commit outlasted the server delay, and the automatic runner stopped before its next attempt.
 
-195. **R195 — Automatic reference repairs remain sequential and restart from exact plans.** Bind the ordered QIDs and actor to one locked state directory. Reuse the existing Publication execution and saved retry date. Preserve `maxlag=5`. Stop before another item after changed evidence, a foreign target, or an uncertain outcome. *Why:* automatic continuation must retain the source, creator, revision, and resource guards. See [Sequential reference repairs](reference-repair-queue.md).
+195. **R195 — Automatic reference repairs remain sequential and restart from exact plans.** Bind the ordered QIDs and actor to one locked state directory. Reuse the existing Publication execution and saved retry date. Use the limit for the selected repair path. Stop before another item after changed evidence, a foreign target, or an uncertain outcome. *Why:* automatic continuation must retain the source, creator, revision, and resource guards. See [Sequential reference repairs](reference-repair-queue.md).
 
 196. **R196 — A service delay retains exact recovery (W-345).** Preserve typed lag fields in the existing intent detail. Show the current item and saved retry date. Use a finite 24-hour default. Return a resumable pause at expiry. Keep all write guards.
 
@@ -1350,6 +1350,8 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 
 202. **R202 — Resume a blocked item only from a verified repair (W-346).** Match the next item, the saved exact result, and the successful foreground receipt for the same run and actor. Reject an unresolved intent. Save the recovered checkpoint before the queue advances. *Why:* an old plan stopped the queue after an interactive edit completed the item.
 
-203. **R203 — Check for brief recovery near the lag limit (W-347).** Use 30 seconds when a confirmed probe reports lag above 5 and at most 6. Use 60 seconds for all other results. Honor longer server delays. *Why:* a one-minute interval can miss a short recovery window.
+203. **R203 — Check for brief recovery near the lag limit (W-347).** Use 30 seconds when a confirmed probe reports lag above the edit limit by at most one point. Use 60 seconds for all other results. Honor longer server delays. *Why:* a one-minute interval can miss a short recovery window.
 
 204. **R204 — Bound the Studio views on the web dyno (W-348).** Read saved counts for the run overview. Use the paginated table above the sidebar size limit. Skip the canonical scan after a verified enrichment change. *Why:* full-view requests can exhaust memory on the web dyno.
+
+205. **R205 — Use one lag limit for the administrator reference queue (W-349).** Apply 20 to the probe and edit. Report 20 in the status API. Other bulk writes use 5. *Why:* a probe with a different limit can hold the queue when the edit would proceed.
