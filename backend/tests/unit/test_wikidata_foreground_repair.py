@@ -281,5 +281,5 @@ async def test_foreground_publication_retains_intent_creator_and_recovery_guards
         assert second.execution_status == "succeeded"
     session.post.assert_called_once()
     uploader._creator_identity_matches.assert_any_call(
-        "Q123", "Alexander Goldberg IL", required_user_id=6935067,
+        "Q123", "Alexander Goldberg IL", required_user_id=6935067, raise_on_timeout=True,
     )

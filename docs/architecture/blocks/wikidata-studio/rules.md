@@ -1359,3 +1359,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 206. **R206 — Estimate completion from recent confirmed results.** Use the newest quarter of the job's elapsed time. Include delays. Require a complete window and confirmed progress. *Why:* inherited results and incomplete timestamps can give a false rate.
 
 207. **R207 — Resume a preflight stop from the same item (W-350).** Keep the completed prefix. Repeat the prior-write and fresh evidence checks. Require a later verified receipt at a newer base revision before accepting the known legacy rejection. *Why:* stale type errors can block a new exact repair.
+
+208. **R208 — Retry a creator check after a timeout (W-351).** Save a five-minute retry time before any edit plan exists for the item. Keep the completed prefix and repeat the checks for the same item. The timeout must come from the creator check.

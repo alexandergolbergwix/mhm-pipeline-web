@@ -53,6 +53,8 @@ It records the verified item in the new checkpoint before it starts the remainin
 The previous job and its Publication records retain their history.
 The status API reports the next blocked QID and the permitted resume action.
 Rule W-350 lets a later verified update clear a known legacy rejection from the checks for a fresh edit.
+If the creator check times out before the worker saves a plan, the worker saves a five-minute retry time (W-351).
+A restart uses that saved time. The worker repeats the checks on the same item.
 
 A session advisory lock permits one reference queue per run across hosts.
 The lock uses a direct Postgres connection in autocommit mode.

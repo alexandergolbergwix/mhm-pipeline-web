@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -162,7 +162,8 @@ async def test_revoked_admin_cannot_start_a_backend_writer(sample_run, db_sessio
 
 
 @pytest.mark.asyncio
-async def test_worker_resumes_before_an_edit_plan_was_saved(sample_run, db_session, monkeypatch):
+@pytest.mark.parametrize("resume_retry", [False, True])
+async def test_worker_resumes_before_an_edit_plan_was_saved(sample_run, db_session, monkeypatch, resume_retry):
     user = await db_session.get(User, sample_run["user_id"])
     user.role = "admin"
     completed = {"qid": "Q123", "status": "already_clean", "corrected": False}
@@ -170,13 +171,15 @@ async def test_worker_resumes_before_an_edit_plan_was_saved(sample_run, db_sessi
         "run_id": str(sample_run["run_id"]), "actor_user_id": str(user.id),
         "qids": ["Q123", "Q456"],
     }
-    seed = {
-        "manifest": manifest, "build_job_id": manifest["run_id"],
-        "checkpoint": {"results": [completed], "halted_status": "blocked", "current_plan": None},
-    }
+    retry_at = datetime(2026, 11, 19, 12, 5, tzinfo=UTC)
+    checkpoint = {"results": [completed], "halted_status": "blocked", "current_plan": None}
+    if resume_retry:
+        checkpoint = {**checkpoint, "halted_status": None, "creator_retry_at": retry_at.isoformat()}
+    seed = {"manifest": manifest, "build_job_id": manifest["run_id"], "checkpoint": checkpoint}
     job = RunJob(
         project_id=sample_run["project_id"], run_id=sample_run["run_id"], created_by=user.id,
-        kind=worker.KIND, status="running", params={"scope_digest": "digest"},
+        kind=worker.KIND, status="running",
+        params={"scope_digest": "digest", "_reference_checkpoint": checkpoint},
     )
     db_session.add(job)
     await db_session.commit()
@@ -196,6 +199,12 @@ async def test_worker_resumes_before_an_edit_plan_was_saved(sample_run, db_sessi
         assert qids == ["Q123", "Q456"]
         assert options["resume_results"] == [completed]
         assert not (args.state_dir / "plan-Q456.json").exists()
+        assert options["creator_retry_at"] == (retry_at if resume_retry else None)
+        await options["on_creator_retry"]("Q456", [completed], args.state_dir, retry_at)
+        async with session_scope() as db:
+            saved = await db.get(RunJob, job.id)
+            assert saved.params["_reference_checkpoint"]["creator_retry_at"] == retry_at.isoformat()
+            assert saved.params["_reference_checkpoint"]["results"] == [completed]
         result = {"qid": "Q456", "status": "verified", "corrected": True}
         await options["on_checkpoint"]("Q456", [completed, result], args.state_dir)
         return {"status": "complete", "results": [completed, result]}
@@ -205,6 +214,8 @@ async def test_worker_resumes_before_an_edit_plan_was_saved(sample_run, db_sessi
     await worker.run_reference_job(job.id)
     recover.assert_not_awaited()
     assert finish.call_args.kwargs["status"] == "succeeded"
+    await db_session.refresh(job)
+    assert "creator_retry_at" not in job.params["_reference_checkpoint"]
 
 
 @pytest.mark.asyncio

@@ -61,6 +61,20 @@ describe("confirmed reference progress", () => {
     expect(screen.queryByText(/Estimated time left/)).toBeNull();
   });
 
+  it("shows the automatic retry of the creator check", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-17T16:00:00Z"));
+    render(<ReferenceRepairProgress state={{...base, job: {
+      id: "job", status: "running", progress: {
+        phase: "creator_retry_wait", current_qid: "Q123", next_attempt_at: "2026-11-17T16:05:00Z",
+      },
+    }}} lastSync={Date.now()} connectionError={false} />);
+    expect(screen.getByRole("heading", {name: "Creator check retry"})).toBeTruthy();
+    expect(screen.getByText("Next retry in 5m 0s")).toBeTruthy();
+    expect(screen.getByText(/Next creator check: 18:05:00 Israel time/)).toBeTruthy();
+    expect(screen.queryByText(/Earliest edit retry/)).toBeNull();
+  });
+
   it("retains the last confirmed bar when the connection fails", () => {
     render(<ReferenceRepairProgress state={base} lastSync={Date.now()} connectionError />);
     expect(screen.getByText("Connection issue")).toBeTruthy();

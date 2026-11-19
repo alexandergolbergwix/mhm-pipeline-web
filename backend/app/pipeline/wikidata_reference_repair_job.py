@@ -295,8 +295,10 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
             latest.clear()
             latest.update(value)
 
-        async def persist(qid, results, directory):
+        async def persist(qid, results, directory, creator_retry_at: datetime | None = None):
             snapshot = checkpoint_for(qid, results, directory)
+            if creator_retry_at is not None:
+                snapshot["creator_retry_at"] = creator_retry_at.isoformat()
             async with session_scope() as db:
                 row = (
                     await db.execute(select(RunJob).where(RunJob.id == job_id).with_for_update())
@@ -371,6 +373,8 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     manifest["qids"],
                     before_item_hook=before_item,
                     on_checkpoint=persist,
+                    on_creator_retry=persist,
+                    creator_retry_at=_timing_value(checkpoint.get("creator_retry_at")),
                     resume_results=checkpoint.get("results", []),
                     on_event=event,
                     dispose_engine=False,
@@ -405,7 +409,9 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                             "next_lag_probe_at": saved.get("next_lag_probe_at"),
                             "mirror_scan": dict(scan_progress),
                             "message": (
-                                "Wait for the saved Wikidata retry time."
+                                "The Wikidata creator check timed out."
+                                if saved.get("status") == "creator_retry_wait"
+                                else "Wait for the saved Wikidata retry time."
                                 if saved.get("status") in {"service_delay", "retry_wait"}
                                 else "Check the current reference repair."
                             ),

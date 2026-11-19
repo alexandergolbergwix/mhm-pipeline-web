@@ -264,9 +264,9 @@ class LiveRepairGateway:
             self.uploader._is_our_item_cache.pop(qid, None)
             self.uploader._creator_cache.pop(qid, None)
             self.uploader._foreign_accept_qids.clear()
-            self.uploader._assert_modifiable(qid, stage="exact_repair")
+            self.uploader._assert_modifiable(qid, stage="exact_repair", raise_creator_timeout=True)
             if not self.uploader._creator_identity_matches(
-                qid, "Alexander Goldberg IL", required_user_id=6935067,
+                qid, "Alexander Goldberg IL", required_user_id=6935067, raise_on_timeout=True,
             ):
                 raise ValueError("The historical repair requires creator user ID 6935067.")
             self.uploader._bot_exclusion_cache.pop(qid, None)

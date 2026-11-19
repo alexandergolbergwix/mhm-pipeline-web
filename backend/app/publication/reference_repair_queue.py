@@ -5,8 +5,10 @@ import json
 import math
 import re
 import tempfile
+from asyncio import sleep
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.pipeline.wikidata_foreground_repair import ForegroundReferenceGateway
@@ -26,9 +28,11 @@ from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
 from app.publication.reference_recovery import LagProbeResult, LagProbeSchedule
 from app.publication.repair_retry_runner import RepairRetryWait, wait_for_repair_publication
 from app.publication.repository import PublicationRepository
+from converter.wikidata.uploader import CreatorIdentityTimeoutError
 from converter.wikidata.work_identity import reference_control_numbers
 
 DEFAULT_WAIT_SECONDS = 24 * 60 * 60
+CREATOR_RETRY_DELAY = timedelta(minutes=5)
 
 
 class ReferencePriorWriteUnresolvedError(ValueError):
@@ -121,6 +125,8 @@ async def run_reference_repair_queue(
     before_item: Callable[[str], Awaitable[None]] | None = None,
     on_receipt: Callable[[dict], Awaitable[None]] | None = None,
     on_checkpoint: Callable[[str, list[dict], Path], Awaitable[None]] | None = None,
+    on_creator_retry: Callable[[str, list[dict], Path, datetime], Awaitable[None]] | None = None,
+    creator_retry_at: datetime | None = None,
     resume_results: Sequence[dict] = (),
     lag_probe: Callable[[], Awaitable[LagProbeResult]] | None = None,
 ) -> dict:
@@ -145,7 +151,6 @@ async def run_reference_repair_queue(
         for row in results
     ):
         raise ValueError("The saved completed prefix does not match the reviewed queue.")
-    completed = len(results)
     lag_probe_schedule = LagProbeSchedule()
 
     async def preview_journal(phase, receipt):
@@ -158,14 +163,23 @@ async def run_reference_repair_queue(
                 raise ValueError("The queue scope or authenticated actor changed.")
         else:
             write_json(manifest, binding)
-        for ordinal, qid in enumerate(qids, 1):
-            if ordinal <= completed:
-                continue
+        while len(results) < len(qids):
+            ordinal = len(results) + 1
+            qid = qids[ordinal - 1]
+            if creator_retry_at is not None:
+                emit({
+                    "qid": qid, "ordinal": ordinal, "total": len(qids),
+                    "status": "creator_retry_wait", "next_attempt_at": creator_retry_at.isoformat(),
+                })
+                remaining = (creator_retry_at - datetime.now(UTC)).total_seconds()
+                if remaining > 0:
+                    await sleep(remaining)
+                creator_retry_at = None
             await repository.checkpoint()
+            plan_file = state_dir / f"plan-{qid}.json"
             try:
                 if before_item is not None:
                     await before_item(qid)
-                plan_file = state_dir / f"plan-{qid}.json"
                 if plan_file.exists():
                     plan = json.loads(plan_file.read_text())
                     if (
@@ -313,6 +327,13 @@ async def run_reference_repair_queue(
                 if apply and on_receipt is not None:
                     await on_receipt(row)
             except Exception as error:
+                if (
+                    apply and on_creator_retry is not None and not plan_file.exists()
+                    and isinstance(error, CreatorIdentityTimeoutError)
+                ):
+                    creator_retry_at = datetime.now(UTC) + CREATOR_RETRY_DELAY
+                    await on_creator_retry(qid, results, state_dir, creator_retry_at)
+                    continue
                 row = {
                     "qid": qid,
                     "status": "blocked",

@@ -4224,3 +4224,13 @@ Require a newer base revision and a matching receipt fingerprint in the successf
 Keep older Publication records. Preserve the checks for pending writes, current uncertain outcomes, and public verification.
 
 See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).
+
+### Rule W-351 — Retry a creator check after a timeout
+
+The queue stopped at Q141748062 when the Wikidata request for the first revision timed out.
+Distinguish a timeout from a confirmed creator mismatch.
+When the administrator queue has no saved edit plan for the item, save `creator_retry_at` in the checkpoint. Retry the same item after five minutes.
+Restore the saved time after a restart. Repeat the creator, source, and prior-write checks before an edit.
+A creator mismatch or an uncertain write still stops the queue.
+
+See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).

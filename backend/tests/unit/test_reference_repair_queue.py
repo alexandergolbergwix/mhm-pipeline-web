@@ -1,14 +1,18 @@
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from functools import partial
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+import requests
 
-from app.pipeline.wikidata_gila_execution import WriteRejectedError, expected_entity
+from app.pipeline.wikidata_gila_execution import LiveRepairGateway, WriteRejectedError, expected_entity
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals
 from app.publication import reference_repair_queue as queue
 from app.publication.repair_retry_runner import wait_for_repair_publication
 from app.publication.repository import InMemoryPublicationRepository
+from converter.wikidata.uploader import WikidataUploader
 
 
 class Gateway:
@@ -88,6 +92,73 @@ async def test_backend_resume_keeps_verified_receipts_and_skips_the_completed_pr
     assert result["status"] == "complete"
     assert result["results"][0] == completed
     assert gateway.writes == ["Q456", "Q789"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["timeout", "different_creator"])
+async def test_creator_read_timeout_retries_the_same_item_without_an_edit_before_the_wait(
+    tmp_path, monkeypatch, failure,
+):
+    items = Gateway()
+    uploader = WikidataUploader(token="", allow_live=True)
+    user = "Alexander Goldberg IL"
+    uploader._get_authenticated_user = Mock(return_value=user)
+    uploader._get_first_revision_author = Mock(return_value=user)
+    uploader._is_our_item = Mock(return_value=True)
+    uploader._query_userinfo_rights = Mock(return_value={"id": 6935067, "name": user})
+    uploader._check_moratorium_for_live = Mock()
+    uploader.ensure_authenticated = Mock()
+    uploader._bot_excluded = Mock(return_value=False)
+    creator_checks = []
+
+    def get(_url, *, params, **_kwargs):
+        qid = params["titles"]
+        creator_checks.append(qid)
+        if len(creator_checks) == 1 and failure == "timeout":
+            raise requests.ReadTimeout()
+        first = {"revid": 10, "user": user, "userid": 7 if failure == "different_creator" else 6935067}
+        pages = {"1": {"title": qid, "pageid": 1, "ns": 0, "revisions": [first]}}
+        return SimpleNamespace(status_code=200, json=lambda: {"query": {"pages": pages}})
+
+    uploader._login = SimpleNamespace(get_session=lambda: SimpleNamespace(get=get))
+    gateway = LiveRepairGateway(uploader, read_item=items.fetch)
+    gateway.write = items.write
+    completed = {"qid": "Q123", "status": "verified", "corrected": True}
+    retries = []
+    events = []
+
+    async def save_creator_retry(qid, results, directory, retry_at):
+        assert qid == "Q456"
+        assert results == [completed]
+        assert not (directory / "plan-Q456.json").exists()
+        assert not items.writes
+        retries.append(retry_at)
+
+    async def wait(seconds):
+        assert 299 <= seconds <= 300
+        assert not items.writes
+
+    sleep = AsyncMock(side_effect=wait)
+    monkeypatch.setattr(queue, "sleep", sleep)
+    result = await run(
+        tmp_path, gateway, InMemoryPublicationRepository(), apply=True,
+        resume_results=[completed], on_creator_retry=save_creator_retry, on_event=events.append,
+    )
+
+    if failure == "different_creator":
+        assert result["status"] == "stopped"
+        assert creator_checks == ["Q456"]
+        assert items.writes == []
+        assert retries == []
+        sleep.assert_not_awaited()
+        return
+    assert result["status"] == "complete"
+    sleep.assert_awaited_once()
+    assert creator_checks[:2] == ["Q456", "Q456"]
+    assert items.writes == ["Q456", "Q789"]
+    assert [event["next_attempt_at"] for event in events if event["status"] == "creator_retry_wait"] == [
+        retries[0].isoformat(),
+    ]
 
 
 @pytest.mark.asyncio

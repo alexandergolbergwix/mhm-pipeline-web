@@ -38,16 +38,18 @@ export function ReferenceRepairProgress({state, lastSync, connectionError, child
   const progress = repairProgress(state);
   const job = state.job;
   const phase = job?.progress.phase;
-  const delayed = job?.status === "running" && (phase === "service_delay" || phase === "retry_wait");
+  const creatorRetry = phase === "creator_retry_wait";
+  const delayed = job?.status === "running" && (phase === "service_delay" || phase === "retry_wait" || creatorRetry);
   const queued = job?.status === "queued";
   const active = queued || job?.status === "running";
   const paused = job?.status === "failed" && (phase === "paused" || state.halted_status === "pre_send_retryable");
-  const title = queued ? "In queue" : delayed ? "Wikidata delay" : job?.status === "running"
+  const title = queued ? "In queue" : delayed ? creatorRetry ? "Creator check retry" : "Wikidata delay" : job?.status === "running"
     ? phase === "start" ? "Start checks" : "Repairs in progress" : job?.status === "succeeded" ? "Queue complete"
       : paused ? "Queue paused" : job?.status === "failed" ? "Review required"
         : job?.status === "cancelled" ? "Queue cancelled" : "Ready to start";
   const description = queued ? job?.progress.message || "The job is saved. It will start when a worker is available."
-    : delayed ? "The worker will retry when Wikidata permits edits."
+    : delayed ? creatorRetry ? "The Wikidata creator check timed out. The worker will retry automatically."
+      : "The worker will retry when Wikidata permits edits."
       : job?.status === "running" ? job.progress.message
         : paused ? "The worker saved its place in the queue." : null;
   const retry = job?.progress.next_attempt_at ? Date.parse(job.progress.next_attempt_at) : NaN;
@@ -123,7 +125,9 @@ export function ReferenceRepairProgress({state, lastSync, connectionError, child
         {(delayed || (paused && Number.isFinite(retry))) &&
           <div className="space-y-1 rounded-xl bg-[var(--warn-bg)] px-4 py-3 text-sm">
             {delayed && (Number.isFinite(retry) || waitsForLag) && <p className="font-semibold text-warn">{retryMessage}</p>}
-            {Number.isFinite(retry) && <p className="muted">Earliest edit retry: {time(retry)} Israel time.</p>}
+            {Number.isFinite(retry) && <p className="muted">
+              {creatorRetry ? "Next creator check" : "Earliest edit retry"}: {time(retry)} Israel time.
+            </p>}
             {delayed && phase === "service_delay" && <p className="muted">
               Read-only lag check: {probe === "ready" ? "Wikidata accepted the check"
                 : probe === "delayed" ? "Wikidata still requests a delay"

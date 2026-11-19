@@ -580,6 +580,10 @@ def resolve_statement_locals(
     return probe.statements[0], leftover
 
 
+class CreatorIdentityTimeoutError(TimeoutError):
+    """The request for fresh creator evidence timed out."""
+
+
 class UnauthorisedModificationError(RuntimeError):
     """Raised when the uploader is asked to modify a Wikidata item whose
     first revision was NOT authored by the authenticated user.
@@ -2646,6 +2650,7 @@ class WikidataUploader:
         stage: str,
         *,
         our_p3959: str | None = None,
+        raise_creator_timeout: bool = False,
     ) -> None:
         """Defense-in-depth guard: raise if *qid* must not be modified.
 
@@ -2662,11 +2667,13 @@ class WikidataUploader:
             not user
             or self._get_first_revision_author(qid) != user
             or not self._is_our_item(qid, our_p3959=our_p3959)
-            or not self._creator_identity_matches(qid, user)
+            or not self._creator_identity_matches(qid, user, raise_on_timeout=raise_creator_timeout)
         ):
             raise UnauthorisedModificationError(qid=qid, stage=stage)
 
-    def _creator_identity_matches(self, qid: str, user: str, *, required_user_id: int | None = None) -> bool:
+    def _creator_identity_matches(
+        self, qid: str, user: str, *, required_user_id: int | None = None, raise_on_timeout: bool = False,
+    ) -> bool:
         """Use fresh account and first-revision IDs at the final write boundary."""
         try:
             info = self._query_userinfo_rights()
@@ -2700,6 +2707,8 @@ class WikidataUploader:
                         and type(first.get("revid")) is int and first["revid"] > 0)
         except Exception as exc:  # noqa: BLE001 — missing identity evidence denies a write.
             logger.warning("Creator identity proof failed for %s: %s", qid, exc)
+            if raise_on_timeout and isinstance(exc, requests.exceptions.Timeout):
+                raise CreatorIdentityTimeoutError("The Wikidata creator check timed out.") from exc
             return False
 
     def _wbgetentities(self, ids: list[str], *, props: str) -> dict[str, dict]:

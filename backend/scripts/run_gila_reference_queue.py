@@ -65,6 +65,8 @@ async def _run(
     *,
     before_item_hook=None,
     on_checkpoint=None,
+    on_creator_retry=None,
+    creator_retry_at=None,
     resume_results=(),
     on_event=None,
     dispose_engine=True,
@@ -264,6 +266,8 @@ async def _run(
                 on_receipt=journal,
                 on_event=on_event or (lambda event: print(json.dumps(event), flush=True)),
                 on_checkpoint=on_checkpoint,
+                on_creator_retry=on_creator_retry,
+                creator_retry_at=creator_retry_at,
                 resume_results=resume_results,
                 lag_probe=lag_probe,
             )

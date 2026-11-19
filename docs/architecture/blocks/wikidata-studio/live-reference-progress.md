@@ -28,6 +28,7 @@ The status API tells the page whether Resume can repeat preflight or must check 
 A Wikidata delay shows the current QID and a countdown.
 The countdown updates each second.
 The countdown does not advance the progress bar or submit another request.
+A creator check timeout before a saved plan shows a separate countdown for the automatic retry.
 A past edit retry date shows whether the worker still needs a successful lag check.
 The completion estimate uses the average rate of confirmed results in the latest 25% of the job's elapsed time.
 The window includes Wikidata delays. It counts verified edits and already-clean items.

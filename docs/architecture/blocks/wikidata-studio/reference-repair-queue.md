@@ -80,7 +80,7 @@ A saved plan remains immutable.
 The runner reuses that plan and its execution after a confirmed API rejection.
 A changed source, changed target, foreign creator, or uncertain outcome stops the queue.
 A confirmed retry pause retains its plan and execution for a later invocation.
-A stop before the saved plan permits fresh checks on the same item (W-350).
+A stop before the saved plan permits fresh checks on the same item (W-350). The administrator job retries a creator check timeout after five minutes (W-351).
 The [administrator job](admin-reference-repairs.md) requires matching foreground proof to advance a blocked plan.
 The worker saves the recovered checkpoint before it continues with the next item.
 The runner never advances to another QID after a failed or uncertain item.
