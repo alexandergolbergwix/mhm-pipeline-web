@@ -73,6 +73,20 @@ Fail-safe: a cache without these keys takes the full recompute. The shard build 
 
 Risk: a canonical row that changes without `updated_at` changing is missed. The ORM sets `updated_at` on every update, but raw SQL that skips the ORM can bypass it.
 
+## Web memory limits (W-348)
+
+The run overview reads saved counts from the Studio status endpoint. The query selects only the summary.
+The legacy sidebar route checks the combined size of the cached items and QuickStatements in the database.
+Above 16 MiB, it returns `studio_paged_view_required`. The browser opens the paginated review table.
+
+## Skip a scan when the build is stale (W-348)
+
+The Studio GET compares the current enrichment fingerprint with the one in the saved reuse key.
+It uses this shortcut only when the stored canonical fingerprint matches the cache row.
+If enrichment changed, the route serves the saved items with the stale badge and suppresses QuickStatements.
+The route uses the normal freshness check when metadata is absent or cannot prove a change.
+The upload and Publication write paths still require their full freshness checks.
+
 ## Time budget
 
 - HTTP routes check freshness inline with a 25-second budget (`_STUDIO_FRESHNESS_TIMEOUT_SECONDS`). Heroku closes requests after 30 seconds.

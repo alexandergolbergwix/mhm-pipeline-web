@@ -15,6 +15,7 @@ import {JobProgressInline} from "@/components/jobs/JobProgressInline";
 import {WIKIDATA_BUILD_PHASE_HINTS} from "@/lib/wikidataBuildPhases";
 import {useRunJobAttachment} from "@/hooks/useRunJobAttachment";
 import {
+  isStudioPagedViewRequired,
   loadStudioBuild,
   waitForRunJob,
   waitForStudioBuild,
@@ -215,6 +216,10 @@ export default function WikidataStudio() {
       }
     }
     catch (e) {
+      if (isStudioPagedViewRequired(e)) {
+        setReviewMode("modern");
+        return;
+      }
       if (e instanceof ApiError && e.status === 409 && e.payload && typeof e.payload === "object"
           && "code" in e.payload && e.payload.code === "studio_rebuild_required") {
         setRebuildRequired(true);

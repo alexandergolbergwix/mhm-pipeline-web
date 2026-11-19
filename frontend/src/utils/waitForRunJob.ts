@@ -128,6 +128,12 @@ export async function waitForStudioBuild(
   await waitForRunJob(runId, job.id, {onUpdate: opts?.onUpdate});
 }
 
+export function isStudioPagedViewRequired(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 409
+    && error.payload !== null && typeof error.payload === "object"
+    && "code" in error.payload && error.payload.code === "studio_paged_view_required";
+}
+
 export async function loadStudioBuild(
   runId: string,
   fetchBuild: () => Promise<unknown>,
@@ -136,7 +142,7 @@ export async function loadStudioBuild(
   try {
     return await fetchBuild();
   } catch (e) {
-    if (!(e instanceof ApiError) || e.status !== 409) throw e;
+    if (!(e instanceof ApiError) || e.status !== 409 || isStudioPagedViewRequired(e)) throw e;
     const jobId =
       studioBuildJobIdFromConflict(e.detail, e.payload)
       ?? studioBuildFailureJobId(e.detail, e.payload)

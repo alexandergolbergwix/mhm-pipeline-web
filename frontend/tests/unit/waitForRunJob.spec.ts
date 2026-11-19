@@ -211,6 +211,16 @@ describe("waitForStudioBuild", () => {
 });
 
 describe("loadStudioBuild", () => {
+  it("returns the paged view conflict without checking for a build job", async () => {
+    const conflict = new ApiError(409, "Use the Studio review table.", {
+      code: "studio_paged_view_required",
+    });
+    const listForRun = vi.spyOn(RunJobs, "listForRun").mockResolvedValue({jobs: []});
+
+    await expect(loadStudioBuild("r1", vi.fn().mockRejectedValue(conflict))).rejects.toBe(conflict);
+    expect(listForRun).not.toHaveBeenCalled();
+  });
+
   it("waits for the job named in a 409 before retrying the fetch", async () => {
     const jobId = "e56425a1-8712-4605-b085-317261e678ed";
     const conflict = new ApiError(

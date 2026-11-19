@@ -11,7 +11,7 @@ config, no lazy-loading indirection. Public pages (`/login`,
 Bare `/runs/:runId` immediately redirects to `hmo-studio` (retired Authority
 bookmark compatibility). Project pages under `/projects/:projectId{,/history,/entity}`; admin under
 `/admin/*`. Adding a page = one file in `src/routes/` + one line in `App.tsx`.
-**New Workflow.** The `RunOverview` page provides a comprehensive overview of the run status and next steps for professors.
+**Run overview.** The `RunOverview` page shows saved stage counts and the next step. The Wikidata tile reads the Studio status endpoint (W-348).
 
 **Wikidata Studio workflow.** The modern review surface defaults to the
 reviewed HMO Wikibase read-back and carries the selected source through build,
@@ -21,7 +21,7 @@ with the scope pill, Rebuild, Rebuild visible, and the AI verify/autofix/approve
 **Publish** (the Publication panel), and one collapsed **Advanced**
 `<details>` ("Advanced: source, exports, rebuild") holding skip-cache, the
 upload approved-only scope, exports/import, the data-source switch, and the
-legacy-sidebar toggle. The review table is mounted unconditionally (no
+legacy-sidebar toggle. If the sidebar cache exceeds the size limit, the page opens the review table (W-348). The review table is mounted unconditionally (no
 unmount/remount flicker during jobs; block R14). The item drawer
 exposes a QID-bound **accept foreign modify** checkbox when `existing_qid` is
 set (Rule W-99); uploads load those accepts from `WikidataItemOverride`.

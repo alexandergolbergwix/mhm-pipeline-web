@@ -28,8 +28,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import PlainTextResponse, StreamingResponse
-from pydantic import BaseModel, Field
-from sqlalchemy import String, cast, func, select, text
+from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import LargeBinary, String, cast, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.session import AuthContext, current_auth
@@ -123,6 +123,7 @@ router = APIRouter(prefix="/runs", tags=["wikidata-studio"])
 
 _CANONICAL_LOAD_BATCH = 500
 _STUDIO_FRESHNESS_TIMEOUT_SECONDS = 25.0
+_STUDIO_WEB_CACHE_MAX_BYTES = 16 * 1024 * 1024
 # Background upload jobs have no HTTP limit. The full freshness check took
 # 73.6 seconds on a Heroku dyno for run 47e03437, so the job path gets 300 seconds.
 STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS = 300.0
@@ -427,6 +428,19 @@ async def _canonical_fingerprint_for_check(
     ):
         return stored_fingerprint
     return await _canonical_cache_fingerprint(db, run_id, enrichment_fingerprint)
+
+
+def _canonical_cache_enrichment_changed(
+    cached: WikidataStudioCache, enrichment_fingerprint: str,
+) -> bool:
+    summary = cached.summary
+    if not isinstance(summary, dict) or summary.get("canonical_reuse_fingerprint") != cached.input_fingerprint:
+        return False
+    key = summary.get("canonical_reuse_key")
+    if not isinstance(key, str) or key.count("|") != 3:
+        return False
+    saved_enrichment = key.rsplit("|", 1)[-1]
+    return len(saved_enrichment) == 64 and saved_enrichment != enrichment_fingerprint
 
 
 def _update_studio_items_digest(digest: Any, item: dict[str, Any]) -> None:
@@ -1054,21 +1068,32 @@ async def _load_studio_build_rows(
     return records, list(all_matches), list(entity_rows), list(override_rows)
 
 
+def _studio_cache_scope(run_id: uuid.UUID, approved_only: bool, source: str):
+    return (
+        WikidataStudioCache.run_id == run_id,
+        WikidataStudioCache.approved_only == approved_only,
+        WikidataStudioCache.source == source,
+    )
+
+
 async def _get_studio_cache_row(
     db: AsyncSession,
     run_id: uuid.UUID,
     approved_only: bool,
     source: str = "legacy",
+    *,
+    max_payload_bytes: int | None = None,
 ) -> WikidataStudioCache | None:
-    return (
-        await db.execute(
-            select(WikidataStudioCache).where(
-                WikidataStudioCache.run_id == run_id,
-                WikidataStudioCache.approved_only == approved_only,
-                WikidataStudioCache.source == source,
-            )
-        )
-    ).scalar_one_or_none()
+    query = select(WikidataStudioCache).where(*_studio_cache_scope(run_id, approved_only, source))
+    if max_payload_bytes is not None:
+        items = WikidataStudioCache.result_items
+        commands = WikidataStudioCache.quickstatements
+        if db.get_bind().dialect.name == "postgresql":
+            payload_bytes = func.octet_length(cast(items, String)) + func.octet_length(commands)
+        else:
+            payload_bytes = func.length(cast(items, LargeBinary)) + func.length(cast(commands, LargeBinary))
+        query = query.where(payload_bytes <= max_payload_bytes)
+    return (await db.execute(query)).scalar_one_or_none()
 
 
 def match_to_build_payload(m: AuthorityMatch) -> dict[str, Any]:
@@ -1630,11 +1655,24 @@ async def studio_status(
     auth: AuthContext = Depends(current_auth),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """Cache-only counts for the first paint. No freshness check, no merge."""
+    """Read saved counts without loading Studio items or checking freshness."""
     await _lookup_run_with_access(db, run_id, auth)
-    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
-    total = cached.summary.get("total_items") if cached is not None and isinstance(cached.summary, dict) else None
-    return {"ready": isinstance(total, int), "total_items": total if isinstance(total, int) else None}
+    metadata = await db.scalar(
+        select(WikidataStudioCache.summary).where(*_studio_cache_scope(run_id, approved_only, source))
+    )
+    total = metadata.get("total_items") if isinstance(metadata, dict) else None
+    summary = None
+    if isinstance(total, int):
+        try:
+            summary = StudioSummary.model_validate(metadata).model_dump()
+        except ValidationError:
+            # Older caches may contain only the total.
+            summary = None
+    return {
+        "ready": isinstance(total, int),
+        "total_items": total if isinstance(total, int) else None,
+        "summary": summary,
+    }
 
 
 @router.get("/{run_id}/wikidata-studio", response_model=StudioBuildResponse)
@@ -1692,8 +1730,22 @@ async def build_studio(
     if source == "legacy" and get_settings().canonical_first_for_run(run_id):
         source = "canonical"
 
-    cached = await _get_studio_cache_row(db, run_id, approved_only, source)
-    if cached is None or force_rebuild:
+    cached = None
+    if not force_rebuild:
+        cached = await _get_studio_cache_row(
+            db, run_id, approved_only, source, max_payload_bytes=_STUDIO_WEB_CACHE_MAX_BYTES,
+        )
+        if cached is None and await db.scalar(
+            select(WikidataStudioCache.id).where(*_studio_cache_scope(run_id, approved_only, source)),
+        ) is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "studio_paged_view_required",
+                    "message": "This build exceeds the sidebar size limit. Use the Studio review table.",
+                },
+            )
+    if cached is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "studio_rebuild_required", "message": "Rebuild the Studio source from source data with skip cache."},
@@ -1707,14 +1759,16 @@ async def build_studio(
             fingerprint = await compute_build_fingerprint_streamed(
                 db, run_id, approved_only=approved_only,
             )
-            cache_fingerprint = (
-                await _canonical_fingerprint_for_check(
-                    db, run_id, fingerprint,
-                    cached.summary if isinstance(cached.summary, dict) else {},
-                )
-                if source == "canonical"
-                else fingerprint
-            )
+            cache_fingerprint = fingerprint
+            if source == "canonical":
+                # A different enrichment salt already invalidates this build.
+                if _canonical_cache_enrichment_changed(cached, fingerprint):
+                    cache_fingerprint = None
+                else:
+                    cache_fingerprint = await _canonical_fingerprint_for_check(
+                        db, run_id, fingerprint,
+                        cached.summary if isinstance(cached.summary, dict) else {},
+                    )
     except TimeoutError as exc:
         raise HTTPException(
             status_code=409, detail="Cannot verify Studio source freshness within the time limit.",
@@ -1761,7 +1815,7 @@ async def build_studio(
         "wikidata-studio stale cache for run %s (cached=%s current=%s)",
         run_id,
         (cached.input_fingerprint or "")[:8],
-        cache_fingerprint[:8],
+        cache_fingerprint[:8] if cache_fingerprint is not None else "enrichment changed",
     )
     return _studio_response_from_cache(
         cached,

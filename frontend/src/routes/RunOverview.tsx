@@ -21,7 +21,7 @@ import { Extraction, type ExtractionStatus } from "@/api/extraction";
 import { RunJobs } from "@/api/runJobs";
 import { Rdf, type RdfStatus } from "@/api/rdf";
 import { Runs, type RunDetail } from "@/api/runs";
-import { Studio, type StudioBuild } from "@/api/wikidataStudio";
+import { Studio, type StudioStatus } from "@/api/wikidataStudio";
 import { HmoStudio, type HmoStudioStatus } from "@/api/hmoStudio";
 import {Glass, GlassPill} from "@/components/glass";
 import {idsFingerprint} from "@/utils/renderStable";
@@ -36,7 +36,7 @@ export default function RunOverview() {
   const [extraction, setExtraction]       = useState<TileState<ExtractionStatus>>({ status: "loading" });
   const [rdf, setRdf]                     = useState<TileState<RdfStatus>>({ status: "loading" });
   const [hmo, setHmo]                     = useState<TileState<HmoStudioStatus>>({ status: "loading" });
-  const [studio, setStudio]               = useState<TileState<StudioBuild>>({ status: "loading" });
+  const [studio, setStudio]               = useState<TileState<StudioStatus>>({ status: "loading" });
   const [activeJobs, setActiveJobs]       = useState<string[]>([]);
   const activeJobsRef = useRef("");
 
@@ -89,7 +89,7 @@ export default function RunOverview() {
         (s) => !cancelled && setHmo({ status: "ok", data: s }),
         (e) => !cancelled && setHmo({ status: "error", error: errMessage(e) }),
       );
-      Studio.build(runId, {approvedOnly: false}).then(
+      Studio.status(runId, "canonical", false).then(
         (s) => !cancelled && setStudio({ status: "ok", data: s }),
         (e) => !cancelled && setStudio({ status: "error", error: errMessage(e) }),
       );
@@ -398,15 +398,15 @@ function rdfStats(s: TileState<RdfStatus>): string {
 }
 
 
-function studioPill(s: TileState<StudioBuild>): ReactNode {
+function studioPill(s: TileState<StudioStatus>): ReactNode {
   if (s.status === "loading") return <Pill tone="muted">…</Pill>;
   if (s.status === "error")   return <Pill tone="muted">—</Pill>;
-  const n = s.data.summary?.total_items ?? 0;
+  const n = s.data.total_items ?? 0;
   return <Pill tone={n > 0 ? "ok" : "muted"}>{n} items</Pill>;
 }
 
 
-function studioStats(s: TileState<StudioBuild>): string {
+function studioStats(s: TileState<StudioStatus>): string {
   if (s.status !== "ok") return "—";
   const sum = s.data.summary;
   if (!sum || sum.total_items === 0) return "No items projected yet.";

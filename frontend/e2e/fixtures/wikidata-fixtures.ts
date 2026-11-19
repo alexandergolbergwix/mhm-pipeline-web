@@ -142,7 +142,7 @@ export async function installStudioMocks(
     return route.abort();
   });
   await page.route(url => url.pathname === `/api/runs/${TEST_RUN_ID}/wikidata-studio/status`, route =>
-    route.fulfill({json: {ready: true, total_items: build.total}}));
+    route.fulfill({json: {ready: true, total_items: build.total, summary: build.summary}}));
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-publications/latest`, route =>
     route.fulfill({json: {publication: null}}));
   await page.route(`**/api/runs/${TEST_RUN_ID}/wikidata-studio/source-review**`, route => route.fulfill({

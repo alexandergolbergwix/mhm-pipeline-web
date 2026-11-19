@@ -388,3 +388,68 @@ async def test_get_without_cache_does_not_start_a_build(sample_run, monkeypatch)
         f"/api/runs/{sample_run['run_id']}/wikidata-studio?force_rebuild=true",
     )
     assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_studio_get_skips_canonical_scan_when_saved_enrichment_changed(
+    sample_run, db_session, monkeypatch,
+):
+    run_id = sample_run["run_id"]
+    item = {"local_id": "work:1", "entity_type": "work", "statements": []}
+    old_enrichment = await compute_build_fingerprint_streamed(db_session, run_id, approved_only=True)
+    old_fingerprint = "a" * 64
+    stamp = await router._canonical_stamp(db_session, run_id)
+    db_session.add(WikidataStudioCache(
+        run_id=run_id, source="canonical", approved_only=True,
+        input_fingerprint=old_fingerprint, result_items=[item], quickstatements="saved commands",
+        summary={
+            "total_items": 1, "manuscripts": 0, "persons": 0, "works": 1, "statements": 0,
+            "canonical_reuse_key": f"{stamp}|{old_enrichment}",
+            "canonical_reuse_fingerprint": old_fingerprint,
+            "overrides_applied": True,
+        },
+    ))
+    record = await db_session.scalar(select(RunRecord).where(RunRecord.run_id == run_id).limit(1))
+    record.marc = {**record.marc, "title": "Changed source"}
+    await db_session.commit()
+
+    async def merged(*args, **kwargs):
+        return [item]
+
+    async def unexpected_scan(*args, **kwargs):
+        pytest.fail("A known stale build must not read the canonical snapshots")
+
+    monkeypatch.setattr(router, "fetch_merged_wikidata_items", merged)
+    monkeypatch.setattr(router, "_canonical_cache_fingerprint", unexpected_scan)
+    response = await sample_run["client"].get(f"/api/runs/{run_id}/wikidata-studio?source=canonical")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["cache_stale"] is True
+    assert payload["quickstatements"] == ""
+    assert [row["local_id"] for row in payload["items"]] == ["work:1"]
+
+
+@pytest.mark.asyncio
+async def test_large_studio_cache_requires_the_paged_view(sample_run, db_session, monkeypatch):
+    run_id = sample_run["run_id"]
+    db_session.add(WikidataStudioCache(
+        run_id=run_id, source="canonical", approved_only=False, input_fingerprint="a" * 64,
+        result_items=[{"local_id": "work:1", "labels": {"he": "כתב יד" * 40}}],
+        summary={"total_items": 1, "manuscripts": 1, "persons": 0, "works": 0, "statements": 2},
+    ))
+    await db_session.commit()
+    monkeypatch.setattr(router, "_STUDIO_WEB_CACHE_MAX_BYTES", 128, raising=False)
+
+    async def unexpected_fingerprint(*args, **kwargs):
+        pytest.fail("The web route must reject the oversized cache before it checks freshness")
+
+    monkeypatch.setattr(wikidata_studio_batches, "compute_build_fingerprint_streamed", unexpected_fingerprint)
+    client = sample_run["client"]
+    url = f"/api/runs/{run_id}/wikidata-studio"
+    response = await client.get(f"{url}?source=canonical&approved_only=false")
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "studio_paged_view_required"
+
+    response = await client.get(f"{url}/status?source=canonical&approved_only=false")
+    assert response.status_code == 200
+    assert response.json()["summary"]["statements"] == 2

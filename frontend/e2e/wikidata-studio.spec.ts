@@ -83,6 +83,33 @@ test.describe("WikidataStudio page", () => {
     ).toBeVisible();
   });
 
+  test("opens the paginated table when the sidebar cache is too large", async ({page}) => {
+    await installStudioMocks(page, makeBuildResponse());
+    await page.route(url => url.pathname === `/api/runs/${TEST_RUN_ID}/wikidata-studio`, route =>
+      route.fulfill({
+        status: 409,
+        json: {detail: {code: "studio_paged_view_required", message: "Use the Studio review table."}},
+      }));
+    await gotoStudio(page, "legacy");
+
+    await expect(page.getByTestId("wikidata-item-table")).toContainText("Hebrew Manuscript");
+  });
+
+  test("loads only the saved Studio summary on the run overview", async ({page}) => {
+    await installStudioMocks(page, makeBuildResponse());
+    const fullCacheRequests: string[] = [];
+    await page.route(url => url.pathname === `/api/runs/${TEST_RUN_ID}/wikidata-studio`, route => {
+      fullCacheRequests.push(route.request().url());
+      return route.abort();
+    });
+    await page.goto(`/runs/${TEST_RUN_ID}/overview`);
+
+    const studio = page.getByRole("link", {name: /External authority review/});
+    await expect(studio).toContainText("2 items");
+    await expect(studio).toContainText("1 manuscripts · 1 people · 0 works");
+    expect(fullCacheRequests).toEqual([]);
+  });
+
   test("renders item list with item labels in legacy view", async ({page}) => {
     const build = makeBuildResponse();
     await installStudioMocks(page, build);

@@ -4186,3 +4186,17 @@ Require a successful probe and apply `maxlag=5` to the edit.
 Keep the same execution and the existing write checks.
 
 See [Recovery checks](../blocks/wikidata-studio/repair-retries.md#recovery-checks-w-347).
+
+### Rule W-348 — Bound Studio requests on the web dyno (2026-11-19)
+
+The run overview requested the full Studio view just to show a few counts.
+Repeated requests timed out on run `47e03437` before Heroku killed the web dyno for excess memory.
+The saved items alone took 33 MiB of JSON. The full merge exceeded 700 MiB in a local replay.
+
+Use the Studio status endpoint for the overview. Return only the public counts from the saved summary.
+The sidebar route checks the size in SQL before it reads the payload. Above 16 MiB, the browser opens the paginated table.
+When the saved canonical fingerprint matches the cache row and the recorded enrichment fingerprint differs from the current one, mark the sidebar view stale.
+Serve the last saved items and suppress QuickStatements. Use the normal freshness check when the saved metadata cannot prove a change.
+Keep the full freshness check for upload and Publication writes.
+
+See [Studio cache freshness](../blocks/wikidata-studio/studio-cache-freshness.md#web-memory-limits-w-348).

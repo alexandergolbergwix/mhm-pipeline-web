@@ -9,6 +9,12 @@ export interface StudioSummary {
   statements: number;
 }
 
+export interface StudioStatus {
+  ready: boolean;
+  total_items: number | null;
+  summary: StudioSummary | null;
+}
+
 export interface Snak {
   property?: string;
   property_id?: string;
@@ -352,7 +358,7 @@ export const Studio = {
 
   status: (runId: string, source: "legacy" | "canonical", approvedOnly: boolean) => {
     const qs = new URLSearchParams({source, approved_only: approvedOnly ? "true" : "false"});
-    return api.get<{ready: boolean; total_items: number | null}>(
+    return api.get<StudioStatus>(
       `/runs/${runId}/wikidata-studio/status?${qs.toString()}`,
     );
   },
