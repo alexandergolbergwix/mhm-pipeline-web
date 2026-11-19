@@ -99,7 +99,7 @@ async def start(body: StartReferenceRepairs, auth: Admin, db: Database):
     )
     if prior and (prior.created_by != auth.user.id or prior.params.get("scope_digest") != digest):
         raise HTTPException(409, "The previous job has another actor or scope.")
-    if checkpoint.get("halted_status") not in {None, "pre_send_retryable"}:
+    if checkpoint.get("halted_status") not in {None, "pre_send_retryable", "blocked"}:
         raise HTTPException(409, "The previous outcome requires inspection before another start.")
     try:
         job = await create_job(

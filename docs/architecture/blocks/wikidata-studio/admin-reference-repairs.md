@@ -16,7 +16,8 @@ The normal session and CSRF middleware remain active.
 The POST also requires editor access and the original administrator for this sealed scope.
 Extra fields, commands, QIDs, and source changes are forbidden.
 An active or completed job does not create another job.
-An uncertain or blocked checkpoint requires inspection before another start.
+An uncertain checkpoint requires inspection before another start.
+For a blocked checkpoint, an administrator can select **Check previous repair and resume**.
 The generic job endpoint cannot create this job kind.
 Non-administrators cannot list, read, or cancel this job through the generic job routes.
 
@@ -41,6 +42,11 @@ Completed plans leave the checkpoint; verified receipts remain.
 The public job serializer excludes these private parameters.
 Temporary files are a working copy, not the durable checkpoint.
 A restart restores the current exact plan from Postgres.
+For a blocked plan, the worker reads the next item from Wikidata and checks its full content against the expected result.
+The worker requires a successful foreground receipt for the same run, administrator, item, and live revision.
+It stops if a write intent remains unresolved or the proof differs.
+It records the verified item in the new checkpoint before it starts the remaining queue.
+The previous job and its Publication records retain their history.
 
 A session advisory lock permits one reference queue per run across hosts.
 The lock uses a direct Postgres connection in autocommit mode.
@@ -76,7 +82,7 @@ This change requires a Heroku release. It does not require a Modal release.
 - `frontend/src/components/AdminRoute.tsx`: role gate before a protected page mounts.
 - `frontend/src/routes/admin/AdminReferenceRepairs.tsx`: backend controls and status.
 - `test_admin_reference_repairs.py`: role, scope, start, generic-path, and checkpoint tests.
-- `test_reference_repair_worker.py`: restored plan and pre-write checkpoint tests.
+- `test_reference_repair_worker.py`: restored plans, receipt-based recovery, and pre-write checkpoint tests.
 - `test_reference_cloud_checkpoint.py`: role revocation, cancellation, and lease tests.
 - `admin-reference-repairs.spec.ts`: mocked administrator controls and non-administrator redirects.
 

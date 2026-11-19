@@ -16,10 +16,21 @@ import httpx
 from sqlalchemy import select
 
 from app.db import session_scope
+from app.models.publication import (
+    Publication,
+    PublicationExecution,
+    PublicationWriteIntent,
+    PublicationWriteReceipt,
+)
 from app.models.run_job import RunJob
 from app.models.user import ROLE_ADMIN, User
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
+from app.pipeline.wikidata_foreground_repair import PROFILE
+from app.pipeline.wikidata_gila_execution import expected_entity, semantic_entity
+from app.pipeline.wikidata_gila_repairs import entity_digest, validate_gila_repair_proposal
+from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.publication.reference_recovery import probe_reference_lag, scan_reference_mirror
+from app.publication.reference_repair_queue import reference_source_controls
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -64,6 +75,95 @@ async def assert_admin_job(db, job_id, actor):
         raise ReferenceJobCancelledError()
 
 
+class ReferenceCheckpointUnverifiedError(ValueError):
+    """The queue has no proof that resolves its blocked item."""
+
+
+async def recover_blocked_checkpoint(checkpoint, manifest, project_id):
+    """Use a verified interactive repair to advance a blocked item without an edit."""
+    results = checkpoint.get("results", [])
+    qids = manifest["qids"]
+    plan = checkpoint.get("current_plan") or {}
+    if (
+        len(results) >= len(qids)
+        or [row.get("qid") for row in results] != qids[: len(results)]
+        or plan.get("execution_mode") is not None
+        or plan.get("run_id") != manifest["run_id"]
+        or plan.get("project_id") != str(project_id)
+        or plan.get("actor_user_id") != manifest["actor_user_id"]
+    ):
+        raise ValueError("The blocked checkpoint has another scope.")
+    qid = qids[len(results)]
+    proposals = plan.get("proposals", [])
+    if (
+        plan.get("authorized_qids") != [qid]
+        or len(proposals) != 1
+        or proposals[0].get("qid") != qid
+    ):
+        raise ValueError("The blocked plan does not match the next item.")
+    proposal = proposals[0]
+    before = plan.get("before_entities", {}).get(qid)
+    if not isinstance(before, dict):
+        raise ValueError("The blocked plan has no public snapshot.")
+    validate_gila_repair_proposal(proposal, before)
+    reference_source_controls(proposal)
+    current = await ReferenceItemReader().fetch(qid)
+    if (
+        current["lastrevid"] <= before["lastrevid"]
+        or semantic_entity(current) != semantic_entity(expected_entity(proposal, before))
+    ):
+        raise ReferenceCheckpointUnverifiedError()
+
+    intent = PublicationWriteIntent
+    receipt = PublicationWriteReceipt
+    async with session_scope() as db:
+        unresolved = await db.scalar(
+            select(intent.id).where(
+                intent.target_qid == qid,
+                intent.state.in_(["pending", "in_flight", "outcome_unknown"]),
+            ).limit(1)
+        )
+        fingerprint = entity_digest(current)
+        verified = await db.scalar(
+            select(receipt.id)
+            .join(intent, receipt.intent_id == intent.id)
+            .join(PublicationExecution, intent.execution_id == PublicationExecution.id)
+            .join(Publication, PublicationExecution.publication_id == Publication.id)
+            .where(
+                Publication.run_id == uuid.UUID(manifest["run_id"]),
+                Publication.profile_name == PROFILE,
+                Publication.target_site == "www.wikidata.org",
+                Publication.target_environment == "production",
+                PublicationExecution.actor_id == manifest["actor_user_id"],
+                intent.entity_key == f"repair:{qid}",
+                intent.action == "update",
+                intent.target_qid == qid,
+                intent.state == "succeeded",
+                receipt.status == "succeeded",
+                receipt.qid == qid,
+                receipt.fingerprint == fingerprint,
+            ).limit(1)
+        )
+        await db.rollback()
+    if unresolved is not None or verified is None:
+        raise ReferenceCheckpointUnverifiedError()
+
+    return {
+        "results": [
+            *results,
+            {
+                "qid": qid,
+                "status": "verified",
+                "corrected": True,
+                "before_revision": before["lastrevid"],
+                "after_revision": current["lastrevid"],
+            },
+        ],
+        "current_plan": None,
+        "halted_status": None,
+    }
+
+
 async def run_reference_job(job_id: uuid.UUID) -> None:
     from scripts.run_gila_reference_queue import run
 
@@ -88,7 +188,18 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                 raise ValueError("The reference job does not match the reviewed scope.")
             await assert_admin_job(db, job_id, actor)
             checkpoint = job.params.get("_reference_checkpoint", seed["checkpoint"])
+            project_id = job.project_id
             await db.rollback()
+
+        if checkpoint.get("halted_status") == "blocked":
+            checkpoint = await recover_blocked_checkpoint(checkpoint, manifest, project_id)
+            async with session_scope() as db:
+                job = await db.get(RunJob, job_id, with_for_update=True)
+                await assert_admin_job(db, job_id, actor)
+                job.params = {**job.params, "_reference_checkpoint": checkpoint}
+                await db.commit()
+        elif checkpoint.get("halted_status") not in {None, "pre_send_retryable"}:
+            raise ReferenceCheckpointUnverifiedError()
 
         async def authorize(db, current_actor):
             if not get_settings().gila_reference_cloud_enabled:
@@ -266,6 +377,10 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
     except ReferenceJobCancelledError:
         await finish_job(
             job_id, status="cancelled", error="The administrator cancelled this queue."
+        )
+    except ReferenceCheckpointUnverifiedError:
+        await finish_job(
+            job_id, status="failed", error="The blocked item has no matching verified repair."
         )
     except Exception as error:
         logger.exception("The backend reference job stopped.")

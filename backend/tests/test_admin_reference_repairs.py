@@ -211,3 +211,37 @@ async def test_private_checkpoint_survives_resume_and_unknown_outcome_refuses_it
     assert json.dumps(created.params["_reference_checkpoint"], sort_keys=True) == json.dumps(
         checkpoint, sort_keys=True
     )
+
+
+@pytest.mark.asyncio
+async def test_admin_can_check_a_blocked_checkpoint_but_cannot_retry_an_unknown_outcome(
+    sample_run, db_session, monkeypatch,
+):
+    user, spawn = await reviewed_scope(sample_run, db_session, monkeypatch)
+    prior = RunJob(
+        project_id=sample_run["project_id"],
+        run_id=sample_run["run_id"],
+        created_by=user.id,
+        kind=router.KIND,
+        status="failed",
+        params={
+            "scope_digest": "a" * 64,
+            "_reference_checkpoint": {"halted_status": "outcome_unknown"},
+        },
+    )
+    db_session.add(prior)
+    await db_session.commit()
+    client = sample_run["client"]
+    path = "/api/admin/wikidata-reference-repairs/start"
+    confirmation = {"confirmed": True, "scope_digest": "a" * 64}
+    assert (await client.post(path, json=confirmation)).status_code == 409
+    spawn.assert_not_called()
+
+    checkpoint = {"halted_status": "blocked", "results": [], "current_plan": {"saved": True}}
+    prior.params = {**prior.params, "_reference_checkpoint": checkpoint}
+    await db_session.commit()
+    response = await client.post(path, json=confirmation)
+    assert response.status_code == 200, response.text
+    created = await db_session.get(RunJob, uuid.UUID(response.json()["id"]))
+    assert created.params["_reference_checkpoint"] == checkpoint
+    spawn.assert_called_once()

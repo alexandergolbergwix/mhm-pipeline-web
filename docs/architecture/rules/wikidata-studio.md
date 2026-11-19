@@ -4156,3 +4156,20 @@ A client status change does not prove that Wikimedia resolved its service delay.
 
 Tests simulate a delay beyond one hour, SQL restoration, expiry, restart, safe diagnostics, and the unchanged refusal paths.
 See [Sequential reference repairs](../blocks/wikidata-studio/reference-repair-queue.md).
+
+
+### Rule W-346 — The queue can recover an item with a verified foreground receipt (2026-11-19)
+
+The automatic job stopped on Q141175528 after a foreground repair completed that item.
+Its checkpoint retained the old revision, so the administrator could not resume the queue.
+
+Accept an administrator's request to check a blocked checkpoint after the normal scope and consent checks.
+Require the same run, actor, and next item in the saved plan.
+Check that the live item has a newer revision and matches the full expected result of the saved plan.
+Require a successful foreground repair receipt that matches the current item fingerprint.
+Keep a blocked item in place if an unresolved intent exists or proof is missing.
+Commit the confirmed result in the new checkpoint before the next item can enter the queue.
+Retain the previous job and Publication history.
+Keep `maxlag=5` and the existing write checks for all subsequent automatic edits.
+
+See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).

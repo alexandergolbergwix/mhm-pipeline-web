@@ -83,6 +83,8 @@ The runner reuses that plan and its execution after a confirmed API rejection.
 A changed source, changed target, foreign creator, or uncertain outcome stops the queue.
 A confirmed retry pause retains its plan and execution for a later invocation.
 A blocked or uncertain result requires inspection before another invocation.
+The [administrator job](admin-reference-repairs.md) can advance a blocked item after it verifies a successful foreground repair receipt and the exact current item.
+The worker saves the recovered checkpoint before it continues with the next item.
 The runner never advances to another QID after a failed or uncertain item.
 
 The correction scope covers equivalent reference blocks only.

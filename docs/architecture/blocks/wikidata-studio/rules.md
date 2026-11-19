@@ -1347,3 +1347,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 200. **R200 — Live repair progress counts confirmed outcomes only.** Separate the queue, active work, and a service delay. Keep private plans out of the public summary. Clear protected state after access denial. *Why:* a live display must not imply a write or lose confirmed progress after a network error.
 
 201. **R201 — Read-only recovery checks never grant write authority.** Honor the saved retry date and `Retry-After`. Require a successful probe before the backend retries confirmed maxlag. Keep the snapshot scan separate from confirmed repairs. *Why:* brief lag recovery does not verify a public edit or make saved evidence current.
+
+202. **R202 — Resume a blocked item only from a verified repair (W-346).** Match the next item, the saved exact result, and the successful foreground receipt for the same run and actor. Reject an unresolved intent. Save the recovered checkpoint before the queue advances. *Why:* an old plan stopped the queue after an interactive edit completed the item.

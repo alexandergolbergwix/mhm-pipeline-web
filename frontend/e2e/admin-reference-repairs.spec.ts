@@ -33,6 +33,30 @@ test("an administrator confirms the exact backend repair scope", async ({page}) 
   await expect(page.getByText("The backend runs the reviewed queue.", {exact: false})).toBeVisible();
 });
 
+test("an administrator can request recovery of a blocked repair", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  await page.route("**/api/auth/me", route => route.fulfill({json: {
+    id: "admin", role: "admin", name: "Admin", email: "admin@example.com",
+  }}));
+  await page.route("**/api/admin/stats", route => route.fulfill({json: {pending_access_requests: 0}}));
+  let started = false;
+  await page.route("**/api/admin/wikidata-reference-repairs", route => route.fulfill({json: {
+    ...status, halted_status: "blocked",
+    job: started ? {id: "new-job", status: "queued", progress: {}} : {id: "old-job", status: "failed", progress: {}},
+  }}));
+  await page.route("**/api/admin/wikidata-reference-repairs/start", route => {
+    expect(route.request().postDataJSON()).toEqual({confirmed: true, scope_digest: status.scope_digest});
+    started = true;
+    return route.fulfill({json: {id: "new-job", status: "queued"}});
+  });
+  await page.goto("/admin/wikidata-reference-repairs");
+  const resume = page.getByRole("button", {name: "Check previous repair and resume"});
+  await expect(resume).toBeDisabled();
+  await page.getByRole("checkbox", {name: "I authorize the reviewed reference repairs only."}).check();
+  await resume.click();
+  await expect(page.getByRole("button", {name: "Job in queue"})).toBeDisabled();
+});
+
 test("an editor cannot mount the administrator repair page or request its data", async ({page}) => {
   await installStudioMocks(page, makeBuildResponse());
   let requests = 0;

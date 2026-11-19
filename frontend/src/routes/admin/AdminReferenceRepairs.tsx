@@ -15,7 +15,8 @@ export default function AdminReferenceRepairs() {
   const queued = state?.job?.status === "queued";
   const active = queued || state?.job?.status === "running";
   const complete = state?.job?.status === "succeeded";
-  const blocked = state?.halted_status && state.halted_status !== "pre_send_retryable";
+  const checkPreviousRepair = state?.halted_status === "blocked";
+  const blocked = state?.halted_status && !checkPreviousRepair && state.halted_status !== "pre_send_retryable";
 
   async function start() {
     if (!state || !consent || busy || active || complete || blocked || refreshError) return;
@@ -48,6 +49,7 @@ export default function AdminReferenceRepairs() {
       <Link className="text-biu-sky underline text-sm" to={`/runs/${state.run_id}/wikidata-studio/repair-plan`}>View saved repair inventory</Link>
       {!state.enabled && <p>The backend handoff is not enabled.</p>}
       {blocked && <p>The previous outcome requires inspection before another start.</p>}
+      {checkPreviousRepair && <p>The backend can resume if the previous repair matches the live item.</p>}
       {state.job?.error && <p className="text-danger">{state.job.error}</p>}
     </>}
     {state && !active && !complete && <label className="flex gap-2 items-center text-sm"><input type="checkbox" checked={consent}
@@ -55,7 +57,7 @@ export default function AdminReferenceRepairs() {
       I authorize the reviewed reference repairs only.</label>}
     <button className="button-primary" disabled={!state?.enabled || !consent || busy || active || complete || Boolean(blocked) || Boolean(refreshError)}
       onClick={() => void start()}>{busy ? "Please wait…" : queued ? "Job in queue" : active ? "Backend repairs are active"
-        : complete ? "Reference queue complete" : "Start backend reference repairs"}</button>
+        : complete ? "Reference queue complete" : checkPreviousRepair ? "Check previous repair and resume" : "Start backend reference repairs"}</button>
     {error && <p role="alert" className="text-danger">{error} No automatic resend will occur.</p>}
     <details className="text-sm"><summary className="cursor-pointer">Repair scope and safeguards</summary>
       <div className="space-y-2 mt-3 muted">
