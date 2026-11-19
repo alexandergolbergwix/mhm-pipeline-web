@@ -174,7 +174,7 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-346** — A blocked queue item advances only when the live result and the successful foreground receipt match. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-347** — Check for brief Wikidata recovery sooner when the reported lag is near the edit limit. Keep saved retry dates and server delays. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-348** — Read only saved counts for the run overview. Direct large sidebar requests to the paginated table and skip scans for known stale builds. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
-- **W-349** — The administrator reference queue uses maxlag 20 for the probe, edit, and status display. Other bulk writes use 5. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-349** — The administrator reference queue uses maxlag 100 for the probe, edit, and status display. Other bulk writes use 5. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-350** — Resume a preflight stop at the same item. Require a later verified receipt before a known legacy rejection can stop blocking a fresh edit. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 
 - **W-273** — Research Assistant prompt gate: every user prompt passes the local scope router AND the TypeSafe Jev model check (jev-1.13.0) before any LLM call, enforced at both the Heroku dispatch and the Modal entries (dev-stub-only gating left production ungated); all retrieved text incl. MARC notes passes the quarantine; a provider 402 humanizes and retries once on the fallback model — see [platform-infra.md](docs/architecture/rules/platform-infra.md)

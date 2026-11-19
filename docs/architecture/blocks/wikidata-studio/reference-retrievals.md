@@ -39,7 +39,7 @@ The completion packet retains these cases as repairs until a current verified re
 A public read-only POST can test the same lag gate without an edit or an authenticated session.
 Use `action=wbgetentities`, `props=info`, one public QID, and `maxlag=5`.
 A successful GET alone does not prove that the POST lag gate will permit an edit.
-Use `maxlag=5` for normal bulk edits. The administrator repair queue uses `maxlag=20` (W-349). Honor `Retry-After`.
+Use `maxlag=5` for normal bulk edits. The administrator repair queue uses `maxlag=100` (W-349). Honor `Retry-After`.
 Check the exact entity after an uncertain outcome before another attempt.
 MediaWiki permits individual interactive requests to omit `maxlag`; this exception does not apply to an unattended bulk process.
 The [foreground mode](foreground-reference-repair.md) enforces one confirmed item, its complete reference correction plan, a separate durable profile, and one write attempt.

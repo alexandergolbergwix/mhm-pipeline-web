@@ -38,7 +38,7 @@ from app.settings import get_settings
 logger = logging.getLogger(__name__)
 
 KIND = "wikidata_reference_repair"
-REFERENCE_JOB_MAXLAG = 20
+REFERENCE_JOB_MAXLAG = 100
 _TIMING_STARTED_AT = "_reference_timing_started_at"
 SEED_PATH = Path(__file__).resolve().parents[1] / "data/gila_reference_seed.json"
 

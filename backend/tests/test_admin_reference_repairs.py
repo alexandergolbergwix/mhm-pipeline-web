@@ -72,7 +72,7 @@ async def test_live_status_counts_confirmed_results_and_limits_public_history(
     assert response.status_code == 200
     body = response.json()
     assert body["verified"] == 6
-    assert body["maxlag"] == 20
+    assert body["maxlag"] == 100
     assert body["eta_seconds"] is None
     assert body["already_clean"] == 1
     assert body["completed"] == 7

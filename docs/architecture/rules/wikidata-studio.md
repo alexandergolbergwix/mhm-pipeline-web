@@ -4203,9 +4203,9 @@ See [Studio cache freshness](../blocks/wikidata-studio/studio-cache-freshness.md
 
 ### Rule W-349 — Use one lag limit for the administrator reference queue (2026-11-19)
 
-The operator chose 20 for the reviewed administrator queue after Wikidata refused requests at 5 during Query Service lag.
-Use 20 for each read-only probe and edit in this queue. Report the same value in the status API.
-Adjust the near-limit check interval relative to 20.
+The operator chose 100 for the reviewed administrator queue.
+Use 100 for each read-only probe and edit in this queue. Report the same value in the status API.
+Set the near-limit check interval relative to the same limit.
 Keep the saved retry date, server delays, exact plan, and creator checks.
 The CLI and other bulk writes use 5.
 

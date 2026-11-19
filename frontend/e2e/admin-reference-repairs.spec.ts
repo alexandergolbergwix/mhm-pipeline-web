@@ -4,7 +4,7 @@ import {installStudioMocks, makeBuildResponse, TEST_RUN_ID} from "./fixtures/wik
 
 const status = {
   enabled: true, scope_digest: "a".repeat(64), run_id: TEST_RUN_ID,
-  total: 1602, verified: 1, halted_status: null, job: null, maxlag: 20,
+  total: 1602, verified: 1, halted_status: null, job: null, maxlag: 100,
 };
 
 test("an administrator confirms the exact backend repair scope", async ({page}) => {
@@ -127,7 +127,7 @@ test("live progress follows backend states without another start request", async
     ...status, verified, completed: verified, already_clean: 0,
     job: {id: "job", status: phase === "queued" ? "queued" : "running", progress: {
       phase, current_qid: "Q123", next_attempt_at: new Date(Date.now() + 60000).toISOString(),
-      lag_probe_status: "delayed", lag_probe_seconds: 20.5, next_lag_probe_at: new Date(Date.now() + 60000).toISOString(),
+      lag_probe_status: "delayed", lag_probe_seconds: 100.5, next_lag_probe_at: new Date(Date.now() + 60000).toISOString(),
       mirror_scan: {status: "complete", reviewed: 1601, total: 1601,
         candidates: 18, seen_clean: 250, unchecked: 1333},
 
@@ -140,9 +140,9 @@ test("live progress follows backend states without another start request", async
   phase = "service_delay";
   await expect(page.getByRole("heading", {name: "Wikidata delay", exact: true})).toBeVisible();
   await expect(page.getByText(/Next retry in/)).toBeVisible();
-  await expect(page.getByText(/Reported lag: 20.50. Edit limit: 20/)).toBeVisible();
+  await expect(page.getByText(/Reported lag: 100\.50\. Edit limit: 100/)).toBeVisible();
   await page.getByText("Repair scope and safeguards", {exact: true}).click();
-  await expect(page.getByText("The queue uses maxlag=20 for Wikidata edits.")).toBeVisible();
+  await expect(page.getByText("The queue uses maxlag=100 for Wikidata edits.")).toBeVisible();
   await page.getByText("Queue details", {exact: true}).click();
   await expect(page.getByText(/18 possible repairs · 250 appear clean · 1333 unavailable/))
     .toBeVisible();

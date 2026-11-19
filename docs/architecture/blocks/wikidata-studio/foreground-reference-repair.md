@@ -5,7 +5,7 @@
 An explicit user request can authorize the reviewed reference corrections on one item while the user waits.
 The [MediaWiki maxlag manual](https://www.mediawiki.org/wiki/Manual:Maxlag_parameter) permits interactive requests to omit maxlag.
 This mode does not convert the automatic repair queue to an interactive queue.
-Automatic edits use maxlag. The CLI uses 5 and the administrator queue uses 20 (W-349).
+Automatic edits use maxlag. The CLI uses 5 and the administrator queue uses 100 (W-349).
 
 ## Scope
 

@@ -66,7 +66,7 @@ The local handoff marker forbids another local control start.
 The worker rechecks the administrator role, job state, project access, and source before each write.
 Creator UID 6935067 remains mandatory.
 Foreign-created items remain read-only relation targets.
-This administrator queue uses `maxlag=20` for the read-only probe and edit (W-349). The status API reports the same limit.
+This administrator queue uses `maxlag=100` for the read-only probe and edit (W-349). The status API reports the same limit.
 The queue retains saved retry dates and exact Publication intents. Other bulk writes use `maxlag=5`.
 Unknown outcomes stop the queue.
 The six Studio corrections, source imports, identity decisions, and foreground exceptions remain excluded.

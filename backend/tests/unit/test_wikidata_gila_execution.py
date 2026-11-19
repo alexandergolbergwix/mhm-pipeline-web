@@ -201,7 +201,7 @@ async def test_preflight_and_prior_uncertainty_cannot_write() -> None:
         ("unknown-error", False),
     ],
 )
-@pytest.mark.parametrize("maxlag", [None, 20])
+@pytest.mark.parametrize("maxlag", [None, 100])
 async def test_live_transport_classifies_errors_without_a_second_post(
     code: str, rejected: bool, maxlag: int | None,
 ) -> None:
