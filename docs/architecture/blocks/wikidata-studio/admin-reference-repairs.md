@@ -70,7 +70,7 @@ Creator UID 6935067 remains mandatory.
 Foreign-created items remain read-only relation targets.
 This administrator queue uses `maxlag=100` for the read-only probe and edit (W-349). The status API reports the same limit.
 The queue retains saved retry dates and exact Publication intents. Other bulk writes use `maxlag=5`.
-Unknown outcomes stop the queue.
+Unknown outcomes stop the queue. With a saved plan, **Check previous repair and resume** can verify the original write and record its receipt (W-352).
 The six Studio corrections, source imports, identity decisions, and foreground exceptions remain excluded.
 A verified receipt does not certify all nine Gila requirements.
 

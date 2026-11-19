@@ -1361,3 +1361,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 207. **R207 — Resume a preflight stop from the same item (W-350).** Keep the completed prefix. Repeat the prior-write and fresh evidence checks. Require a later verified receipt at a newer base revision before accepting the known legacy rejection. *Why:* stale type errors can block a new exact repair.
 
 208. **R208 — Retry a creator check after a timeout (W-351).** Save a five-minute retry time before any edit plan exists for the item. Keep the completed prefix and repeat the checks for the same item. The timeout must come from the creator check.
+
+209. **R209 — Recover an unconfirmed reference edit by proof (W-352).** Compare the live result with the saved plan. Bind the check to the original intent. Record its receipt before the queue advances. The check has no edit capability.

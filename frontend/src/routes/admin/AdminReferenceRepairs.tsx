@@ -19,8 +19,11 @@ export default function AdminReferenceRepairs() {
   const blocked = state?.resume_action === "review";
   const currentItem = state?.halted_qid;
   const legacyStopMessage = state?.job?.error === "The reference queue paused or requires review.";
+  const legacyWriteMessage = state?.job?.error === "Review the result of the last Wikidata write before another attempt.";
   const showAction = state?.enabled && !active && !complete && !blocked;
-  const stopMessage = legacyStopMessage && (resume || checkPreviousRepair || blocked) ? null : state?.job?.error;
+  const replaceStopMessage = (legacyStopMessage && (resume || checkPreviousRepair || blocked))
+    || (legacyWriteMessage && checkPreviousRepair);
+  const stopMessage = replaceStopMessage ? null : state?.job?.error;
   const actionLabel = checkPreviousRepair ? "Check previous repair and resume"
     : resume ? "Resume reference repairs" : "Start backend reference repairs";
 

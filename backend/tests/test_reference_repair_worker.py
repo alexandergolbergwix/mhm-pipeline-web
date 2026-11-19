@@ -13,10 +13,12 @@ from app.pipeline import wikidata_reference_repair_job as worker
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("halted_status", [None, "outcome_unknown"])
 async def test_backend_worker_restores_the_plan_and_persists_before_and_after_the_send(
     sample_run,
     db_session,
     monkeypatch,
+    halted_status,
 ):
     user = await db_session.get(User, sample_run["user_id"])
     user.role = "admin"
@@ -33,7 +35,7 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
             "qids": ["Q123"],
         },
         "build_job_id": str(sample_run["run_id"]),
-        "checkpoint": {"results": [], "current_plan": plan},
+        "checkpoint": {"results": [], "current_plan": plan, "halted_status": halted_status},
     }
     job = RunJob(
         project_id=sample_run["project_id"],
@@ -66,6 +68,7 @@ async def test_backend_worker_restores_the_plan_and_persists_before_and_after_th
         import json
 
         assert qids == ["Q123"]
+        assert options["recover_outcome"] is (halted_status == "outcome_unknown")
         assert options["maxlag"] == 100
         await options["lag_probe"]()
         assert json.loads((args.state_dir / "plan-Q123.json").read_text()) == plan

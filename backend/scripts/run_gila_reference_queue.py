@@ -68,6 +68,7 @@ async def _run(
     on_creator_retry=None,
     creator_retry_at=None,
     resume_results=(),
+    recover_outcome=False,
     on_event=None,
     dispose_engine=True,
     authorize_session=None,
@@ -165,6 +166,10 @@ async def _run(
                 await before_item_hook(qid)
             async with session_scope() as db:
                 await access(db)
+                if recover_outcome and qid == qids[len(resume_results)]:
+                    # The queue can check this exact plan but cannot send it again.
+                    await db.rollback()
+                    return
                 unknown = await has_unresolved_prior_write(db, qid, str(actor))
                 prior = (
                     await db.execute(
@@ -269,6 +274,7 @@ async def _run(
                 on_creator_retry=on_creator_retry,
                 creator_retry_at=creator_retry_at,
                 resume_results=resume_results,
+                recover_outcome=recover_outcome,
                 lag_probe=lag_probe,
             )
     finally:

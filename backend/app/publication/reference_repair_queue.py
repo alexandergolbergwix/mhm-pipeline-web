@@ -25,6 +25,7 @@ from app.pipeline.wikidata_gila_repairs import (
     validate_gila_repair_proposal,
 )
 from app.pipeline.wikidata_retry_diagnostics import ApiRetryDiagnostics
+from app.publication.historical_repairs import advance_repair_publication
 from app.publication.reference_recovery import LagProbeResult, LagProbeSchedule
 from app.publication.repair_retry_runner import RepairRetryWait, wait_for_repair_publication
 from app.publication.repository import PublicationRepository
@@ -128,6 +129,7 @@ async def run_reference_repair_queue(
     on_creator_retry: Callable[[str, list[dict], Path, datetime], Awaitable[None]] | None = None,
     creator_retry_at: datetime | None = None,
     resume_results: Sequence[dict] = (),
+    recover_outcome: bool = False,
     lag_probe: Callable[[], Awaitable[LagProbeResult]] | None = None,
 ) -> dict:
     """Retain each exact plan and stop before the next item after any unsafe result."""
@@ -151,6 +153,9 @@ async def run_reference_repair_queue(
         for row in results
     ):
         raise ValueError("The saved completed prefix does not match the reviewed queue.")
+    if recover_outcome and (not apply or len(results) >= len(qids)):
+        raise ValueError("Recovery requires a pending item in the reviewed queue.")
+    recovering_qid = qids[len(results)] if recover_outcome else None
     lag_probe_schedule = LagProbeSchedule()
 
     async def preview_journal(phase, receipt):
@@ -166,6 +171,7 @@ async def run_reference_repair_queue(
         while len(results) < len(qids):
             ordinal = len(results) + 1
             qid = qids[ordinal - 1]
+            recovering = qid == recovering_qid
             if creator_retry_at is not None:
                 emit({
                     "qid": qid, "ordinal": ordinal, "total": len(qids),
@@ -180,6 +186,8 @@ async def run_reference_repair_queue(
             try:
                 if before_item is not None:
                     await before_item(qid)
+                if recovering and not plan_file.exists():
+                    raise ValueError("The pending write has no saved repair plan.")
                 if plan_file.exists():
                     plan = json.loads(plan_file.read_text())
                     if (
@@ -273,18 +281,24 @@ async def run_reference_repair_queue(
                         )
                         emit({**current, "ordinal": current_ordinal, "total": len(qids)})
 
-                    summary = await wait_for_repair_publication(
-                        plan,
-                        gateway,
-                        source_check,
-                        repository,
-                        actor_id=actor_id,
-                        run_id=run_id,
-                        max_wait_seconds=wait_seconds,
-                        on_wait=report_wait,
-                        lag_probe=lag_probe,
-                        lag_probe_schedule=lag_probe_schedule,
-                    )
+                    if recovering:
+                        summary = await advance_repair_publication(
+                            plan, gateway, source_check, repository,
+                            actor_id=actor_id, run_id=run_id, recover_only=True,
+                        )
+                    else:
+                        summary = await wait_for_repair_publication(
+                            plan,
+                            gateway,
+                            source_check,
+                            repository,
+                            actor_id=actor_id,
+                            run_id=run_id,
+                            max_wait_seconds=wait_seconds,
+                            on_wait=report_wait,
+                            lag_probe=lag_probe,
+                            lag_probe_schedule=lag_probe_schedule,
+                        )
                     intent = (
                         await repository.latest_write_intent(summary.execution_id, f"repair:{qid}")
                         if summary.execution_id
@@ -306,6 +320,8 @@ async def run_reference_repair_queue(
                         "qid": qid,
                         "status": "verified"
                         if verified
+                        else "outcome_unknown"
+                        if recovering
                         else (
                             "verification_failed"
                             if intent and intent.state == "succeeded"
@@ -336,7 +352,7 @@ async def run_reference_repair_queue(
                     continue
                 row = {
                     "qid": qid,
-                    "status": "blocked",
+                    "status": "outcome_unknown" if recovering else "blocked",
                     "corrected": False,
                     "error_type": type(error).__name__,
                 }

@@ -312,8 +312,9 @@ async def test_private_checkpoint_survives_resume_and_unknown_outcome_refuses_it
 
 
 @pytest.mark.asyncio
-async def test_admin_can_check_a_blocked_checkpoint_but_cannot_retry_an_unknown_outcome(
-    sample_run, db_session, monkeypatch,
+@pytest.mark.parametrize("halted", ["blocked", "outcome_unknown", "verification_failed"])
+async def test_admin_can_check_a_saved_plan_but_cannot_recover_an_outcome_without_it(
+    sample_run, db_session, monkeypatch, halted,
 ):
     user, spawn = await reviewed_scope(sample_run, db_session, monkeypatch)
     prior = RunJob(
@@ -335,9 +336,10 @@ async def test_admin_can_check_a_blocked_checkpoint_but_cannot_retry_an_unknown_
     assert (await client.post(path, json=confirmation)).status_code == 409
     spawn.assert_not_called()
 
-    checkpoint = {"halted_status": "blocked", "results": [], "current_plan": {"saved": True}}
+    checkpoint = {"halted_status": halted, "results": [], "current_plan": {"saved": True}}
     prior.params = {**prior.params, "_reference_checkpoint": checkpoint}
     await db_session.commit()
+    assert (await client.get(path.removesuffix("/start"))).json()["resume_action"] == "check_repair"
     response = await client.post(path, json=confirmation)
     assert response.status_code == 200, response.text
     created = await db_session.get(RunJob, uuid.UUID(response.json()["id"]))

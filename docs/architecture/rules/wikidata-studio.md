@@ -4234,3 +4234,14 @@ Restore the saved time after a restart. Repeat the creator, source, and prior-wr
 A creator mismatch or an uncertain write still stops the queue.
 
 See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).
+
+### Rule W-352 — Verify the original reference edit before resumption
+
+The edit to Q141754606 succeeded, but the post-edit read did not confirm the returned revision.
+For a saved plan with an unconfirmed result, show **Check previous repair and resume**.
+Find the original Publication by the saved plan digest and run. Bind the intent to the actor and QID.
+The recovery check has no edit capability. It requires the current creator and source proof and the exact result at a newer revision.
+Record the receipt on the original intent. Save the confirmed item in the checkpoint before the worker advances.
+If proof fails, retain the plan and stop at the same item.
+
+See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).

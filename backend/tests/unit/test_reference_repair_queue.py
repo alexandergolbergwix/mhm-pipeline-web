@@ -6,12 +6,15 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import requests
+from sqlalchemy import select
 
+from app.models.publication import PublicationWriteReceipt
 from app.pipeline.wikidata_gila_execution import LiveRepairGateway, WriteRejectedError, expected_entity
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals
 from app.publication import reference_repair_queue as queue
 from app.publication.repair_retry_runner import wait_for_repair_publication
 from app.publication.repository import InMemoryPublicationRepository
+from app.publication.sql_repository import SqlAlchemyPublicationRepository
 from converter.wikidata.uploader import WikidataUploader
 
 
@@ -178,8 +181,8 @@ async def run(tmp_path, gateway, repository, **kwargs):
         repository,
         state_dir=tmp_path,
         actor_id=kwargs.pop("actor_id", "actor"),
-        run_id="run",
-        project_id="project",
+        run_id=kwargs.pop("run_id", "run"),
+        project_id=kwargs.pop("project_id", "project"),
         wait_seconds=kwargs.pop("wait_seconds", 0),
         **kwargs,
     )
@@ -235,6 +238,53 @@ async def test_unknown_outcome_stops_without_a_blind_resend(tmp_path):
     assert gateway.writes == ["Q123"]
     await run(tmp_path, gateway, repo, apply=True)
     assert gateway.writes == ["Q123"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("public_matches", [True, False])
+async def test_admin_resume_checks_the_original_write_and_never_resends_it(
+    tmp_path, monkeypatch, public_matches, sample_run, db_session,
+):
+    gateway, repo = Gateway(), SqlAlchemyPublicationRepository(db_session)
+    scope = {
+        "run_id": str(sample_run["run_id"]),
+        "project_id": str(sample_run["project_id"]),
+        "actor_id": str(sample_run["user_id"]),
+    }
+    before = await gateway.fetch("Q123")
+    fetch = gateway.fetch
+    stale = True
+
+    async def read(qid):
+        if qid == "Q123" and stale:
+            return deepcopy(before)
+        return await fetch(qid)
+
+    monkeypatch.setattr(gateway, "fetch", read)
+    first = await run(tmp_path, gateway, repo, apply=True, **scope)
+    pending, = first["results"]
+    assert pending["status"] == "outcome_unknown"
+    original = await repo.latest_write_intent(pending["execution_id"], "repair:Q123")
+    assert gateway.writes == ["Q123"]
+
+    stale = not public_matches
+    resumed = await run(tmp_path, gateway, repo, apply=True, recover_outcome=True, **scope)
+    same_intent = await repo.latest_write_intent(pending["execution_id"], "repair:Q123")
+    assert same_intent.intent_id == original.intent_id
+    receipt = await db_session.scalar(select(PublicationWriteReceipt).where(
+        PublicationWriteReceipt.qid == "Q123",
+    ))
+    if public_matches:
+        assert resumed["status"] == "complete"
+        assert resumed["results"][0]["after_revision"] == before["lastrevid"] + 1
+        assert same_intent.state == "succeeded"
+        assert receipt is not None and str(receipt.intent_id) == original.intent_id
+        assert gateway.writes == ["Q123", "Q456", "Q789"]
+    else:
+        assert resumed["status"] == "stopped"
+        assert same_intent.state == "outcome_unknown"
+        assert receipt is None
+        assert gateway.writes == ["Q123"]
 
 
 @pytest.mark.asyncio

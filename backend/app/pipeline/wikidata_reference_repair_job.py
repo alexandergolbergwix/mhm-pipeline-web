@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 KIND = "wikidata_reference_repair"
 REFERENCE_JOB_MAXLAG = 100
+UNCERTAIN_WRITE_STATES = frozenset({"outcome_unknown", "verification_failed"})
 _TIMING_STARTED_AT = "_reference_timing_started_at"
 SEED_PATH = Path(__file__).resolve().parents[1] / "data/gila_reference_seed.json"
 
@@ -77,6 +78,8 @@ def reference_resume_action(checkpoint: dict) -> str:
     halted = checkpoint.get("halted_status")
     if halted == "blocked":
         return "resume" if checkpoint.get("current_plan") is None else "check_repair"
+    if halted in UNCERTAIN_WRITE_STATES and checkpoint.get("current_plan"):
+        return "check_repair"
     return "resume" if halted in {None, "pre_send_retryable"} else "review"
 
 
@@ -245,7 +248,8 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                 await db.rollback()
 
         resume_action = reference_resume_action(checkpoint)
-        if resume_action == "check_repair":
+        recover_outcome = checkpoint.get("halted_status") in UNCERTAIN_WRITE_STATES
+        if resume_action == "check_repair" and not recover_outcome:
             checkpoint = await recover_blocked_checkpoint(checkpoint, manifest, project_id)
             async with session_scope() as db:
                 job = await db.get(RunJob, job_id, with_for_update=True)
@@ -376,6 +380,7 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     on_creator_retry=persist,
                     creator_retry_at=_timing_value(checkpoint.get("creator_retry_at")),
                     resume_results=checkpoint.get("results", []),
+                    recover_outcome=recover_outcome,
                     on_event=event,
                     dispose_engine=False,
                     authorize_session=authorize,
@@ -426,8 +431,8 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     message = "An earlier Wikidata write needs proof before this repair can proceed."
                 elif result["status"] == "paused":
                     message = "The queue saved the retry time. Resume will use that time."
-                elif current.get("status") in {"outcome_unknown", "verification_failed"}:
-                    message = "Review the result of the last Wikidata write before another attempt."
+                elif current.get("status") in UNCERTAIN_WRITE_STATES:
+                    message = "The worker could not confirm the previous Wikidata edit."
                 else:
                     message = "The worker stopped while it checked the current item."
             await finish_job(

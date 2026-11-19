@@ -33,7 +33,7 @@ test("an administrator confirms the exact backend repair scope", async ({page}) 
   await expect(start).toHaveCount(0);
 });
 
-test("an administrator can request recovery of a blocked repair", async ({page}) => {
+test("an administrator can check an unconfirmed edit and resume", async ({page}) => {
   await installStudioMocks(page, makeBuildResponse());
   await page.route("**/api/auth/me", route => route.fulfill({json: {
     id: "admin", role: "admin", name: "Admin", email: "admin@example.com",
@@ -41,8 +41,11 @@ test("an administrator can request recovery of a blocked repair", async ({page})
   await page.route("**/api/admin/stats", route => route.fulfill({json: {pending_access_requests: 0}}));
   let started = false;
   await page.route("**/api/admin/wikidata-reference-repairs", route => route.fulfill({json: {
-    ...status, halted_status: "blocked", resume_action: started ? null : "check_repair",
-    job: started ? {id: "new-job", status: "queued", progress: {}} : {id: "old-job", status: "failed", progress: {}},
+    ...status, halted_status: "outcome_unknown", resume_action: started ? null : "check_repair",
+    job: started ? {id: "new-job", status: "queued", progress: {}} : {
+      id: "old-job", status: "failed", progress: {},
+      error: "Review the result of the last Wikidata write before another attempt.",
+    },
   }}));
   await page.route("**/api/admin/wikidata-reference-repairs/start", route => {
     expect(route.request().postDataJSON()).toEqual({confirmed: true, scope_digest: status.scope_digest});
@@ -52,6 +55,7 @@ test("an administrator can request recovery of a blocked repair", async ({page})
   await page.goto("/admin/wikidata-reference-repairs");
   const resume = page.getByRole("button", {name: "Check previous repair and resume"});
   await expect(resume).toBeDisabled();
+  await expect(page.getByText("Review the result of the last Wikidata write before another attempt.")).toHaveCount(0);
   await page.getByRole("checkbox", {name: "I authorize the reviewed reference repairs only."}).check();
   await resume.click();
   await expect(page.getByRole("heading", {name: "In queue", exact: true})).toBeVisible();

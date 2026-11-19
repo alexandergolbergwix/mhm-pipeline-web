@@ -85,6 +85,7 @@ class RepairProjectionSource:
 async def advance_repair_publication(
     plan, gateway, source_check, repository, *, actor_id: str, run_id: str, clock=None,
     probe_maxlag: bool = False, defer_existing_maxlag: bool = False,
+    recover_only: bool = False,
 ):
     """Resume durable intents. A future retry date leaves the execution paused."""
     import uuid
@@ -111,6 +112,7 @@ async def advance_repair_publication(
         source_check,
         credential_ref=credential_ref,
         authorized_qids=frozenset(plan["authorized_qids"]),
+        recover_only=recover_only,
     )
     if (probe_maxlag or defer_existing_maxlag) and (
         plan.get("execution_mode") == MODE or len(plan["proposals"]) != 1
@@ -120,6 +122,44 @@ async def advance_repair_publication(
         projection_source=source, repository=repository, gateway=adapter, clock=clock,
         maxlag_backoff_cap_seconds=60.0 if probe_maxlag else None,
     )
+    if recover_only:
+        if profile_name != "gila-exact-repair" or len(source.documents) != 1:
+            raise ValueError("Recovery requires one saved automatic reference repair.")
+        existing = await repository.find_prepared(
+            run_id=run_id, idempotency_key=f"repair-prepare:{source.digest}",
+        )
+        if existing is None:
+            raise ValueError("The saved reference repair has no original Publication.")
+        publication, _ = existing
+        if (
+            publication.profile.name != profile_name or publication.target != TARGET
+            or publication.source_snapshot.digest != source.digest
+            or not publication.latest_execution_id
+        ):
+            raise ValueError("The original Publication does not match the saved repair.")
+        execution = await repository.get_execution(publication.latest_execution_id)
+        qid = source.documents[0]["repair_proposal"]["qid"]
+        intent = await repository.latest_write_intent(execution.execution_id, f"repair:{qid}")
+        if (
+            execution.actor_id != actor_id or execution.total_count != 1
+            or intent is None or intent.target_qid != qid or intent.action != "update"
+            or intent.state not in {"outcome_unknown", "succeeded"}
+        ):
+            raise ValueError("The original write intent does not match the saved repair.")
+        if intent.state == "outcome_unknown":
+            await module.advance(
+                publication.publication_id,
+                ResumeCommand(
+                    execution_id=execution.execution_id, credential_ref=credential_ref,
+                    actor_id=actor_id, idempotency_key=f"repair-recovery:{uuid.uuid4()}",
+                ),
+            )
+        else:
+            document = source.documents[0]
+            await gateway.assert_allowed(qid)
+            if await source_check(document["repair_before"], document["repair_proposal"]) != document["repair_source_evidence"]:
+                raise ValueError("The source changed before the recovery check.")
+        return await module.read(SummaryQuery(publication.publication_id))
     operation = await module.prepare(
         PrepareRequest(
             run_id=run_id,
@@ -206,11 +246,13 @@ class RepairPublicationGateway:
         *,
         credential_ref: str,
         authorized_qids: frozenset[str],
+        recover_only: bool = False,
     ):
         self.gateway = gateway
         self.source_check = source_check
         self.credential_ref = credential_ref
         self.authorized_qids = authorized_qids
+        self.recover_only = recover_only
 
     async def open(self, credential_ref: str, target: TargetRef):
         if credential_ref != self.credential_ref or target != TARGET:
@@ -285,6 +327,8 @@ class RepairPublicationGateway:
         return mutation
 
     async def write(self, request):
+        if self.recover_only:
+            return WriteOutcome.blocked("The recovery check cannot send an edit.")
         sent = False
         try:
             document = self._document(request.mutation)

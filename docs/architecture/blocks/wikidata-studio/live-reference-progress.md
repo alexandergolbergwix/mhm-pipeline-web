@@ -24,6 +24,7 @@ The worker publishes its initial phase before a remote check.
 The worker publishes counts only after the private checkpoint commits.
 The terminal snapshot retains the counters, current QID, and saved retry time.
 The status API tells the page whether Resume can repeat preflight or must check a previous repair.
+An unconfirmed edit with a saved plan offers a check of the original write before the queue resumes.
 
 A Wikidata delay shows the current QID and a countdown.
 The countdown updates each second.
