@@ -87,6 +87,10 @@ class _CurrentUploader(Protocol):
         our_p3959: str | None = None,
     ) -> None: ...
 
+    def _creator_identity_matches(
+        self, qid: str, user: str, *, required_user_id: int | None = None,
+    ) -> bool: ...
+
     def _refresh_edit_token(self) -> None: ...
 
 
@@ -476,6 +480,13 @@ class CurrentWikidataBoundary:
             and self._uploader._is_our_item(qid)
         )
 
+    def _gila_creator_owned(self, qid: str) -> bool:
+        from app.publication.reviewed_reference_scope import GILA_CREATOR_NAME, GILA_CREATOR_UID
+
+        return not self._uploader._is_test and self._uploader._creator_identity_matches(
+            qid, GILA_CREATOR_NAME, required_user_id=GILA_CREATOR_UID,
+        )
+
     def _register_test_target(self, item: object, mutation: GatewayMutation) -> None:
         """Bind sealed test-ledger QIDs, the target and its local references, before any build."""
         if not self._uploader._is_test:
@@ -524,6 +535,14 @@ class CurrentWikidataBoundary:
 
     def _assert_publication_modifiable(self, mutation: GatewayMutation) -> None:
         qid = mutation.target_qid
+        repair_target = mutation.document.get("publication_gila_repair_qid")
+        if repair_target is not None and (
+            mutation.action != "update" or not qid or repair_target != qid
+            or not self._gila_creator_owned(qid)
+        ):
+            raise WikidataPermanentError(
+                "The Gila repair requires the exact target and creator UID 6935067."
+            )
         if not qid:
             return
         if not self._creator_owned(qid):
@@ -635,7 +654,16 @@ class CurrentWikidataBoundary:
                 if reason:
                     observations[index] = TargetObservation.unknown(entity.entity_key, reason)
                     continue
-                constructor = TargetObservation.present_owned if self._creator_owned(qid) else TargetObservation.present_foreign
+                repair_target = document.get("publication_gila_repair_qid")
+                if repair_target is not None and repair_target != qid:
+                    observations[index] = TargetObservation.unknown(
+                        entity.entity_key, "The sealed Gila repair target changed.",
+                    )
+                    continue
+                owned = self._creator_owned(qid) and (
+                    repair_target is None or self._gila_creator_owned(qid)
+                )
+                constructor = TargetObservation.present_owned if owned else TargetObservation.present_foreign
                 observations[index] = constructor(entity.entity_key, qid=qid, fingerprint=snapshot.fingerprint,
                     remote_revision=snapshot.revision, method="sealed-qid")
                 continue

@@ -83,3 +83,5 @@ The Wikidata item drawer, Publication controls, blocked-action drawer, and AI re
 `AdminRoute.tsx` and `admin/AdminReferenceRepairs.tsx` provide the protected [backend repair controls](../wikidata-studio/admin-reference-repairs.md). `api/runJobs.ts` names the new job kind. The Admin sidebar links to the page.
 
 `useReferenceRepairStatus.ts`, `api/referenceRepairs.ts`, and `ReferenceRepairProgress.tsx` supply [live administrator reference progress](../wikidata-studio/live-reference-progress.md).
+
+`AdminGilaRepairs.tsx` and `api/gilaRepairs.ts` provide the [Gila repair console](../wikidata-studio/admin-gila-repairs.md). The page polls for progress, shows bounded case pages, and opens the existing source review and Publication flows.

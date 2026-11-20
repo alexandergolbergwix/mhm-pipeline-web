@@ -64,6 +64,60 @@ class ReferenceItemReader:
                 raise ValueError("The Wikidata snapshot does not match the current revision.")
             return entity
 
+    async def fetch_batch(self, client: httpx.AsyncClient, qids: list[str]) -> dict[str, dict]:
+        """Read up to 50 exact public items. Omit missing and redirected items."""
+        if not 1 <= len(qids) <= 50 or len(set(qids)) != len(qids) or not all(
+            _QID.fullmatch(qid) for qid in qids
+        ):
+            raise ValueError("A batch needs 1 to 50 distinct QIDs.")
+        payload = await self._get(client, _API, {
+            "action": "wbgetentities", "ids": "|".join(qids), "props": _ENTITY_FIELDS,
+            "format": "json", "maxage": "0", "smaxage": "0", "curtimestamp": "1",
+            "redirects": "yes",
+        })
+        rows = payload.get("entities")
+        if not isinstance(rows, dict):
+            raise ValueError("Wikidata did not return an item batch.")
+        return {
+            qid: self._entity(payload, qid)
+            for qid in qids
+            if isinstance(rows.get(qid), dict)
+            and rows[qid].get("id") == qid
+            and "missing" not in rows[qid]
+            and "redirects" not in rows[qid]
+        }
+
+    async def creator_uid(self, qid: str) -> int | None:
+        if not _QID.fullmatch(qid):
+            raise ValueError("The creator check requires an exact QID.")
+        async with self._client_factory() as client:
+            payload = await self._get(client, _API, {
+                "action": "query", "titles": qid, "prop": "revisions", "rvdir": "newer",
+                "rvlimit": "1", "rvprop": "ids|userid", "format": "json", "formatversion": "2",
+                "maxage": "0", "smaxage": "0",
+            })
+        query = payload.get("query", {})
+        pages = query.get("pages", [])
+        if len(pages) != 1 or query.get("redirects"):
+            return None
+        page = pages[0]
+        revisions = page.get("revisions", [])
+        if (
+            page.get("title") != qid or page.get("ns") != 0 or page.get("redirect")
+            or type(page.get("pageid")) is not int or page["pageid"] <= 0
+            or len(revisions) != 1
+        ):
+            return None
+        revision = revisions[0]
+        uid = revision.get("userid")
+        revision_id = revision.get("revid")
+        if (
+            type(uid) is not int or uid <= 0 or "userhidden" in revision
+            or type(revision_id) is not int or revision_id <= 0
+        ):
+            return None
+        return uid
+
     @staticmethod
     async def _get(client: httpx.AsyncClient, url: str, params: dict[str, str]) -> dict:
         try:

@@ -39,6 +39,7 @@ from app.models.run_job import (
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_WIKIDATA_REFERENCE_REPAIR,
+    JOB_KIND_WIKIDATA_GILA_AUDIT,
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
     JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
@@ -87,6 +88,7 @@ _VERIFY_KINDS = frozenset({
     JOB_KIND_HMO_ITEM_VERIFY,
 })
 _BUILD_KINDS = frozenset({
+    JOB_KIND_WIKIDATA_GILA_AUDIT,
     JOB_KIND_RDF_BUILD,
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
     JOB_KIND_HMO_COVERAGE,
@@ -976,6 +978,10 @@ async def _execute_job(job_id: uuid.UUID) -> None:
             )
 
             await run_reference_job(job_id)
+        elif kind == JOB_KIND_WIKIDATA_GILA_AUDIT:
+            from app.pipeline.wikidata_gila_audit_job import run_gila_audit_job
+
+            await run_gila_audit_job(job_id)
         elif kind == JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION:
             from app.pipeline.wikidata_publication_execution_job import (  # noqa: PLC0415
                 run_wikidata_publication_execution_job,
@@ -1115,7 +1121,7 @@ async def _notify_job_update(db: AsyncSession, job: RunJob) -> None:
     from app.db import engine  # noqa: PLC0415
     from app.realtime import NOTIFY_CHANNEL  # noqa: PLC0415
 
-    if engine.dialect.name != "postgresql":
+    if engine.dialect.name != "postgresql" or job.kind == JOB_KIND_WIKIDATA_GILA_AUDIT:
         return
 
     await db.refresh(job)

@@ -1,5 +1,7 @@
 import {api} from "@/api/client";
 
+export type ReferenceScope = "original" | "remaining";
+
 export interface ReferenceRepairJob {
   id: string;
   project_id?: string;
@@ -45,12 +47,23 @@ export interface ReferenceRepairStatus {
   halted_qid?: string | null;
   resume_action?: "resume" | "check_repair" | "review" | null;
   job: ReferenceRepairJob | null;
+  other_scope_active?: boolean;
+  reference_inventory?: {
+    audited_at: string;
+    live_checked_at?: string | null;
+    items: Array<{
+      qid: string; baseline_revision: number; baseline_blocks: number; creator_matches: boolean;
+      observed_blocks: number | null; queue_result: string | null;
+    }>;
+  } | null;
 }
 
 const endpoint = "/admin/wikidata-reference-repairs";
 export const ReferenceRepairs = {
-  status: () => api.get<ReferenceRepairStatus>(endpoint),
-  start: (scopeDigest: string) => api.post<ReferenceRepairJob>(endpoint + "/start", {
-    confirmed: true, scope_digest: scopeDigest,
+  status: (scope: ReferenceScope) => api.get<ReferenceRepairStatus>(
+    scope === "original" ? endpoint : endpoint + "?scope=remaining",
+  ),
+  start: (scopeDigest: string, scope: ReferenceScope) => api.post<ReferenceRepairJob>(endpoint + "/start", {
+    confirmed: true, scope_digest: scopeDigest, ...(scope === "remaining" ? {scope} : {}),
   }),
 };

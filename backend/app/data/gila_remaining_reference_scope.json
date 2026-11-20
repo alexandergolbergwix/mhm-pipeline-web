@@ -1,0 +1,196 @@
+{
+  "audited_at": "2026-11-20T08:17:21Z",
+  "items": [
+    {
+      "qid": "Q133214943",
+      "baseline_revision": 2568124398,
+      "baseline_blocks": 34,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134585455",
+      "baseline_revision": 2568124396,
+      "baseline_blocks": 13,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134593320",
+      "baseline_revision": 2568124403,
+      "baseline_blocks": 35,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134595167",
+      "baseline_revision": 2568124388,
+      "baseline_blocks": 27,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134603946",
+      "baseline_revision": 2568124400,
+      "baseline_blocks": 31,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134604699",
+      "baseline_revision": 2568119418,
+      "baseline_blocks": 25,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134605231",
+      "baseline_revision": 2568191585,
+      "baseline_blocks": 33,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134610828",
+      "baseline_revision": 2568211299,
+      "baseline_blocks": 25,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134619072",
+      "baseline_revision": 2568124364,
+      "baseline_blocks": 33,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134624941",
+      "baseline_revision": 2568124374,
+      "baseline_blocks": 38,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134688454",
+      "baseline_revision": 2568119617,
+      "baseline_blocks": 30,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134688667",
+      "baseline_revision": 2568124393,
+      "baseline_blocks": 36,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134696535",
+      "baseline_revision": 2568124397,
+      "baseline_blocks": 25,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134885243",
+      "baseline_revision": 2568124406,
+      "baseline_blocks": 30,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134925976",
+      "baseline_revision": 2568124370,
+      "baseline_blocks": 31,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q134926101",
+      "baseline_revision": 2565038375,
+      "baseline_blocks": 10,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q141175569",
+      "baseline_revision": 2568055329,
+      "baseline_blocks": 4,
+      "creator_matches": true,
+      "claims": {
+        "Q141175569$3B4D904A-9591-4A55-88E3-0F57BA59A349": "ad2c4e34e3cc28999bf31ab57f37a9981cbd1a99cf10bb4f752c91ca6cc7a927",
+        "Q141175569$66630B84-3A16-4C99-97F9-5197B72EFF84": "869d82e4f035dcc44ea06a5d4a58d69ad41448851f465ccb242c271cb2bfbe4f"
+      }
+    },
+    {
+      "qid": "Q141175593",
+      "baseline_revision": 2568224766,
+      "baseline_blocks": 2,
+      "creator_matches": true,
+      "claims": {
+        "Q141175593$0AB2B6B8-282E-4EAB-8F9A-8D024F00794B": "fd1b5d74589973e8ee44767fb2c0c3cf1353481319b8790ffd6aebed1341e4ba",
+        "Q141175593$4C9E681F-06A4-4C80-A8E2-5FC5E9787D18": "55f511531489169e42a5138c77d4c5e92ff01f44c01e138849aeb50c95f4984d"
+      }
+    },
+    {
+      "qid": "Q141175605",
+      "baseline_revision": 2568120387,
+      "baseline_blocks": 1,
+      "creator_matches": true,
+      "claims": {
+        "Q141175605$342ECE0D-D187-40E8-A0D7-DFAFF8AA4A8F": "c27bdbb778522cc0e5ab59d167414db936969c7ffab326e10836407a36033116"
+      }
+    },
+    {
+      "qid": "Q141175659",
+      "baseline_revision": 2568120452,
+      "baseline_blocks": 1,
+      "creator_matches": true,
+      "claims": {
+        "Q141175659$819A732E-8336-482B-A04A-65713EFAF9AF": "7ea0a474438340b39ba970287c53f6ca177fa85cb9abd2938344144ab0be4be2"
+      }
+    },
+    {
+      "qid": "Q141175661",
+      "baseline_revision": 2568120516,
+      "baseline_blocks": 1,
+      "creator_matches": true,
+      "claims": {
+        "Q141175661$37131471-41DF-4ABC-A248-C6574CB7AD6A": "3d3cd98b44f8b6d8776d7a9509d067f459c1b9a2709bbf89e6f17ed64c0340f5"
+      }
+    },
+    {
+      "qid": "Q141175662",
+      "baseline_revision": 2568120573,
+      "baseline_blocks": 1,
+      "creator_matches": true,
+      "claims": {
+        "Q141175662$B66D9EB0-C1AB-4298-A519-F611859D947C": "0f60c1afe58ae9a7de50ffa70cee64d24e9515b92dfa6de5e396572d0d35fd7e"
+      }
+    },
+    {
+      "qid": "Q141175696",
+      "baseline_revision": 2568062228,
+      "baseline_blocks": 1,
+      "creator_matches": true,
+      "claims": {
+        "Q141175696$5B15EB18-1B6A-4428-9AC6-6DE1F7FC71C3": "511b6526d3454068185c8494d4f650f783102720df1fb4e3295f8249159536b4"
+      }
+    },
+    {
+      "qid": "Q141175701",
+      "baseline_revision": 2568061810,
+      "baseline_blocks": 1,
+      "creator_matches": true,
+      "claims": {
+        "Q141175701$608C7580-7F24-42AD-80F6-11E5451B857B": "139c12062364471bca3426dd3daca4009c3e1662a87732a06d42b10e5f9547e4"
+      }
+    },
+    {
+      "qid": "Q141175708",
+      "baseline_revision": 2568061854,
+      "baseline_blocks": 1,
+      "creator_matches": true,
+      "claims": {
+        "Q141175708$C510B872-C1C9-4C58-87FE-8C39AC0C9AE9": "d39f21f11d50d1e19c1b0a03ae0346c240ef8573bfad0112d6f0d9ebb22aa78b"
+      }
+    },
+    {
+      "qid": "Q193196",
+      "baseline_revision": 2547678668,
+      "baseline_blocks": 2,
+      "creator_matches": false
+    },
+    {
+      "qid": "Q299200",
+      "baseline_revision": 2571569599,
+      "baseline_blocks": 1,
+      "creator_matches": false
+    }
+  ]
+}

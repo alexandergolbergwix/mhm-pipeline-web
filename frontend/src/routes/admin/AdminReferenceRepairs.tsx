@@ -1,14 +1,28 @@
 import {useState} from "react";
-import {Link} from "react-router-dom";
+import {Link, useSearchParams} from "react-router-dom";
 
-import {ReferenceRepairs} from "@/api/referenceRepairs";
+import {ReferenceRepairs, type ReferenceScope} from "@/api/referenceRepairs";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
 import {ReferenceRepairProgress} from "@/components/wikidata/ReferenceRepairProgress";
 import {useReferenceRepairStatus} from "@/hooks/useReferenceRepairStatus";
 
 export default function AdminReferenceRepairs() {
-  const {state, error: refreshError, lastSync, refresh, acceptJob} = useReferenceRepairStatus();
+  const [params, setParams] = useSearchParams();
+  const scope = params.get("scope") === "remaining" ? "remaining" : "original";
+  return <AdminLayout>
+    <nav aria-label="Reference repair scope" className="mb-4 flex flex-wrap gap-2">
+      <button className={scope === "original" ? "button-primary" : "button-ghost"} aria-pressed={scope === "original"}
+        onClick={() => setParams({})}>Original queue</button>
+      <button className={scope === "remaining" ? "button-primary" : "button-ghost"} aria-pressed={scope === "remaining"}
+        onClick={() => setParams({scope: "remaining"})}>Remaining references</button>
+    </nav>
+    <ReferenceRepairScope key={scope} scope={scope} />
+  </AdminLayout>;
+}
+
+function ReferenceRepairScope({scope}: {scope: ReferenceScope}) {
+  const {state, error: refreshError, lastSync, refresh, acceptJob} = useReferenceRepairStatus(scope);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -20,7 +34,7 @@ export default function AdminReferenceRepairs() {
   const currentItem = state?.halted_qid;
   const legacyStopMessage = state?.job?.error === "The reference queue paused or requires review.";
   const legacyWriteMessage = state?.job?.error === "Review the result of the last Wikidata write before another attempt.";
-  const showAction = state?.enabled && !active && !complete && !blocked;
+  const showAction = state?.enabled && !active && !complete && !blocked && !state.other_scope_active;
   const replaceStopMessage = (legacyStopMessage && (resume || checkPreviousRepair || blocked))
     || (legacyWriteMessage && checkPreviousRepair);
   const stopMessage = replaceStopMessage ? null : state?.job?.error;
@@ -32,7 +46,7 @@ export default function AdminReferenceRepairs() {
     setBusy(true);
     setError("");
     try {
-      const job = await ReferenceRepairs.start(state.scope_digest);
+      const job = await ReferenceRepairs.start(state.scope_digest, scope);
       acceptJob(job);
       setConsent(false);
     } catch (cause) {
@@ -43,7 +57,9 @@ export default function AdminReferenceRepairs() {
     }
   }
 
-  return <AdminLayout><Glass as="section" contentClassName="space-y-5">
+  const inventory = state?.reference_inventory;
+  const otherCreators = inventory?.items.filter(item => !item.creator_matches) ?? [];
+  return <Glass as="section" contentClassName="space-y-5">
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold sm:text-3xl">Wikidata reference repairs</h1>
@@ -56,6 +72,25 @@ export default function AdminReferenceRepairs() {
     </p>}
     {!state && !refreshError && <p role="status">Please wait for the queue status.</p>}
     {state && <>
+      {state.other_scope_active && <p role="status" className="text-sm muted">The other reference queue is active. Wait for it to finish before you start this scope.</p>}
+      {inventory && <div className="rounded-xl border border-glass-line p-4 text-sm">
+        <p className="font-medium">{inventory.items.length} audited items · {inventory.items.reduce((sum, item) => sum + item.baseline_blocks, 0)} repeated references at audit</p>
+        <p className="mt-1 muted">{state.total} items in the repair queue. {otherCreators.length} items have other creators and require separate review.</p>
+        {inventory.live_checked_at && <p className="mt-1 muted">Latest audit · {new Date(inventory.live_checked_at).toLocaleString()}</p>}
+        <Link className="link-accent mt-1 inline-block underline" to="/admin/wikidata-gila-repairs">Open the live Gila audit</Link>
+        <details className="mt-3">
+          <summary className="cursor-pointer">View the audited items</summary>
+          <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+            {inventory.items.map(item => <li key={item.qid} className="flex flex-wrap items-baseline gap-x-2">
+              <a className="link-accent underline" href={`https://www.wikidata.org/wiki/${item.qid}`} target="_blank" rel="noreferrer">{item.qid}</a>
+              <span className="muted">{item.observed_blocks == null ? `${item.baseline_blocks} at first audit` : `${item.observed_blocks} at latest audit`} · {
+                item.queue_result === "verified" ? "Repair verified" : item.queue_result === "already_clean"
+                  ? "Already clear" : item.creator_matches ? "In queue" : "Other creator"
+              }</span>
+            </li>)}
+          </ul>
+        </details>
+      </div>}
       <ReferenceRepairProgress state={state} lastSync={lastSync} connectionError={Boolean(refreshError)}>
         {(!state.enabled || blocked || showAction || stopMessage || error) &&
           <div className="space-y-3 rounded-b-2xl border-t border-glass-line bg-[var(--surface-inset)] p-4 text-sm sm:px-6">
@@ -91,5 +126,5 @@ export default function AdminReferenceRepairs() {
         <p>A verified receipt records a past correction. It does not prove that all Gila requirements now pass.</p>
       </div>
     </details>
-  </Glass></AdminLayout>;
+  </Glass>;
 }

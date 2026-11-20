@@ -52,6 +52,7 @@ export function AdminLayout({children}: Props) {
               </span>
             </SideNavLink>
             {administrator && <SideNavLink to="/admin/wikidata-reference-repairs">Reference repairs</SideNavLink>}
+            {administrator && <SideNavLink to="/admin/wikidata-gila-repairs">Gila repairs</SideNavLink>}
             <SideNavLink to="/admin/users">Users</SideNavLink>
             <SideNavLink to="/admin/projects">Projects</SideNavLink>
             <SideNavLink to="/admin/invites">Invites</SideNavLink>

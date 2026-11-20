@@ -51,7 +51,7 @@ async def prepare_job_params(
         )
 
     if kind in {
-        "wikidata_reference_repair", "wikidata_publication_prepare",
+        "wikidata_reference_repair", "wikidata_gila_audit", "wikidata_publication_prepare",
         "wikidata_publication_execution", "wikidata_publication_dry_run",
         "wikidata_publication_ai_review",
     }:

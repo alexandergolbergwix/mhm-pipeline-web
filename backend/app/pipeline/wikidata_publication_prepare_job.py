@@ -21,18 +21,32 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
         actor_id = str(params.get("actor_id") or "").strip()
         payload = params.get("request")
         if not actor_id or not isinstance(payload, dict):
-            await finish_job(job_id, status=JOB_STATUS_FAILED, error="Invalid Publication prepare job parameters")
+            await finish_job(
+                job_id,
+                status=JOB_STATUS_FAILED,
+                error="Invalid Publication prepare job parameters",
+            )
             return
-        await update_job_progress(job_id, {"phase": "preparing", "message": "Preparing the immutable Publication Release."})
-        runtime = PublicationRuntime(session=db, gateway_factory=configured_publication_gateway_factory)
+        await update_job_progress(job_id, {
+            "phase": "preparing", "message": "Prepare the immutable Publication Release.",
+        })
+        runtime = PublicationRuntime(
+            session=db, gateway_factory=configured_publication_gateway_factory,
+        )
         response = await runtime.prepare(
             run_id=job.run_id,
             request=PreparePublicationRequest.model_validate(payload),
             actor_id=actor_id,
+            **({
+                "selected_existing": params["_selected_existing"],
+                "expected_snapshot": tuple(params["_gila_build_snapshot"]),
+            } if "_selected_existing" in params else {}),
         )
     publication = response.publication
     if publication is None:
-        await finish_job(job_id, status=JOB_STATUS_FAILED, error="Publication preparation returned no Release")
+        await finish_job(
+            job_id, status=JOB_STATUS_FAILED, error="Publication preparation returned no Release",
+        )
         return
     await finish_job(
         job_id,

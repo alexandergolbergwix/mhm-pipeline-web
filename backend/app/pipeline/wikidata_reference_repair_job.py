@@ -53,6 +53,23 @@ def load_seed():
     return json.loads(raw), hashlib.sha256(raw).hexdigest()
 
 
+def load_remaining_seed():
+    from app.publication.reviewed_reference_scope import remaining_reference_inventory
+
+    original, _ = load_seed()
+    inventory = remaining_reference_inventory()
+    reviewed = {row["qid"]: row for row in inventory["items"] if row["creator_matches"]}
+    seed = {
+        **original,
+        "manifest": {**original["manifest"], "qids": sorted(reviewed)},
+        "checkpoint": {"results": [], "current_plan": None},
+        "reviewed_citations": reviewed,
+        "reference_inventory": inventory,
+    }
+    digest = hashlib.sha256(json.dumps(seed, sort_keys=True).encode()).hexdigest()
+    return seed, digest
+
+
 def checkpoint_for(qid, results, directory):
     completed = []
     for row in results:
@@ -219,9 +236,6 @@ async def recover_blocked_checkpoint(checkpoint, manifest, project_id):
 async def run_reference_job(job_id: uuid.UUID) -> None:
     from scripts.run_gila_reference_queue import run
 
-    seed, digest = load_seed()
-    manifest = seed["manifest"]
-    actor = uuid.UUID(manifest["actor_user_id"])
     runner = None
     scan = None
     client = None
@@ -230,6 +244,10 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
             raise ValueError("The backend reference worker is disabled.")
         async with session_scope() as db:
             job = await db.get(RunJob, job_id)
+            scope = job.params.get("reference_scope") if job else None
+            seed, digest = load_remaining_seed() if scope == "remaining" else load_seed()
+            manifest = seed["manifest"]
+            actor = uuid.UUID(manifest["actor_user_id"])
             if (
                 not job
                 or job.kind != KIND
@@ -386,6 +404,8 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
                     authorize_session=authorize,
                     lag_probe=check_lag,
                     maxlag=REFERENCE_JOB_MAXLAG,
+                    **({"reviewed_citations": seed["reviewed_citations"]}
+                       if scope == "remaining" else {}),
                 )
             )
             scan = asyncio.create_task(inspect_mirror())

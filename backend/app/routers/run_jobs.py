@@ -31,6 +31,7 @@ from app.routers.runs import _lookup_run_with_access
 from app.settings import get_settings
 
 router = APIRouter(tags=["run-jobs"])
+ADMIN_JOB_KINDS = ("wikidata_reference_repair", "wikidata_gila_audit")
 
 
 class StartRunJobRequest(BaseModel):
@@ -47,7 +48,7 @@ async def list_my_jobs(
     """List jobs started by the current user."""
     q = select(RunJob).where(RunJob.created_by == auth.user.id)
     if auth.user.role != "admin":
-        q = q.where(RunJob.kind != "wikidata_reference_repair")
+        q = q.where(RunJob.kind.not_in(ADMIN_JOB_KINDS))
     if active:
         q = q.where(RunJob.status.in_(tuple(ACTIVE_JOB_STATUSES)))
     q = q.order_by(RunJob.created_at.desc())
@@ -70,7 +71,7 @@ async def list_run_jobs(
     if not include_result:
         q = q.options(defer(RunJob.result))
     if auth.user.role != "admin":
-        q = q.where(RunJob.kind != "wikidata_reference_repair")
+        q = q.where(RunJob.kind.not_in(ADMIN_JOB_KINDS))
     if active:
         q = q.where(RunJob.status.in_(tuple(ACTIVE_JOB_STATUSES)))
     if kind:
@@ -132,7 +133,7 @@ async def get_run_job(
     ).scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
-    if job.kind == "wikidata_reference_repair" and auth.user.role != "admin":
+    if job.kind in ADMIN_JOB_KINDS and auth.user.role != "admin":
         raise HTTPException(403, "Admin role required")
     return serialise_job(job, include_session_snapshot=include_session_snapshot)
 
@@ -172,7 +173,7 @@ async def cancel_run_job(
     ).scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
-    if job.kind == "wikidata_reference_repair" and auth.user.role != "admin":
+    if job.kind in ADMIN_JOB_KINDS and auth.user.role != "admin":
         raise HTTPException(403, "Admin role required")
     updated = await request_cancel(db, job_id)
     if updated is None:

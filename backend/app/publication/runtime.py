@@ -275,6 +275,7 @@ class StudioCacheProjectionSource(ProjectionSource):
         self._session = session
         self.reference_only: dict[str, dict[str, object]] = {}
         self.automatic_documents: dict[str, dict[str, object]] = {}
+        self.selected_existing: dict[str, str] = {}
         # None → the ledger namespace follows WIKIDATA_TEST_MODE (the same
         # default the Studio build records with); prepare() sets it from the
         # release target so a live release reads live mappings only.
@@ -364,6 +365,8 @@ class StudioCacheProjectionSource(ProjectionSource):
             raise PublicationSourceError(str(exc)) from exc
         if not set(self.reference_only) <= entity_keys:
             raise PublicationSourceError("A reference-only item is absent from the current source")
+        if any(qids.get(key) != qid for key, qid in self.selected_existing.items()):
+            raise PublicationSourceError("A selected repair item or its Wikidata target changed")
         for key, reference in self.reference_only.items():
             qid = str(reference["qid"])
             if key in qids and qids[key] != qid:
@@ -377,6 +380,8 @@ class StudioCacheProjectionSource(ProjectionSource):
             approved_only,
             source_snapshot.digest,
         ):
+            if self.selected_existing and _item_entity_key(item) not in self.selected_existing:
+                continue
             original = item
             item = self.automatic_documents.get(_item_entity_key(item), item)
             if _item_entity_type(original) == "work" and any(
@@ -395,6 +400,9 @@ class StudioCacheProjectionSource(ProjectionSource):
                     "The selected Studio source contains blocking validation issues"
                 )
             item = dict(item)
+            item.pop("publication_gila_repair_qid", None)
+            if self.selected_existing:
+                item["publication_gila_repair_qid"] = self.selected_existing[_item_entity_key(item)]
             from converter.wikidata.quickstatements import (  # noqa: PLC0415
                 reference_data, validate_source_references,
             )
@@ -617,6 +625,8 @@ class PublicationRuntime:
         actor_id: str,
         automatic_documents: dict[str, dict[str, object]] | None = None,
         idempotency_key: str | None = None,
+        selected_existing: dict[str, str] | None = None,
+        expected_snapshot: tuple[str, str] | None = None,
     ) -> PublicationMutationResponse:
         if request.profile_id != "mhm-wikidata" or request.profile_version not in {"1", "1-nodes"}:
             raise PublicationSourceError("The requested publication profile is unsupported")
@@ -627,7 +637,10 @@ class PublicationRuntime:
             source=request.source.projection_source,
             approved_only=request.source.approved_only,
         )
+        if expected_snapshot is not None and (snapshot.revision, snapshot.digest) != expected_snapshot:
+            raise PublicationSourceError("The audited canonical build changed before preparation")
         self._projection_source.automatic_documents = automatic_documents or {}
+        self._projection_source.selected_existing = selected_existing or {}
         target = _target_ref(request.target)
         self._projection_source.ledger_is_test = target.environment != "production"
         from app.publication.reference_only import resolve_reference_selection

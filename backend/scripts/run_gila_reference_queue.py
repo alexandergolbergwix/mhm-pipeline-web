@@ -74,6 +74,7 @@ async def _run(
     authorize_session=None,
     lag_probe=None,
     maxlag: int = BULK_MAXLAG,
+    reviewed_citations=None,
 ):
     from sqlalchemy import select
 
@@ -94,6 +95,7 @@ async def _run(
         reference_source_controls,
         run_reference_repair_queue,
     )
+    from app.publication.reviewed_reference_scope import reviewed_reference_evidence
     from app.publication.sql_repository import SqlAlchemyPublicationRepository
     from app.services.wikibase_audit import WikibaseAuditContext, record_wikibase_write
     from converter.wikidata.uploader import WikidataUploader
@@ -194,7 +196,19 @@ async def _run(
             ):
                 raise ReferencePriorWriteUnresolvedError("A prior uncertain write requires recovery.")
 
+        def validate_scope(proposal):
+            if reviewed_citations is None:
+                return reference_source_controls(proposal)
+            reviewed = reviewed_citations.get(proposal["qid"])
+            if reviewed is None:
+                raise ValueError("The item is outside the reviewed citation scope.")
+            return reviewed_reference_evidence(proposal, reviewed)
+
         async def source_check(entity, proposal):
+            if reviewed_citations is not None:
+                async with session_scope() as db:
+                    await access(db)
+                return validate_scope(proposal)
             controls = reference_source_controls(proposal)
             if not controls <= sources.keys():
                 raise ValueError("The reference source is outside the authorized run.")
@@ -276,6 +290,7 @@ async def _run(
                 resume_results=resume_results,
                 recover_outcome=recover_outcome,
                 lag_probe=lag_probe,
+                validate_scope=validate_scope,
             )
     finally:
         if dispose_engine:

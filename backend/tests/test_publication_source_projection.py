@@ -11,6 +11,27 @@ from tests.test_publication_router import _add_canonical_cache, _canonical_item,
 
 
 @pytest.mark.asyncio
+async def test_gila_release_seals_only_the_audited_existing_target(sample_run, db_session):
+    first = _canonical_item("work:first", "First work")
+    second = _canonical_item("work:second", "Second work")
+    first["existing_qid"] = "Q42"
+    first["publication_gila_repair_qid"] = "Q900"
+    second["existing_qid"] = "Q43"
+    await _add_canonical_cache(db_session, sample_run["run_id"], items=[first, second])
+    source = StudioCacheProjectionSource(db_session)
+    source.selected_existing = {"work:first": "Q42"}
+    snapshot = await source.current_snapshot(
+        run_id=sample_run["run_id"], source="canonical", approved_only=True,
+    )
+    pages = [page async for page in source.project(snapshot, ProfileRef("mhm-wikidata", "1"))]
+    assert [entity.entity_key for page in pages for entity in page] == ["work:first"]
+    assert pages[0][0].document["publication_gila_repair_qid"] == "Q42"
+    source.selected_existing = {"work:first": "Q43"}
+    with pytest.raises(PublicationSourceError, match="target changed"):
+        _ = [page async for page in source.project(snapshot, ProfileRef("mhm-wikidata", "1"))]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("profile", ["1", "1-nodes"])
 async def test_projected_source_evidence_survives_automatic_projection(
     sample_run, db_session, profile,

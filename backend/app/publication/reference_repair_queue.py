@@ -131,6 +131,7 @@ async def run_reference_repair_queue(
     resume_results: Sequence[dict] = (),
     recover_outcome: bool = False,
     lag_probe: Callable[[], Awaitable[LagProbeResult]] | None = None,
+    validate_scope: Callable[[dict], object] = reference_source_controls,
 ) -> dict:
     """Retain each exact plan and stop before the next item after any unsafe result."""
     qids = candidate_qids(list(qids))
@@ -201,7 +202,7 @@ async def run_reference_repair_queue(
                     ):
                         raise ValueError("The saved exact plan does not match this queue item.")
                     proposal = plan["proposals"][0]
-                    reference_source_controls(proposal)
+                    validate_scope(proposal)
                     validate_gila_repair_proposal(proposal, plan["before_entities"][qid])
                 else:
                     entity = await gateway.fetch(qid)
@@ -218,7 +219,7 @@ async def run_reference_repair_queue(
                     if len(proposals) != 1:
                         raise ValueError("The reference proposal is ambiguous.")
                     proposal = proposals[0]
-                    reference_source_controls(proposal)
+                    validate_scope(proposal)
                     preflight = await execute_repair(
                         proposal,
                         gateway,

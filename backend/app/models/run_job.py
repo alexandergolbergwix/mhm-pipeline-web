@@ -27,6 +27,7 @@ JOB_KIND_RDF_BUILD = "rdf_build"
 JOB_KIND_WIKIDATA_STUDIO_BUILD = "wikidata_studio_build"
 JOB_KIND_WIKIDATA_UPLOAD = "wikidata_upload"
 JOB_KIND_WIKIDATA_REFERENCE_REPAIR = "wikidata_reference_repair"
+JOB_KIND_WIKIDATA_GILA_AUDIT = "wikidata_gila_audit"
 JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION = "wikidata_publication_execution"
 JOB_KIND_WIKIDATA_PUBLICATION_AI_REVIEW = "wikidata_publication_ai_review"
 JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN = "wikidata_publication_dry_run"
@@ -43,6 +44,7 @@ JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE = "wikidata_item_bulk_approve"
 JOB_KIND_HMO_RULE_VERIFY = "hmo_rule_verify"
 
 SUPPORTED_JOB_KINDS = frozenset({
+    JOB_KIND_WIKIDATA_GILA_AUDIT,
     JOB_KIND_WIKIDATA_REFERENCE_REPAIR,
     JOB_KIND_AUTHORITY_RE_ENRICH,
     JOB_KIND_EXTRACTION,

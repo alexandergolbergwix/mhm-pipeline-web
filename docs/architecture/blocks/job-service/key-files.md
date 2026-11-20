@@ -59,3 +59,5 @@ The automatic Publication job uses three isolated assessments and one coordinato
 `backend/tests/unit/test_publication_parallel_assessments.py` covers the task limit and cancellation.
 
 `wikidata_reference_repair_job.py` owns the [administrator reference job](../wikidata-studio/admin-reference-repairs.md). `run_job_params.py` rejects generic starts. The job stays on Heroku in the upload slot.
+
+`wikidata_gila_audit_job.py` owns the administrator audit (`wikidata_gila_audit`). It uses the build slot. The administrator API provides the private status and case pages. [Gila repair console](../wikidata-studio/admin-gila-repairs.md)

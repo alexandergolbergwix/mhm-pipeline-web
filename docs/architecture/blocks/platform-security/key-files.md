@@ -36,3 +36,5 @@
 `backend/scripts/serve_gila_repair_ui.py` is a separate [loopback operator helper](../wikidata-studio/local-reference-repair-ui.md). Its per-process key and Origin checks do not replace the normal queue access and creator checks. It adds no public FastAPI route.
 
 `admin_reference_repairs.py` uses `require_admin` plus project access for the [backend repair controls](../wikidata-studio/admin-reference-repairs.md). The generic job routes also exclude this kind from non-administrators.
+
+`admin_gila_repairs.py` requires the administrator role and current project access. Prepare also requires editor access and public creator proof. The case inventory stays in private job parameters. [Gila repairs](../wikidata-studio/admin-gila-repairs.md)

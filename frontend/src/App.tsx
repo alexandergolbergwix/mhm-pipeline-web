@@ -29,6 +29,7 @@ import StageRdf from "@/routes/StageRdf";
 import WikidataStudio from "@/routes/WikidataStudio";
 import WikidataPublicationAudit from "@/routes/WikidataPublicationAudit";
 import WikidataRepairPlan from "@/routes/WikidataRepairPlan";
+import AdminGilaRepairs from "@/routes/admin/AdminGilaRepairs";
 import ResearchAssistant from "@/routes/ResearchAssistant";
 import EntityPage from "@/routes/EntityPage";
 import { useAuth } from "@/stores/auth";
@@ -64,6 +65,7 @@ export default function App() {
       <Route path="/projects/:projectId/entity"         element={<ProtectedRoute><EntityPage /></ProtectedRoute>} />
       <Route path="/settings"                    element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route path="/admin/wikidata-reference-repairs" element={<AdminRoute><AdminReferenceRepairs /></AdminRoute>} />
+      <Route path="/admin/wikidata-gila-repairs" element={<AdminRoute><AdminGilaRepairs /></AdminRoute>} />
       <Route path="/admin"                       element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
       <Route path="/admin/users"                 element={<ProtectedRoute><AdminUsers /></ProtectedRoute>} />
       <Route path="/admin/users/:userId"         element={<ProtectedRoute><AdminUserDetail /></ProtectedRoute>} />

@@ -2,10 +2,10 @@ import {useCallback, useEffect, useRef, useState} from "react";
 
 import {ApiError} from "@/api/client";
 import {useProjectEvents} from "@/api/realtime";
-import {ReferenceRepairs, type ReferenceRepairJob, type ReferenceRepairStatus} from "@/api/referenceRepairs";
+import {ReferenceRepairs, type ReferenceRepairJob, type ReferenceRepairStatus, type ReferenceScope} from "@/api/referenceRepairs";
 import {useRunJobs} from "@/stores/runJobs";
 
-export function useReferenceRepairStatus() {
+export function useReferenceRepairStatus(scope: ReferenceScope) {
   const [state, setState] = useState<ReferenceRepairStatus | null>(null);
   const [error, setError] = useState("");
   const [lastSync, setLastSync] = useState<number | null>(null);
@@ -24,7 +24,7 @@ export function useReferenceRepairStatus() {
       inflight = true;
       const request = ++generation.current;
       try {
-        const status = await ReferenceRepairs.status();
+        const status = await ReferenceRepairs.status(scope);
         if (!stopped && request === generation.current) {
           setState(status);
           setLastSync(Date.now());
@@ -47,7 +47,7 @@ export function useReferenceRepairStatus() {
     refreshRef.current = () => void refresh();
     void refresh();
     return () => { stopped = true; ++generation.current; clearTimeout(timer); };
-  }, []);
+  }, [scope]);
 
   const refresh = useCallback(() => refreshRef.current(), []);
   useProjectEvents(state?.project_id ?? state?.job?.project_id, message => {
