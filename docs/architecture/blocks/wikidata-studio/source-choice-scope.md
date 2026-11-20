@@ -35,7 +35,7 @@ Multiple matching claims require review.
 
 The source candidate reader imports `structured_work_attribution` through `item_builder`.
 The facade export avoids a cycle in a fresh interpreter.
-The build versions are `source-aware-works-v25` and `hmo-wikidata-v29`.
+The build versions are `source-aware-works-v26` and `hmo-wikidata-v29`.
 Older cached projections require a rebuild.
 This change adds no route, model field, job kind, or foreign-edit exception.
 

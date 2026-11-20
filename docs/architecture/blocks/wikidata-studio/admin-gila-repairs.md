@@ -41,6 +41,8 @@ It checks that the same build and source records remain current before it saves 
 It stores the case inventory in compressed private job parameters.
 `GET /api/admin/wikidata-gila-repairs/cases` returns up to 50 cases per request from the current report.
 A source gap, unresolved identity, or unchecked passage remains visible.
+Point 6 includes the six old work edits when the build detects their exact signatures (W-356).
+Each case links to source review. The case cannot prepare a repair release.
 The job summary contains counts and requirement states.
 
 ## Repair

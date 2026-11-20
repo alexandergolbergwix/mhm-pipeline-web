@@ -31,7 +31,7 @@ item instead of the static slug), then computes
   frontend R15/W-106).
 
 The build schema is part of the fingerprint. The current schema is
-`source-aware-works-v25`. It retains Rule W-294's MARC 942 shelfmark labels,
+`source-aware-works-v26`. It retains Rule W-294's MARC 942 shelfmark labels,
 manuscript codex P31, homonymous work separation, Ktiv P361, and
 500/740/581/957/title-page projection. The cache check also treats a cached
 person carrying an ERROR-level `NO_IDENTIFIER` issue as

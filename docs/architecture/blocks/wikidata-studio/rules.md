@@ -1370,3 +1370,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 211. **R211 — Use the Studio job limit for manuscript audit freshness (W-354).** Verify the source before live reads and before the worker saves the report. *Why:* the 25-second web limit stopped the production audit.
 
 212. **R212 — Rebuild stale sources before an audit retry (W-355).** Show the rebuild progress and start the new audit only after the canonical build succeeds. Read the private job detail when the audit leaves the active list.
+
+213. **R213 — Keep the source statement for known stale catalogue edits (W-356).** Withhold the six exact stored patches. Keep their review findings and the hard check for QIDs in P528.

@@ -4281,3 +4281,15 @@ Keep the source freshness and creator checks.
 Use the private job detail endpoint to read the audit status when the active list omits the job.
 
 See [Wikidata Manuscript Audit and Repair](../blocks/wikidata-studio/admin-gila-repairs.md).
+
+### Rule W-356 — Keep the source statement for known stale catalogue edits
+
+The production audit rebuild stopped when the six W-337 edits overwrote source catalogue codes.
+Match the exact local item ID, position, and complete patch before the override can change a statement.
+Withhold the matched edit even if the statement order changes again.
+Keep the stored edit available for source review.
+Report `STALE_CATALOGUE_EDIT` in Studio and in the manual review cases for audit point 6.
+Keep `CATALOG_CODE_IS_QID` as a hard error for any invalid catalogue code that reaches validation.
+Use `source-aware-works-v26` to invalidate old projections.
+
+See the [six creation review cases](../blocks/wikidata-studio/creation-review-cases.md).

@@ -40,6 +40,7 @@ async def test_worker_streams_the_canonical_source_and_saves_read_only_report(
     user.role = "admin"
     item = _canonical_item("manuscript:one", "One manuscript")
     item.update(entity_type="manuscript", existing_qid="Q42", records=["990000000000000001"])
+    item["validation_issues"] = [{"code": "STALE_CATALOGUE_EDIT", "severity": "warning"}]
     await _add_canonical_cache(db_session, run_id, items=[item])
     await record_ledger_mapping(db_session, "wikidata:marc:990000000000000001", "Q42")
     job = RunJob(
@@ -99,7 +100,14 @@ async def test_worker_streams_the_canonical_source_and_saves_read_only_report(
     assert job.result["record_count"] == job.result["public_read"] == 1
     assert len(job.result["email_points"]) == 9
     assert job.result["all_requirements_verified"] is False
-    assert worker.gila_cases(job)
+    stale_edit = next(
+        case for case in worker.gila_cases(job)
+        if case["case_id"] == "stale-catalogue-edit:manuscript:one"
+    )
+    assert stale_edit["points"] == [6]
+    assert stale_edit["disposition"] == "manual_review"
+    assert stale_edit["can_prepare"] is False
+    assert job.result["email_points"][5]["counts"]["manual_review"] >= 1
     batch.assert_awaited_once()
     assert timeout_values == [wikidata_studio.STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS] * 2
 

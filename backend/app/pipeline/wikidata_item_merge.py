@@ -5,6 +5,23 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from converter.wikidata.catalog_references import STALE_CATALOGUE_EDIT, STALE_CATALOGUE_EDIT_MESSAGE
+
+# The source audit identified these exact unbound work edits (W-337).
+_STALE_CATALOGUE_EDITS = {
+    ("QDraft_MS_990000645310205171", "17"): "Q141754916",
+    ("QDraft_MS_990000656400205171", "16"): "Q141755010",
+    ("QDraft_MS_990000665230205171", "18"): "Q141755388",
+    ("QDraft_MS_990000896070205171", "17"): "Q141754945",
+    ("QDraft_MS_990001028930205171", "17"): "Q141755028",
+    ("QDraft_MS_990001218770205171", "17"): "Q141754943",
+}
+
+
+def is_stale_catalogue_edit(local_id: str, position: str, patch: object) -> bool:
+    qid = _STALE_CATALOGUE_EDITS.get((local_id, position))
+    return qid is not None and patch == {"value": qid}
+
 
 def apply_wikidata_item_override(entity: dict[str, Any], ov: dict[str, Any]) -> dict[str, Any]:
     """Return a shallow copy of *entity* with override fields merged."""
@@ -43,6 +60,15 @@ def apply_wikidata_item_override(entity: dict[str, Any], ov: dict[str, Any]) -> 
 
     stmts = list(out.get("statements") or [])
     for k, patch in edits.items():
+        if is_stale_catalogue_edit(entity.get("local_id") or "", k, patch):
+            issues = out.get("validation_issues") or []
+            if not any(issue.get("code") == STALE_CATALOGUE_EDIT for issue in issues):
+                out["validation_issues"] = [*issues, {
+                    "code": STALE_CATALOGUE_EDIT,
+                    "severity": "warning",
+                    "message": STALE_CATALOGUE_EDIT_MESSAGE,
+                }]
+            continue
         try:
             idx = int(k)
         except (TypeError, ValueError):

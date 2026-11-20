@@ -90,7 +90,7 @@ It disables reconciliation and performs no production cache write.
 It fails if canonical snapshots are absent instead of substituting a legacy result.
 The report exports fact comparisons, stage traces, historical proposals, and work partition reviews separately.
 The legacy mode remains available for comparison. Neither mode produces a corrected-QID receipt.
-Current versions: `source-aware-works-v25` and `hmo-wikidata-v29`.
+Current versions: `source-aware-works-v26` and `hmo-wikidata-v29`.
 The [completion packet](gila-completion-packet.md) retains date-alignment cases and checks current correction receipts.
 
 Explicit extraction rejection requires migration `0053_extraction_rejection`.

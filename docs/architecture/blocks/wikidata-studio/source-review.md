@@ -82,6 +82,6 @@ Point 2 retains the difference between Gila's wording and the separate manuscrip
 
 P50 promotion compares compatible work occurrences before it adds an optional credited name.
 One author claim retains both distinct source blocks and the original scope qualifiers.
-Current build versions: `source-aware-works-v25` and `hmo-wikidata-v29`.
+Current build versions: `source-aware-works-v26` and `hmo-wikidata-v29`.
 
 Tests: `test_wikidata_source_choices.py`, `test_wikidata_source_review.py`, and `wikidataSourceReview.spec.tsx`.

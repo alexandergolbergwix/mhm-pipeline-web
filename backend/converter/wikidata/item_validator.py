@@ -25,6 +25,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from converter.wikidata.catalog_references import STALE_CATALOGUE_EDIT, STALE_CATALOGUE_EDIT_MESSAGE
+
 
 @dataclass
 class ValidationIssue:
@@ -495,6 +497,10 @@ def validate_item(item: Any) -> list[ValidationIssue]:
                 "against the current source and statement position.",
                 _REF_DATA_MODEL,
             ))
+    if getattr(item, "stale_catalogue_edit", False):
+        issues.append(ValidationIssue(
+            "warning", STALE_CATALOGUE_EDIT, STALE_CATALOGUE_EDIT_MESSAGE, _REF_DATA_MODEL,
+        ))
 
     # 16. Known-bad P31 QID — sanity check against copy-paste errors in
     #     property_mapping.py. Catches cases like Q179808 (Palme d'Or) being

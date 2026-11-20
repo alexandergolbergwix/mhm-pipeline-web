@@ -208,3 +208,4 @@ class WikidataItem:
     #: does not name the same person as the MARC heading (Rule W-166). Carries
     #: ``{marc, authority, reason}`` so the curator sees why the MARC form won.
     heading_mismatch: dict[str, object] | None = None
+    stale_catalogue_edit: bool = False

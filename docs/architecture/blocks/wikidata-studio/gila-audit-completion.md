@@ -54,7 +54,7 @@ reconstructed reliably; safety gates require a rebuild from source.
 Reference-only changes count as updates, so the exists path does not skip them.
 The local migration does not prove that live references were corrected.
 
-The current legacy build schema is `source-aware-works-v25`.
+The current legacy build schema is `source-aware-works-v26`.
 The current canonical fingerprint salt is `hmo-wikidata-v29` (W-322).
 W-296 originally used `source-aware-works-v13` and `hmo-wikidata-v16`.
 Port shared converter changes upstream before the next full desktop sync.

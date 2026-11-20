@@ -36,4 +36,8 @@ Local evidence lives under `state/gila-create-prevention-2026-11-14/`.
 `override-proof.json` records the six stored edits without credentials.
 `current-guard-measurement.json` records the gate results and the seven source IDs.
 The current gate result supersedes the earlier zero-error count before W-337.
-The six stale edits remain unresolved source cases, not corrected public items.
+The build skips these six exact stored edits and keeps the source statements (W-356).
+It matches the local item ID, old position, and complete value patch.
+The stored edits stay available in the repair plan.
+The Studio validation panel and manuscript audit show the cases for review.
+Each proposed work link still needs a source check.

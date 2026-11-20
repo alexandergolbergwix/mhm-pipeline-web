@@ -32,6 +32,7 @@ from sqlalchemy import select
 
 from app.pipeline.ai_verdict_cache_common import strip_volatile_metadata
 from app.pipeline.marc_verify_context import canonical_control_number
+from app.pipeline.wikidata_item_merge import is_stale_catalogue_edit
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -60,7 +61,7 @@ logger = logging.getLogger(__name__)
 # v14: colophon field labels (957/590/500) stripped at ingest and the
 # record-author fallback limited to the main or sole content work
 # (Rule W-300) — cached rows built before those fixes must not upload.
-WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v25"
+WIKIDATA_STUDIO_BUILD_SCHEMA = "source-aware-works-v26"
 
 
 def _fingerprint_hash(value: Any) -> str:
@@ -1118,6 +1119,9 @@ def _apply_override(item: Any, ov: dict[str, Any]) -> None:
 
     # Statement edits — shallow-set attributes on the dataclass.
     for k, patch in edits.items():
+        if is_stale_catalogue_edit(_local_id_for(item), k, patch):
+            item.stale_catalogue_edit = True
+            continue
         try:
             idx = int(k)
         except (TypeError, ValueError):

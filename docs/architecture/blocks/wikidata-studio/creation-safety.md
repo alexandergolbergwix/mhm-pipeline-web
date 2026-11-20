@@ -32,7 +32,7 @@ Test-wiki stubs retain the test-specific namespace and transport guards.
 Maxlag and unknown-outcome guards remain mandatory.
 A P528 value that consists of a public QID raises `CATALOG_CODE_IS_QID`.
 This guard catches old positional work edits that now target catalogue codes.
-The [six source-audit cases](creation-review-cases.md) require review; the code does not infer their intended targets.
+The [six source-audit cases](creation-review-cases.md) retain their source statements and require review of their proposed work targets.
 A duplicate check uses the current service response; index delay remains a limit.
 
 ## Current shelfmark
@@ -44,7 +44,7 @@ The canonical projection also removes a stale HMO P217 and withholds that design
 Both paths retain raw MARC and source review evidence.
 A scoped, reviewed source choice can supply the proven current value.
 The final CREATE check blocks a new manuscript until it has a current P217.
-Current versions: `source-aware-works-v25` and `hmo-wikidata-v29`.
+Current versions: `source-aware-works-v26` and `hmo-wikidata-v29`.
 Deploy the same commit on Heroku and Modal before a new build.
 
 ## Nine-point prevention matrix

@@ -33,6 +33,7 @@ const explanations: Record<string, string> = {
   live_work_author_or_source_requires_review: "The current work target needs an author or source check.",
   live_work_identity_or_scope_requires_review: "Confirm the work identity and the folios before you set the link.",
   author_authority_link_absent: "The live work lacks the expected author link. Confirm the work mapping before preparation.",
+  stale_catalogue_edit: "The build skipped an old edit that could overwrite a catalogue code. Review the proposed work link against the MARC record.",
 };
 
 function failureText(error: unknown) {

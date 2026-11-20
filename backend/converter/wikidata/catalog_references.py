@@ -4,6 +4,12 @@ import re
 from collections.abc import Mapping
 from urllib.parse import urlsplit
 
+STALE_CATALOGUE_EDIT = "STALE_CATALOGUE_EDIT"
+STALE_CATALOGUE_EDIT_MESSAGE = (
+    "The build skipped an old edit that could overwrite a catalogue code. "
+    "Review the proposed work link against the MARC record."
+)
+
 
 def catalog_reference_code(reference: object) -> str:
     if not isinstance(reference, Mapping):

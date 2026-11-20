@@ -36,6 +36,7 @@ from app.pipeline.wikidata_reference_repair_job import load_seed
 from app.pipeline.wikidata_source_choices import source_hash
 from app.publication.reviewed_reference_scope import remaining_reference_inventory
 from app.publication.runtime import PublicationSourceError, StudioCacheProjectionSource
+from converter.wikidata.catalog_references import STALE_CATALOGUE_EDIT
 from converter.wikidata.reference_retrieval import current_reference_indices
 
 logger = logging.getLogger(__name__)
@@ -315,6 +316,25 @@ def _work_author_cases(canonical, entities):
     return cases
 
 
+def _stale_catalogue_edit_cases(canonical):
+    return [
+        {
+            "case_id": f"stale-catalogue-edit:{item['local_id']}",
+            "points": [6],
+            "disposition": "manual_review",
+            "local_id": item["local_id"],
+            "control_number": (item.get("records") or [None])[0],
+            "source_field": "P528",
+            "reason": "stale_catalogue_edit",
+            "can_prepare": False,
+        }
+        for item in canonical
+        if item.get("local_id") and any(
+            issue.get("code") == STALE_CATALOGUE_EDIT for issue in item.get("validation_issues", [])
+        )
+    ]
+
+
 def _repeated_reference_counts(entities: PublicAuditSnapshot) -> dict[str, int]:
     return {
         qid: blocks
@@ -402,10 +422,14 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
         )
         packet = await asyncio.to_thread(build_gila_completion_packet, audit, entities)
         cases = _case_inventory(packet, audit)
-        for case in _work_author_cases(canonical, entities):
+        additional_cases = [
+            *_work_author_cases(canonical, entities),
+            *_stale_catalogue_edit_cases(canonical),
+        ]
+        for case in additional_cases:
             cases.append(case)
             disposition = case["disposition"]
-            point = packet["email_points"][4]
+            point = packet["email_points"][case["points"][0] - 1]
             counts = point["counts"]
             counts[disposition] = counts.get(disposition, 0) + 1
             if point["status"] == "verified" or (
