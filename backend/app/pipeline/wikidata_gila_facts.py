@@ -549,6 +549,7 @@ def compare_gila_source_facts(
     qids_by_cn: Mapping[str, str] | None = None,
     live_entities: Mapping[str, object] | None = None,
     approved_author_qids: Mapping[tuple[str, str], Iterable[str]] | None = None,
+    include_claim_payloads: bool = True,
 ) -> dict[str, object]:
     """Export differences; a read-only comparison never certifies a repair."""
     manuscripts: dict[str, Mapping[str, object]] = {}
@@ -867,9 +868,11 @@ def compare_gila_source_facts(
                     "provenance_reason": "source_references_require_review"
                     if provenance_review
                     else "",
-                    "proposed_claims": proposed,
-                    "live_claims": live,
-                    "observed_live_claims": live_candidates if not live else [],
+                    **({
+                        "proposed_claims": proposed,
+                        "live_claims": live,
+                        "observed_live_claims": live_candidates if not live else [],
+                    } if include_claim_payloads else {}),
                     "live_revision": entity.get("lastrevid"),
                     "review_status": "pending"
                     if classification or live_classification or provenance_review

@@ -1,13 +1,85 @@
 import json
 import zlib
 from base64 import b64encode
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from app.models.run_job import RunJob
 from app.models.user import User
+from app.pipeline import wikidata_gila_audit_job as worker
+from app.pipeline.wikidata_qid_ledger import record_ledger_mapping
 from app.routers import admin_gila_repairs as router
+from tests.test_publication_router import _add_canonical_cache, _canonical_item
+
+
+def test_public_audit_snapshot_retains_exact_entities_across_batches(tmp_path):
+    snapshot = worker.PublicAuditSnapshot(str(tmp_path))
+    first = {"id": "Q1", "lastrevid": 12, "claims": {}}
+    snapshot.add_batch({"Q1": first})
+    assert snapshot.get("Q1") == first
+    snapshot.add_batch({"Q2": {"id": "Q2", "lastrevid": 13, "claims": {}}})
+    assert list(snapshot) == ["Q1", "Q2"]
+    assert snapshot.get("Q3") is None
+    with pytest.raises(ValueError, match="one response per exact QID"):
+        snapshot.add_batch({"Q1": first})
+
+
+@pytest.mark.asyncio
+async def test_worker_streams_the_canonical_source_and_saves_read_only_report(
+    sample_run,
+    db_session,
+    monkeypatch,
+):
+    run_id = sample_run["run_id"]
+    user = await db_session.get(User, sample_run["user_id"])
+    user.role = "admin"
+    item = _canonical_item("manuscript:one", "One manuscript")
+    item.update(entity_type="manuscript", existing_qid="Q42", records=["990000000000000001"])
+    await _add_canonical_cache(db_session, run_id, items=[item])
+    await record_ledger_mapping(db_session, "wikidata:marc:990000000000000001", "Q42")
+    job = RunJob(
+        project_id=sample_run["project_id"],
+        run_id=run_id,
+        created_by=user.id,
+        kind=worker.KIND,
+        status="running",
+        params={},
+    )
+    db_session.add(job)
+    await db_session.commit()
+    monkeypatch.setattr(worker, "load_seed", lambda: ({"manifest": {"qids": []}}, ""))
+    monkeypatch.setattr(worker, "remaining_reference_inventory", lambda: {"items": []})
+    entity = {
+        "id": "Q42",
+        "lastrevid": 22,
+        "labels": {},
+        "descriptions": {},
+        "aliases": {},
+        "sitelinks": {},
+        "claims": {
+            "P3959": [
+                {
+                    "rank": "normal",
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "property": "P3959",
+                        "datavalue": {"type": "string", "value": "990000000000000001"},
+                    },
+                }
+            ]
+        },
+    }
+    batch = AsyncMock(return_value={"Q42": entity})
+    monkeypatch.setattr(worker.ReferenceItemReader, "fetch_batch", batch)
+    await worker.run_gila_audit_job(job.id)
+    await db_session.refresh(job)
+    assert job.status == "succeeded", job.error
+    assert job.result["record_count"] == job.result["public_read"] == 1
+    assert len(job.result["email_points"]) == 9
+    assert job.result["all_requirements_verified"] is False
+    assert worker.gila_cases(job)
+    batch.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -18,8 +18,11 @@ The page polls `GET /api/admin/wikidata-gila-repairs` for phase and summary.
 The API keeps the last finished report available during a new audit.
 
 The worker reads the saved canonical build, current MARC records, and the production QID ledger.
+The worker streams the canonical build and keeps its audit fields.
 It checks current public revisions for the project items, audited reference scope, and linked work and person items.
 The Action API supplies complete entities in batches of up to 50.
+The worker keeps batch data in a temporary directory and caches at most 24 complete items in memory.
+The report records historical proposal proof without copies of its claim payloads.
 Missing or redirected items cannot supply a verified record.
 The scope covers known QIDs. A wider duplicate search needs separate evidence.
 

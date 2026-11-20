@@ -132,6 +132,7 @@ def build_gila_repair_proposals(
     entities: Mapping[str, object],
     *,
     colophons_by_qid: Mapping[str, str] | None = None,
+    include_payloads: bool = True,
 ) -> list[dict[str, object]]:
     """Retain exact before/after claims; this function performs no writes."""
     proposals = []
@@ -237,7 +238,7 @@ def build_gila_repair_proposals(
                     "revision": revision,
                     "entity_sha256": entity_digest(entity),
                     "action": "review_exact_claim_changes",
-                    "changes": changes,
+                    **({"changes": changes} if include_payloads else {}),
                     "requires_review": True,
                     "requires_authorization": True,
                     "requires_fresh_read": True,

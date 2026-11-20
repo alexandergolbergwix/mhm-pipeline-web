@@ -6,10 +6,10 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
-from app.pipeline.wikidata_source_coverage import source_passages
 from app.pipeline.marc_verify_context import canonical_control_number
 from app.pipeline.wikidata_gila_facts import compare_gila_source_facts
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals, entity_digest
+from app.pipeline.wikidata_source_coverage import source_passages
 from converter.wikidata.catalog_notes import is_catalog_note_placeholder
 from converter.wikidata.catalog_references import catalog_reference_code, catalog_reference_text
 from converter.wikidata.item_builder import manuscript_en_label
@@ -56,6 +56,7 @@ def build_gila_audit_report(
     qids_by_cn: Mapping[str, str] | None = None,
     live_entities: Mapping[str, object] | None = None,
     approved_author_qids: Mapping[tuple[str, str], Iterable[str]] | None = None,
+    include_repair_payloads: bool = True,
 ) -> dict[str, object]:
     """Compare local proposals with sources; never report a live correction."""
     from converter.wikidata.content_projection import _work_title_key  # noqa: PLC0415
@@ -289,7 +290,7 @@ def build_gila_audit_report(
         )
 
     repair_proposals: list[dict[str, object]] = []
-    for qid, raw_entity in (live_entities or {}).items():
+    for qid, raw_entity in (live_entities or {}).items() if include_repair_payloads else ():
         if not isinstance(raw_entity, Mapping):
             raise ValueError("A live entity must be an object.")
         claims = raw_entity.get("claims") or {}
@@ -354,6 +355,7 @@ def build_gila_audit_report(
         qids_by_cn=qids_by_cn,
         live_entities=live_entities,
         approved_author_qids=approved_author_qids,
+        include_claim_payloads=include_repair_payloads,
     )
     return {
         "mode": "read_only_local_proposal",
@@ -370,6 +372,7 @@ def build_gila_audit_report(
         "historical_repair_proposals": build_gila_repair_proposals(
             live_entities or {},
             colophons_by_qid=colophons_by_qid,
+            include_payloads=include_repair_payloads,
         ),
         "completion_status": "incomplete_requires_review_or_live_receipts",
         "remaining_checks": [

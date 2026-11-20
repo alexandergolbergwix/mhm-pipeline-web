@@ -7,7 +7,11 @@ import re
 import uuid
 import zlib
 from base64 import b64decode, b64encode
+from collections.abc import Mapping
+from functools import lru_cache
 from hashlib import sha256
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from sqlalchemy import select
 
@@ -16,12 +20,16 @@ from app.db import session_scope
 from app.models.project import Membership, Project
 from app.models.run_job import JOB_KIND_WIKIDATA_GILA_AUDIT, RunJob
 from app.models.user import User
+from app.pipeline.hmo_canonical_wikidata import filter_public_wikidata_items
 from app.pipeline.marc_verify_context import canonical_control_number, load_run_marc_records
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
 from app.pipeline.wikidata_gila_audit import build_gila_audit_report
 from app.pipeline.wikidata_gila_completion import build_gila_completion_packet
-from app.pipeline.wikidata_item_views import fetch_merged_wikidata_items
-from app.pipeline.wikidata_qid_ledger import load_global_ledger
+from app.pipeline.wikidata_qid_ledger import (
+    ledger_key_for_item,
+    load_global_ledger,
+    lookup_ledger_qid,
+)
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.pipeline.wikidata_reference_repair_job import load_seed
 from app.pipeline.wikidata_source_choices import source_hash
@@ -36,6 +44,42 @@ _QID = re.compile(r"Q[1-9][0-9]*\Z")
 
 class AuditCancelledError(Exception):
     """The administrator cancelled the audit."""
+
+
+class PublicAuditSnapshot(Mapping[str, dict]):
+    """Keep only a small set of complete entity responses in memory."""
+
+    def __init__(self, directory: str) -> None:
+        self._directory = Path(directory)
+        self._keys: set[str] = set()
+        self._load = lru_cache(maxsize=24)(self._load_entity)
+
+    def __getitem__(self, qid: str) -> dict:
+        if qid not in self._keys:
+            raise KeyError(qid)
+        return self._load(qid)
+
+    def __iter__(self):
+        return iter(sorted(self._keys))
+
+    def __len__(self) -> int:
+        return len(self._keys)
+
+    def __contains__(self, qid: object) -> bool:
+        return qid in self._keys
+
+    def _load_entity(self, qid: str) -> dict:
+        return json.loads((self._directory / qid).read_bytes())
+
+    def add_batch(self, batch: Mapping[str, dict]) -> None:
+        for qid, entity in batch.items():
+            if not _live_qid(qid) or qid in self._keys:
+                raise ValueError("A public audit snapshot needs one response per exact QID.")
+            (self._directory / qid).write_text(
+                json.dumps(entity, ensure_ascii=False, separators=(",", ":")),
+                encoding="utf-8",
+            )
+            self._keys.add(qid)
 
 
 def _live_qid(value: object) -> bool:
@@ -67,7 +111,33 @@ def _catalogue_mappings(records, ledger):
     return mappings
 
 
-def _linked_entities(entities: dict[str, dict]) -> set[str]:
+async def _canonical_items(projection, run_id, snapshot, ledger):
+    items = []
+    fields = (
+        "local_id",
+        "entity_type",
+        "existing_qid",
+        "records",
+        "labels",
+        "descriptions",
+        "statements",
+        "work_candidate_evidence",
+        "authority_evidence",
+        "validation_issues",
+    )
+    async for raw in projection._stream_items(run_id, "canonical", True, snapshot.digest):
+        for item in filter_public_wikidata_items([raw], source="canonical"):
+            compact = {name: item[name] for name in fields if name in item}
+            if not compact.get("existing_qid"):
+                compact["existing_qid"] = lookup_ledger_qid(
+                    ledger,
+                    ledger_key_for_item(item, "wikidata"),
+                )
+            items.append(compact)
+    return items
+
+
+def _linked_entities(entities: Mapping[str, dict]) -> set[str]:
     return {
         value["id"]
         for entity in entities.values()
@@ -100,7 +170,11 @@ async def _authorize(db, job: RunJob) -> None:
 
 
 async def _live_items(
-    job_id: uuid.UUID, requested: set[str], entities: dict[str, dict], seen: set[str], phase: str
+    job_id: uuid.UUID,
+    requested: set[str],
+    entities: PublicAuditSnapshot,
+    seen: set[str],
+    phase: str,
 ):
     reader = ReferenceItemReader()
     qids = sorted(requested - seen)
@@ -119,7 +193,7 @@ async def _live_items(
                     "message": "Read live Wikidata revisions and references.",
                 },
             )
-            entities.update(await reader.fetch_batch(client, batch))
+            await asyncio.to_thread(entities.add_batch, await reader.fetch_batch(client, batch))
             seen.update(batch)
 
 
@@ -240,7 +314,27 @@ def _work_author_cases(canonical, entities):
     return cases
 
 
+def _repeated_reference_counts(entities: PublicAuditSnapshot) -> dict[str, int]:
+    return {
+        qid: blocks
+        for qid, entity in entities.items()
+        if (
+            blocks := sum(
+                len(refs) - len(current_reference_indices(refs))
+                for claims in entity["claims"].values()
+                for claim in claims
+                if (refs := claim.get("references", [])) and len(refs) > 1
+            )
+        )
+    }
+
+
 async def run_gila_audit_job(job_id: uuid.UUID) -> None:
+    with TemporaryDirectory(prefix="mhm-gila-audit-") as directory:
+        await _run_audit(job_id, PublicAuditSnapshot(directory))
+
+
+async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
     try:
         await update_job_progress(
             job_id,
@@ -250,14 +344,15 @@ async def run_gila_audit_job(job_id: uuid.UUID) -> None:
             job = await db.get(RunJob, job_id)
             await _authorize(db, job)
             run_id = job.run_id
-            snapshot = await StudioCacheProjectionSource(db).current_snapshot(
+            projection = StudioCacheProjectionSource(db)
+            snapshot = await projection.current_snapshot(
                 run_id=run_id,
                 source="canonical",
                 approved_only=True,
             )
             records = await load_run_marc_records(db, run_id)
             ledger = await load_global_ledger(db, is_test=False)
-            canonical = await fetch_merged_wikidata_items(db, run_id, source="canonical")
+            canonical = await _canonical_items(projection, run_id, snapshot, ledger)
         mappings = _catalogue_mappings(records, ledger)
         seed, _ = load_seed()
         inventory = remaining_reference_inventory()["items"]
@@ -269,10 +364,10 @@ async def run_gila_audit_job(job_id: uuid.UUID) -> None:
         known.update(
             item.get("existing_qid") for item in canonical if _live_qid(item.get("existing_qid"))
         )
-        entities: dict[str, dict] = {}
         seen: set[str] = set()
         await _live_items(job_id, known, entities, seen, "public_items")
-        await _live_items(job_id, _linked_entities(entities), entities, seen, "linked_items")
+        linked = await asyncio.to_thread(_linked_entities, entities)
+        await _live_items(job_id, linked, entities, seen, "linked_items")
         if await is_cancel_requested(job_id):
             raise AuditCancelledError()
         await update_job_progress(
@@ -291,6 +386,7 @@ async def run_gila_audit_job(job_id: uuid.UUID) -> None:
             canonical,
             qids_by_cn=mappings,
             live_entities=entities,
+            include_repair_payloads=False,
         )
         packet = await asyncio.to_thread(build_gila_completion_packet, audit, entities)
         cases = _case_inventory(packet, audit)
@@ -308,18 +404,7 @@ async def run_gila_audit_job(job_id: uuid.UUID) -> None:
             packet["disposition_counts"][disposition] = (
                 packet["disposition_counts"].get(disposition, 0) + 1
             )
-        duplicates = {
-            qid: blocks
-            for qid, entity in entities.items()
-            if (
-                blocks := sum(
-                    len(references) - len(current_reference_indices(references))
-                    for statements in entity["claims"].values()
-                    for statement in statements
-                    if (references := statement.get("references", [])) and len(references) > 1
-                )
-            )
-        }
+        duplicates = await asyncio.to_thread(_repeated_reference_counts, entities)
         reference_checks = {
             row["qid"]: duplicates.get(row["qid"], 0) if row["qid"] in entities else None
             for row in inventory
