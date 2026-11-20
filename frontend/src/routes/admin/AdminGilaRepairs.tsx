@@ -42,8 +42,9 @@ function failureText(error: unknown) {
   return error instanceof ApiError ? error.detail : error instanceof Error ? error.message : "The request failed.";
 }
 
-function AuditResult({report, queue, needsRecheck}: {
+function AuditResult({report, queue, needsRecheck, onOpenCases}: {
   report: GilaReport; queue?: ReferenceRepairStatus; needsRecheck: boolean;
+  onOpenCases: (filter: CaseFilter | "") => void;
 }) {
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -99,11 +100,14 @@ function AuditResult({report, queue, needsRecheck}: {
         <p className="mt-1 text-xs muted">Last completed audit · {new Date(report.finished_at).toLocaleString()}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {hasRepeatedReferences && <Link className="button-primary" to="/admin/wikidata-reference-repairs?scope=remaining">
+        {report.case_count > 0 && <button className="button-primary"
+          onClick={() => onOpenCases("ready_to_prepare")}>Start manuscript repairs</button>}
+        {hasRepeatedReferences && <Link className={canStart ? "button-primary" : "button-ghost"}
+          to="/admin/wikidata-reference-repairs?scope=remaining">
           {canStart ? "Start fixing references" : "View reference repairs"}
         </Link>}
-        {report.case_count > 0 && <a className={hasRepeatedReferences ? "button-ghost" : "button-primary"}
-          href="#audit-cases">Review open cases</a>}
+        {report.case_count > 0 && <button className="button-ghost"
+          onClick={() => onOpenCases("")}>Review open cases</button>}
         <button className="button-ghost" disabled={exporting}
           onClick={() => void exportEvidence()}>{exporting ? "Prepare evidence…" : "Download audit evidence"}</button>
       </div>
@@ -200,9 +204,11 @@ function CaseDetails({item, report, runId}: {item: GilaCase; report: GilaReport;
   </div>;
 }
 
-function Cases({report, runId, point}: {report: GilaReport; runId: string; point: number | null}) {
+function Cases({report, runId, point, initialFilter}: {
+  report: GilaReport; runId: string; point: number | null; initialFilter: CaseFilter | "";
+}) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<CaseFilter | "">("");
+  const [filter, setFilter] = useState<CaseFilter | "">(initialFilter);
   const [offset, setOffset] = useState(0);
   const [result, setResult] = useState<{items: GilaCase[]; total: number}>();
   const [error, setError] = useState("");
@@ -223,7 +229,9 @@ function Cases({report, runId, point}: {report: GilaReport; runId: string; point
 
   return <Glass as="section" contentClassName="space-y-4" id="audit-cases" tabIndex={-1}>
     <div className="flex flex-wrap items-end justify-between gap-3">
-      <h2 className="text-lg font-semibold">{point ? report.email_points.find(row => row.point === point)?.title : "Open cases"}</h2>
+      <h2 className="text-lg font-semibold">{point
+        ? report.email_points.find(row => row.point === point)?.title
+        : filter === "ready_to_prepare" ? "Repairs ready across all nine requirements" : "Open cases"}</h2>
       <div className="flex flex-wrap gap-2">
         <input className="input" aria-label="Find a case" type="search" value={query} maxLength={120}
           placeholder="Find a QID, source ID, or title" onChange={event => {setQuery(event.target.value); setOffset(0);}} />
@@ -245,12 +253,18 @@ function Cases({report, runId, point}: {report: GilaReport; runId: string; point
     </div>
     {!result && !error && <p role="status" className="muted">Read the case list…</p>}
     {error && <p role="alert" className="text-danger">{error}</p>}
-    {result && (result.total === 0 ? <p className="muted">{filter === "ready_to_prepare"
-      ? "No source-supported cases are ready for a repair release. Review the evidence in the open cases."
-      : "No cases match this filter."}</p> : <>
+    {result?.total === 0 && (filter === "ready_to_prepare"
+      ? <div className="space-y-3">
+        <p className="muted">No source-supported cases are ready for a repair release.</p>
+        <button className="button-ghost" onClick={() => {setFilter("manual_review"); setOffset(0);}}>
+          Review cases that need a decision
+        </button>
+      </div>
+      : <p className="muted">No cases match this filter.</p>)}
+    {result && result.total > 0 && <>
       <ul className="divide-y divide-glass-line rounded-xl border border-glass-line">
-        {result.items.map(item => <li key={item.case_id}>
-          <details>
+        {result.items.map((item, index) => <li key={item.case_id}>
+          <details open={filter === "ready_to_prepare" && index === 0 ? true : undefined}>
             <summary className="cursor-pointer px-4 py-3">
               <span className="ml-2 inline-flex max-w-[92%] flex-wrap items-baseline gap-x-3 gap-y-1 align-middle">
                 <span className="font-mono text-xs muted">{item.qid ?? item.control_number ?? "Corpus"}</span>
@@ -270,7 +284,7 @@ function Cases({report, runId, point}: {report: GilaReport; runId: string; point
           <button className="button-ghost" disabled={offset + pageSize >= result.total} onClick={() => setOffset(offset + pageSize)}>Next</button>
         </div>
       </footer>
-    </>)}
+    </>}
   </Glass>;
 }
 
@@ -280,7 +294,10 @@ export default function AdminGilaRepairs() {
   const [actionError, setActionError] = useState("");
   const [starting, setStarting] = useState(false);
   const [buildProgress, setBuildProgress] = useState("");
-  const [point, setPoint] = useState<number | null>(null);
+  const [caseView, setCaseView] = useState<{
+    point: number | null; initialFilter: CaseFilter | ""; selection: number;
+  }>({point: null, initialFilter: "", selection: 0});
+  const {point, initialFilter, selection} = caseView;
   const [poll, setPoll] = useState(0);
   const [queue, setQueue] = useState<ReferenceRepairStatus>();
   useEffect(() => {
@@ -328,6 +345,11 @@ export default function AdminGilaRepairs() {
   );
   const processed = job?.progress.processed ?? 0;
   const total = job?.progress.total ?? 0;
+
+  function openCases(point: number | null, filter: CaseFilter | "" = "") {
+    setCaseView(current => ({point, initialFilter: filter, selection: current.selection + 1}));
+    window.requestAnimationFrame(() => document.getElementById("audit-cases")?.focus());
+  }
 
   useEffect(() => {
     if (active) useRunJobs.getState().ensurePolling();
@@ -385,7 +407,8 @@ export default function AdminGilaRepairs() {
               : report ? "Run a fresh audit" : "Start live audit"}
         </button>
       </div>
-      {report && <AuditResult key={report.id} report={report} queue={queue} needsRecheck={needsRecheck} />}
+      {report && <AuditResult key={report.id} report={report} queue={queue} needsRecheck={needsRecheck}
+        onOpenCases={filter => openCases(null, filter)} />}
       <details className="rounded-xl border border-glass-line px-4 py-3 text-sm">
         <summary className="cursor-pointer font-medium">How repairs work</summary>
         <ol className="mt-2 list-decimal space-y-1 pl-5 muted">
@@ -426,14 +449,15 @@ export default function AdminGilaRepairs() {
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {report.email_points.map(row => <li key={row.point}>
             <button className={`w-full rounded-xl border p-3 text-left text-sm ${point === row.point ? "border-accent bg-[var(--surface-inset)]" : "border-glass-line"}`}
-              aria-pressed={point === row.point} onClick={() => setPoint(point === row.point ? null : row.point)}>
+              aria-pressed={point === row.point} onClick={() => openCases(point === row.point ? null : row.point)}>
               <span className="block font-medium">{row.title}</span>
               <span className="mt-1 block text-xs muted">{labels[row.status]}</span>
             </button>
           </li>)}
         </ul>
       </Glass>
-      <Cases key={`${report.id}:${point ?? ""}`} report={report} runId={state.run_id} point={point} />
+      <Cases key={`${report.id}:${selection}`} report={report} runId={state.run_id} point={point}
+        initialFilter={initialFilter} />
     </>}
   </div></AdminLayout>;
 }

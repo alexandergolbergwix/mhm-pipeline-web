@@ -171,8 +171,19 @@ test("the audit asks for verification after reference repairs and exports eviden
     audit = {id: "audit-2", status: "running", progress: {phase: "public_items"}};
     return route.fulfill({json: audit});
   });
-  await page.route("**/api/admin/wikidata-gila-repairs/cases?*", route =>
-    route.fulfill({json: {items: [], total: 0}}));
+  let readyCase = false;
+  let preparations = 0;
+  await page.route("**/api/admin/wikidata-gila-repairs/cases?*", route => {
+    const {searchParams} = new URL(route.request().url());
+    const items = readyCase && searchParams.get("disposition") === "ready_to_prepare"
+      ? [{case_id: "repair:1", qid: "Q42", points: [8], disposition: "repair_required", can_prepare: true}]
+      : [];
+    return route.fulfill({json: {items, total: items.length}});
+  });
+  await page.route("**/api/admin/wikidata-gila-repairs/prepare", route => {
+    preparations++;
+    return route.fulfill({status: 400, json: {detail: "Unexpected preparation request"}});
+  });
   await page.route("**/api/admin/wikidata-gila-repairs/evidence?audit_id=audit-1", route =>
     route.fulfill({json: {audit_id: "audit-1", reference_repairs: [{qid: "Q42", after_revision: 22}]}}));
   await page.route("**/api/admin/wikidata-reference-repairs?scope=remaining", route =>
@@ -183,8 +194,17 @@ test("the audit asks for verification after reference repairs and exports eviden
   await page.goto("/admin/wikidata-gila-repairs");
   await expect(page.getByRole("heading", {name: "Reference repairs complete. A fresh audit is due."})).toBeVisible();
   await expect(page.getByText("Repeated references at last audit")).toBeVisible();
-  await page.getByRole("combobox", {name: "Case status"}).selectOption("ready_to_prepare");
+  await page.getByRole("button", {name: "Start manuscript repairs"}).click();
+  await expect(page.getByRole("heading", {name: "Repairs ready across all nine requirements"})).toBeVisible();
+  await expect(page.locator("#audit-cases")).toBeFocused();
+  await expect(page.getByRole("combobox", {name: "Case status"})).toHaveValue("ready_to_prepare");
   await expect(page.getByText("No source-supported cases are ready", {exact: false})).toBeVisible();
+  await page.getByRole("button", {name: "Review cases that need a decision"}).click();
+  await expect(page.getByRole("combobox", {name: "Case status"})).toHaveValue("manual_review");
+  readyCase = true;
+  await page.getByRole("button", {name: "Start manuscript repairs"}).click();
+  await expect(page.getByRole("button", {name: "Prepare repair release"})).toBeVisible();
+  expect(preparations).toBe(0);
   const download = page.waitForEvent("download");
   await page.getByRole("button", {name: "Download audit evidence"}).click();
   expect((await download).suggestedFilename()).toBe("wikidata-audit-audit-1.json");

@@ -49,6 +49,8 @@ The panel shows the date of the last completed audit during a new check.
 The panel uses the same audit date to show repeated references on project-created and other items.
 If the remaining reference queue finishes after that audit, select **Verify repairs on Wikidata**.
 The next audit reads Wikidata again and checks all nine requirements.
+Select **Start manuscript repairs** to open the ready cases across all nine requirements.
+If none are ready, select **Review cases that need a decision**.
 The **Ready to prepare** filter shows only cases with evidence for a repair release.
 Cases on items with a known different creator stay in manual review.
 The manuscript and work model has its own review case under point 2.
