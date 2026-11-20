@@ -63,6 +63,7 @@ from app.pipeline.wikidata_qid_ledger import (
     record_ledger_mapping,
 )
 from app.services.wikibase_audit import record_wikibase_write
+from converter.wikidata.retry_policy import STUDIO_MAXLAG
 
 if TYPE_CHECKING:
     from app.services.wikibase_audit import WikibaseAuditContext
@@ -1692,6 +1693,7 @@ def _upload_sync(
                 is_test=is_test,
                 batch_mode=True,
                 allow_live=allow_live,
+                write_maxlag=STUDIO_MAXLAG,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not init WikidataUploader for ownership: %s", exc)
@@ -1744,6 +1746,7 @@ def _upload_sync(
 
     write_uploader = ownership_checker or WikidataUploader(
         token=token, is_test=is_test, batch_mode=True, allow_live=allow_live,
+        write_maxlag=STUDIO_MAXLAG,
     )
     if is_test:
         warmer = getattr(write_uploader, "warm_test_maps_for_items", None)

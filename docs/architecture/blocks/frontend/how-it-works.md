@@ -28,7 +28,7 @@ legacy-sidebar toggle. If the sidebar cache exceeds the size limit, the page ope
 unmount/remount flicker during jobs; block R14). The item drawer
 exposes a QID-bound **accept foreign modify** checkbox when `existing_qid` is
 set (Rule W-99); uploads load those accepts from `WikidataItemOverride`.
-The Publication panel owns the test/live target choice. The compatibility
+The Publication panel owns the test/live target choice. It shows the retry time during a Wikidata delay (W-353). The compatibility
 upload panel is hidden by default. It appears only when the Publication API
 reports that the service is unavailable. The page never shows both target
 groups at the same time (Rule W-213). A build failure with "no durable HMO

@@ -6,12 +6,13 @@ import asyncio
 import logging
 import os
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy
 
 from app.db import session_scope
-from app.models.publication import Publication, PublicationExecution
+from app.models.publication import Publication, PublicationExecution, PublicationExecutionAction
 from app.models.run_job import (
     JOB_STATUS_CANCELLED,
     JOB_STATUS_FAILED,
@@ -34,6 +35,7 @@ from app.publication.wikidata_gateway import (
     CurrentWikidataBoundaryFactory,
     WikidataGatewayAdapter,
 )
+from converter.wikidata.retry_policy import MAXLAG_REJECTION_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +231,41 @@ def _progress(summary) -> dict[str, object]:
     }
 
 
+async def _next_maxlag_retry(execution_id: uuid.UUID) -> datetime | None:
+    action = PublicationExecutionAction
+    confirmed_lag = (
+        (action.state == "pre_send_retryable")
+        & action.last_error.startswith(MAXLAG_REJECTION_PREFIX)
+        & action.next_attempt_at.is_not(None)
+    )
+    async with session_scope() as db:
+        retry_at, lagged, unresolved = (await db.execute(
+            sqlalchemy.select(
+                sqlalchemy.func.min(action.next_attempt_at).filter(confirmed_lag),
+                sqlalchemy.func.count().filter(confirmed_lag),
+                sqlalchemy.func.count(),
+            )
+            .join(PublicationExecution, PublicationExecution.id == action.execution_id)
+            .where(
+                action.execution_id == execution_id,
+                PublicationExecution.status == "paused",
+                action.state.in_(("pre_send_retryable", "in_flight", "outcome_unknown")),
+            )
+        )).one()
+    if retry_at is None or lagged != unresolved:
+        return None
+    return retry_at if retry_at.tzinfo else retry_at.replace(tzinfo=UTC)
+
+
+async def _wait_for_maxlag_retry(job_id: uuid.UUID, retry_at: datetime) -> bool:
+    while not await is_cancel_requested(job_id):
+        remaining = (retry_at - datetime.now(UTC)).total_seconds()
+        if remaining <= 0:
+            return True
+        await asyncio.sleep(min(5.0, remaining))
+    return False
+
+
 async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
     """Resume a queued Execution and write only through the gateway seam."""
     async with session_scope() as db:
@@ -261,11 +298,6 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
 
             gateway_factory = credential_gateway_factory
 
-        runtime = PublicationRuntime(
-            session=db,
-            gateway_factory=gateway_factory,
-            execution_progress=_make_execution_progress(job_id),
-        )
         await update_job_progress(
             job_id,
             {
@@ -291,6 +323,7 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
             or os.environ.get("PUBLICATION_EXECUTION_WORKERS")
             or 16
         )))
+        await db.rollback()
 
         async def _run_worker(index: int) -> PublicationSummary:
             worker_id = f"publication-job:{job_id}:w{index}"
@@ -312,35 +345,47 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
 
             return await _run_with_connection_retries(worker_id, _attempt)
 
-        try:
-            worker_summaries = await asyncio.gather(
-                *(_run_worker(i) for i in range(worker_count)),
-                return_exceptions=True,
-            )
-            failures = [s for s in worker_summaries if isinstance(s, BaseException)]
-            summaries = [s for s in worker_summaries if not isinstance(s, BaseException)]
-            if not summaries:
-                # Every worker failed: the durable execution must go back to
-                # paused so a resume can retry it.
-                await _mark_execution_paused(execution_id)
-                raise failures[0] if failures else RuntimeError(
-                    "The Publication execution produced no worker summary"
+        while True:
+            try:
+                worker_summaries = await asyncio.gather(
+                    *(_run_worker(i) for i in range(worker_count)),
+                    return_exceptions=True,
                 )
-        except Exception:
-            # Keep the durable execution resumable when a worker fails before
-            # the runtime can persist its normal paused state. A fresh
-            # session: the outer session may share the dead connection.
-            await _mark_execution_paused(execution_id)
-            raise
-        # Prefer a summary whose execution reached a terminal state; paused
-        # beats failed-for-now because the durable rows keep the detail.
-        def _rank(summary: PublicationSummary) -> int:
-            status = summary.execution.status if summary.execution else ""
-            return {"succeeded": 0, "completed": 1, "cancelled": 2}.get(status, 3)
+                failures = [s for s in worker_summaries if isinstance(s, BaseException)]
+                summaries = [s for s in worker_summaries if not isinstance(s, BaseException)]
+                if not summaries:
+                    raise failures[0] if failures else RuntimeError(
+                        "The Publication execution produced no worker summary"
+                    )
+            except Exception:
+                await _mark_execution_paused(execution_id)
+                raise
 
-        summary = max(summaries, key=_rank)
-        for failure in failures:
-            logger.warning("A publication execution worker failed: %s", failure)
+            def _rank(summary: PublicationSummary) -> int:
+                status = summary.execution.status if summary.execution else ""
+                return {"succeeded": 0, "completed": 1, "cancelled": 2}.get(status, 3)
+
+            summary = max(summaries, key=_rank)
+            for failure in failures:
+                logger.warning("A publication execution worker failed: %s", failure)
+            if not summary.execution or summary.execution.status != "paused" or failures:
+                break
+            retry_at = await _next_maxlag_retry(uuid.UUID(execution_id))
+            if retry_at is None:
+                break
+            await update_job_progress(job_id, {
+                **_progress(summary),
+                "phase": "retry_wait",
+                "next_attempt_at": retry_at.isoformat(),
+                "message": "Wikidata requested a delay. Publication will retry automatically.",
+            })
+            if not await _wait_for_maxlag_retry(job_id, retry_at):
+                await finish_job(
+                    job_id, status=JOB_STATUS_CANCELLED,
+                    result={"publication_id": publication_id, "execution_id": execution_id},
+                    progress={"phase": "cancelled", "message": "Publication Execution cancelled."},
+                )
+                return
 
     execution = summary.execution
     if execution is None:

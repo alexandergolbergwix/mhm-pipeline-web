@@ -23,6 +23,12 @@ from app.publication.gateway import (
     WriteOutcome,
 )
 from app.publication.types import PublicationEntity, TargetRef
+from converter.wikidata.retry_policy import (
+    MAXLAG_REJECTION_PREFIX,
+    STUDIO_MAXLAG,
+    ConfirmedMaxlagError,
+    preserve_maxlag_rejection,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +105,7 @@ class WikidataPreSendRetryableError(WikidataGatewayError):
 class WikidataMaxlagError(WikidataPreSendRetryableError):
     def __init__(self, *, retry_after_seconds: float) -> None:
         self.retry_after_seconds = retry_after_seconds
-        super().__init__(f"Wikidata reported maxlag; retry after {retry_after_seconds:g} seconds")
+        super().__init__(f"{MAXLAG_REJECTION_PREFIX} retry after {retry_after_seconds:g} seconds")
 
 
 class WikidataRateLimitError(WikidataPreSendRetryableError):
@@ -450,6 +456,7 @@ class CurrentWikidataBoundaryFactory:
             is_test=supported[key],
             batch_mode=True,
             allow_live=not supported[key],
+            write_maxlag=STUDIO_MAXLAG,
         )
         uploader.ensure_authenticated()
         return CurrentWikidataBoundary(uploader=uploader)
@@ -825,6 +832,8 @@ class CurrentWikidataBoundary:
             "is_bot": self._uploader._mark_as_bot,
             # WBI counts total attempts, so one prevents unguarded resends.
             "max_retries": 1,
+            "maxlag": STUDIO_MAXLAG,
+            "hooks": {"response": preserve_maxlag_rejection},
             "allow_redirects": False,
             "retry_after": 15,
         }
@@ -1156,6 +1165,8 @@ def _aliases(value: object) -> dict[str, list[str]]:
 def _classify_write_exception(exc: Exception) -> WikidataGatewayError:
     from requests.exceptions import HTTPError  # noqa: PLC0415
     from wikibaseintegrator.wbi_exceptions import MWApiError  # noqa: PLC0415
+    if isinstance(exc, ConfirmedMaxlagError):
+        return WikidataMaxlagError(retry_after_seconds=exc.retry_after_seconds)
 
     message = str(exc)
     code = str(exc.code or "").lower() if isinstance(exc, MWApiError) else ""
@@ -1164,7 +1175,7 @@ def _classify_write_exception(exc: Exception) -> WikidataGatewayError:
     headers = getattr(response, "headers", {}) or {}
     retry_after = _retry_after_seconds(headers.get("Retry-After"), default=5.0)
     if code == "maxlag":
-        return WikidataMaxlagError(retry_after_seconds=retry_after)
+        return WikidataMaxlagError(retry_after_seconds=max(5.0, retry_after))
     if (isinstance(exc, HTTPError) and status_code == 429) or code in {"ratelimited", "actionthrottledtext"}:
         return WikidataRateLimitError(retry_after_seconds=retry_after)
     if code == "editconflict":

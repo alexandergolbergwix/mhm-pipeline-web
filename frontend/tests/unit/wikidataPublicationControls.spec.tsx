@@ -438,6 +438,27 @@ describe("WikidataPublicationControls", () => {
     expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent("1 item failed");
   });
 
+  it("shows the automatic retry time and keeps cancellation available", () => {
+    render(<WikidataPublicationControls
+      publication={publication({
+        status: "paused",
+        execution: {
+          execution_id: "execution-1", plan_id: "plan-1", status: "paused",
+          processed: 1, total: 2, succeeded: 1, failed: 0, skipped: 0,
+          current_entity_label: null, started_at: null, finished_at: null,
+          background_active: true, next_attempt_at: "2026-11-20T08:02:00Z",
+        },
+      })}
+      entities={[]}
+      onAdvance={vi.fn()}
+      auditHref="/audit"
+    />);
+    expect(screen.getByText("Wikidata delay")).toBeVisible();
+    expect(screen.getByText(/The worker will retry at/)).toBeVisible();
+    expect(screen.getByTestId("publication-cancel")).toBeEnabled();
+    expect(screen.queryByTestId("publication-resume")).toBeNull();
+  });
+
   it("explains that a paused upload needs a retry after safe items finish", () => {
     render(<WikidataPublicationControls
       publication={publication({

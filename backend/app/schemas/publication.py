@@ -215,6 +215,8 @@ class ExecutionSummary(PublicationSchema):
     started_at: datetime | None
     finished_at: datetime | None
     error: str | None = None
+    next_attempt_at: datetime | None = None
+    background_active: bool = False
 
 
 class PublicationOperation(PublicationSchema):

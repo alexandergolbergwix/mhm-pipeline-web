@@ -26,7 +26,7 @@ layer. When a shared task, workflow, or rule already exists in the pipeline
 repo, prefer the upstream version unless this repo adds an explicit web-only
 override.
 
-## Architectural rules (W-1…W-352)
+## Architectural rules (W-1…W-353)
 
 Every rule lives in a topic file under
 [docs/architecture/rules/](docs/architecture/rules/). **Read the file for the
@@ -174,10 +174,11 @@ alone; the one-line summaries are pointers, not the invariant.
 - **W-346** — A blocked queue item advances only when the live result and the successful foreground receipt match. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-347** — Check for brief Wikidata recovery sooner when the reported lag is near the edit limit. Keep saved retry dates and server delays. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-348** — Read only saved counts for the run overview. Direct large sidebar requests to the paginated table and skip scans for known stale builds. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
-- **W-349** — The administrator reference queue uses maxlag 100 for the probe, edit, and status display. Other bulk writes use 5. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-349** — The administrator reference queue uses maxlag 100 for the probe, edit, and status display. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-350** — Resume a preflight stop at the same item. Require a later verified receipt before a known legacy rejection can stop blocking a fresh edit. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-351** — Save a five-minute retry time for a creator check timeout before the administrator queue saves an edit plan. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 - **W-352** — Recover an unconfirmed reference edit from its original Publication and exact live result. Continue only after the original intent has proof. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
+- **W-353** — Studio writes use maxlag 50. Preserve confirmed lag rejections and keep the retry time before another attempt. See [wikidata-studio.md](docs/architecture/rules/wikidata-studio.md).
 
 - **W-273** — Research Assistant prompt gate: every user prompt passes the local scope router AND the TypeSafe Jev model check (jev-1.13.0) before any LLM call, enforced at both the Heroku dispatch and the Modal entries (dev-stub-only gating left production ungated); all retrieved text incl. MARC notes passes the quarantine; a provider 402 humanizes and retries once on the fallback model — see [platform-infra.md](docs/architecture/rules/platform-infra.md)
 - **W-274** — Remote-agent run contract: every research-agent run emits exactly one terminal event with a machine code (`model_quota_exhausted`, `gate_refused`, `stream_ended`, `deadline_exceeded`), the SSE bridge only synthesizes a terminal when none arrived and never with a look-alike message; a run journal (research_agent_run_journal + `/research-agent/runs/{id}/debug`) records gate→dispatch→terminal; fact/count questions are answered deterministically from the DB (no LLM); the model layer is QUBRID-ONLY with a 402 circuit breaker (2026-10-17: a Modal ModuleNotFoundError surfaced as "stopped responding" and duplicated user rows) — see [platform-infra.md](docs/architecture/rules/platform-infra.md)

@@ -437,6 +437,7 @@ async def test_write_refreshes_expired_csrf_token_before_retry() -> None:
     assert uploader.refresh_count == 1
     assert uploader.item.write_count == 2
     assert [options["max_retries"] for options in uploader.item.write_options] == [1, 1]
+    assert [options["maxlag"] for options in uploader.item.write_options] == [50, 50]
 
 
 @pytest.mark.asyncio
@@ -527,7 +528,7 @@ async def test_csrf_retry_checks_approval_before_the_second_send(monkeypatch) ->
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("action", ["create", "update", "foreign-update"])
-@pytest.mark.parametrize("failure", ["connection", "server_error", "timeout", "malformed"])
+@pytest.mark.parametrize("failure", ["connection", "server_error", "timeout", "malformed", "maxlag"])
 async def test_real_wbi_sends_only_once_after_ambiguous_response(
     monkeypatch, action, failure,
 ) -> None:
@@ -542,6 +543,12 @@ async def test_real_wbi_sends_only_once_after_ambiguous_response(
     def request(**kwargs):
         sends.append(kwargs)
         authorization["allowed"] = False
+        if failure == "maxlag":
+            response = requests.Response()
+            response.status_code = 200
+            response.headers["Retry-After"] = "120"
+            response._content = b'{"error":{"code":"maxlag","lag":55}}'
+            return requests.hooks.dispatch_hook("response", kwargs["hooks"], response)
         if failure == "connection":
             raise requests.exceptions.ConnectionError("The response was lost")
         if failure == "timeout":
@@ -582,6 +589,11 @@ async def test_real_wbi_sends_only_once_after_ambiguous_response(
         return
     assert len(sends) == 1
     assert sends[0]["allow_redirects"] is False
+    assert sends[0]["data"]["maxlag"] == 50
+    if failure == "maxlag":
+        assert outcome.status == "pre_send_retryable"
+        assert outcome.retry_after_seconds == 120
+        return
     assert outcome.status == "outcome_unknown"
     confirmations = []
     async def confirm(mutation, *, qid):

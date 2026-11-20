@@ -16,7 +16,11 @@ import logging
 import re
 import threading
 
-from converter.wikidata.retry_policy import BULK_MAXLAG
+from converter.wikidata.retry_policy import (
+    BULK_MAXLAG,
+    ConfirmedMaxlagError,
+    preserve_maxlag_rejection,
+)
 
 import requests
 import time
@@ -627,6 +631,7 @@ class WikidataUploader:
         *,
         allow_live: bool = False,
         mark_as_bot: bool | None = None,
+        write_maxlag: int = BULK_MAXLAG,
     ) -> None:
         """Initialize the uploader.
 
@@ -656,6 +661,7 @@ class WikidataUploader:
         self._is_test = is_test
         self._batch_mode = batch_mode
         self._allow_live = allow_live
+        self._write_maxlag = write_maxlag
         if mark_as_bot is None:
             mark_as_bot = os.environ.get("WIKIDATA_MARK_AS_BOT", "").lower() in {
                 "1", "true", "yes",
@@ -2857,17 +2863,21 @@ class WikidataUploader:
                     "token": csrf,
                     "format": "json",
                     "summary": "MHM Pipeline: test.wikidata.org remap stub",
+                    "maxlag": self._write_maxlag,
                 },
                 timeout=60,
             )
             resp.raise_for_status()
             body = resp.json()
+            error = body.get("error")
+            if isinstance(error, dict) and error.get("code") == "maxlag":
+                raise ConfirmedMaxlagError(resp.headers.get("Retry-After"))
             entity = body.get("entity") or {}
             entity_id = str(entity.get("id") or "").strip()
             if entity_id:
                 self._test_fresh_creates.add(entity_id)
                 return entity_id
-            if not isinstance(body.get("error"), dict):
+            if not isinstance(error, dict):
                 raise RuntimeError("Wikidata returned no entity or API error")
             from converter.wikidata.test_wiki_compat import (  # noqa: PLC0415
                 parse_wbeditentity_conflict_id,
@@ -2896,6 +2906,8 @@ class WikidataUploader:
                 )
                 return adopted
             logger.warning("wbeditentity new=%s failed: %s", new, body)
+        except ConfirmedMaxlagError:
+            raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("wbeditentity new=%s error: %s", new, exc)
             if write_started:
@@ -3768,9 +3780,10 @@ class WikidataUploader:
                 result = wbi_item.write(
                     summary=edit_summary,
                     is_bot=self._mark_as_bot,
-                    maxlag=BULK_MAXLAG,
+                    maxlag=self._write_maxlag,
                     retry_after=0,
                     max_retries=1,
+                    hooks={"response": preserve_maxlag_rejection},
                     timeout=30,
                     **({"allow_redirects": False} | owner_write_options),
                 )
@@ -3838,6 +3851,15 @@ class WikidataUploader:
                         f"{exc.qid} was not authored by the authenticated user."
                     ),
                 )
+            except ConfirmedMaxlagError as exc:
+                if attempt == _MAX_RETRIES:
+                    return UploadResult(
+                        local_id=item.local_id,
+                        qid=item.existing_qid,
+                        status="failed",
+                        message=str(exc),
+                    )
+                time.sleep(exc.retry_after_seconds)
             except Exception as exc:
                 last_error = str(exc)
                 if write_started:

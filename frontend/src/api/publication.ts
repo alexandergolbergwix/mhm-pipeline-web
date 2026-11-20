@@ -113,6 +113,8 @@ export interface ExecutionSummary {
   started_at: string | null;
   finished_at: string | null;
   error?: string | null;
+  next_attempt_at?: string | null;
+  background_active?: boolean;
 }
 
 export interface PublicationSummary {

@@ -36,6 +36,7 @@ from app.pipeline.wikidata_deferred_payload import build_deferred_link_payload
 from app.pipeline.wikidata_qid_ledger import ledger_key_for_item
 from app.services.wikibase_audit import WikibaseAuditContext
 from converter.wikidata.item_models import WikidataItem
+from converter.wikidata.retry_policy import STUDIO_MAXLAG
 
 logger = logging.getLogger(__name__)
 
@@ -753,6 +754,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
 
         shared_uploader = WikidataUploader(
             token=token, is_test=mode.is_test, batch_mode=True, allow_live=mode.allow_live,
+            write_maxlag=STUDIO_MAXLAG,
         )
         if owner_only or not mode.dry_run:
             try:
@@ -823,6 +825,7 @@ async def run_wikidata_upload_job(job_id: uuid.UUID) -> None:
                     is_test=mode.is_test,
                     batch_mode=True,
                     allow_live=mode.allow_live,
+                    write_maxlag=STUDIO_MAXLAG,
                 )
                 await run_in_threadpool(extra.ensure_authenticated)
                 if shared_uploader is not None and hasattr(extra, "share_caches_from"):
@@ -1948,6 +1951,7 @@ async def run_wikidata_upload_shard(
             is_test=mode.is_test,
             batch_mode=True,
             allow_live=mode.allow_live,
+            write_maxlag=STUDIO_MAXLAG,
         )
         if not mode.dry_run:
             await run_in_threadpool(shared_uploader.ensure_authenticated)
@@ -1968,6 +1972,7 @@ async def run_wikidata_upload_shard(
                         is_test=mode.is_test,
                         batch_mode=True,
                         allow_live=mode.allow_live,
+                        write_maxlag=STUDIO_MAXLAG,
                     )
                     await run_in_threadpool(extra.ensure_authenticated)
                     if hasattr(extra, "share_caches_from"):

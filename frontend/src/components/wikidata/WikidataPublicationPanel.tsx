@@ -185,9 +185,9 @@ export function WikidataPublicationPanel({
   // repaint only when the counts actually move.
   const execution = publication?.execution ?? null;
   const executionActive = execution !== null
-    && (execution.status === "running" || execution.status === "queued");
+    && (execution.status === "running" || execution.status === "queued" || execution.background_active === true);
   const executionKey = execution
-    ? `${execution.execution_id}:${execution.status}:${execution.processed}:${execution.total}`
+    ? `${execution.execution_id}:${execution.status}:${execution.processed}:${execution.total}:${execution.next_attempt_at ?? ""}:${execution.background_active}`
     : "";
   useEffect(() => {
     if (!executionActive) return;
@@ -204,7 +204,7 @@ export function WikidataPublicationPanel({
         if (stopped || !response.publication) return;
         const nextExecution = response.publication.execution;
         const nextKey = nextExecution
-          ? `${nextExecution.execution_id}:${nextExecution.status}:${nextExecution.processed}:${nextExecution.total}`
+          ? `${nextExecution.execution_id}:${nextExecution.status}:${nextExecution.processed}:${nextExecution.total}:${nextExecution.next_attempt_at ?? ""}:${nextExecution.background_active}`
           : "";
         if (nextKey && nextKey !== lastKey) {
           lastKey = nextKey;

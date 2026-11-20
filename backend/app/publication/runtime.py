@@ -1042,6 +1042,22 @@ class PublicationRuntime:
                 # normal pause. Reconcile that durable state during the read.
                 execution.status = "paused"
                 await self._session.commit()
+            next_attempt_at = None
+            background_active = (
+                execution_job is not None and execution_job.status in {"queued", "running"}
+            )
+            job_progress = execution_job.progress if execution_job is not None else {}
+            if (
+                execution_job is not None and execution_job.status == "running"
+                and execution.status == "paused" and job_progress.get("phase") == "retry_wait"
+            ):
+                next_attempt_at = job_progress.get("next_attempt_at")
+                if next_attempt_at:
+                    failed -= summary.execution_pre_send_retryable_count
+                    processed = min(
+                        execution.total_count,
+                        summary.execution_succeeded_count + failed + summary.plan_skip_count,
+                    )
             execution_view = ExecutionSummary(
                 execution_id=str(execution.id),
                 plan_id=str(execution.plan_id),
@@ -1055,6 +1071,8 @@ class PublicationRuntime:
                 started_at=_aware(execution.created_at),
                 finished_at=_aware(execution.updated_at) if terminal else None,
                 error=execution_job.error if execution_job is not None else None,
+                next_attempt_at=next_attempt_at,
+                background_active=background_active,
             )
         status = _publication_status(summary, execution)
         return PublicationSummary(

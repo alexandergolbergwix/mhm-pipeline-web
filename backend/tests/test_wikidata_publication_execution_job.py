@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 
-from app.models.publication import PublicationExecution
+from app.models.publication import PublicationExecution, PublicationExecutionAction
 from app.models.run_job import (
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_STATUS_FAILED,
@@ -145,10 +146,12 @@ async def test_execution_worker_reports_completed_item_failures_without_pause(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("pending", ["unscheduled", "maxlag", "mixed"])
 async def test_execution_worker_explains_pause_after_safe_items_finish(
     sample_run,
     db_session,
     monkeypatch,
+    pending,
 ) -> None:
     execution_id = str(uuid.uuid4())
     publication_id = str(uuid.uuid4())
@@ -168,17 +171,43 @@ async def test_execution_worker_explains_pause_after_safe_items_finish(
         created_by=sample_run["user_id"],
     )
     db_session.add(job)
+    retry_at = datetime(2026, 11, 20, 8, tzinfo=UTC)
+    if pending != "unscheduled":
+        db_session.add(PublicationExecution(
+            id=uuid.UUID(execution_id), publication_id=uuid.UUID(publication_id),
+            plan_id=uuid.uuid4(), receipt_id=uuid.uuid4(), receipt_digest="r" * 64,
+            actor_id=actor_id, idempotency_key="lag-execution", status="paused", total_count=2,
+        ))
+        db_session.add(PublicationExecutionAction(
+            execution_id=uuid.UUID(execution_id), action_key="lagged", entity_key="lagged",
+            ordinal=1, phase="create", state="pre_send_retryable", action="create",
+            next_attempt_at=retry_at, last_error="Wikidata reported maxlag; retry after 120 seconds",
+        ))
+        if pending == "mixed":
+            db_session.add(PublicationExecutionAction(
+                execution_id=uuid.UUID(execution_id), action_key="unknown", entity_key="unknown",
+                ordinal=2, phase="create", state="outcome_unknown", action="create",
+            ))
     await db_session.commit()
+    execution_calls = []
+    delays = []
+
+    async def wait(job_id, deadline):
+        assert job_id == job.id
+        assert deadline == retry_at
+        delays.append(deadline)
+        return True
 
     class PausedRuntime:
         def __init__(self, *, session, gateway_factory, execution_progress=None) -> None:
             pass
 
         async def execute(self, **kwargs):
+            execution_calls.append(kwargs["execution_id"])
             return SimpleNamespace(
                 execution=SimpleNamespace(
                     execution_id=execution_id,
-                    status="paused",
+                    status="succeeded" if len(execution_calls) > 1 else "paused",
                     processed=2,
                     total=2,
                     current_entity_label=None,
@@ -190,9 +219,17 @@ async def test_execution_worker_explains_pause_after_safe_items_finish(
         "app.pipeline.wikidata_publication_execution_job.PublicationRuntime",
         PausedRuntime,
     )
+    monkeypatch.setattr("app.pipeline.wikidata_publication_execution_job._wait_for_maxlag_retry", wait)
     await run_wikidata_publication_execution_job(job.id)
 
     await db_session.refresh(job)
+    if pending == "maxlag":
+        assert job.status == JOB_STATUS_SUCCEEDED
+        assert execution_calls == [execution_id, execution_id]
+        assert delays == [retry_at]
+        return
+    assert execution_calls == [execution_id]
+    assert delays == []
     assert job.status == JOB_STATUS_FAILED
     assert job.error == (
         "The Publication Execution processed all safe items and paused with 1 item "

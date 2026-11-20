@@ -3841,7 +3841,7 @@ A cached creator name also lacked an immutable identity check at the final send.
 
 Use the existing Publication intents, checkpoints, receipts, and action queue for exact historical repairs.
 Retain the complete public before entity and exact authorized QID.
-Use `BULK_MAXLAG = 5` by default and retain numeric or HTTP-date Retry-After values. See W-349 for the administrator queue.
+Use `BULK_MAXLAG = 5` by default and retain numeric or HTTP-date Retry-After values. See W-349 for the administrator queue and W-353 for Studio.
 Commit the intent result and `next_attempt_at` together.
 A resumed worker must honor that date.
 A confirmed rejection may retry after the delay.
@@ -4207,7 +4207,7 @@ The operator chose 100 for the reviewed administrator queue.
 Use 100 for each read-only probe and edit in this queue. Report the same value in the status API.
 Set the near-limit check interval relative to the same limit.
 Keep the saved retry date, server delays, exact plan, and creator checks.
-The CLI and other bulk writes use 5.
+The CLI uses 5. Studio writes use the limit in W-353.
 
 See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).
 
@@ -4245,3 +4245,14 @@ Record the receipt on the original intent. Save the confirmed item in the checkp
 If proof fails, retain the plan and stop at the same item.
 
 See [Administrator backend reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).
+
+### Rule W-353 — Preserve confirmed Studio lag rejections
+
+WikibaseIntegrator can discard a confirmed `maxlag` rejection and raise a generic retry error.
+Studio Publication and direct uploads send `maxlag=50`. Preserve the confirmed rejection and its `Retry-After` value before the library handles it.
+Publication saves the due time on the action. The worker waits when all unresolved actions have confirmed lag rejections.
+Resume the same execution when the earliest retry becomes due. Repeat the normal authorization and revision checks.
+Direct uploads repeat the item checks after the delay within their existing attempt limit.
+An uncertain outcome still requires proof. A generic retry error does not prove Wikidata rejected the edit.
+
+See [Repair retries](../blocks/wikidata-studio/repair-retries.md).

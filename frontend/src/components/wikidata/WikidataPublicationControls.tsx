@@ -66,7 +66,9 @@ export function WikidataPublicationControls({
     .filter((entity) => entity.review_status !== "approved")
     .map((entity) => entity.entity_id);
   const busy = busyCommand !== null || aiActive;
-  const executionActive = execution?.status === "queued" || execution?.status === "running";
+  const retryAt = execution?.next_attempt_at;
+  const executionActive = execution?.status === "queued" || execution?.status === "running"
+    || Boolean(execution?.background_active);
   const executionFailed = execution?.status === "failed";
   const executionFinishedWithErrors = execution?.status === "failed"
     && execution.processed >= execution.total;
@@ -74,7 +76,7 @@ export function WikidataPublicationControls({
     && execution.total > 0
     && execution.processed >= execution.total;
   const executionWaitingForReview = execution?.status === "paused"
-    && executionActionsComplete;
+    && executionActionsComplete && !executionActive;
   const executionFinishedSuccessfully = execution?.status === "succeeded";
   const includedCount = plan
     ? actionCount(plan.action_counts, "create")
@@ -273,7 +275,7 @@ export function WikidataPublicationControls({
       </details>
 
           <div className="flex gap-2">
-        {execution?.status === "paused" && (
+        {execution?.status === "paused" && !executionActive && (
           <button
             type="button"
             className="button-ghost text-sm"
@@ -284,7 +286,7 @@ export function WikidataPublicationControls({
             {busyCommand === "resume" ? commandLabel("resume") : executionWaitingForReview ? "Retry unresolved items" : "Resume Execution"}
           </button>
         )}
-        {executionActive && (
+        {execution && executionActive && (
           <button
             type="button"
             className="button-ghost text-sm text-warn"
@@ -305,9 +307,14 @@ export function WikidataPublicationControls({
                 {execution.processed.toLocaleString()} of {execution.total.toLocaleString()} upload actions complete
               </p>
             </div>
-            <span className="rounded-full border border-white/10 px-2 py-1 text-xs muted">{executionWaitingForReview ? "needs retry" : execution.status}</span>
+            <span className="rounded-full border border-white/10 px-2 py-1 text-xs muted">{retryAt ? "Wikidata delay" : executionWaitingForReview ? "needs retry" : execution.status}</span>
           </div>
-          {execution.status === "paused" && (
+          {retryAt && (
+            <p className="text-sm text-warn">
+              Wikidata requested a delay. The worker will retry at {new Date(retryAt).toLocaleString()}.
+            </p>
+          )}
+          {execution.status === "paused" && !executionActive && (
             <p className="text-sm text-warn">{executionWaitingForReview
               ? "All safe items finished. Resume to retry the unresolved items."
               : "The upload paused before it finished. Resume to continue from the saved state."}</p>

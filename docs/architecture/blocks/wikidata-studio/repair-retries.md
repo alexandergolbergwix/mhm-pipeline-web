@@ -16,13 +16,13 @@ Each repair uses `baserevid` and sends only the exact changed claims.
 Each success requires a full public read with the expected entity and response revision.
 The completion receipt also checks that the current entity fingerprint matches the durable successful intent.
 
-`converter/wikidata/retry_policy.py` defines `BULK_MAXLAG = 5`.
-It parses numeric and HTTP-date `Retry-After` values.
+`converter/wikidata/retry_policy.py` defines `BULK_MAXLAG = 5`. Studio writes use `STUDIO_MAXLAG = 50` (W-353).
+The Studio write hook preserves lag rejections and parses numeric or HTTP-date `Retry-After` values.
 The Publication gateway retains the delay in `WriteOutcome.retry_after_seconds`.
 The core adds a bounded exponential delay and jitter without shortening the server delay.
 The SQL repository commits the intent result and `ExecutionAction.next_attempt_at` together.
 The claim query excludes a future retry date, including after a process restart.
-An early CLI resume leaves that action paused.
+An early CLI resume leaves that action paused. Studio displays the saved time during the automatic wait. See W-353.
 
 Only a confirmed API rejection can enter a delayed retry.
 A timeout or lost response remains `outcome_unknown`.

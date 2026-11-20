@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from wikibaseintegrator.wbi_exceptions import MWApiError
 
 from converter.wikidata.item_models import WikidataItem, WikidataStatement
@@ -815,18 +817,26 @@ def test_mhm_stub_search_hit_usable_without_is_our_item(monkeypatch) -> None:
     assert up._item_usable_as_test_reference("Q777", live_qid="Q87167") is False
 
 
-def test_wbeditentity_new_adopts_conflict_id(monkeypatch) -> None:
+@pytest.mark.parametrize("lagged", [False, True])
+def test_wbeditentity_new_adopts_conflict_id_or_reports_confirmed_lag(monkeypatch, lagged) -> None:
+    from converter.wikidata.retry_policy import ConfirmedMaxlagError
+
     up = WikidataUploader(
         token="Alexander Goldberg IL@MHMPipelineTest:diagpasswordxxxxxxxx",
         is_test=True,
+        write_maxlag=50,
     )
 
     class _Resp:
+        headers = {"Retry-After": "120"}
+
         def raise_for_status(self) -> None:
             return None
 
         @staticmethod
         def json() -> dict:
+            if lagged:
+                return {"error": {"code": "maxlag", "lag": 55}}
             return {
                 "error": {
                     "messages": [
@@ -837,13 +847,19 @@ def test_wbeditentity_new_adopts_conflict_id(monkeypatch) -> None:
 
     class _Session:
         @staticmethod
-        def post(*_a, **_k):
+        def post(*_a, **options):
+            assert options["data"]["maxlag"] == 50
             return _Resp()
 
     monkeypatch.setattr(up, "_login", SimpleNamespace(get_session=lambda: _Session()))
     monkeypatch.setattr(up, "_get_csrf_token", lambda: "csrf")
     monkeypatch.setattr(up, "_rate_limit", lambda: None)
-    assert up._wbeditentity_new(new="item", data={}) == "Q248282"
+    if lagged:
+        with pytest.raises(ConfirmedMaxlagError) as exc:
+            up._wbeditentity_new(new="item", data={})
+        assert exc.value.retry_after_seconds == 120
+    else:
+        assert up._wbeditentity_new(new="item", data={}) == "Q248282"
 
 
 def test_p1680_has_property_label() -> None:

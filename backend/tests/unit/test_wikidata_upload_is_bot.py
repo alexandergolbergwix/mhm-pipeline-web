@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import requests
 from wikibaseintegrator.wbi_exceptions import MWApiError
 
 from converter.wikidata.item_models import WikidataItem
@@ -81,6 +82,34 @@ def test_upload_item_mark_as_bot_true(monkeypatch) -> None:
     )
     assert result.status == "success"
     assert captured.get("is_bot") is True
+
+
+def test_studio_upload_retries_only_after_the_confirmed_lag_delay(monkeypatch) -> None:
+    up = WikidataUploader(token="", is_test=True, write_maxlag=50)
+    events = []
+
+    class Item:
+        id = None
+
+        def write(self, **options):
+            events.append(("write", options["maxlag"]))
+            if len(events) == 1:
+                response = requests.Response()
+                response.status_code = 200
+                response.headers["Retry-After"] = "120"
+                response._content = b'{"error":{"code":"maxlag","lag":55}}'
+                requests.hooks.dispatch_hook("response", options["hooks"], response)
+            self.id = "Q999"
+            return self
+
+    monkeypatch.setattr(up, "_init_wbi", lambda: SimpleNamespace())
+    monkeypatch.setattr(up, "_rate_limit", lambda: None)
+    monkeypatch.setattr(up, "_build_wbi_item", lambda _item: (Item(), 1, ["P31"]))
+    monkeypatch.setattr("converter.wikidata.uploader.time.sleep", lambda seconds: events.append(("wait", seconds)))
+    result = up.upload_item(WikidataItem(local_id="x", entity_type="person", labels={"en": "Name"}))
+
+    assert result.status == "success"
+    assert events == [("write", 50), ("wait", 120), ("write", 50)]
 
 
 def test_bot_right_error_does_not_retry(monkeypatch) -> None:
