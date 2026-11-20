@@ -100,6 +100,13 @@ async def test_worker_streams_the_canonical_source_and_saves_read_only_report(
     assert job.result["record_count"] == job.result["public_read"] == 1
     assert len(job.result["email_points"]) == 9
     assert job.result["all_requirements_verified"] is False
+    assert job.params["_gila_checked_manuscripts"] == [{
+        "control_number": "990000000000000001",
+        "qid": "Q42",
+        "revision": 22,
+        "disposition": "verified",
+    }]
+    assert any(case["case_id"] == "model:manuscript-and-work" for case in worker.gila_cases(job))
     stale_edit = next(
         case for case in worker.gila_cases(job)
         if case["case_id"] == "stale-catalogue-edit:manuscript:one"
@@ -133,7 +140,12 @@ async def test_admin_audit_start_progress_and_case_pagination(sample_run, db_ses
     spawn.assert_called_once()
     job = await db_session.get(RunJob, spawn.call_args.args[0])
     job.status = "succeeded"
-    job.result = {"case_count": 3}
+    job.result = {
+        "case_count": 4,
+        "email_points": [{"point": 1, "status": "manual_review"}],
+        "all_requirements_verified": False,
+        "requirement_coverage": {"unchecked_passages": 3},
+    }
     cases = [
         {
             "case_id": "a",
@@ -144,17 +156,43 @@ async def test_admin_audit_start_progress_and_case_pagination(sample_run, db_ses
         },
         {"case_id": "b", "disposition": "manual_review", "points": [1], "qid": "Q2"},
         {"case_id": "c", "disposition": "manual_review", "points": [8], "qid": "Q2"},
+        {"case_id": "d", "disposition": "repair_required", "points": [8], "can_prepare": True},
     ]
     job.params = {"_gila_cases": b64encode(zlib.compress(json.dumps(cases).encode())).decode()}
+    db_session.add(RunJob(
+        project_id=sample_run["project_id"],
+        run_id=run_id,
+        created_by=user.id,
+        kind="wikidata_reference_repair",
+        status="succeeded",
+        params={
+            "reference_scope": "remaining",
+            "_reference_checkpoint": {"results": [
+                {"qid": "Q6", "status": "verified", "corrected": True, "after_revision": 24},
+                {"qid": "Q7", "status": "outcome_unknown", "corrected": False},
+            ]},
+        },
+    ))
     await db_session.commit()
     status = await client.get(base)
-    assert status.json()["report"]["case_count"] == 3
+    assert status.json()["report"]["case_count"] == 4
     assert "_gila_cases" not in status.text
     response = await client.get(
         base + "/cases",
         params={"audit_id": str(job.id), "disposition": "manual_review", "query": "Q2", "limit": 1},
     )
     assert response.json() == {"items": [cases[1]], "total": 2}
+    ready = await client.get(
+        base + "/cases", params={"audit_id": str(job.id), "disposition": "ready_to_prepare"},
+    )
+    assert ready.json() == {"items": [cases[3]], "total": 1}
+    result = await client.get(base + "/evidence", params={"audit_id": str(job.id)})
+    assert result.status_code == 200
+    assert result.json()["checked_manuscripts"] is None
+    assert result.json()["unchecked_passages"] == 3
+    receipts = [row for row in result.json()["reference_repairs"] if row["scope"] == "remaining"]
+    assert [row["qid"] for row in receipts] == ["Q6"]
+    assert receipts[0]["after_revision"] == 24
     rejected = await client.post(base + "/prepare", json={"audit_id": str(job.id), "case_id": "b"})
     assert rejected.status_code == 409
     injected = await client.post(
@@ -165,3 +203,5 @@ async def test_admin_audit_start_progress_and_case_pagination(sample_run, db_ses
     user.role = "editor"
     await db_session.commit()
     assert (await client.get(f"/api/runs/{run_id}/jobs/{job.id}")).status_code == 403
+    forbidden = await client.get(base + "/evidence", params={"audit_id": str(job.id)})
+    assert forbidden.status_code == 403

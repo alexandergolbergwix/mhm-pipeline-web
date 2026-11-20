@@ -34,28 +34,23 @@ const explanations: Record<string, string> = {
   live_work_identity_or_scope_requires_review: "Confirm the work identity and the folios before you set the link.",
   author_authority_link_absent: "The live work lacks the expected author link. Confirm the work mapping before preparation.",
   stale_catalogue_edit: "The build skipped an old edit that could overwrite a catalogue code. Review the proposed work link against the MARC record.",
+  manuscript_work_model_requires_decision: "Review the request to use both classes on one item. The project keeps the physical manuscript and its work in separate items.",
+  item_has_other_creator: "Another account created this item. The manuscript repair system keeps it read-only.",
 };
 
 function failureText(error: unknown) {
   return error instanceof ApiError ? error.detail : error instanceof Error ? error.message : "The request failed.";
 }
 
-function AuditResult({report}: {report: GilaReport}) {
-  const [queue, setQueue] = useState<ReferenceRepairStatus>();
+function AuditResult({report, queue, needsRecheck}: {
+  report: GilaReport; queue?: ReferenceRepairStatus; needsRecheck: boolean;
+}) {
+  const [exportError, setExportError] = useState("");
+  const [exporting, setExporting] = useState(false);
   const hasRepeatedReferences = report.reference_blocks > 0;
-  useEffect(() => {
-    if (!hasRepeatedReferences) return;
-    let cancelled = false;
-    void ReferenceRepairs.status("remaining").then(status => {
-      if (!cancelled) setQueue(status);
-    }).catch(() => {
-      if (!cancelled) setQueue(undefined);
-    });
-    return () => { cancelled = true; };
-  }, [hasRepeatedReferences]);
 
   const verified = report.email_points.filter(row => row.status === "verified").length;
-  const complete = report.all_requirements_verified && !hasRepeatedReferences;
+  const complete = report.all_requirements_verified && !hasRepeatedReferences && !needsRecheck;
   const inventory = queue?.reference_inventory;
   const referenceCounts = inventory?.live_checked_at
     && Date.parse(inventory.live_checked_at) === Date.parse(report.finished_at)
@@ -75,11 +70,31 @@ function AuditResult({report}: {report: GilaReport}) {
     && queue?.job?.status !== "running"
     && queue?.job?.status !== "succeeded";
 
+  async function exportEvidence() {
+    setExporting(true);
+    setExportError("");
+    try {
+      const evidence = await GilaRepairs.evidence(report.id);
+      const blob = new Blob([JSON.stringify(evidence, null, 2)], {type: "application/json"});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `wikidata-audit-${report.id}.json`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setExportError(failureText(error));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return <section className="space-y-4 rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4"
     aria-label="Audit result">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 className="text-lg font-semibold">{complete ? "All nine requirements verified" : "Work remains after the audit"}</h2>
+        <h2 className="text-lg font-semibold">{needsRecheck ? "Reference repairs complete. A fresh audit is due."
+          : complete ? "All nine requirements verified" : "Work remains after the audit"}</h2>
         <p className="mt-1 text-sm muted">The audit checks Wikidata and makes no edits.</p>
         <p className="mt-1 text-xs muted">Last completed audit · {new Date(report.finished_at).toLocaleString()}</p>
       </div>
@@ -89,6 +104,8 @@ function AuditResult({report}: {report: GilaReport}) {
         </Link>}
         {report.case_count > 0 && <a className={hasRepeatedReferences ? "button-ghost" : "button-primary"}
           href="#audit-cases">Review open cases</a>}
+        <button className="button-ghost" disabled={exporting}
+          onClick={() => void exportEvidence()}>{exporting ? "Prepare evidence…" : "Download audit evidence"}</button>
       </div>
     </div>
     <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -96,16 +113,22 @@ function AuditResult({report}: {report: GilaReport}) {
         [`${verified} of 9`, "Requirements fully verified"],
         [report.requirement_coverage.verified_claims?.toLocaleString() ?? "—", "Individual claims verified"],
         [`${report.requirement_coverage.public_reads} of ${report.record_count}`, "Manuscript mappings verified"],
-        [report.reference_blocks.toLocaleString(), "Repeated references found"],
+        [report.reference_blocks.toLocaleString(), "Repeated references at last audit"],
       ].map(([count, label]) => <div key={label} className="flex flex-col-reverse rounded-xl border border-glass-line px-3 py-3">
         <dt className="mt-1 text-xs muted">{label}</dt><dd className="text-xl font-semibold tabular-nums">{count}</dd>
       </div>)}
     </dl>
+    {needsRecheck && <p className="text-sm muted">
+      {queue?.verified ? `The reference queue verified ${queue.verified.toLocaleString()} corrections after this audit.`
+        : "The reference queue finished after this audit."}{" "}
+      Run a fresh audit to check the current Wikidata revisions and all nine requirements.
+    </p>}
     {referenceCounts && <p className="text-sm muted">
       In the reviewed scope, the audit found <strong>{referenceCounts.project.toLocaleString()}</strong> repeated references on project-created items.
       {" "}It found <strong>{referenceCounts.other.toLocaleString()}</strong> on items that other accounts created. Those items are read-only.
     </p>}
     {hasRepeatedReferences && canStart && <p className="text-sm muted">Review and confirm the reference scope before the worker starts.</p>}
+    {exportError && <p role="alert" className="text-sm text-danger">{exportError}</p>}
   </section>;
 }
 
@@ -199,11 +222,12 @@ function Cases({report, runId, point}: {report: GilaReport; runId: string; point
         <select className="input" aria-label="Case status" value={filter}
           onChange={event => {
             const value = event.target.value;
-            if (value === "" || value === "repair_required" || value === "manual_review"
+            if (value === "" || value === "ready_to_prepare" || value === "repair_required" || value === "manual_review"
               || value === "not_checked" || value === "absent_in_source") setFilter(value);
             setOffset(0);
           }}>
           <option value="">All open cases</option>
+          <option value="ready_to_prepare">Ready to prepare</option>
           <option value="repair_required">Repair needed</option>
           <option value="manual_review">Needs review</option>
           <option value="not_checked">Needs evidence</option>
@@ -213,7 +237,9 @@ function Cases({report, runId, point}: {report: GilaReport; runId: string; point
     </div>
     {!result && !error && <p role="status" className="muted">Read the case list…</p>}
     {error && <p role="alert" className="text-danger">{error}</p>}
-    {result && (result.total === 0 ? <p className="muted">No cases match this filter.</p> : <>
+    {result && (result.total === 0 ? <p className="muted">{filter === "ready_to_prepare"
+      ? "No source-supported cases are ready for a repair release. Review the evidence in the open cases."
+      : "No cases match this filter."}</p> : <>
       <ul className="divide-y divide-glass-line rounded-xl border border-glass-line">
         {result.items.map(item => <li key={item.case_id}>
           <details>
@@ -248,6 +274,7 @@ export default function AdminGilaRepairs() {
   const [buildProgress, setBuildProgress] = useState("");
   const [point, setPoint] = useState<number | null>(null);
   const [poll, setPoll] = useState(0);
+  const [queue, setQueue] = useState<ReferenceRepairStatus>();
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -273,6 +300,19 @@ export default function AdminGilaRepairs() {
 
   const job = state?.job;
   const report = state?.report;
+  const reportId = report?.id;
+  useEffect(() => {
+    if (!reportId) return;
+    let cancelled = false;
+    void ReferenceRepairs.status("remaining").then(status => {
+      if (!cancelled) setQueue(status);
+    }).catch(() => {
+      if (!cancelled) setQueue(undefined);
+    });
+    return () => { cancelled = true; };
+  }, [reportId]);
+  const needsRecheck = Boolean(report && queue?.job?.status === "succeeded"
+    && queue.job.finished_at && Date.parse(queue.job.finished_at) > Date.parse(report.finished_at));
   const active = job?.status === "queued" || job?.status === "running";
   const rebuildRequired = job?.status === "failed" && (
     job.progress.phase === "source_rebuild_required"
@@ -333,10 +373,11 @@ export default function AdminGilaRepairs() {
         <button className="button-primary" disabled={!state || active || starting || Boolean(refreshError)}
           onClick={() => void start()}>
           {buildProgress ? "Rebuild in progress" : starting || active ? "Audit in progress"
-            : rebuildRequired ? "Rebuild source and run audit" : report ? "Run a fresh audit" : "Start live audit"}
+            : rebuildRequired ? "Rebuild source and run audit" : needsRecheck ? "Verify repairs on Wikidata"
+              : report ? "Run a fresh audit" : "Start live audit"}
         </button>
       </div>
-      {report && <AuditResult key={report.id} report={report} />}
+      {report && <AuditResult key={report.id} report={report} queue={queue} needsRecheck={needsRecheck} />}
       <details className="rounded-xl border border-glass-line px-4 py-3 text-sm">
         <summary className="cursor-pointer font-medium">How repairs work</summary>
         <ol className="mt-2 list-decimal space-y-1 pl-5 muted">

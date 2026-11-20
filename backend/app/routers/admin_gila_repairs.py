@@ -21,13 +21,16 @@ from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.pipeline.wikidata_reference_repair_job import load_seed
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
 from app.publication.runtime import PublicationSourceError, StudioCacheProjectionSource
+from app.routers.admin_reference_repairs import latest as latest_reference_job
 from app.routers.runs import _lookup_run_with_access
 from app.schemas.publication import PreparePublicationRequest, RunPublicationSource
 
 router = APIRouter(prefix="/admin/wikidata-gila-repairs", tags=["admin"])
 Admin = Annotated[AuthContext, Depends(require_admin)]
 Database = Annotated[AsyncSession, Depends(get_session)]
-CaseStatus = Literal["repair_required", "manual_review", "not_checked", "absent_in_source"]
+CaseStatus = Literal[
+    "repair_required", "manual_review", "not_checked", "absent_in_source", "ready_to_prepare"
+]
 
 
 class PrepareRepair(BaseModel):
@@ -105,6 +108,47 @@ async def _require_report(db, run_id, audit_id):
     return report
 
 
+@router.get("/evidence")
+async def evidence(auth: Admin, db: Database, audit_id: uuid.UUID):
+    run = await _lookup_run_with_access(db, _run_id(), auth)
+    report = await _require_report(db, run.id, audit_id)
+    seed, _ = load_seed()
+    original_checkpoint = seed["checkpoint"] if seed["manifest"]["run_id"] == str(run.id) else {}
+    receipts = []
+    for scope in ("original", "remaining"):
+        job = await latest_reference_job(db, run.id, scope)
+        checkpoint = (
+            job.params.get("_reference_checkpoint", {})
+            if job
+            else original_checkpoint if scope == "original" else {}
+        )
+        for row in checkpoint.get("results", []):
+            if row.get("status") == "verified" and row.get("corrected") is True:
+                receipts.append({
+                    "scope": scope,
+                    **{key: row.get(key) for key in (
+                        "qid", "before_revision", "after_revision", "completed_at",
+                    )},
+                })
+    return {
+        "audit_id": str(report.id),
+        "finished_at": report.finished_at,
+        "requirements": report.result["email_points"],
+        "all_requirements_verified": report.result["all_requirements_verified"],
+        "checked_manuscripts": report.params.get("_gila_checked_manuscripts"),
+        "reference_repairs": receipts,
+        "unchecked_passages": report.result["requirement_coverage"]["unchecked_passages"],
+        "review_cases": [
+            {key: row[key] for key in (
+                "case_id", "points", "qid", "qids", "control_number",
+                "disposition", "classification", "reason", "completion_reason", "can_prepare",
+            ) if key in row}
+            for row in gila_cases(report)
+            if not row["case_id"].startswith("passage:")
+        ],
+    }
+
+
 @router.get("/cases")
 async def cases(
     auth: Admin,
@@ -125,6 +169,7 @@ async def cases(
         if (point is None or point in row["points"])
         and (
             disposition is None
+            or (disposition == "ready_to_prepare" and row.get("can_prepare") is True)
             or (
                 row.get("classification") == "absent_in_source"
                 if disposition == "absent_in_source"

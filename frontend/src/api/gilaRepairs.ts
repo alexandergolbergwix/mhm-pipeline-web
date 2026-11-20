@@ -2,7 +2,7 @@ import {api} from "@/api/client";
 import type {RunJobSnapshot} from "@/api/runJobs";
 
 export type AuditDisposition = "verified" | "repair_required" | "manual_review" | "not_checked";
-export type CaseFilter = Exclude<AuditDisposition, "verified"> | "absent_in_source";
+export type CaseFilter = Exclude<AuditDisposition, "verified"> | "absent_in_source" | "ready_to_prepare";
 
 export interface GilaCase {
   case_id: string;
@@ -66,6 +66,7 @@ const endpoint = "/admin/wikidata-gila-repairs";
 export const GilaRepairs = {
   status: () => api.get<GilaStatus>(endpoint),
   start: () => api.post<AuditJob>(endpoint + "/start", {}),
+  evidence: (auditId: string) => api.get<unknown>(endpoint + "/evidence?" + new URLSearchParams({audit_id: auditId})),
   cases: (params: URLSearchParams) => api.get<{items: GilaCase[]; total: number}>(endpoint + "/cases?" + params),
   prepare: (auditId: string, caseId: string) => api.post<RunJobSnapshot>(endpoint + "/prepare", {
     audit_id: auditId, case_id: caseId,

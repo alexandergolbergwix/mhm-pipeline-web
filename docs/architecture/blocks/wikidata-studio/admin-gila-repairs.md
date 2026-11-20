@@ -47,6 +47,17 @@ The job summary contains counts and requirement states.
 The result panel states whether work remains and shows verified claims and requirements.
 The panel shows the date of the last completed audit during a new check.
 The panel uses the same audit date to show repeated references on project-created and other items.
+If the remaining reference queue finishes after that audit, select **Verify repairs on Wikidata**.
+The next audit reads Wikidata again and checks all nine requirements.
+The **Ready to prepare** filter shows only cases with evidence for a repair release.
+Cases on items with a known different creator stay in manual review.
+The manuscript and work model has its own review case under point 2.
+
+Select **Download audit evidence** to export checked manuscript IDs and revisions, open review cases, and verified reference queue receipts.
+The export keeps the audit date and the receipt dates.
+Older audit reports show an empty mapping field until a new audit saves the checked manuscripts.
+The export shows the unchecked passage count. Open the audit page for the passages.
+The evidence route requires administrator access and the latest completed audit ID.
 
 ## Repair
 

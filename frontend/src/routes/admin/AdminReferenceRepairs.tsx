@@ -77,7 +77,9 @@ function ReferenceRepairScope({scope}: {scope: ReferenceScope}) {
         <p className="font-medium">{inventory.items.length} audited items · {inventory.items.reduce((sum, item) => sum + item.baseline_blocks, 0)} repeated references at audit</p>
         <p className="mt-1 muted">{state.total} items in the repair queue. {otherCreators.length} items have other creators and require separate review.</p>
         {inventory.live_checked_at && <p className="mt-1 muted">Latest audit · {new Date(inventory.live_checked_at).toLocaleString()}</p>}
-        <Link className="link-accent mt-1 inline-block underline" to="/admin/wikidata-gila-repairs">Open the manuscript audit</Link>
+        <Link className="link-accent mt-1 inline-block underline" to="/admin/wikidata-gila-repairs">
+          {complete ? "Verify repairs in the manuscript audit" : "Open the manuscript audit"}
+        </Link>
         <details className="mt-3">
           <summary className="cursor-pointer">View the audited items</summary>
           <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">

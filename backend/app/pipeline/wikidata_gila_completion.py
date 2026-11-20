@@ -119,6 +119,7 @@ def build_gila_completion_packet(
     live_entities: Mapping[str, object],
     *,
     repair_receipts: Iterable[Mapping[str, object]] = (),
+    read_only_qids: frozenset[str] = frozenset(),
 ) -> dict[str, object]:
     """Retain every case and require current public proof for corrected QIDs."""
     records = _rows(audit.get("records"), "Audit records")
@@ -212,6 +213,11 @@ def build_gila_completion_packet(
             and _complete_entity(current)
         )
         disposition = _disposition(fact) if revision_matches else "not_checked"
+        requires_other_creator = (
+            disposition == "repair_required" and fact.get("qid") in read_only_qids
+        )
+        if requires_other_creator:
+            disposition = "manual_review"
         point_ids = _points_for_fact(fact)
         for point in point_ids:
             points[point].append(disposition)
@@ -223,6 +229,7 @@ def build_gila_completion_packet(
                 "disposition": disposition,
                 "completion_reason": "audit_snapshot_revision_mismatch"
                 if not revision_matches
+                else "item_has_other_creator" if requires_other_creator
                 else "",
             }
         )
@@ -261,6 +268,8 @@ def build_gila_completion_packet(
             and proposal.get("entity_sha256") == entity_digest(target)
         )
         historical_status: Disposition = "repair_required" if current_proposal else "not_checked"
+        if current_proposal and proposal.get("qid") in read_only_qids:
+            historical_status = "manual_review"
         points[8].append(historical_status)
         case_rows.append(
             {
@@ -270,7 +279,9 @@ def build_gila_completion_packet(
                 "points": [8],
                 "disposition": historical_status,
                 "reason": "exact_historical_proposal_requires_guarded_execution",
-                "completion_reason": "" if current_proposal else "historical_snapshot_mismatch",
+                "completion_reason": "item_has_other_creator"
+                if historical_status == "manual_review"
+                else "" if current_proposal else "historical_snapshot_mismatch",
             }
         )
 

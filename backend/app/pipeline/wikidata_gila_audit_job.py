@@ -201,7 +201,13 @@ async def _live_items(
 
 def _case_inventory(packet, audit):
     local_ids = {row["control_number"]: row.get("local_id") for row in audit["records"]}
-    items = []
+    items = [{
+        "case_id": "model:manuscript-and-work",
+        "points": [2],
+        "disposition": "manual_review",
+        "reason": "manuscript_work_model_requires_decision",
+        "can_prepare": False,
+    }]
     keys = (
         "case_id",
         "points",
@@ -420,7 +426,12 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             live_entities=entities,
             include_repair_payloads=False,
         )
-        packet = await asyncio.to_thread(build_gila_completion_packet, audit, entities)
+        packet = await asyncio.to_thread(
+            build_gila_completion_packet,
+            audit,
+            entities,
+            read_only_qids=frozenset(row["qid"] for row in inventory if not row["creator_matches"]),
+        )
         cases = _case_inventory(packet, audit)
         additional_cases = [
             *_work_author_cases(canonical, entities),
@@ -467,6 +478,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             job.params = {
                 **job.params,
                 "_gila_cases": compressed.decode(),
+                "_gila_checked_manuscripts": packet["checked_manuscripts"],
                 "_gila_source_fingerprint": digest,
                 "_gila_build_revision": snapshot.revision,
                 "_gila_build_digest": snapshot.digest,

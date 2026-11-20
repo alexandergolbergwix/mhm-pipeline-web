@@ -77,6 +77,7 @@ The queue retains saved retry dates and exact Publication intents. Studio has it
 Unknown outcomes stop the queue. With a saved plan, **Check previous repair and resume** can verify the original write and record its receipt (W-352).
 The six Studio corrections, source imports, identity decisions, and foreground exceptions remain excluded.
 A verified receipt does not certify all nine Gila requirements.
+Select **Verify repairs in the manuscript audit** when the remaining reference queue finishes.
 
 ## Deployment
 

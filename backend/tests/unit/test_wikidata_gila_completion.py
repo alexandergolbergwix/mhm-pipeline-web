@@ -171,6 +171,12 @@ def test_a_historical_repair_appears_in_the_correction_inventory() -> None:
     assert result["disposition_counts"] == {"repair_required": 1}
     assert result["cases"][0]["case_id"] == "historical:Q1:0"
     assert result["email_points"][7]["status"] == "repair_required"
+    report = build_gila_completion_packet(
+        audit, {"Q1": _entity()}, read_only_qids=frozenset({"Q1"}),
+    )
+    assert report["disposition_counts"] == {"manual_review": 1}
+    assert report["cases"][0]["completion_reason"] == "item_has_other_creator"
+    assert report["email_points"][7]["status"] == "manual_review"
 
 
 def test_a_stale_historical_proposal_cannot_enter_the_ready_correction_inventory() -> None:

@@ -151,3 +151,43 @@ test("the audit shows work left and opens the scoped repair controls", async ({p
   await expect(page.getByRole("heading", {name: "In queue", exact: true})).toBeVisible();
   expect(starts).toBe(1);
 });
+
+test("the audit asks for verification after reference repairs and exports evidence", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  await page.route("**/api/auth/me", route => route.fulfill({json: {
+    id: "admin", role: "admin", name: "Admin", email: "admin@example.com",
+  }}));
+  await page.route("**/api/admin/stats", route => route.fulfill({json: {pending_access_requests: 0}}));
+  const report = {
+    id: "audit-1", finished_at: "2026-11-20T08:17:21Z", record_count: 897, public_read: 2161,
+    reference_blocks: 472, case_count: 1, all_requirements_verified: false,
+    requirement_coverage: {public_reads: 896, verified_claims: 8399},
+    email_points: [{point: 8, title: "Sources, bibliography, and inscriptions", status: "manual_review"}],
+  };
+  let audit = {id: "audit-1", status: "succeeded", progress: {phase: "complete"}};
+  await page.route("**/api/admin/wikidata-gila-repairs", route =>
+    route.fulfill({json: {run_id: TEST_RUN_ID, job: audit, report}}));
+  await page.route("**/api/admin/wikidata-gila-repairs/start", route => {
+    audit = {id: "audit-2", status: "running", progress: {phase: "public_items"}};
+    return route.fulfill({json: audit});
+  });
+  await page.route("**/api/admin/wikidata-gila-repairs/cases?*", route =>
+    route.fulfill({json: {items: [], total: 0}}));
+  await page.route("**/api/admin/wikidata-gila-repairs/evidence?audit_id=audit-1", route =>
+    route.fulfill({json: {audit_id: "audit-1", reference_repairs: [{qid: "Q42", after_revision: 22}]}}));
+  await page.route("**/api/admin/wikidata-reference-repairs?scope=remaining", route =>
+    route.fulfill({json: {
+      enabled: true, verified: 9,
+      job: {id: "repairs", status: "succeeded", finished_at: "2026-11-20T09:15:00Z"},
+    }}));
+  await page.goto("/admin/wikidata-gila-repairs");
+  await expect(page.getByRole("heading", {name: "Reference repairs complete. A fresh audit is due."})).toBeVisible();
+  await expect(page.getByText("Repeated references at last audit")).toBeVisible();
+  await page.getByRole("combobox", {name: "Case status"}).selectOption("ready_to_prepare");
+  await expect(page.getByText("No source-supported cases are ready", {exact: false})).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", {name: "Download audit evidence"}).click();
+  expect((await download).suggestedFilename()).toBe("wikidata-audit-audit-1.json");
+  await page.getByRole("button", {name: "Verify repairs on Wikidata"}).click();
+  await expect(page.getByText("Check Wikidata items")).toBeVisible();
+});
