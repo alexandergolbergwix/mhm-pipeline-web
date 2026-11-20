@@ -143,7 +143,7 @@ export const JOB_KIND_LABELS: Record<string, string> = {
   wikidata_publication_dry_run: "Wikidata Publication dry-run",
   wikidata_publication_prepare: "Wikidata Publication prepare",
   wikidata_reference_repair: "Wikidata reference repairs",
-  wikidata_gila_audit: "Gila Wikidata audit",
+  wikidata_gila_audit: "Wikidata manuscript audit",
   wikidata_publication_execution: "Wikidata Publication execution",
   hmo_schema_bootstrap:     "HMO schema bootstrap",
   hmo_coverage:             "HMO coverage report",

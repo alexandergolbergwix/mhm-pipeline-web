@@ -16,10 +16,12 @@ const labels = {
 };
 const phases: Record<string, string> = {
   queued: "Wait for a worker",
+  check_source: "Verify the Studio build",
   source: "Read the source",
   public_items: "Check Wikidata items",
   linked_items: "Check linked items",
   compare: "Compare the evidence",
+  check_report_source: "Verify the source before save",
   complete: "Audit complete",
 };
 const explanations: Record<string, string> = {
@@ -220,12 +222,21 @@ export default function AdminGilaRepairs() {
     <Glass as="section" contentClassName="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold sm:text-3xl">Gila’s Wikidata repairs</h1>
-          <p className="mt-2 text-sm muted">Check all nine requirements against the current MARC sources and live Wikidata.</p>
+          <h1 className="text-2xl font-semibold sm:text-3xl">Wikidata Manuscript Audit and Repair</h1>
+          <p className="mt-2 max-w-prose text-sm muted">Compare the MARC records with live Wikidata to find missing manuscript data, incorrect links, and references that need review.</p>
         </div>
         <button className="button-primary" disabled={!state || active || starting || Boolean(refreshError)}
           onClick={() => void start()}>{starting || active ? "Audit in progress" : report ? "Run a fresh audit" : "Start live audit"}</button>
       </div>
+      <details className="rounded-xl border border-glass-line px-4 py-3 text-sm">
+        <summary className="cursor-pointer font-medium">How repairs work</summary>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 muted">
+          <li>Run the audit to find cases. The audit reads Wikidata.</li>
+          <li>Open a case and check its source. Prepare a repair release when the source supports the change.</li>
+          <li>Review the release in Wikidata Studio. Run a dry run before you publish.</li>
+        </ol>
+        <p className="mt-2 muted">The system checks the creator before each edit. It can edit only items that the project account created.</p>
+      </details>
       {!state && !refreshError && <p role="status">Read the last audit…</p>}
       {refreshError && <p role="alert" className="text-danger">Status refresh failed. {refreshError}</p>}
       {actionError && <p role="alert" className="text-danger">{actionError}</p>}
@@ -255,7 +266,7 @@ export default function AdminGilaRepairs() {
     </Glass>
     {state && report && <>
       <Glass as="section" contentClassName="space-y-3">
-        <h2 className="text-lg font-semibold">The nine requirements</h2>
+        <h2 className="text-lg font-semibold">Manuscript audit checks</h2>
         <p className="text-sm muted">{active ? "Previous report" : "Last audit"} · {new Date(report.finished_at).toLocaleString()}</p>
         {report.requirement_coverage.model_decision && <p className="text-sm muted">{report.requirement_coverage.model_decision}</p>}
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">

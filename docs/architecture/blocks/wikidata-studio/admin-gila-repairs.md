@@ -1,6 +1,7 @@
-# Administrator Gila repairs
+# Wikidata Manuscript Audit and Repair
 
-The Admin sidebar opens `/admin/wikidata-gila-repairs`.
+Select **Manuscript audit and repair** in the Admin sidebar to open `/admin/wikidata-gila-repairs`.
+Open **How repairs work** for the source review, release, and dry run steps.
 The API requires the administrator role and current access to the Gila project.
 The project and run come from the server reference seed.
 
@@ -18,6 +19,8 @@ The page polls `GET /api/admin/wikidata-gila-repairs` for phase and summary.
 The API keeps the last finished report available during a new audit.
 
 The worker reads the saved canonical build, current MARC records, and the production QID ledger.
+The worker uses the five-minute job limit for each Studio freshness check (W-354).
+The page shows a separate phase for the check before the worker saves the report.
 The worker streams the canonical build and keeps its audit fields.
 It checks current public revisions for the project items, audited reference scope, and linked work and person items.
 The Action API supplies complete entities in batches of up to 50.

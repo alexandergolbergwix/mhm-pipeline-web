@@ -4256,3 +4256,16 @@ Direct uploads repeat the item checks after the delay within their existing atte
 An uncertain outcome still requires proof. A generic retry error does not prove Wikidata rejected the edit.
 
 See [Repair retries](../blocks/wikidata-studio/repair-retries.md).
+
+### Rule W-354 — Use the Studio job limit for manuscript audit freshness
+
+The production manuscript audit failed at the source step on 20 November 2026.
+The full freshness check exceeded the 25-second limit for web requests.
+
+Use `STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS` for both checks in the audit worker.
+Keep the web limit for callers that use the default budget.
+Report the freshness phase before live reads and before the save.
+Acquire the job row lock after the final source check.
+If the check fails, keep the last completed report.
+
+See [Wikidata Manuscript Audit and Repair](../blocks/wikidata-studio/admin-gila-repairs.md).

@@ -13,6 +13,7 @@ from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.auth.admin import ROLE_ADMIN
@@ -335,20 +336,31 @@ async def run_gila_audit_job(job_id: uuid.UUID) -> None:
 
 
 async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
+    from app.routers.wikidata_studio import STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS
+
     try:
         await update_job_progress(
             job_id,
-            {"phase": "source", "message": "Load the MARC sources and the canonical Studio build."},
+            {
+                "phase": "check_source",
+                "message": "Verify the Studio build. This check can take up to five minutes.",
+            },
         )
         async with session_scope() as db:
             job = await db.get(RunJob, job_id)
             await _authorize(db, job)
             run_id = job.run_id
-            projection = StudioCacheProjectionSource(db)
+            projection = StudioCacheProjectionSource(
+                db, freshness_timeout_seconds=STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
+            )
             snapshot = await projection.current_snapshot(
                 run_id=run_id,
                 source="canonical",
                 approved_only=True,
+            )
+            await update_job_progress(
+                job_id,
+                {"phase": "source", "message": "Read the MARC records and the verified build."},
             )
             records = await load_run_marc_records(db, run_id)
             ledger = await load_global_ledger(db, is_test=False)
@@ -410,14 +422,24 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             for row in inventory
         }
         compressed = b64encode(zlib.compress(json.dumps(cases, ensure_ascii=False).encode()))
+        await update_job_progress(
+            job_id,
+            {
+                "phase": "check_report_source",
+                "message": "Check that the source still matches the report.",
+            },
+        )
         async with session_scope() as db:
-            job = await db.get(RunJob, job_id, with_for_update=True)
-            await _authorize(db, job)
-            current = await StudioCacheProjectionSource(db).is_current(str(run_id), snapshot)
+            projection = StudioCacheProjectionSource(
+                db, freshness_timeout_seconds=STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
+            )
+            current = await projection.is_current(str(run_id), snapshot)
             current_records = await load_run_marc_records(db, run_id)
             digest = gila_record_fingerprint(records)
             if not current or digest != gila_record_fingerprint(current_records):
                 raise ValueError("The source or canonical build changed. Start a fresh audit.")
+            job = await db.get(RunJob, job_id, with_for_update=True)
+            await _authorize(db, job)
             job.params = {
                 **job.params,
                 "_gila_cases": compressed.decode(),
@@ -461,6 +483,13 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             job_id,
             status="failed",
             error="Build the canonical Studio source and start the audit again.",
+        )
+    except HTTPException:
+        logger.warning("The manuscript audit could not verify the Studio source.", exc_info=True)
+        await finish_job(
+            job_id,
+            status="failed",
+            error="The audit could not verify the Studio build before the time limit.",
         )
     except Exception:
         logger.exception("The Gila audit stopped.")

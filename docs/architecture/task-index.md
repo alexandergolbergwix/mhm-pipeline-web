@@ -27,7 +27,7 @@
 | Apply authorized exact historical repairs | [historical repairs](blocks/wikidata-studio/historical-repairs.md) + Rule W-307 |
 | Prevent invalid new public items | [CREATE guards](blocks/wikidata-studio/creation-safety.md) + W-335/W-336; never infer absence from a conflict |
 | Audit Gila source facts or prepare historical repair proposals | [Gila source fidelity](blocks/wikidata-studio/gila-source-fidelity.md) + Rule W-305; canonical measurement is read-only |
-| Audit all nine Gila requirements and prepare a scoped repair | [Administrator Gila repairs](blocks/wikidata-studio/admin-gila-repairs.md) |
+| Audit the nine manuscript requirements and prepare a scoped repair | [Wikidata Manuscript Audit and Repair](blocks/wikidata-studio/admin-gila-repairs.md) |
 | Export all nine Gila acceptance points and current correction receipts | [Gila completion packet](blocks/wikidata-studio/gila-completion-packet.md); no network or public write |
 | Align projection with WikiProject Manuscripts | [docs/wikidata-manuscripts-data-model.md](../wikidata-manuscripts-data-model.md) + studio R36 / Rule W-98 |
 | Change MARC 500/505 work candidates or Studio item counts | [extraction ingest](blocks/extraction/ingest.md) + [Wikidata Studio R22](blocks/wikidata-studio/rules.md) |

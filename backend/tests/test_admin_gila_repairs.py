@@ -4,12 +4,14 @@ from base64 import b64encode
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from fastapi import HTTPException
 
 from app.models.run_job import RunJob
 from app.models.user import User
 from app.pipeline import wikidata_gila_audit_job as worker
 from app.pipeline.wikidata_qid_ledger import record_ledger_mapping
 from app.routers import admin_gila_repairs as router
+from app.routers import wikidata_studio
 from tests.test_publication_router import _add_canonical_cache, _canonical_item
 
 
@@ -72,6 +74,16 @@ async def test_worker_streams_the_canonical_source_and_saves_read_only_report(
     }
     batch = AsyncMock(return_value={"Q42": entity})
     monkeypatch.setattr(worker.ReferenceItemReader, "fetch_batch", batch)
+    check_current = wikidata_studio._studio_cache_is_current
+    timeout_values = []
+
+    async def check_with_production_delay(*args, timeout_seconds=None, **kwargs):
+        timeout_values.append(timeout_seconds)
+        if timeout_seconds != wikidata_studio.STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS:
+            raise HTTPException(409, "The source check exceeded the web request time limit.")
+        return await check_current(*args, timeout_seconds=timeout_seconds, **kwargs)
+
+    monkeypatch.setattr(wikidata_studio, "_studio_cache_is_current", check_with_production_delay)
     await worker.run_gila_audit_job(job.id)
     await db_session.refresh(job)
     assert job.status == "succeeded", job.error
@@ -80,6 +92,7 @@ async def test_worker_streams_the_canonical_source_and_saves_read_only_report(
     assert job.result["all_requirements_verified"] is False
     assert worker.gila_cases(job)
     batch.assert_awaited_once()
+    assert timeout_values == [wikidata_studio.STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS] * 2
 
 
 @pytest.mark.asyncio

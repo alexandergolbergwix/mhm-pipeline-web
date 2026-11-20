@@ -1,4 +1,5 @@
 # Wikidata Studio — Rules
+
 > Current policy: [creator-only writes](creator-only-writes.md) supersedes every foreign-edit exception below.
 
 > Up: [Wikidata Studio](README.md)
@@ -1365,3 +1366,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 209. **R209 — Recover an unconfirmed reference edit by proof (W-352).** Compare the live result with the saved plan. Bind the check to the original intent. Record its receipt before the queue advances. The check has no edit capability.
 
 210. **R210 — Preserve the original lag response for Studio edits (W-353).** Use maxlag 50 for Studio writes. Retain the server delay for a confirmed rejection. Continue the same Publication execution after the saved date.
+
+211. **R211 — Use the Studio job limit for manuscript audit freshness (W-354).** Verify the source before live reads and before the worker saves the report. *Why:* the 25-second web limit stopped the production audit.

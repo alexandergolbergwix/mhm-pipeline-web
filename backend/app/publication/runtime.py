@@ -271,8 +271,11 @@ def _has_blocking_item_issue(item: Mapping[str, object]) -> bool:
 class StudioCacheProjectionSource(ProjectionSource):
     """Read one immutable Release from the current Studio cache."""
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(
+        self, session: AsyncSession, *, freshness_timeout_seconds: float | None = None,
+    ) -> None:
         self._session = session
+        self._freshness_timeout_seconds = freshness_timeout_seconds
         self.reference_only: dict[str, dict[str, object]] = {}
         self.automatic_documents: dict[str, dict[str, object]] = {}
         self.selected_existing: dict[str, str] = {}
@@ -534,6 +537,7 @@ class StudioCacheProjectionSource(ProjectionSource):
         if not await _studio_cache_is_current(
             self._session, run_id, source=source, approved_only=approved_only,
             fingerprint=metadata[0], summary=metadata[2],
+            timeout_seconds=self._freshness_timeout_seconds,
         ):
             return None
         return metadata[0], metadata[1]

@@ -37,4 +37,4 @@
 
 `admin_reference_repairs.py` uses `require_admin` plus project access for the [backend repair controls](../wikidata-studio/admin-reference-repairs.md). The generic job routes also exclude this kind from non-administrators.
 
-`admin_gila_repairs.py` requires the administrator role and current project access. Prepare also requires editor access and public creator proof. The case inventory stays in private job parameters. [Gila repairs](../wikidata-studio/admin-gila-repairs.md)
+`admin_gila_repairs.py` requires the administrator role and current project access. Prepare also requires editor access and public creator proof. The case inventory stays in private job parameters. [Wikidata Manuscript Audit and Repair](../wikidata-studio/admin-gila-repairs.md)

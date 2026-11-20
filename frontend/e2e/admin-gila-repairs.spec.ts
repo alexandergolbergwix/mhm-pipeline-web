@@ -32,6 +32,9 @@ test("the administrator sees live audit progress and can inspect source gaps", a
     }],
   }}));
   await page.goto("/admin/wikidata-gila-repairs");
+  await expect(page.getByRole("heading", {name: "Wikidata Manuscript Audit and Repair"})).toBeVisible();
+  await page.getByText("How repairs work", {exact: true}).click();
+  await expect(page.getByText("Run a dry run before you publish.", {exact: false})).toBeVisible();
   await page.getByRole("button", {name: "Start live audit"}).click();
   await expect(page.getByRole("progressbar", {name: "Live audit progress"})).toBeVisible();
   await expect(page.getByText("Check Wikidata items")).toBeVisible();
