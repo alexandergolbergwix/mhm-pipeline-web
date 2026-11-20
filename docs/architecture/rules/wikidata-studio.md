@@ -4306,3 +4306,14 @@ The original queue still uses MARC record hashes in that field.
 Keep the exact revision, claim, creator, and prior outcome checks.
 
 See [administrator reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).
+
+### Rule W-358 — Check the audited source in the repair preparation worker
+
+A large Studio source can exceed the web request limit before the audit page can queue a repair.
+Require administrator access, a case from the latest audit, and creator proof before enqueue.
+Give the prepare job the audited MARC fingerprint and Studio snapshot.
+Check the MARC records, target mapping, and snapshot before the job creates the release.
+Use the five-minute Studio freshness limit in the worker.
+Keep the normal review, dry run, and creator checks before publication.
+
+See [Wikidata Manuscript Audit and Repair](../blocks/wikidata-studio/admin-gila-repairs.md).

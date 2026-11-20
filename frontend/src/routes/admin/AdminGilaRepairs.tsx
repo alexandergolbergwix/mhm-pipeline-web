@@ -137,6 +137,7 @@ function CaseDetails({item, report, runId}: {item: GilaCase; report: GilaReport;
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [preparing, setPreparing] = useState(false);
+  const [prepareProgress, setPrepareProgress] = useState("");
   const [publication, setPublication] = useState<string>();
   const sourceGap = item.classification === "absent_in_source";
   const canUseSourceReview = item.local_id && !sourceGap && !item.case_id.startsWith("work-author:");
@@ -146,9 +147,14 @@ function CaseDetails({item, report, runId}: {item: GilaCase; report: GilaReport;
   async function prepare() {
     setPreparing(true);
     setError("");
+    setPrepareProgress("Request a repair release.");
     try {
       const job = await GilaRepairs.prepare(report.id, item.case_id);
-      const finished = await waitForRunJob(runId, job.id);
+      const finished = await waitForRunJob(runId, job.id, {
+        onUpdate: snapshot => setPrepareProgress(
+          snapshot.progress.message ?? "Wait for the repair worker.",
+        ),
+      });
       const id = finished.result?.publication_id;
       if (typeof id !== "string") throw new Error("The worker did not return a Publication release.");
       setPublication(id);
@@ -157,6 +163,7 @@ function CaseDetails({item, report, runId}: {item: GilaCase; report: GilaReport;
       setError(failureText(failure));
     } finally {
       setPreparing(false);
+      setPrepareProgress("");
     }
   }
 
@@ -186,6 +193,7 @@ function CaseDetails({item, report, runId}: {item: GilaCase; report: GilaReport;
       {publication && <Link className="button-primary" to={`/runs/${runId}/wikidata-studio?publication=${publication}`}>Review the release</Link>}
     </div>
     {notice && <p role="status">{notice}</p>}
+    {prepareProgress && <p role="status">{prepareProgress}</p>}
     {error && <p className="text-danger" role="alert">{error}</p>}
     {showSource && item.local_id && <WikidataSourceReview runId={runId} localId={item.local_id}
       onSaved={() => setNotice("The source decision is saved. Rebuild the canonical source and run the audit again.")} />}

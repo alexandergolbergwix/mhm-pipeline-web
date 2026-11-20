@@ -1,4 +1,5 @@
 import json
+import uuid
 import zlib
 from base64 import b64encode
 from unittest.mock import AsyncMock, Mock
@@ -9,7 +10,10 @@ from fastapi import HTTPException
 from app.models.run_job import RunJob
 from app.models.user import User
 from app.pipeline import wikidata_gila_audit_job as worker
+from app.pipeline import wikidata_publication_prepare_job as prepare_worker
+from app.pipeline.marc_verify_context import load_run_marc_records
 from app.pipeline.wikidata_qid_ledger import record_ledger_mapping
+from app.publication.runtime import StudioCacheProjectionSource
 from app.routers import admin_gila_repairs as router
 from app.routers import wikidata_studio
 from tests.test_publication_router import _add_canonical_cache, _canonical_item
@@ -25,6 +29,76 @@ def test_public_audit_snapshot_retains_exact_entities_across_batches(tmp_path):
     assert snapshot.get("Q3") is None
     with pytest.raises(ValueError, match="one response per exact QID"):
         snapshot.add_batch({"Q1": first})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["current", "source_changed", "foreign", "mapping_changed"])
+async def test_repair_preparation_checks_freshness_in_the_worker(
+    sample_run, db_session, monkeypatch, state,
+):
+    run_id = sample_run["run_id"]
+    user = await db_session.get(User, sample_run["user_id"])
+    user.role = "admin"
+    item = _canonical_item("work:1", "A work")
+    item["existing_qid"] = "Q42"
+    await _add_canonical_cache(db_session, run_id, items=[item])
+    snapshot = await StudioCacheProjectionSource(db_session).current_snapshot(
+        run_id=run_id, source="canonical", approved_only=True,
+    )
+    records = await load_run_marc_records(db_session, run_id)
+    cases = [{"case_id": "repair:1", "qid": "Q42", "local_id": "work:1", "can_prepare": True}]
+    report = RunJob(
+        project_id=sample_run["project_id"], run_id=run_id, created_by=user.id,
+        kind=worker.KIND, status="succeeded", result={},
+        params={
+            "_gila_cases": b64encode(zlib.compress(json.dumps(cases).encode())).decode(),
+            "_gila_build_revision": snapshot.revision,
+            "_gila_build_digest": snapshot.digest,
+            "_gila_source_fingerprint": "stale" if state == "source_changed"
+            else worker.gila_record_fingerprint(records),
+        },
+    )
+    db_session.add(report)
+    await db_session.commit()
+    monkeypatch.setattr(router, "_run_id", lambda: run_id)
+    creator = AsyncMock(return_value=12 if state == "foreign" else 6935067)
+    monkeypatch.setattr(router.ReferenceItemReader, "creator_uid", creator)
+    fetch_item = AsyncMock(return_value=None if state == "mapping_changed" else item)
+    monkeypatch.setattr(prepare_worker, "fetch_merged_wikidata_item", fetch_item)
+    spawn = Mock()
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", spawn)
+    check_current = wikidata_studio._studio_cache_is_current
+    timeouts = []
+
+    async def checked(*args, timeout_seconds=None, **kwargs):
+        timeouts.append(timeout_seconds)
+        return await check_current(*args, timeout_seconds=timeout_seconds, **kwargs)
+
+    monkeypatch.setattr(wikidata_studio, "_studio_cache_is_current", checked)
+    response = await sample_run["client"].post(
+        "/api/admin/wikidata-gila-repairs/prepare",
+        json={"audit_id": str(report.id), "case_id": "repair:1"},
+    )
+    if state == "foreign":
+        assert response.status_code == 403
+        spawn.assert_not_called()
+        return
+    assert response.status_code == 200, response.text
+    assert timeouts == []
+    fetch_item.assert_not_awaited()
+    job_id = uuid.UUID(response.json()["id"])
+    await prepare_worker.run_wikidata_publication_prepare_job(job_id)
+    job = await db_session.get(RunJob, job_id)
+    if state != "current":
+        assert job.status == "failed"
+        assert job.result is None
+        assert timeouts == []
+        assert fetch_item.await_count == (1 if state == "mapping_changed" else 0)
+        return
+    assert job.status == "succeeded", job.error
+    assert job.result["publication_id"]
+    fetch_item.assert_awaited_once()
+    assert timeouts and set(timeouts) == {wikidata_studio.STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS}
 
 
 @pytest.mark.asyncio

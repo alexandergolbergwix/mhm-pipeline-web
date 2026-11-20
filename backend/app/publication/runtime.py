@@ -613,13 +613,16 @@ class PublicationRuntime:
         clock: Callable[[], datetime] | None = None,
         dry_run_progress: Callable[[int, int], Awaitable[None]] | None = None,
         execution_progress: Callable[[int, int], Awaitable[None]] | None = None,
+        freshness_timeout_seconds: float | None = None,
     ) -> None:
         self._session = session
         self._gateway_factory = gateway_factory
         self._clock = clock or (lambda: datetime.now(UTC))
         self._dry_run_progress = dry_run_progress
         self._execution_progress = execution_progress
-        self._projection_source = StudioCacheProjectionSource(session)
+        self._projection_source = StudioCacheProjectionSource(
+            session, freshness_timeout_seconds=freshness_timeout_seconds,
+        )
 
     async def prepare(
         self,

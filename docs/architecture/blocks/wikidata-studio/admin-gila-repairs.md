@@ -69,6 +69,9 @@ The audit needs public proof before it can confirm a correction.
 Use **Prepare repair release** for a source-supported case with a confirmed target.
 `POST /api/admin/wikidata-gila-repairs/prepare` accepts a case ID and audit ID.
 The server checks the current source, canonical build, item, and target.
+The page shows the progress of the repair release.
+The preparation worker checks the audited MARC fingerprint, current target, and Studio build.
+It uses the five-minute Studio freshness limit (W-358).
 An anonymous first-revision check refuses items with a different or unknown creator before preparation.
 The Publication job seals one existing item and checks the audited build again.
 The operator uses the normal Publication review, dry run, and publish flow.

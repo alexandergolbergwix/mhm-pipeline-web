@@ -13,14 +13,11 @@ from app.auth.admin import require_admin
 from app.auth.session import AuthContext
 from app.db import get_session
 from app.models.run_job import JOB_KIND_WIKIDATA_PUBLICATION_PREPARE, RunJob
-from app.pipeline.marc_verify_context import load_run_marc_records
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
-from app.pipeline.wikidata_gila_audit_job import KIND, gila_cases, gila_record_fingerprint
-from app.pipeline.wikidata_item_views import fetch_merged_wikidata_item
+from app.pipeline.wikidata_gila_audit_job import KIND, gila_cases
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.pipeline.wikidata_reference_repair_job import load_seed
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
-from app.publication.runtime import PublicationSourceError, StudioCacheProjectionSource
 from app.routers.admin_reference_repairs import latest as latest_reference_job
 from app.routers.runs import _lookup_run_with_access
 from app.schemas.publication import PreparePublicationRequest, RunPublicationSource
@@ -211,24 +208,6 @@ async def prepare(body: PrepareRepair, auth: Admin, db: Database):
         raise HTTPException(403, "This repair requires first-revision creator UID 6935067.")
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
     report = await _require_report(db, run.id, body.audit_id)
-    try:
-        snapshot = await StudioCacheProjectionSource(db).current_snapshot(
-            run_id=run.id,
-            source="canonical",
-            approved_only=True,
-        )
-    except PublicationSourceError as exc:
-        raise HTTPException(409, "Build the canonical Studio source and audit it again.") from exc
-    if (
-        snapshot.revision != report.params["_gila_build_revision"]
-        or snapshot.digest != report.params["_gila_build_digest"]
-        or gila_record_fingerprint(await load_run_marc_records(db, run.id))
-        != report.params["_gila_source_fingerprint"]
-    ):
-        raise HTTPException(409, "The source changed. Run a new audit before preparation.")
-    item = await fetch_merged_wikidata_item(db, run.id, row["local_id"], source="canonical")
-    if not item or item.get("rebuild_required") or item.get("existing_qid") != row["qid"]:
-        raise HTTPException(409, "The selected item changed. Rebuild Studio and run a new audit.")
     payload = PreparePublicationRequest(
         profile_id="mhm-wikidata",
         profile_version="1-nodes",
@@ -245,7 +224,10 @@ async def prepare(body: PrepareRepair, auth: Admin, db: Database):
                 "actor_id": str(auth.user.id),
                 "request": payload.model_dump(mode="json"),
                 "_selected_existing": {row["local_id"]: row["qid"]},
-                "_gila_build_snapshot": [snapshot.revision, snapshot.digest],
+                "_gila_build_snapshot": [
+                    report.params["_gila_build_revision"], report.params["_gila_build_digest"],
+                ],
+                "_gila_source_fingerprint": report.params["_gila_source_fingerprint"],
             },
             created_by=auth.user.id,
         )
