@@ -3,6 +3,7 @@ import {Link} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
 import {GilaRepairs, type CaseFilter, type GilaCase, type GilaReport, type GilaStatus} from "@/api/gilaRepairs";
+import {ReferenceRepairs, type ReferenceRepairStatus} from "@/api/referenceRepairs";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
 import {WikidataSourceReview} from "@/components/wikidata/WikidataSourceReview";
@@ -23,7 +24,6 @@ const phases: Record<string, string> = {
   linked_items: "Check linked items",
   compare: "Compare the evidence",
   check_report_source: "Verify the source before save",
-  complete: "Audit complete",
 };
 const explanations: Record<string, string> = {
   public_record_identity_requires_review: "The project needs a confirmed manuscript mapping.",
@@ -38,6 +38,75 @@ const explanations: Record<string, string> = {
 
 function failureText(error: unknown) {
   return error instanceof ApiError ? error.detail : error instanceof Error ? error.message : "The request failed.";
+}
+
+function AuditResult({report}: {report: GilaReport}) {
+  const [queue, setQueue] = useState<ReferenceRepairStatus>();
+  const hasRepeatedReferences = report.reference_blocks > 0;
+  useEffect(() => {
+    if (!hasRepeatedReferences) return;
+    let cancelled = false;
+    void ReferenceRepairs.status("remaining").then(status => {
+      if (!cancelled) setQueue(status);
+    }).catch(() => {
+      if (!cancelled) setQueue(undefined);
+    });
+    return () => { cancelled = true; };
+  }, [hasRepeatedReferences]);
+
+  const verified = report.email_points.filter(row => row.status === "verified").length;
+  const complete = report.all_requirements_verified && !hasRepeatedReferences;
+  const inventory = queue?.reference_inventory;
+  const referenceCounts = inventory?.live_checked_at
+    && Date.parse(inventory.live_checked_at) === Date.parse(report.finished_at)
+    && inventory.items.every(item => item.observed_blocks != null)
+    ? inventory.items.reduce((counts, item) => {
+      const blocks = item.observed_blocks ?? 0;
+      if (item.creator_matches) counts.project += blocks;
+      else counts.other += blocks;
+      return counts;
+    }, {project: 0, other: 0})
+    : null;
+  const canStart = queue?.enabled !== false
+    && !queue?.other_scope_active
+    && queue?.resume_action !== "review"
+    && (referenceCounts?.project ?? 1) > 0
+    && queue?.job?.status !== "queued"
+    && queue?.job?.status !== "running"
+    && queue?.job?.status !== "succeeded";
+
+  return <section className="space-y-4 rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4"
+    aria-label="Audit result">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 className="text-lg font-semibold">{complete ? "All nine requirements verified" : "Work remains after the audit"}</h2>
+        <p className="mt-1 text-sm muted">The audit checks Wikidata and makes no edits.</p>
+        <p className="mt-1 text-xs muted">Last completed audit · {new Date(report.finished_at).toLocaleString()}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {hasRepeatedReferences && <Link className="button-primary" to="/admin/wikidata-reference-repairs?scope=remaining">
+          {canStart ? "Start fixing references" : "View reference repairs"}
+        </Link>}
+        {report.case_count > 0 && <a className={hasRepeatedReferences ? "button-ghost" : "button-primary"}
+          href="#audit-cases">Review open cases</a>}
+      </div>
+    </div>
+    <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {[
+        [`${verified} of 9`, "Requirements fully verified"],
+        [report.requirement_coverage.verified_claims?.toLocaleString() ?? "—", "Individual claims verified"],
+        [`${report.requirement_coverage.public_reads} of ${report.record_count}`, "Manuscript mappings verified"],
+        [report.reference_blocks.toLocaleString(), "Repeated references found"],
+      ].map(([count, label]) => <div key={label} className="flex flex-col-reverse rounded-xl border border-glass-line px-3 py-3">
+        <dt className="mt-1 text-xs muted">{label}</dt><dd className="text-xl font-semibold tabular-nums">{count}</dd>
+      </div>)}
+    </dl>
+    {referenceCounts && <p className="text-sm muted">
+      In the reviewed scope, the audit found <strong>{referenceCounts.project.toLocaleString()}</strong> repeated references on project-created items.
+      {" "}It found <strong>{referenceCounts.other.toLocaleString()}</strong> on items that other accounts created. Those items are read-only.
+    </p>}
+    {hasRepeatedReferences && canStart && <p className="text-sm muted">Review and confirm the reference scope before the worker starts.</p>}
+  </section>;
 }
 
 function CaseDetails({item, report, runId}: {item: GilaCase; report: GilaReport; runId: string}) {
@@ -121,7 +190,7 @@ function Cases({report, runId, point}: {report: GilaReport; runId: string; point
     return () => { stopped = true; };
   }, [report.id, point, filter, offset, search]);
 
-  return <Glass as="section" contentClassName="space-y-4">
+  return <Glass as="section" contentClassName="space-y-4" id="audit-cases" tabIndex={-1}>
     <div className="flex flex-wrap items-end justify-between gap-3">
       <h2 className="text-lg font-semibold">{point ? report.email_points.find(row => row.point === point)?.title : "Open cases"}</h2>
       <div className="flex flex-wrap gap-2">
@@ -267,6 +336,7 @@ export default function AdminGilaRepairs() {
             : rebuildRequired ? "Rebuild source and run audit" : report ? "Run a fresh audit" : "Start live audit"}
         </button>
       </div>
+      {report && <AuditResult key={report.id} report={report} />}
       <details className="rounded-xl border border-glass-line px-4 py-3 text-sm">
         <summary className="cursor-pointer font-medium">How repairs work</summary>
         <ol className="mt-2 list-decimal space-y-1 pl-5 muted">
@@ -283,7 +353,7 @@ export default function AdminGilaRepairs() {
         <p className="font-semibold">Rebuild the canonical Studio source</p>
         <p className="mt-1 text-sm muted">{buildProgress}</p>
         <p className="mt-1 text-sm muted">Keep this tab open so the page can start the audit after the rebuild.</p>
-      </section> : job && <section className="rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4" role="status" aria-live="polite">
+      </section> : job && job.status !== "succeeded" && <section className="rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4" role="status" aria-live="polite">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-semibold">{job.status === "failed" ? "Audit stopped" : phases[job.progress.phase ?? ""] ?? job.status}</p>
           {active && total > 0 && <p className="text-sm tabular-nums muted">{processed.toLocaleString()} / {total.toLocaleString()} items</p>}
@@ -294,25 +364,15 @@ export default function AdminGilaRepairs() {
           ? "The audit needs a current canonical Studio build. Rebuild the source to run the audit."
           : job.error ?? job.progress.message ?? "The job remains active if you close this page."}</p>
       </section>}
-      {report && <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[
-          [report.requirement_coverage.public_reads + "/" + report.record_count, "Manuscript mappings verified"],
-          [report.public_read.toLocaleString(), "Public items read"],
-          [String(report.email_points.filter(row => row.status === "verified").length) + "/9", "Requirements verified"],
-          [report.reference_blocks.toLocaleString(), "Repeated references"],
-        ].map(([count, label]) => <div key={label} className="rounded-xl border border-glass-line px-3 py-3 sm:px-4">
-          <p className="text-xl font-semibold tabular-nums">{count}</p><p className="mt-1 text-xs muted">{label}</p>
-        </div>)}
-      </div>}
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
         {state && <Link className="link-accent underline" to={`/runs/${state.run_id}/wikidata-studio`}>Open Wikidata Studio</Link>}
-        <Link className="link-accent underline" to="/admin/wikidata-reference-repairs?scope=remaining">Open the remaining reference queue</Link>
+        {!report?.reference_blocks && <Link className="link-accent underline" to="/admin/wikidata-reference-repairs?scope=remaining">Open the remaining reference queue</Link>}
       </div>
     </Glass>
     {state && report && <>
       <Glass as="section" contentClassName="space-y-3">
         <h2 className="text-lg font-semibold">Manuscript audit checks</h2>
-        <p className="text-sm muted">{active ? "Previous report" : "Last audit"} · {new Date(report.finished_at).toLocaleString()}</p>
+        <p className="text-sm muted">{report.public_read.toLocaleString()} public items read</p>
         {report.requirement_coverage.model_decision && <p className="text-sm muted">{report.requirement_coverage.model_decision}</p>}
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {report.email_points.map(row => <li key={row.point}>

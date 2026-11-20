@@ -94,25 +94,60 @@ test("the administrator can rebuild the source and retry an audit that stopped",
   await expect(page.getByText("Check Wikidata items")).toBeVisible();
 });
 
-test("the remaining reference scope identifies foreign items outside the repair queue", async ({page}) => {
+test("the audit shows work left and opens the scoped repair controls", async ({page}) => {
   await installStudioMocks(page, makeBuildResponse());
   await page.route("**/api/auth/me", route => route.fulfill({json: {
     id: "admin", role: "admin", name: "Admin", email: "admin@example.com",
   }}));
   await page.route("**/api/admin/stats", route => route.fulfill({json: {pending_access_requests: 0}}));
+  const finishedAt = "2026-11-20T08:17:21Z";
+  await page.route("**/api/admin/wikidata-gila-repairs", route => route.fulfill({json: {
+    run_id: TEST_RUN_ID, job: {id: "audit-1", status: "succeeded", progress: {phase: "complete"}},
+    report: {
+      id: "audit-1", finished_at: finishedAt, record_count: 897, public_read: 2161,
+      reference_blocks: 14, case_count: 2, all_requirements_verified: false,
+      requirement_coverage: {public_reads: 896, verified_claims: 8399},
+      email_points: [{point: 8, title: "Sources, bibliography, and inscriptions", status: "manual_review"}],
+    },
+  }}));
+  await page.route("**/api/admin/wikidata-gila-repairs/cases?*", route =>
+    route.fulfill({json: {total: 0, items: []}}));
+  const scopeDigest = "b".repeat(64);
+  let starts = 0;
+  const repairJob = {id: "reference-job", status: "queued", progress: {}};
   await page.route("**/api/admin/wikidata-reference-repairs?scope=remaining", route => route.fulfill({json: {
-    run_id: TEST_RUN_ID, total: 1, enabled: true, scope_digest: "b".repeat(64), maxlag: 100,
-    job: null, verified: 0, halted_status: null,
+    run_id: TEST_RUN_ID, total: 1, enabled: true, scope_digest: scopeDigest, maxlag: 100,
+    job: starts > 0 ? repairJob : null, verified: 0, halted_status: null,
     reference_inventory: {
-      audited_at: "2026-11-20T08:17:21Z",
+      audited_at: finishedAt, live_checked_at: finishedAt,
       items: [
-        {qid: "Q141175569", baseline_blocks: 4, creator_matches: true},
-        {qid: "Q134926101", baseline_blocks: 10, creator_matches: false},
+        {qid: "Q141175569", baseline_blocks: 4, observed_blocks: 4, creator_matches: true},
+        {qid: "Q134926101", baseline_blocks: 10, observed_blocks: 10, creator_matches: false},
       ],
     },
   }}));
-  await page.goto("/admin/wikidata-reference-repairs?scope=remaining");
+  await page.route("**/api/admin/wikidata-reference-repairs/start", route => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({
+      confirmed: true, scope_digest: scopeDigest, scope: "remaining",
+    });
+    starts++;
+    return route.fulfill({json: repairJob});
+  });
+  await page.goto("/admin/wikidata-gila-repairs");
+  await expect(page.getByRole("heading", {name: "Work remains after the audit"})).toBeVisible();
+  await expect(page.getByText("0 of 9", {exact: true})).toBeVisible();
+  await expect(page.getByText("4 repeated references on project-created items.", {exact: false})).toBeVisible();
+  await expect(page.getByText("10 on items that other accounts created.", {exact: false})).toBeVisible();
+  await page.getByRole("link", {name: "Start fixing references"}).click();
+  await expect(page).toHaveURL(/wikidata-reference-repairs\?scope=remaining$/);
   await page.getByText("View the audited items").click();
-  await expect(page.getByText("10 at first audit · Other creator")).toBeVisible();
-  await expect(page.getByRole("button", {name: "Start backend reference repairs"})).toBeDisabled();
+  await expect(page.getByText("10 at latest audit · Other creator")).toBeVisible();
+  const start = page.getByRole("button", {name: "Start backend reference repairs"});
+  await expect(start).toBeDisabled();
+  expect(starts).toBe(0);
+  await page.getByRole("checkbox", {name: "I authorize the reviewed reference repairs only."}).check();
+  await start.click();
+  await expect(page.getByRole("heading", {name: "In queue", exact: true})).toBeVisible();
+  expect(starts).toBe(1);
 });

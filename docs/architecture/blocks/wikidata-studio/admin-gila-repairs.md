@@ -44,6 +44,9 @@ A source gap, unresolved identity, or unchecked passage remains visible.
 Point 6 includes the six old work edits when the build detects their exact signatures (W-356).
 Each case links to source review. The case cannot prepare a repair release.
 The job summary contains counts and requirement states.
+The result panel states whether work remains and shows verified claims and requirements.
+The panel shows the date of the last completed audit during a new check.
+The panel uses the same audit date to show repeated references on project-created and other items.
 
 ## Repair
 
@@ -63,7 +66,9 @@ The gateway requires fresh proof that both the first revision and the active Wik
 A different, hidden, or unavailable creator remains outside the write scope.
 The worker applies the same guard before each send.
 
-Use **Remaining references** for the reviewed citation scope.
+Select **Start fixing references** to open the reviewed citation scope.
+Confirm the scope on the reference queue page before the worker starts.
+Select **Review open cases** for work that needs source review or a repair release.
 The reference queue has its own progress and verified receipts.
 Run a new audit after publication to check live results across the nine requirements.
 

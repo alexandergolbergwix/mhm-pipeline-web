@@ -65,6 +65,8 @@ The local handoff marker forbids another local control start.
 
 ## Write boundary
 
+The manuscript audit links to the remaining scope from **Start fixing references**.
+The administrator confirms the current queue scope on this page.
 The worker rechecks the administrator role, job state, project access, and source before each write.
 Creator UID 6935067 remains mandatory.
 Foreign-created items remain read-only relation targets.
