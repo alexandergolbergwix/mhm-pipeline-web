@@ -1368,3 +1368,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 210. **R210 — Preserve the original lag response for Studio edits (W-353).** Use maxlag 50 for Studio writes. Retain the server delay for a confirmed rejection. Continue the same Publication execution after the saved date.
 
 211. **R211 — Use the Studio job limit for manuscript audit freshness (W-354).** Verify the source before live reads and before the worker saves the report. *Why:* the 25-second web limit stopped the production audit.
+
+212. **R212 — Rebuild stale sources before an audit retry (W-355).** Show the rebuild progress and start the new audit only after the canonical build succeeds. Read the private job detail when the audit leaves the active list.

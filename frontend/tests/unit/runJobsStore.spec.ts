@@ -83,4 +83,41 @@ describe("useRunJobs.refresh", () => {
     expect(useRunJobs.getState().jobs["upload-1"]?.params?.upload_target).toBe("test");
     expect(useRunJobs.getState().jobs["upload-1"]?.status).toBe("cancelled");
   });
+
+  it("reads the terminal status when a private audit leaves the active list", async () => {
+    const audit = job({kind: "wikidata_gila_audit"});
+    vi.spyOn(RunJobs, "listMine")
+      .mockResolvedValueOnce({jobs: [audit]})
+      .mockResolvedValueOnce({jobs: []});
+    const failed: RunJobSnapshot = {...audit, status: "failed", error: "The build is out of date."};
+    const readJob = vi.spyOn(RunJobs, "get").mockResolvedValueOnce(failed);
+
+    await useRunJobs.getState().refresh();
+    await useRunJobs.getState().refresh();
+
+    expect(readJob).toHaveBeenCalledWith(audit.run_id, audit.id);
+    expect(useRunJobs.getState().jobs[audit.id]).toEqual(failed);
+    expect(useRunJobs.getState().activeJobs()).toEqual([]);
+  });
+
+  it("keeps polling when the audit detail lookup fails temporarily", async () => {
+    const audit = job({kind: "wikidata_gila_audit"});
+    useRunJobs.getState().upsertJob(audit);
+    vi.spyOn(RunJobs, "listMine").mockResolvedValue({jobs: []});
+    vi.spyOn(RunJobs, "get")
+      .mockRejectedValueOnce(new Error("The connection closed."))
+      .mockResolvedValueOnce({...audit, status: "cancelled"});
+
+    vi.useFakeTimers();
+    try {
+      useRunJobs.setState({pollTimer: setInterval(() => undefined, 2000)});
+      await useRunJobs.getState().refresh();
+      expect(useRunJobs.getState().pollTimer).not.toBeNull();
+      await useRunJobs.getState().refresh();
+      expect(useRunJobs.getState().pollTimer).toBeNull();
+      expect(useRunJobs.getState().jobs[audit.id]?.status).toBe("cancelled");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

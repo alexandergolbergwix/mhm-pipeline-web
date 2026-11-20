@@ -119,6 +119,9 @@ active (self-stops when the list empties), discards out-of-order responses via a
 monotonic `refreshSeq`, and accepts WebSocket `run_job_update` pushes via
 `upsertJob`. Components never call `jobForRun`/`activeJobs` inside a selector —
 they select `s.jobs` and derive with `selectActiveJob(...)` in `useMemo` (Rule W-36).
+The private manuscript audit has no project WebSocket event.
+If an active audit leaves the list, the store reads its job detail before it stops the poll (W-355).
+The store retries temporary errors on the next poll.
 `useRunJobAttachment(runId, kind, sync)` re-attaches to an already-running job on
 mount, prefers the tracked job id through the terminal snapshot (upserts it into
 the store before clearing — Rule W-108), and fingerprint-guards the `sync`

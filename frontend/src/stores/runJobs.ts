@@ -1,5 +1,6 @@
 import {create} from "zustand";
 
+import {ApiError} from "@/api/client";
 import {
   RunJobs,
   type RunJobSnapshot,
@@ -66,7 +67,27 @@ export const useRunJobs = create<RunJobsState>((set, get) => ({
         for (const j of jobs) map[j.id] = j;
         return {jobs: map};
       });
-      if (jobs.length === 0) {
+      const activeIds = new Set(jobs.map(job => job.id));
+      // The admin audit never publishes updates to the project WebSocket.
+      const missingAudits = get().activeJobs().filter(job =>
+        job.kind === "wikidata_gila_audit" && !activeIds.has(job.id),
+      );
+      await Promise.all(missingAudits.map(async job => {
+        try {
+          const snapshot = await RunJobs.get(job.run_id, job.id);
+          if (seq === refreshSeq && !isJobActive(snapshot.status)) get().upsertJob(snapshot);
+        } catch (error) {
+          if (seq !== refreshSeq || !(error instanceof ApiError)
+            || ![401, 403, 404].includes(error.status)) return;
+          set(state => {
+            const map = {...state.jobs};
+            delete map[job.id];
+            return {jobs: map};
+          });
+        }
+      }));
+      if (seq === refreshSeq && jobs.length === 0
+        && !get().activeJobs().some(job => job.kind === "wikidata_gila_audit")) {
         get().stopPolling();
       }
     } catch {

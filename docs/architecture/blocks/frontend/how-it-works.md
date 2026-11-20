@@ -94,6 +94,8 @@ so fallbacks never inline `new Set()`.
   for verify modals (which also load the SSE session, pass optional
   `tier_model`, tolerate early 404s on `trace.jsonl`, and rolls back its
   optimistic running state if the enqueue request rejects).
+  For the private manuscript audit, the tray uses the job detail endpoint to get the final status.
+  The tray opens the audit page when an administrator selects **View** (W-355).
 - *Entity polling* — `useApprovalStore(runId, {active})` polls
   `/extraction/entities` every 2 s while a verify modal is open
   (`active=true`) and every 30 s otherwise, with ETag/304 revalidation, a

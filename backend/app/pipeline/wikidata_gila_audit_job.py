@@ -482,7 +482,8 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
         await finish_job(
             job_id,
             status="failed",
-            error="Build the canonical Studio source and start the audit again.",
+            error="The audit needs a current canonical Studio build.",
+            progress={"phase": "source_rebuild_required"},
         )
     except HTTPException:
         logger.warning("The manuscript audit could not verify the Studio source.", exc_info=True)

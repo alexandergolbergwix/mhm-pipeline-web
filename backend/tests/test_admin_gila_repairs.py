@@ -28,10 +28,12 @@ def test_public_audit_snapshot_retains_exact_entities_across_batches(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("fresh", [True, False])
 async def test_worker_streams_the_canonical_source_and_saves_read_only_report(
     sample_run,
     db_session,
     monkeypatch,
+    fresh,
 ):
     run_id = sample_run["run_id"]
     user = await db_session.get(User, sample_run["user_id"])
@@ -81,11 +83,18 @@ async def test_worker_streams_the_canonical_source_and_saves_read_only_report(
         timeout_values.append(timeout_seconds)
         if timeout_seconds != wikidata_studio.STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS:
             raise HTTPException(409, "The source check exceeded the web request time limit.")
-        return await check_current(*args, timeout_seconds=timeout_seconds, **kwargs)
+        return fresh and await check_current(*args, timeout_seconds=timeout_seconds, **kwargs)
 
     monkeypatch.setattr(wikidata_studio, "_studio_cache_is_current", check_with_production_delay)
     await worker.run_gila_audit_job(job.id)
     await db_session.refresh(job)
+    if not fresh:
+        assert job.status == "failed"
+        assert job.progress["phase"] == "source_rebuild_required"
+        assert job.result is None
+        batch.assert_not_awaited()
+        assert timeout_values == [wikidata_studio.STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS]
+        return
     assert job.status == "succeeded", job.error
     assert job.result["record_count"] == job.result["public_read"] == 1
     assert len(job.result["email_points"]) == 9

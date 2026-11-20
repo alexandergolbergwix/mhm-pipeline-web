@@ -31,6 +31,7 @@ describe("jobRunHref", () => {
   it("leaves page-level jobs as a plain route", () => {
     expect(jobRunHref(job("wikidata_studio_build"))).toBe("/runs/run-9/wikidata-studio");
     expect(jobRunHref(job("rdf_build"))).toBe("/runs/run-9/rdf");
+    expect(jobRunHref(job("wikidata_gila_audit"))).toBe("/admin/wikidata-gila-repairs");
   });
 
   it("falls back to the overview for an unknown kind", () => {

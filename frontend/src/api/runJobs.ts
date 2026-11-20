@@ -183,6 +183,8 @@ function jobRunPath(job: RunJobSnapshot): string {
       return `/runs/${job.run_id}/extraction`;
     case "rdf_build":
       return `/runs/${job.run_id}/rdf`;
+    case "wikidata_gila_audit":
+      return "/admin/wikidata-gila-repairs";
     case "wikidata_studio_build":
     case "wikidata_verify":
     case "wikidata_upload":

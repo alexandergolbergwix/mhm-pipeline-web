@@ -17,9 +17,16 @@ The generic start route refuses this job kind.
 Only administrators can read or cancel it.
 The page polls `GET /api/admin/wikidata-gila-repairs` for phase and summary.
 The API keeps the last finished report available during a new audit.
+The job tray checks the private job detail after the audit leaves the active list.
+Select **View** in the tray to return to the audit page.
 
 The worker reads the saved canonical build, current MARC records, and the production QID ledger.
 The worker uses the five-minute job limit for each Studio freshness check (W-354).
+If the source is missing or stale, the worker stops before it reads Wikidata.
+Select **Rebuild source and run audit** to build the canonical source from approved records (W-355).
+The page shows progress from the Studio build job.
+Keep the tab open so the page can start the audit after the build succeeds.
+If the build fails, the page shows its error and keeps the last audit report.
 The page shows a separate phase for the check before the worker saves the report.
 The worker streams the canonical build and keeps its audit fields.
 It checks current public revisions for the project items, audited reference scope, and linked work and person items.

@@ -7,7 +7,8 @@ import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
 import {WikidataSourceReview} from "@/components/wikidata/WikidataSourceReview";
 import {useDebounce} from "@/hooks/useDebounce";
-import {waitForRunJob} from "@/utils/waitForRunJob";
+import {useRunJobs} from "@/stores/runJobs";
+import {ensureRunJob, studioBuildProgressMessage, waitForRunJob} from "@/utils/waitForRunJob";
 
 const pageSize = 25;
 const labels = {
@@ -174,6 +175,7 @@ export default function AdminGilaRepairs() {
   const [refreshError, setRefreshError] = useState("");
   const [actionError, setActionError] = useState("");
   const [starting, setStarting] = useState(false);
+  const [buildProgress, setBuildProgress] = useState("");
   const [point, setPoint] = useState<number | null>(null);
   const [poll, setPoll] = useState(0);
   useEffect(() => {
@@ -202,18 +204,51 @@ export default function AdminGilaRepairs() {
   const job = state?.job;
   const report = state?.report;
   const active = job?.status === "queued" || job?.status === "running";
+  const rebuildRequired = job?.status === "failed" && (
+    job.progress.phase === "source_rebuild_required"
+    || job.error === "Build the canonical Studio source and start the audit again."
+  );
   const processed = job?.progress.processed ?? 0;
   const total = job?.progress.total ?? 0;
 
+  useEffect(() => {
+    if (active) useRunJobs.getState().ensurePolling();
+  }, [active]);
+
   async function start() {
+    if (!state) return;
     setStarting(true);
     setActionError("");
     try {
-      await GilaRepairs.start();
+      if (rebuildRequired) {
+        setBuildProgress("Request the canonical Studio build for approved records.");
+        const build = await ensureRunJob(state.run_id, "wikidata_studio_build", {
+          source: "canonical",
+          approved_only: true,
+          force_rebuild: true,
+          extract_provenance_prose: false,
+        });
+        if (build.params.source !== "canonical" || build.params.approved_only !== true
+          || build.params.force_rebuild !== true) {
+          throw new Error("Another Studio build is active. Wait for it to finish and try again.");
+        }
+        useRunJobs.getState().upsertJob(build);
+        setBuildProgress(studioBuildProgressMessage(build));
+        await waitForRunJob(state.run_id, build.id, {
+          onUpdate: snapshot => {
+            useRunJobs.getState().upsertJob(snapshot);
+            setBuildProgress(studioBuildProgressMessage(snapshot));
+          },
+        });
+        setBuildProgress("The Studio build is ready. The page will start the live audit.");
+      }
+      const nextJob = await GilaRepairs.start();
+      setState(current => current && {...current, job: nextJob});
       setPoll(value => value + 1);
     } catch (failure) {
       setActionError(failureText(failure));
     } finally {
+      setBuildProgress("");
       setStarting(false);
     }
   }
@@ -226,7 +261,10 @@ export default function AdminGilaRepairs() {
           <p className="mt-2 max-w-prose text-sm muted">Compare the MARC records with live Wikidata to find missing manuscript data, incorrect links, and references that need review.</p>
         </div>
         <button className="button-primary" disabled={!state || active || starting || Boolean(refreshError)}
-          onClick={() => void start()}>{starting || active ? "Audit in progress" : report ? "Run a fresh audit" : "Start live audit"}</button>
+          onClick={() => void start()}>
+          {buildProgress ? "Rebuild in progress" : starting || active ? "Audit in progress"
+            : rebuildRequired ? "Rebuild source and run audit" : report ? "Run a fresh audit" : "Start live audit"}
+        </button>
       </div>
       <details className="rounded-xl border border-glass-line px-4 py-3 text-sm">
         <summary className="cursor-pointer font-medium">How repairs work</summary>
@@ -240,14 +278,20 @@ export default function AdminGilaRepairs() {
       {!state && !refreshError && <p role="status">Read the last audit…</p>}
       {refreshError && <p role="alert" className="text-danger">Status refresh failed. {refreshError}</p>}
       {actionError && <p role="alert" className="text-danger">{actionError}</p>}
-      {job && <section className="rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4" role="status" aria-live="polite">
+      {buildProgress ? <section className="rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4" role="status">
+        <p className="font-semibold">Rebuild the canonical Studio source</p>
+        <p className="mt-1 text-sm muted">{buildProgress}</p>
+        <p className="mt-1 text-sm muted">Keep this tab open so the page can start the audit after the rebuild.</p>
+      </section> : job && <section className="rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4" role="status" aria-live="polite">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-semibold">{job.status === "failed" ? "Audit stopped" : phases[job.progress.phase ?? ""] ?? job.status}</p>
           {active && total > 0 && <p className="text-sm tabular-nums muted">{processed.toLocaleString()} / {total.toLocaleString()} items</p>}
         </div>
         {active && <progress aria-label="Live audit progress" className="mt-2 h-2 w-full" max={total || 1}
           value={total ? processed : undefined} />}
-        <p className="mt-1 text-sm muted">{job.error ?? job.progress.message ?? "The job remains active if you close this page."}</p>
+        <p className="mt-1 text-sm muted">{rebuildRequired
+          ? "The audit needs a current canonical Studio build. Rebuild the source to run the audit."
+          : job.error ?? job.progress.message ?? "The job remains active if you close this page."}</p>
       </section>}
       {report && <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[

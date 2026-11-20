@@ -22,7 +22,7 @@ test("the administrator sees live audit progress and can inspect source gaps", a
   }}));
   await page.route("**/api/admin/wikidata-gila-repairs/start", route => {
     status = "running";
-    return route.fulfill({json: {id: "audit-1", status}});
+    return route.fulfill({json: {id: "audit-1", status, progress: {phase: "queued"}, error: null}});
   });
   await page.route("**/api/admin/wikidata-gila-repairs/cases?*", route => route.fulfill({json: {
     total: 1,
@@ -43,6 +43,55 @@ test("the administrator sees live audit progress and can inspect source gaps", a
   await page.locator("summary").getByText("Weisz catalogue", {exact: true}).click();
   await expect(page.getByText("bibliographic source identity unresolved")).toBeVisible();
   await expect(page.getByRole("button", {name: "Prepare repair release"})).toHaveCount(0);
+});
+
+test("the administrator can rebuild the source and retry an audit that stopped", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  await page.route("**/api/auth/me", route => route.fulfill({json: {
+    id: "admin", role: "admin", name: "Admin", email: "admin@example.com",
+  }}));
+  await page.route("**/api/admin/stats", route => route.fulfill({json: {pending_access_requests: 0}}));
+  const previousAudit = {
+    id: "audit-1", status: "failed", progress: {phase: "check_source"},
+    error: "Build the canonical Studio source and start the audit again.",
+  };
+  const nextAudit = {
+    id: "audit-2", status: "running", progress: {phase: "public_items"},
+    error: null,
+  };
+  let audit: typeof previousAudit | typeof nextAudit = previousAudit;
+  await page.route("**/api/admin/wikidata-gila-repairs", route =>
+    route.fulfill({json: {run_id: TEST_RUN_ID, job: audit, report: null}}));
+
+  const params = {
+    source: "canonical", approved_only: true, force_rebuild: true, extract_provenance_prose: false,
+  };
+  const build = {id: "source-build", run_id: TEST_RUN_ID, kind: "wikidata_studio_build", params};
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs`, route => {
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({kind: build.kind, params});
+    return route.fulfill({json: {...build, status: "queued", progress: {phase: "queued"}}});
+  });
+  let completeBuild = false;
+  let checkedSuccessfulBuild = false;
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/${build.id}`, route => {
+    checkedSuccessfulBuild = completeBuild;
+    return route.fulfill({json: {
+      ...build, status: completeBuild ? "succeeded" : "running",
+      progress: {message: "Read the approved MARC records."},
+    }});
+  });
+  await page.route("**/api/admin/wikidata-gila-repairs/start", route => {
+    expect(checkedSuccessfulBuild).toBe(true);
+    audit = nextAudit;
+    return route.fulfill({json: nextAudit});
+  });
+  await page.goto("/admin/wikidata-gila-repairs");
+
+  await page.getByRole("button", {name: "Rebuild source and run audit"}).click({timeout: 5000});
+  await expect(page.getByRole("status").getByText("Read the approved MARC records.")).toBeVisible();
+  completeBuild = true;
+  await expect(page.getByText("Check Wikidata items")).toBeVisible();
 });
 
 test("the remaining reference scope identifies foreign items outside the repair queue", async ({page}) => {

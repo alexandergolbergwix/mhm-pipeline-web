@@ -4269,3 +4269,15 @@ Acquire the job row lock after the final source check.
 If the check fails, keep the last completed report.
 
 See [Wikidata Manuscript Audit and Repair](../blocks/wikidata-studio/admin-gila-repairs.md).
+
+### Rule W-355 — Rebuild stale sources before an audit retry
+
+A production audit stopped because the saved Studio build failed the source check.
+The job tray still showed the audit as active.
+
+Offer a forced canonical build of the approved source when the worker returns a source rebuild failure.
+Show the build job progress and start the audit only after the build succeeds.
+Keep the source freshness and creator checks.
+Use the private job detail endpoint to read the audit status when the active list omits the job.
+
+See [Wikidata Manuscript Audit and Repair](../blocks/wikidata-studio/admin-gila-repairs.md).
