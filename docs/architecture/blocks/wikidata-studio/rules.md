@@ -1372,3 +1372,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 212. **R212 — Rebuild stale sources before an audit retry (W-355).** Show the rebuild progress and start the new audit only after the canonical build succeeds. Read the private job detail when the audit leaves the active list.
 
 213. **R213 — Keep the source statement for known stale catalogue edits (W-356).** Withhold the six exact stored patches. Keep their review findings and the hard check for QIDs in P528.
+
+214. **R214 — Save reviewed claim hashes in remaining reference plans (W-357).** Supply `source_sha256` before the queue saves a plan. Compare the same proof before a write.

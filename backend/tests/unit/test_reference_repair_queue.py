@@ -1,3 +1,4 @@
+import json
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -10,10 +11,11 @@ from sqlalchemy import select
 
 from app.models.publication import PublicationWriteReceipt
 from app.pipeline.wikidata_gila_execution import LiveRepairGateway, WriteRejectedError, expected_entity
-from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals
+from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals, entity_digest
 from app.publication import reference_repair_queue as queue
 from app.publication.repair_retry_runner import wait_for_repair_publication
 from app.publication.repository import InMemoryPublicationRepository
+from app.publication.reviewed_reference_scope import reviewed_reference_evidence
 from app.publication.sql_repository import SqlAlchemyPublicationRepository
 from converter.wikidata.uploader import WikidataUploader
 
@@ -199,6 +201,42 @@ async def test_preview_then_apply_is_serial_and_rerun_does_not_repeat_a_write(tm
     assert all(row["corrected"] for row in result["results"])
     await run(tmp_path, gateway, repo, apply=True)
     assert gateway.writes == ["Q123", "Q456", "Q789"]
+
+
+@pytest.mark.asyncio
+async def test_reviewed_reference_queue_saves_claim_proof_before_an_edit(tmp_path):
+    gateway = Gateway()
+    reviewed = {
+        qid: {
+            "qid": qid,
+            "creator_matches": True,
+            "claims": {claim["id"]: entity_digest(claim) for claim in entity["claims"]["P217"]},
+        }
+        for qid, entity in gateway.entities.items()
+    }
+    saved = {}
+
+    def validate_scope(proposal):
+        return reviewed_reference_evidence(proposal, reviewed[proposal["qid"]])
+
+    async def check_reviewed_source(entity, proposal):
+        return validate_scope(proposal)
+
+    async def checkpoint(qid, results, directory):
+        plan = directory / f"plan-{qid}.json"
+        if plan.exists() and qid not in saved:
+            assert qid not in gateway.writes
+            saved[qid] = json.loads(plan.read_text())["source_sha256"]
+
+    result = await run(
+        tmp_path, gateway, InMemoryPublicationRepository(), apply=True,
+        source_check=check_reviewed_source, validate_scope=validate_scope,
+        on_checkpoint=checkpoint,
+    )
+    assert result["status"] == "complete", result
+    assert saved == {qid: row["claims"] for qid, row in reviewed.items()}
+    assert gateway.writes == ["Q123", "Q456", "Q789"]
+    assert all(row["corrected"] for row in result["results"])
 
 
 @pytest.mark.asyncio

@@ -39,6 +39,8 @@ The original successful build receipt supplies the actor and project.
 The current plan retains its original Publication identity and retry state.
 The worker stores the completed prefix and current exact plan in private job parameters.
 It commits the current plan before a public write.
+The remaining queue stores the reviewed claim hashes in the plan's `source_sha256` field (W-357).
+The original queue uses the same field for MARC record hashes.
 Completed plans leave the checkpoint; verified receipts remain.
 The worker saves a UTC completion time with each new confirmed result.
 The job records when it starts to track completion times and keeps that date across process restarts.
@@ -95,6 +97,7 @@ This change requires a Heroku release. It does not require a Modal release.
 - `frontend/src/routes/admin/AdminReferenceRepairs.tsx`: backend controls and status.
 - `test_admin_reference_repairs.py`: role, scope, start, generic-path, and checkpoint tests.
 - `test_reference_repair_worker.py`: restored plans, receipt-based recovery, and pre-write checkpoint tests.
+- `test_reference_repair_queue.py`: reviewed claim proof, plan save, and verified results.
 - `test_reference_cloud_checkpoint.py`: role revocation, cancellation, and lease tests.
 - `admin-reference-repairs.spec.ts`: mocked administrator controls and non-administrator redirects.
 

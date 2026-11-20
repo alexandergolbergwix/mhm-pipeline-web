@@ -39,4 +39,8 @@ def reviewed_reference_evidence(proposal: dict, reviewed: dict) -> dict:
         ):
             raise ValueError("This repair does not preserve the reviewed citation groups.")
         claim_digests[claim_id] = digest
-    return {"qid": reviewed["qid"], "claims": claim_digests, "scope": "reviewed exact citations"}
+    return {
+        "qid": reviewed["qid"],
+        "source_sha256": claim_digests,
+        "scope": "reviewed exact citations",
+    }

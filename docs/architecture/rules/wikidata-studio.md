@@ -4293,3 +4293,16 @@ Keep `CATALOG_CODE_IS_QID` as a hard error for any invalid catalogue code that r
 Use `source-aware-works-v26` to invalidate old projections.
 
 See the [six creation review cases](../blocks/wikidata-studio/creation-review-cases.md).
+
+### Rule W-357 — Save reviewed claim hashes in remaining reference plans
+
+Two production jobs stopped on the first item before they saved a plan.
+The reviewed citation check returned the claim hashes under a key that the queue did not read.
+
+Return the checked claim hashes in `source_sha256`, keyed by exact claim ID.
+Save those hashes with the plan before a public edit.
+Recheck the same evidence through the Publication workflow.
+The original queue still uses MARC record hashes in that field.
+Keep the exact revision, claim, creator, and prior outcome checks.
+
+See [administrator reference repairs](../blocks/wikidata-studio/admin-reference-repairs.md).
