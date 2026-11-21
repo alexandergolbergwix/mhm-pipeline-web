@@ -3,12 +3,14 @@ import uuid
 import zlib
 from base64 import b64encode
 from copy import deepcopy
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from app.models.run_job import RunJob
 from app.models.user import User
 from app.pipeline import wikidata_gila_audit_job as audit_worker
+from app.pipeline import wikidata_gila_repair_job as repair_worker
 from app.pipeline import wikidata_publication_prepare_job as prepare_worker
 from app.pipeline.marc_verify_context import load_run_marc_records
 from app.publication.credentials import configured_publication_gateway_factory
@@ -109,6 +111,26 @@ def test_audit_offers_the_author_repair_only_with_exact_evidence(changed):
     case, = audit_worker._work_author_cases([item], entities)
     assert case["can_prepare"] is (changed is None)
     assert case.get("repair_kind") == ("troki_author" if changed is None else None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status,revision,expected", [
+    ("paused", 31, 31), ("running", 31, None), ("paused", 32, None),
+])
+async def test_exact_retry_requires_an_idle_execution_and_both_reads_at_the_original_revision(
+    status, revision, expected,
+):
+    previous = SimpleNamespace(
+        target_revision=31, action="update", state="outcome_unknown",
+        entity_key=troki.WORK_LOCAL_ID, allow_foreign_update=False,
+        lease_owner=None, lease_expires_at=None,
+    )
+    entity = {**_live_entities()[troki.WORK_QID], "lastrevid": 31}
+    reader = SimpleNamespace(
+        current_revision=AsyncMock(return_value=revision),
+        fetch=AsyncMock(return_value=entity),
+    )
+    assert await repair_worker.exact_author_retry_base([(previous, status)], reader) == expected
 
 
 @pytest.mark.asyncio

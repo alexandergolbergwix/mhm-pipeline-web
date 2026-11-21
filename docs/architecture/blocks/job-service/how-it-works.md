@@ -97,6 +97,9 @@ already-judged items.
 | `wikidata_upload` | `wikidata_upload_job.py` | Two-pass dry-run/test/live upload (W-30 / W-192); `owner_only` is serial, rejects local references and shards, and needs a live credential for dry-run (W-303) |
 | `wikidata_publication_prepare` | `wikidata_publication_prepare_job.py` | Streams the Studio source into a sealed immutable Release; the payload has request metadata and an actor ID but no credential secret |
 | `wikidata_gila_case_review` | `wikidata_gila_case_review.py` | Reviews one place or scribe case with Qubrid. The admin audit routes own job start and recovery. |
+| `wikidata_gila_repair` | `wikidata_gila_repair_job.py` | Coordinates the audit and repair jobs in the light slot. The administrator starts it from the audit page. |
+
+The manuscript repair coordinator uses a light slot. Its child jobs use the global and heavy limits. This permits a child job to run when the global limit is one.
 | `wikidata_publication_execution` | `wikidata_publication_execution_job.py` | Runs a queued Publication Execution with source, Plan, and creator checks. Limits writer count to available work and database capacity (W-360). Waits for confirmed maxlag retry dates (W-353). |
 | `hmo_coverage` | `hmo_coverage_job.py` | 9-14 min coverage report; write-throughs `HmoCoverageCache` (Rule W-39) |
 | `hmo_schema_bootstrap` | `hmo_schema_bootstrap_job.py` | Sequential `wbeditentity` per missing ontology class/property on Wikibase Cloud |

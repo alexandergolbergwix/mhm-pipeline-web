@@ -40,7 +40,7 @@ test("the administrator sees live audit progress and can inspect source gaps", a
   await page.goto("/admin/wikidata-gila-repairs");
   await expect(page.getByRole("heading", {name: "Wikidata Manuscript Audit and Repair"})).toBeVisible();
   await page.getByText("How repairs work", {exact: true}).click();
-  await expect(page.getByText("Run a dry run before you publish.", {exact: false})).toBeVisible();
+  await expect(page.getByText("The job runs a new audit after the repairs.", {exact: false})).toBeVisible();
   await page.getByRole("button", {name: "Start live audit"}).click();
   await expect(page.getByRole("progressbar", {name: "Live audit progress"})).toBeVisible();
   await expect(page.getByText("Check Wikidata items")).toBeVisible();
@@ -49,6 +49,42 @@ test("the administrator sees live audit progress and can inspect source gaps", a
   await page.locator("summary").getByText("Weisz catalogue", {exact: true}).click();
   await expect(page.getByText("bibliographic source identity unresolved")).toBeVisible();
   await expect(page.getByRole("button", {name: "Prepare repair release"})).toHaveCount(0);
+});
+
+test("one click starts an automatic repair and the page restores its result", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  await page.route("**/api/auth/me", route => route.fulfill({json: {
+    id: "admin", role: "admin", name: "Admin", email: "admin@example.com",
+  }}));
+  const job = {id: "auto-1", run_id: TEST_RUN_ID, kind: "wikidata_gila_repair", params: {}, error: null};
+  let launched = 0;
+  let finished = false;
+  const progress = {phase: "publish_0", message: "Verify public edits.", processed: 1, total: 2, unit: "items"};
+  await page.route("**/api/admin/wikidata-gila-repairs", route => route.fulfill({json: {
+    run_id: TEST_RUN_ID, report: null, job: null,
+    automatic_repair: launched ? {...job, progress, status: finished ? "succeeded" : "running",
+      result: finished ? {
+        items_published: 1, reference_items_corrected: 0, requirements_verified: 6,
+        stages_needing_attention: [],
+        exclusions: [{qid: "Q42", reason: "other_creator"}],
+      } : null,
+    } : null,
+  }}));
+  await page.route("**/api/admin/wikidata-gila-repairs/repair-all", route => {
+    expect(route.request().method()).toBe("POST");
+    launched += 1;
+    return route.fulfill({json: {...job, status: "queued", progress}});
+  });
+  await page.goto("/admin/wikidata-gila-repairs");
+  await page.getByRole("button", {name: "Repair all eligible items"}).click();
+  await expect(page.getByRole("progressbar", {name: "Automatic repair progress"})).toBeVisible();
+  finished = true;
+  await page.reload();
+  await expect(page.getByRole("heading", {name: "Repair cycle complete"})).toBeVisible();
+  await expect(page.getByText(/6 of 9 requirements verified/)).toBeVisible();
+  await page.getByText("1 exclusions from repair plans").click();
+  await expect(page.getByRole("link", {name: "Q42"})).toBeVisible();
+  expect(launched).toBe(1);
 });
 
 test("the administrator can rebuild the source and retry an audit that stopped", async ({page}) => {
@@ -231,7 +267,7 @@ test("the audit asks for verification after reference repairs and exports eviden
   await page.goto("/admin/wikidata-gila-repairs");
   await expect(page.getByRole("heading", {name: "Reference repairs complete. A fresh audit is due."})).toBeVisible();
   await expect(page.getByText("Repeated references at last audit")).toBeVisible();
-  await page.getByRole("button", {name: "Start manuscript repairs"}).click();
+  await page.getByRole("button", {name: "Prepare eligible release"}).click();
   await expect(page.getByRole("heading", {name: "Repairs ready across all nine requirements"})).toBeVisible();
   await expect(page.locator("#audit-cases")).toBeFocused();
   await expect(page.getByRole("combobox", {name: "Case status"})).toHaveValue("ready_to_prepare");
@@ -239,7 +275,7 @@ test("the audit asks for verification after reference repairs and exports eviden
   await page.getByRole("button", {name: "Review cases that need a decision"}).click();
   await expect(page.getByRole("combobox", {name: "Case status"})).toHaveValue("manual_review");
   readyCase = true;
-  await page.getByRole("button", {name: "Start manuscript repairs"}).click();
+  await page.getByRole("button", {name: "Prepare eligible release"}).click();
   await expect(page.getByText("Verify the audited source.")).toBeVisible();
   expect(preparations).toBe(1);
   preparationComplete = true;

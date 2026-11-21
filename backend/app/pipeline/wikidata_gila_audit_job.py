@@ -219,10 +219,14 @@ def _case_inventory(packet, audit):
         "qids",
         "control_number",
         "source_field",
+        "property",
         "source_value",
         "expected_author",
         "expected_value",
         "expected_qualifiers",
+        "expected_precision",
+        "expected_calendar",
+        "expected_unit",
         "live_status",
         "live_revision",
         "reason",
@@ -321,6 +325,8 @@ def _work_author_cases(canonical, entities):
                 or item.get("labels", {}).get("en"),
                 "expected_value": ", ".join(sorted(missing)),
                 "source_field": "100",
+                "property": "P50",
+                "expected_values": sorted(missing),
                 "disposition": "repair_required" if repair or exact_author else "manual_review",
                 "reason": (
                     "troki_author_link_verified" if exact_author else "author_authority_link_absent"

@@ -51,6 +51,17 @@ const phases: Record<string, string> = {
   compare: "Compare the evidence",
   check_report_source: "Verify the source before save",
 };
+const repairPhases: Record<string, string> = {
+  initial_audit: "Audit all nine requests",
+  audit_after_rebuild: "Audit the rebuilt source",
+  rebuild: "Rebuild the canonical source",
+  references_original: "Check the original reference queue",
+  references_remaining: "Check the remaining reference queue",
+  prepare: "Check source evidence and item creators",
+  dry_run: "Check the publication plan",
+  publish: "Publish and verify supported edits",
+  verify: "Audit the result on Wikidata",
+};
 const explanations: Record<string, string> = {
   public_record_identity_requires_review: "The project needs a confirmed manuscript mapping.",
   duplicate_public_catalog_identity: "Two or more Wikidata items have the same catalog identifier.",
@@ -137,8 +148,8 @@ function AuditResult({
         <p className="mt-1 text-xs muted">Last completed audit · {new Date(report.finished_at).toLocaleString()}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {report.case_count > 0 && <button className="button-primary" disabled={preparing || auditBusy} onClick={onStartRepair}>
-          {preparing ? "Request the repair…" : "Start manuscript repairs"}
+        {report.case_count > 0 && <button className="button-ghost" disabled={preparing || auditBusy} onClick={onStartRepair}>
+          {preparing ? "Request the repair…" : "Prepare eligible release"}
         </button>}
         {hasRepeatedReferences && <button className="button-ghost" onClick={onOpenReferences}>
           {canStart ? "Review reference queue" : "View reference repairs"}
@@ -385,6 +396,7 @@ export default function AdminGilaRepairs() {
   const [refreshError, setRefreshError] = useState("");
   const [actionError, setActionError] = useState("");
   const [starting, setStarting] = useState(false);
+  const [startingAutomatic, setStartingAutomatic] = useState(false);
   const [buildProgress, setBuildProgress] = useState("");
   const [caseView, setCaseView] = useState<{
     point: number | null; initialFilter: CaseFilter | ""; selection: number;
@@ -423,7 +435,7 @@ export default function AdminGilaRepairs() {
         if (stopped) return;
         setState(value);
         setRefreshError("");
-        if (value.job?.status === "queued" || value.job?.status === "running") delay = 1800;
+        if ([value.job, value.automatic_repair].some(job => job?.status === "queued" || job?.status === "running")) delay = 1800;
       } catch (failure) {
         if (stopped) return;
         if (failure instanceof ApiError && (failure.status === 401 || failure.status === 403)) setState(undefined);
@@ -437,6 +449,9 @@ export default function AdminGilaRepairs() {
   }, [poll]);
 
   const job = state?.job;
+  const automatic = state?.automatic_repair;
+  const automaticActive = automatic?.status === "queued" || automatic?.status === "running";
+  const automaticResult = automatic?.result;
   const report = state?.report;
   const publishedSinceAudit = Boolean(report && lastPublication > Date.parse(report.finished_at));
   const needsRecheck = publishedSinceAudit || Boolean(report && [queue, originalQueue.state].some(
@@ -462,7 +477,7 @@ export default function AdminGilaRepairs() {
   }
 
   async function requestRepair(caseId?: string) {
-    if (!report || preparing || rebuildRequired || active || starting) return;
+    if (!report || preparing || rebuildRequired || active || starting || automaticActive) return;
     setPreparing(true);
     setRepairNotice("");
     setRepairError("");
@@ -480,6 +495,26 @@ export default function AdminGilaRepairs() {
       focusSection("repair-request-status");
     } finally {
       setPreparing(false);
+    }
+  }
+
+  async function startAutomatic() {
+    if (!state || startingAutomatic || automaticActive) return;
+    setStartingAutomatic(true);
+    setActionError("");
+    try {
+      const repair = await GilaRepairs.repairAll();
+      useRunJobs.getState().upsertJob(repair);
+      useRunJobs.getState().ensurePolling();
+      setState(value => value && {...value, automatic_repair: {
+        id: repair.id, status: repair.status, progress: repair.progress, error: repair.error, result: null,
+      }});
+      setPoll(value => value + 1);
+      focusSection("automatic-manuscript-repair");
+    } catch (failure) {
+      setActionError(failureText(failure));
+    } finally {
+      setStartingAutomatic(false);
     }
   }
 
@@ -538,27 +573,71 @@ export default function AdminGilaRepairs() {
           <h1 className="text-2xl font-semibold sm:text-3xl">Wikidata Manuscript Audit and Repair</h1>
           <p className="mt-2 max-w-prose text-sm muted">Compare the MARC records with live Wikidata to find missing manuscript data, incorrect links, and references that need review.</p>
         </div>
-        <button className="button-primary" disabled={!state || active || starting || Boolean(refreshError)}
-          onClick={() => void start()}>
-          {buildProgress ? "Rebuild in progress" : starting || active ? "Audit in progress"
-            : rebuildRequired ? "Rebuild source and run audit" : needsRecheck ? "Verify repairs on Wikidata"
-              : report ? "Run a fresh audit" : "Start live audit"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button className="button-primary"
+            disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
+            onClick={() => void startAutomatic()}>
+            {automaticActive || startingAutomatic ? "Automatic repair in progress" : "Repair all eligible items"}
+          </button>
+          <button className="button-ghost"
+            disabled={!state || active || starting || automaticActive || startingAutomatic || Boolean(refreshError)}
+            onClick={() => void start()}>
+            {buildProgress ? "Rebuild in progress" : starting || active ? "Audit in progress"
+              : rebuildRequired ? "Rebuild source and run audit" : needsRecheck ? "Verify repairs on Wikidata"
+                : report ? "Run a fresh audit" : "Start live audit"}
+          </button>
+        </div>
       </div>
+      <p className="text-sm muted">Automatic repair publishes supported edits to Wikidata on items the project account created.</p>
+      {automatic && <section id="automatic-manuscript-repair" tabIndex={-1}
+        aria-label="Automatic manuscript repair" aria-live="polite"
+        className="space-y-2 rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4">
+        <h2 className="font-semibold">{automaticActive ? "Automatic repair in progress"
+          : automatic.status === "succeeded" ? "Repair cycle complete"
+            : automatic.status === "cancelled" ? "Repair cycle cancelled" : "Repair cycle stopped"}</h2>
+        {automaticActive && <p className="text-sm font-medium">
+          {repairPhases[(automatic.progress.phase ?? "").replace(/_\d+$/, "")] ?? "Wait for the worker"}
+        </p>}
+        <p className="text-sm muted">{automatic.error ?? automatic.progress.message ?? "Wait for the job service."}</p>
+        {automaticActive && automatic.progress.total != null && automatic.progress.total > 0 && <>
+          <progress aria-label="Automatic repair progress" className="h-2 w-full" max={automatic.progress.total}
+            value={automatic.progress.processed ?? 0} />
+          <p className="text-sm muted">{automatic.progress.processed ?? 0} / {automatic.progress.total} {automatic.progress.unit}</p>
+        </>}
+        {automaticActive && typeof automatic.progress.next_attempt_at === "string" && <p className="text-sm muted">
+          Next retry at {new Date(automatic.progress.next_attempt_at).toLocaleString()}
+        </p>}
+        {automaticResult && <>
+          <p className="text-sm">{automaticResult.items_published} manuscript or work edits verified
+            · {automaticResult.reference_items_corrected} items with reference repairs verified
+            {automaticResult.requirements_verified != null && ` · ${automaticResult.requirements_verified} of 9 requirements verified`}
+          </p>
+          {automaticResult.stages_needing_attention.map((stage, index) => <p key={index} className="text-sm text-warn">{stage.reason}</p>)}
+          {automaticResult.exclusions.length > 0 && <details>
+            <summary className="cursor-pointer text-sm">{automaticResult.exclusions.length} exclusions from repair plans</summary>
+            <ul className="space-y-1 text-sm muted">
+              {automaticResult.exclusions.map(({qid, reason}, index) => <li key={index}>
+                {qid && <a className="underline" href={`https://www.wikidata.org/wiki/${qid}`}>{qid}</a>}{" "}
+                {reason === "previous_write_needs_verification" ? "A previous edit needs verification." : reason.replaceAll("_", " ")}
+              </li>)}
+            </ul>
+          </details>}
+          {report && <button className="button-ghost" onClick={() => openCases(null)}>Review remaining evidence</button>}
+        </>}
+      </section>}
       {report && <AuditResult key={report.id} report={report} queue={queue} needsRecheck={needsRecheck}
         publishedSinceAudit={publishedSinceAudit} onOpenCases={filter => openCases(null, filter)} onStartRepair={() => void requestRepair()}
         onOpenReferences={openReferences} preparing={preparing}
-        auditBusy={Boolean(rebuildRequired || active || starting)} />}
+        auditBusy={Boolean(rebuildRequired || active || starting || automaticActive || startingAutomatic)} />}
       {(repairNotice || repairError) && <div id="repair-request-status" tabIndex={-1}>
         {repairError ? <p role="alert" className="text-danger">{repairError}</p> : <p role="status">{repairNotice}</p>}
       </div>}
       <details className="rounded-xl border border-glass-line px-4 py-3 text-sm">
         <summary className="cursor-pointer font-medium">How repairs work</summary>
         <ol className="mt-2 list-decimal space-y-1 pl-5 muted">
-          <li>Run the audit to find cases. The audit reads Wikidata.</li>
-          <li>Start manuscript repairs to prepare all eligible items in one release. Open a case to review its source or run a Kimi review.</li>
-          <li>Review the release on this page. Run a dry run before you publish.</li>
-          <li>Open the reference queue below to confirm its repair scope and monitor progress.</li>
+          <li>The job audits all nine requests and rebuilds the source if necessary.</li>
+          <li>The job checks creator identity, applies reviewed reference repairs, and checks each manuscript repair before publication.</li>
+          <li>The job runs a new audit after the repairs. Open each request to see the cases that need evidence.</li>
         </ol>
         <p className="mt-2 muted">The system checks the creator before each edit. It can edit only items that the project account created.</p>
       </details>
@@ -595,18 +674,24 @@ export default function AdminGilaRepairs() {
         <p className="text-sm muted">{report.public_read.toLocaleString()} public items read</p>
         {report.requirement_coverage.model_decision && <p className="text-sm muted">{report.requirement_coverage.model_decision}</p>}
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {report.email_points.map(row => <li key={row.point}>
+          {report.email_points.map(row => {
+            const verified = row.counts?.verified ?? 0;
+            const total = Object.values(row.counts ?? {}).reduce((sum, count) => sum + count, 0);
+            return <li key={row.point}>
             <button className={`w-full rounded-xl border p-3 text-left text-sm ${point === row.point ? "border-accent bg-[var(--surface-inset)]" : "border-glass-line"}`}
               aria-pressed={point === row.point} onClick={() => openCases(point === row.point ? null : row.point)}>
               <span className="block font-medium">{row.title}</span>
               <span className="mt-1 block text-xs muted">{labels[row.status]}</span>
+              {total > 0 && <span className="mt-1 block text-xs muted">
+                {verified.toLocaleString()} / {total.toLocaleString()} cases verified ({(verified / total * 100).toFixed(1)}%)
+              </span>}
             </button>
-          </li>)}
+          </li>;})}
         </ul>
       </Glass>
       <Cases key={`${report.id}:${selection}`} report={report} runId={state.run_id} point={point}
         initialFilter={initialFilter} actions={{
-          preparing: Boolean(preparing || rebuildRequired || active || starting),
+          preparing: Boolean(preparing || rebuildRequired || active || starting || automaticActive),
           onPrepare: caseId => void requestRepair(caseId),
           onSourceSaved: () => setSourceEdited(true),
         }} />

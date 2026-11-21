@@ -49,7 +49,8 @@ The panel shows the date of the last completed audit during a new check.
 The panel uses the same audit date to show repeated references on project-created and other items.
 If the remaining reference queue finishes after that audit, select **Verify repairs on Wikidata**.
 The next audit reads Wikidata again and checks all nine requirements.
-Select **Start manuscript repairs** to prepare all eligible items from the latest audit in one release.
+Select **Repair all eligible items** to start the automatic repair and verification job.
+Select **Prepare eligible release** to review and publish a scoped release manually.
 Review and verify repairs on the same page. See the [repair workspace](manuscript-repair-workspace.md).
 The **Ready to prepare** filter shows only cases with evidence for a repair release.
 Cases on items with a known different creator stay in manual review.

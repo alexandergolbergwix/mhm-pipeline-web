@@ -259,6 +259,7 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
             await assert_admin_job(db, job_id, actor)
             checkpoint = job.params.get("_reference_checkpoint", seed["checkpoint"])
             project_id = job.project_id
+            repair_parent = job.params.get("_gila_cycle_parent")
             if _TIMING_STARTED_AT not in job.params:
                 job.params = {**job.params, _TIMING_STARTED_AT: datetime.now(UTC).isoformat()}
                 await db.commit()
@@ -283,6 +284,15 @@ async def run_reference_job(job_id: uuid.UUID) -> None:
             if current_actor != actor:
                 raise ValueError("The build actor differs from the reviewed administrator.")
             await assert_admin_job(db, job_id, actor)
+            if repair_parent:
+                from app.pipeline.wikidata_gila_repair_job import RepairCancelled, authorize_repair_cycle
+
+                try:
+                    parent = await authorize_repair_cycle(db, uuid.UUID(repair_parent))
+                except RepairCancelled as exc:
+                    raise ReferenceJobCancelledError() from exc
+                if parent.created_by != actor or str(parent.run_id) != manifest["run_id"]:
+                    raise ValueError("The reference repair belongs to another job.")
 
         async def before_item(_qid):
             if await is_cancel_requested(job_id):

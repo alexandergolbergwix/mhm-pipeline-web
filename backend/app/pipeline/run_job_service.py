@@ -41,6 +41,7 @@ from app.models.run_job import (
     JOB_KIND_WIKIDATA_REFERENCE_REPAIR,
     JOB_KIND_WIKIDATA_GILA_AUDIT,
     JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
+    JOB_KIND_WIKIDATA_GILA_REPAIR,
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
     JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
@@ -109,6 +110,7 @@ _UPLOAD_KINDS = frozenset({
     JOB_KIND_HMO_MANIFEST_UPLOAD,
 })
 _LIGHT_KINDS = frozenset({
+    JOB_KIND_WIKIDATA_GILA_REPAIR,
     JOB_KIND_EXTRACTION,
     JOB_KIND_HMO_ITEM_BULK_APPROVE,
     JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE,
@@ -226,7 +228,7 @@ def _admission_allows(
     class_running: int,
     kind: str,
 ) -> bool:
-    if global_running >= _max_running_global():
+    if kind != JOB_KIND_WIKIDATA_GILA_REPAIR and global_running >= _max_running_global():
         return False
     slot = _admission_slot_class(kind)
     if slot == SLOT_OTHER:
@@ -267,6 +269,8 @@ async def _count_running_jobs(
             heavy_kinds.update(_kinds_for_slot(heavy_slot))
         if heavy_kinds:
             stmt = stmt.where(RunJob.kind.in_(tuple(heavy_kinds)))
+    else:
+        stmt = stmt.where(RunJob.kind != JOB_KIND_WIKIDATA_GILA_REPAIR)
     return int((await db.execute(stmt)).scalar_one())
 
 
@@ -988,6 +992,10 @@ async def _execute_job(job_id: uuid.UUID) -> None:
             from app.pipeline.wikidata_gila_case_review import run_gila_case_review
 
             await run_gila_case_review(job_id)
+        elif kind == JOB_KIND_WIKIDATA_GILA_REPAIR:
+            from app.pipeline.wikidata_gila_repair_job import run_gila_repair_job
+
+            await run_gila_repair_job(job_id)
         elif kind == JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION:
             from app.pipeline.wikidata_publication_execution_job import (  # noqa: PLC0415
                 run_wikidata_publication_execution_job,

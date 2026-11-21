@@ -277,6 +277,7 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
         execution_id = _required_param(job, "execution_id")
         actor_id = _required_param(job, "actor_id")
         run_id = job.run_id
+        repair_parent = (job.params or {}).get("_gila_cycle_parent")
         if await is_cancel_requested(job_id):
             await finish_job(
                 job_id,
@@ -330,6 +331,15 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
         ))
         await db.rollback()
 
+        async def authorize_repair(auth_db) -> bool:
+            from app.pipeline.wikidata_gila_repair_job import RepairCancelled, authorize_repair_cycle
+
+            try:
+                parent = await authorize_repair_cycle(auth_db, uuid.UUID(repair_parent))
+            except (RepairCancelled, ValueError):
+                return False
+            return parent.run_id == run_id and str(parent.created_by) == actor_id
+
         async def _run_worker(index: int) -> PublicationSummary:
             worker_id = f"publication-job:{job_id}:w{index}"
 
@@ -339,6 +349,7 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
                         session=worker_db,
                         gateway_factory=gateway_factory,
                         execution_progress=_make_execution_progress(job_id),
+                        **({"authorize_execution": lambda: authorize_repair(worker_db)} if repair_parent else {}),
                     )
                     return await worker_runtime.execute(
                         run_id=run_id,

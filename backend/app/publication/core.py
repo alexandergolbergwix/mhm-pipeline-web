@@ -139,6 +139,7 @@ class PublicationModule:
         clock: Callable[[], datetime] | None = None,
         dry_run_progress: Callable[[int, int], Awaitable[None]] | None = None,
         execution_progress: Callable[[int, int], Awaitable[None]] | None = None,
+        authorize_execution: Callable[[], Awaitable[bool]] | None = None,
         maxlag_backoff_cap_seconds: float | None = None,
     ) -> None:
         self._projection_source = projection_source
@@ -147,6 +148,7 @@ class PublicationModule:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._dry_run_progress = dry_run_progress
         self._execution_progress = execution_progress
+        self._authorize_execution = authorize_execution
         self._maxlag_backoff_cap_seconds = maxlag_backoff_cap_seconds
 
     async def prepare(self, request: PrepareRequest) -> OperationRef:
@@ -1112,6 +1114,7 @@ class PublicationModule:
                         and await self._projection_source.is_current(
                             current_publication.run_id, current_publication.source_snapshot,
                         )
+                        and (self._authorize_execution is None or await self._authorize_execution())
                     )
                 finally:
                     await self._repository.checkpoint()

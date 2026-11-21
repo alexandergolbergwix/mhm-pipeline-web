@@ -4,9 +4,34 @@ Open [Wikidata Manuscript Audit and Repair](admin-gila-repairs.md).
 Use the page for the audit, source review, Kimi review, reference queues, and Publication.
 The workspace uses the existing workers and their saved results.
 
+## Run all eligible repairs
+
+1. Select **Repair all eligible items** to authorize the job to publish edits.
+2. The job audits all nine requests against live Wikidata and the current MARC source.
+3. The job rebuilds a stale canonical source once and repeats the audit.
+4. The job checks the reviewed reference queues and prepares supported manuscript and work repairs.
+5. The job approves the scoped release, runs the dry run, and publishes the ready updates.
+6. The job audits live Wikidata again and displays the results on this page.
+
+The job service saves each stage. Close or reload the page to return to the same repair.
+The job rechecks administrator and project edit access before an automatic write.
+The preparation worker selects exact source claims and excludes ambiguous claims and foreign targets.
+If the dry run identifies blocked QIDs, the job prepares the remaining items in a new release.
+Publication requires a confirmed first-revision creator and the existing revision and authorization checks.
+An earlier uncertain edit requires evidence. The exact Troki repair can proceed if the earlier execution is idle, two reads confirm the original revision, and the author claim is still absent.
+The plan for that retry uses the same base revision.
+The results show verified edits, reference corrections, exclusions, and the new audit.
+The evidence download includes verified Publication receipts from automatic repairs.
+
+Open a requirement to see its verified count and remaining cases.
+Use the filters to find missing source facts, uncertain identities, and cases that need reference evidence.
+Use Kimi for supported case reviews when you need an evidence recommendation.
+Provide evidence for unresolved records, passages, or model decisions before another audit.
+Items that other accounts created are read-only.
+
 ## Prepare and publish a manuscript repair
 
-1. Select **Start manuscript repairs** to prepare all eligible items in one release.
+1. Select **Prepare eligible release** to prepare eligible items for manual publication.
 2. Open a case and select **Prepare repair release** if you need a specific case.
 3. In **Repair releases**, approve the scoped release.
 4. Run the dry run.
@@ -40,6 +65,8 @@ The job tray opens the applicable queue in the workspace.
 ## API and verification
 
 - `admin_gila_repairs.py` serves `POST /api/admin/wikidata-gila-repairs/prepare-batch` and `GET /api/admin/wikidata-gila-repairs/preparations`.
+- `POST /api/admin/wikidata-gila-repairs/repair-all` queues `wikidata_gila_repair`. The status route includes its current phase and final result.
+- `wikidata_gila_repair_job.py` coordinates the existing jobs and retains their results. It uses a private, expiring credential grant.
 - The batch route gives the existing preparation worker the eligible targets and current audit snapshot.
 - The worker checks each target and records the results before it seals a mixed release.
 - The `prepare-next` route remains available for existing clients.
@@ -47,5 +74,6 @@ The job tray opens the applicable queue in the workspace.
 - `ManuscriptRepairReleases.tsx` restores release progress and embeds `WikidataPublicationPanel.tsx` in scoped mode.
 - `ReferenceRepairQueue.tsx` and `WikidataRepairInventory.tsx` provide the shared controls for the audit page and direct routes.
 - `test_admin_gila_repairs.py` checks job admission, reuse, and saved releases.
+- That suite also checks the automatic admission, exact claim selection, and final audit after a repair failure.
 - `test_gila_exact_troki_author_repair.py` checks a mixed batch and a batch with zero owned targets.
 - `admin-gila-repairs.spec.ts` checks preparation, approval, dry run, history, publish, and reference repair on the audit URL.

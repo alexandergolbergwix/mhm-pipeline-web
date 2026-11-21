@@ -1084,6 +1084,7 @@ def _work_target_identity_error(
                 or len(document.get("statements", [])) != 1
                 or troki.author_statement(document) is None
                 or not troki.work_matches(snapshot.document)
+                or document.get("publication_gila_retry_base", snapshot.revision) != snapshot.revision
             ):
                 return "The exact author repair evidence changed"
             return None

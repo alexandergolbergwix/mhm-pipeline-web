@@ -12,19 +12,28 @@ from sqlalchemy.orm import defer
 from app.auth.admin import require_admin
 from app.auth.session import AuthContext
 from app.db import get_session
-from app.models.publication import Publication
+from app.models.publication import (
+    Publication,
+    PublicationExecution,
+    PublicationWriteIntent,
+    PublicationWriteReceipt,
+)
 from app.models.run_job import (
     ACTIVE_JOB_STATUSES,
     JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
+    JOB_KIND_WIKIDATA_GILA_REPAIR,
+    JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
     RunJob,
 )
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
 from app.pipeline.wikidata_gila_audit_job import KIND, gila_cases
 from app.pipeline.wikidata_gila_case_review import reviewable
+from app.pipeline.wikidata_publication_prepare_job import audited_batch_params
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.pipeline.wikidata_reference_repair_job import load_seed
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
+from app.publication.credentials import SavedPublicationCredentialResolver, seal_execution_credential
 from app.routers.admin_reference_repairs import latest as latest_reference_job
 from app.routers.runs import _lookup_run_with_access
 from app.schemas.publication import PreparePublicationRequest, RunPublicationSource
@@ -82,13 +91,45 @@ async def status(auth: Admin, db: Database):
         if job and job.status == "succeeded"
         else await _latest(db, run.id, succeeded=True, thin=True)
     )
+    repair = await db.scalar(select(RunJob).options(defer(RunJob.params)).where(
+        RunJob.run_id == run.id, RunJob.kind == JOB_KIND_WIKIDATA_GILA_REPAIR,
+    ).order_by(RunJob.created_at.desc(), RunJob.id.desc()).limit(1))
     return {
         "run_id": str(run.id),
         "job": _job_summary(job),
+        "automatic_repair": {**_job_summary(repair), "result": repair.result} if repair else None,
         "report": {"id": str(report.id), "finished_at": report.finished_at, **report.result}
         if report
         else None,
     }
+
+
+@router.post("/repair-all")
+async def repair_all(auth: Admin, db: Database):
+    run = await _lookup_run_with_access(db, _run_id(), auth, write=True)
+    cycle = f"gila-repair:{uuid.uuid4()}"
+    try:
+        credential = await SavedPublicationCredentialResolver(db, auth.user.id, auth.kek).resolve(
+            f"wikidata:production:{auth.user.id}",
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    try:
+        job = await create_job(
+            db, project_id=run.project_id, run_id=run.id,
+            kind=JOB_KIND_WIKIDATA_GILA_REPAIR, created_by=auth.user.id,
+            params={
+                "_cycle": cycle,
+                "_publication_credential": seal_execution_credential(
+                    credential, publication_id=str(run.id), execution_id=cycle,
+                ),
+            },
+        )
+    except ActiveJobError as exc:
+        job = await db.get(RunJob, exc.job_id)
+        if job is None or job.created_by != auth.user.id:
+            raise HTTPException(409, "Another administrator has an active repair job.") from exc
+    return serialise_job(job)
 
 
 @router.post("/start")
@@ -137,6 +178,21 @@ async def evidence(auth: Admin, db: Database, audit_id: uuid.UUID):
                         "qid", "before_revision", "after_revision", "completed_at",
                     )},
                 })
+    execution_ids = await db.scalars(select(RunJob.params["execution_id"].as_string()).where(
+        RunJob.run_id == run.id,
+        RunJob.kind == JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
+        RunJob.params["_gila_cycle_parent"].as_string().is_not(None),
+    ))
+    manuscript_receipts = (await db.execute(select(
+        PublicationExecution.publication_id, PublicationWriteReceipt.qid,
+        PublicationWriteReceipt.fingerprint, PublicationWriteReceipt.created_at,
+    ).join(PublicationWriteIntent, PublicationWriteIntent.execution_id == PublicationExecution.id)
+        .join(PublicationWriteReceipt, PublicationWriteReceipt.intent_id == PublicationWriteIntent.id)
+        .where(
+            PublicationExecution.id.in_([uuid.UUID(value) for value in execution_ids if value]),
+            PublicationWriteReceipt.status == "succeeded",
+            PublicationWriteReceipt.created_at <= report.finished_at,
+        ))).all() if report.finished_at else []
     return {
         "audit_id": str(report.id),
         "finished_at": report.finished_at,
@@ -144,6 +200,11 @@ async def evidence(auth: Admin, db: Database, audit_id: uuid.UUID):
         "all_requirements_verified": report.result["all_requirements_verified"],
         "checked_manuscripts": report.params.get("_gila_checked_manuscripts"),
         "reference_repairs": receipts,
+        "manuscript_repairs": [
+            {"publication_id": str(publication_id), "qid": qid, "fingerprint": fingerprint,
+             "verified_at": verified_at}
+            for publication_id, qid, fingerprint, verified_at in manuscript_receipts
+        ],
         "unchecked_passages": report.result["requirement_coverage"]["unchecked_passages"],
         "review_cases": [
             {key: row[key] for key in (
@@ -298,40 +359,17 @@ async def prepare_batch(body: AuditSelection, auth: Admin, db: Database):
         publication = await db.get(Publication, uuid.UUID(publication_id))
         if publication is not None and publication.state not in {"failed", "cancelled"}:
             return serialise_job(previous)
-    rows = gila_cases(report)
-    eligible = list({
-        (case["local_id"], case["qid"], case.get("repair_kind") == "troki_author")
-        for case in rows
-        if case.get("can_prepare") and case.get("local_id") and case.get("qid")
-    })
-    if not eligible:
+    try:
+        params = audited_batch_params(report, auth.user.id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    if not params:
         return None
-    if not all(report.params.get(key) for key in (
-        "_gila_build_revision", "_gila_build_digest", "_gila_source_fingerprint",
-    )):
-        raise HTTPException(409, "Run a fresh audit before preparation.")
-    payload = PreparePublicationRequest(
-        profile_id="mhm-wikidata", profile_version="1-nodes", target="live",
-        source=RunPublicationSource(projection_source="canonical"),
-    )
     try:
         job = await create_job(
             db, project_id=run.project_id, run_id=run.id,
             kind=JOB_KIND_WIKIDATA_PUBLICATION_PREPARE, created_by=auth.user.id,
-            params={
-                "actor_id": str(auth.user.id),
-                "request": payload.model_dump(mode="json"),
-                "_gila_batch": sorted(eligible),
-                "_gila_audit_id": str(report.id),
-                "_gila_build_snapshot": [
-                    report.params["_gila_build_revision"], report.params["_gila_build_digest"],
-                ],
-                "_gila_source_fingerprint": report.params["_gila_source_fingerprint"],
-                "_gila_open_case_counts": {
-                    "manual_review": sum(row.get("disposition") == "manual_review" for row in rows),
-                    "not_checked": sum(row.get("disposition") == "not_checked" for row in rows),
-                },
-            },
+            params=params,
         )
     except ActiveJobError as exc:
         job = await db.get(RunJob, exc.job_id)

@@ -2,16 +2,20 @@ import json
 import uuid
 import zlib
 from base64 import b64encode
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from app.models.run_job import RunJob
 from app.models.user import User
 from app.pipeline import wikidata_gila_audit_job as worker
+from app.pipeline.wikidata_gila_repair_job import RepairCycle
 from app.pipeline import wikidata_publication_prepare_job as prepare_worker
 from app.pipeline.marc_verify_context import load_run_marc_records
 from app.pipeline.wikidata_qid_ledger import record_ledger_mapping
 from app.publication.runtime import StudioCacheProjectionSource
+from app.publication.types import TargetRef
+from app.publication.wikidata_gateway import CredentialMaterial
 from app.routers import admin_gila_repairs as router
 from app.routers import wikidata_studio
 from fastapi import HTTPException
@@ -29,6 +33,81 @@ def test_public_audit_snapshot_retains_exact_entities_across_batches(tmp_path):
     assert snapshot.get("Q3") is None
     with pytest.raises(ValueError, match="one response per exact QID"):
         snapshot.add_batch({"Q1": first})
+
+
+@pytest.mark.asyncio
+async def test_automatic_repair_requires_admin_and_attaches_to_active_job(sample_run, db_session, monkeypatch):
+    client = sample_run["client"]
+    user = await db_session.get(User, sample_run["user_id"])
+    monkeypatch.setattr(router, "_run_id", lambda: sample_run["run_id"])
+    spawn = Mock()
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", spawn)
+    credential = CredentialMaterial(
+        credential_id=f"wikidata:production:{user.id}",
+        target=TargetRef(site="www.wikidata.org", environment="production"),
+        secret="fixture-credential",
+    )
+    monkeypatch.setattr(router.SavedPublicationCredentialResolver, "resolve", AsyncMock(return_value=credential))
+    monkeypatch.setattr(router, "seal_execution_credential", Mock(return_value="fixture-envelope"))
+    endpoint = "/api/admin/wikidata-gila-repairs/repair-all"
+    assert (await client.post(endpoint)).status_code == 403
+    user.role = "admin"
+    await db_session.commit()
+    assert (await client.post(f"/api/runs/{sample_run['run_id']}/jobs", json={
+        "kind": "wikidata_gila_repair", "params": {},
+    })).status_code == 403
+    first = await client.post(endpoint)
+    assert first.status_code == 200
+    repeated = await client.post(endpoint)
+    assert first.json()["id"] == repeated.json()["id"]
+    assert first.json()["params"] == {}
+    job = await db_session.get(RunJob, spawn.call_args.args[0])
+    assert job.params["_publication_credential"] == "fixture-envelope"
+    assert job.params["_cycle"].startswith("gila-repair:")
+    spawn.assert_called_once()
+
+
+def test_automatic_repair_selects_only_the_exact_audited_claim():
+    correct = {"property": "P571", "value": "+1650-00-00T00:00:00Z", "precision": 9}
+    wrong_precision = {**correct, "precision": 11}
+    unrelated = {"property": "P50", "value": "Q42"}
+    fact = {"property": "P571", "expected_value": correct["value"], "expected_precision": 9}
+    assert prepare_worker.audited_statements(
+        {"statements": [correct, wrong_precision, unrelated]}, [fact],
+    ) == [correct]
+    assert prepare_worker.audited_statements(
+        {"statements": [correct, {**correct, "references": [{"property": "P248"}]}]}, [fact],
+    ) == []
+
+
+@pytest.mark.asyncio
+async def test_repair_cycle_rebuilds_then_runs_both_repair_scopes_and_verifies():
+    cycle = RepairCycle(SimpleNamespace(
+        id=uuid.uuid4(), run_id=uuid.uuid4(), project_id=uuid.uuid4(), created_by=uuid.uuid4(),
+        params={"_publication_credential": "fixture-envelope", "_cycle": "fixture-cycle"},
+    ))
+    audit = SimpleNamespace(status="succeeded")
+    verified = SimpleNamespace(
+        id=uuid.uuid4(), status="succeeded",
+        result={"email_points": [{"status": "verified"}, {"status": "manual_review"}], "reference_blocks": 459},
+    )
+    cycle.stage = AsyncMock(side_effect=[
+        SimpleNamespace(status="failed", progress={"phase": "source_rebuild_required"}),
+        SimpleNamespace(status="succeeded"), audit, verified,
+    ])
+    cycle.references = AsyncMock()
+    cycle.publication = AsyncMock(side_effect=ValueError("The source changed before publication."))
+    await cycle.run()
+    assert [call.args[1] for call in cycle.stage.await_args_list] == [
+        "initial_audit", "rebuild", "audit_after_rebuild", "verify",
+    ]
+    assert [call.args for call in cycle.references.await_args_list] == [
+        ("original", audit), ("remaining", audit),
+    ]
+    cycle.publication.assert_awaited_once_with(audit)
+    assert cycle.result["requirements_verified"] == 1
+    assert cycle.result["repeated_references"] == 459
+    assert cycle.result["stages_needing_attention"][0]["stage"] == "publication"
 
 
 @pytest.mark.asyncio

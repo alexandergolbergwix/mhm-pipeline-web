@@ -15,6 +15,7 @@ export type RunJobKind =
   | "wikidata_studio_build"
   | "wikidata_reference_repair"
   | "wikidata_gila_audit"
+  | "wikidata_gila_repair"
   | "wikidata_gila_case_review"
   | "wikidata_upload"
   | "wikidata_publication_ai_review"
@@ -50,6 +51,7 @@ export interface RunJobProgress {
   process_eta_seconds?: number | null;
   elapsed_seconds?: number;
   current_label?: string;
+  next_attempt_at?: string | null;
   upload_target?: string;
   steps?: Array<{
     id?: string;
@@ -145,6 +147,7 @@ export const JOB_KIND_LABELS: Record<string, string> = {
   wikidata_publication_prepare: "Wikidata Publication prepare",
   wikidata_reference_repair: "Wikidata reference repairs",
   wikidata_gila_audit: "Wikidata manuscript audit",
+  wikidata_gila_repair: "Automatic manuscript repair",
   wikidata_gila_case_review: "Manuscript case review",
   wikidata_publication_execution: "Wikidata Publication execution",
   hmo_schema_bootstrap:     "HMO schema bootstrap",
@@ -179,6 +182,7 @@ export function jobRunHref(job: RunJobSnapshot): string {
 }
 
 function jobRunPath(job: RunJobSnapshot): string {
+  if (job.params.repair_workspace === true) return "/admin/wikidata-gila-repairs";
   switch (job.kind) {
     case "extraction":
     case "ner_verify":
@@ -190,6 +194,7 @@ function jobRunPath(job: RunJobSnapshot): string {
         ? "/admin/wikidata-gila-repairs#repair-references"
         : "/admin/wikidata-gila-repairs#repair-references-original";
     case "wikidata_gila_audit":
+    case "wikidata_gila_repair":
     case "wikidata_gila_case_review":
       return "/admin/wikidata-gila-repairs";
     case "wikidata_studio_build":

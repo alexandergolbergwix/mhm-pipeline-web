@@ -279,6 +279,8 @@ class StudioCacheProjectionSource(ProjectionSource):
         self.reference_only: dict[str, dict[str, object]] = {}
         self.automatic_documents: dict[str, dict[str, object]] = {}
         self.selected_existing: dict[str, str] = {}
+        self.repair_statements: dict[str, list[dict]] = {}
+        self.exact_author_retry_base: int | None = None
         self.troki_author_only = False
         # None → the ledger namespace follows WIKIDATA_TEST_MODE (the same
         # default the Studio build records with); prepare() sets it from the
@@ -421,8 +423,17 @@ class StudioCacheProjectionSource(ProjectionSource):
             item = dict(item)
             item.pop("publication_gila_repair_qid", None)
             item.pop("publication_gila_troki_author", None)
+            item.pop("publication_gila_retry_base", None)
             if self.selected_existing:
                 item["publication_gila_repair_qid"] = self.selected_existing[_item_entity_key(item)]
+            exact_statements = self.repair_statements.get(_item_entity_key(item))
+            if exact_statements is not None:
+                if any(statement not in item.get("statements", []) for statement in exact_statements):
+                    raise PublicationSourceError("The audited repair statements changed")
+                item.update(
+                    statements=exact_statements, deferred_statements=[],
+                    labels={}, descriptions={}, aliases={},
+                )
             if self.troki_author_only and _item_entity_key(item) == troki.WORK_LOCAL_ID:
                 statement = troki.author_statement(item)
                 if statement is None:
@@ -436,6 +447,8 @@ class StudioCacheProjectionSource(ProjectionSource):
                     "descriptions": {},
                     "aliases": {},
                 })
+                if self.exact_author_retry_base is not None:
+                    item["publication_gila_retry_base"] = self.exact_author_retry_base
             from converter.wikidata.quickstatements import (  # noqa: PLC0415
                 reference_data, validate_source_references,
             )
@@ -643,6 +656,7 @@ class PublicationRuntime:
         clock: Callable[[], datetime] | None = None,
         dry_run_progress: Callable[[int, int], Awaitable[None]] | None = None,
         execution_progress: Callable[[int, int], Awaitable[None]] | None = None,
+        authorize_execution: Callable[[], Awaitable[bool]] | None = None,
         freshness_timeout_seconds: float | None = None,
     ) -> None:
         self._session = session
@@ -650,6 +664,7 @@ class PublicationRuntime:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._dry_run_progress = dry_run_progress
         self._execution_progress = execution_progress
+        self._authorize_execution = authorize_execution
         self._projection_source = StudioCacheProjectionSource(
             session, freshness_timeout_seconds=freshness_timeout_seconds,
         )
@@ -665,6 +680,8 @@ class PublicationRuntime:
         selected_existing: dict[str, str] | None = None,
         expected_snapshot: tuple[str, str] | None = None,
         troki_author_only: bool = False,
+        repair_statements: dict[str, list[dict]] | None = None,
+        exact_author_retry_base: int | None = None,
     ) -> PublicationMutationResponse:
         if request.profile_id != "mhm-wikidata" or request.profile_version not in {"1", "1-nodes"}:
             raise PublicationSourceError("The requested publication profile is unsupported")
@@ -680,6 +697,8 @@ class PublicationRuntime:
         self._projection_source.automatic_documents = automatic_documents or {}
         self._projection_source.selected_existing = selected_existing or {}
         self._projection_source.troki_author_only = troki_author_only
+        self._projection_source.repair_statements = repair_statements or {}
+        self._projection_source.exact_author_retry_base = exact_author_retry_base
         target = _target_ref(request.target)
         self._projection_source.ledger_is_test = target.environment != "production"
         from app.publication.reference_only import resolve_reference_selection
@@ -852,6 +871,7 @@ class PublicationRuntime:
             clock=self._clock,
             dry_run_progress=self._dry_run_progress,
             execution_progress=self._execution_progress,
+            **({"authorize_execution": self._authorize_execution} if self._authorize_execution else {}),
         )
 
     async def _publication_for_run(

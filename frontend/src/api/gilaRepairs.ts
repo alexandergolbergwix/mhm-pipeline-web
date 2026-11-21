@@ -75,13 +75,26 @@ export interface GilaReport {
 export interface GilaStatus {
   run_id: string;
   job: AuditJob | null;
+  automatic_repair?: AutomaticRepairJob | null;
   report: GilaReport | null;
+}
+
+export interface AutomaticRepairJob extends AuditJob {
+  result: {
+    requirements_verified?: number;
+    items_published: number;
+    reference_items_corrected: number;
+    repeated_references?: number;
+    exclusions: Array<{qid: string | null; reason: string}>;
+    stages_needing_attention: Array<{stage: string; reason: string}>;
+  } | null;
 }
 
 const endpoint = "/admin/wikidata-gila-repairs";
 export const GilaRepairs = {
   status: () => api.get<GilaStatus>(endpoint),
   start: () => api.post<AuditJob>(endpoint + "/start", {}),
+  repairAll: () => api.post<RunJobSnapshot>(endpoint + "/repair-all", {}),
   evidence: (auditId: string) => api.get<unknown>(endpoint + "/evidence?" + new URLSearchParams({audit_id: auditId})),
   cases: (params: URLSearchParams) => api.get<{items: GilaCase[]; total: number}>(endpoint + "/cases?" + params),
   latestCaseReview: (auditId: string, caseId: string) =>

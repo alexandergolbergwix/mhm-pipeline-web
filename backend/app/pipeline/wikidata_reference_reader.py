@@ -118,6 +118,12 @@ class ReferenceItemReader:
             return None
         return uid
 
+    async def current_revision(self, qid: str) -> int:
+        if not _QID.fullmatch(qid):
+            raise ValueError("The revision check requires an exact item QID.")
+        async with self._client_factory() as client:
+            return await self._current_revision(client, qid)
+
     @staticmethod
     async def _get(client: httpx.AsyncClient, url: str, params: dict[str, str]) -> dict:
         try:

@@ -17,6 +17,7 @@ from app.db import get_session
 from app.models.run_job import (
     ACTIVE_JOB_STATUSES,
     JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
+    JOB_KIND_WIKIDATA_GILA_REPAIR,
     SUPPORTED_JOB_KINDS,
     RunJob,
 )
@@ -34,6 +35,7 @@ from app.settings import get_settings
 router = APIRouter(tags=["run-jobs"])
 ADMIN_JOB_KINDS = (
     "wikidata_reference_repair", "wikidata_gila_audit", JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
+    JOB_KIND_WIKIDATA_GILA_REPAIR,
 )
 
 

@@ -22,7 +22,73 @@ from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.publication.credentials import configured_publication_gateway_factory
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
 from app.publication.runtime import PublicationRuntime, _has_blocking_item_issue
-from app.schemas.publication import PreparePublicationRequest
+from app.schemas.publication import PreparePublicationRequest, RunPublicationSource
+
+
+def audited_batch_params(report, actor_id):
+    from app.pipeline.wikidata_gila_audit_job import gila_cases
+
+    rows = gila_cases(report)
+    eligible = {
+        (case["local_id"], case["qid"], case.get("repair_kind") == "troki_author")
+        for case in rows
+        if case.get("can_prepare") and case.get("local_id") and case.get("qid")
+    }
+    if not eligible:
+        return None
+    revision, digest, fingerprint = (
+        report.params.get(key) for key in (
+            "_gila_build_revision", "_gila_build_digest", "_gila_source_fingerprint",
+        )
+    )
+    if not (revision and digest and fingerprint):
+        raise ValueError("Run a fresh audit before preparation.")
+    request = PreparePublicationRequest(
+        profile_id="mhm-wikidata", profile_version="1-nodes", target="live",
+        source=RunPublicationSource(projection_source="canonical"),
+    )
+    return {
+        "actor_id": str(actor_id),
+        "request": request.model_dump(mode="json"),
+        "_gila_batch": sorted(eligible),
+        "_gila_audit_id": str(report.id),
+        "_gila_build_snapshot": [revision, digest],
+        "_gila_source_fingerprint": fingerprint,
+        "_gila_open_case_counts": {
+            "manual_review": sum(row.get("disposition") == "manual_review" for row in rows),
+            "not_checked": sum(row.get("disposition") == "not_checked" for row in rows),
+        },
+    }
+
+
+def audited_statements(item: dict, cases: list[dict]) -> list[dict]:
+    from app.pipeline.wikidata_gila_facts import SourceFact, _matches
+
+    selected = []
+    for case in cases:
+        prop = case.get("property")
+        if not isinstance(prop, str) or not prop.startswith("P"):
+            continue
+        for value in case.get("expected_values") or [case.get("expected_value")]:
+            if not isinstance(value, str) or not value:
+                continue
+            fact = SourceFact(
+                str(case.get("source_field") or ""), prop, value,
+                qualifiers=case.get("expected_qualifiers") or {},
+                precision=case.get("expected_precision"),
+                calendar=case.get("expected_calendar") or "",
+                unit=case.get("expected_unit") or "",
+            )
+            matches = [
+                statement for statement in item.get("statements", [])
+                if (statement.get("property") or statement.get("property_id")) == prop
+                and _matches(fact, statement)
+            ]
+            if len(matches) != 1:
+                return []
+            if matches[0] not in selected:
+                selected.append(matches[0])
+    return selected
 
 
 async def _author_evidence_is_current(reader: ReferenceItemReader) -> bool:
@@ -140,6 +206,7 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
         selected = params.get("_selected_existing")
         batch = params.get("_gila_batch")
         batch_result = {}
+        exact_statements = {}
         if selected is not None or batch:
             from app.pipeline.marc_verify_context import load_run_marc_records
             from app.pipeline.wikidata_gila_audit_job import gila_record_fingerprint
@@ -160,18 +227,40 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
                     await finish_job(job_id, status=JOB_STATUS_CANCELLED)
                     return
                 selected, troki_author_only, batch_result = selection
-                latest = await db.scalar(select(RunJob.id).where(
+                latest = await db.scalar(select(RunJob).where(
                     RunJob.run_id == job.run_id,
                     RunJob.kind == JOB_KIND_WIKIDATA_GILA_AUDIT,
                     RunJob.status == JOB_STATUS_SUCCEEDED,
                 ).order_by(RunJob.created_at.desc(), RunJob.id.desc()).limit(1))
                 await db.commit()
-                if str(latest) != params["_gila_audit_id"]:
+                if not latest or str(latest.id) != params["_gila_audit_id"]:
                     await finish_job(
                         job_id, status=JOB_STATUS_FAILED,
                         error="The audit changed. Start the batch from the latest audit.",
                     )
                     return
+                if selected and params.get("_gila_cycle_parent"):
+                    from app.pipeline.wikidata_gila_audit_job import gila_cases
+
+                    cases = {}
+                    for row in gila_cases(latest):
+                        if row.get("can_prepare") and row.get("local_id") in selected and row.get("qid") == selected[row["local_id"]]:
+                            cases.setdefault(row["local_id"], []).append(row)
+                    for local_id, qid in list(selected.items()):
+                        if troki_author_only and local_id == troki.WORK_LOCAL_ID:
+                            continue
+                        item = await fetch_merged_wikidata_item(
+                            db, job.run_id, local_id, source="canonical",
+                        )
+                        statements = audited_statements(item or {}, cases.get(local_id, []))
+                        if statements:
+                            exact_statements[local_id] = statements
+                        else:
+                            del selected[local_id]
+                            batch_result["exclusions"].append({"qid": qid, "reason": "exact_claim_needs_evidence"})
+                    batch_result["prepared_qids"] = sorted(selected.values())
+                    batch_result["batch_counts"]["prepared"] = len(selected)
+                    await db.commit()
                 if not selected:
                     await finish_job(
                         job_id, status=JOB_STATUS_SUCCEEDED, result=batch_result,
@@ -205,10 +294,14 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
             run_id=job.run_id,
             request=PreparePublicationRequest.model_validate(payload),
             actor_id=actor_id,
+            idempotency_key=str(job.id) if params.get("_gila_cycle_parent") else None,
             **({
                 "selected_existing": selected,
                 "expected_snapshot": tuple(params["_gila_build_snapshot"]),
                 "troki_author_only": troki_author_only,
+                **({"repair_statements": exact_statements} if exact_statements else {}),
+                **({"exact_author_retry_base": params["_gila_retry_base"]}
+                   if troki_author_only and params.get("_gila_retry_base") else {}),
             } if selected is not None else {}),
         )
     publication = response.publication

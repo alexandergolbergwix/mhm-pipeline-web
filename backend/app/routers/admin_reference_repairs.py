@@ -136,40 +136,55 @@ async def start(body: StartReferenceRepairs, auth: Admin, db: Database):
     seed, digest = load_remaining_seed() if body.scope == "remaining" else load_seed()
     run_id = uuid.UUID(seed["manifest"]["run_id"])
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
-    if not get_settings().gila_reference_cloud_enabled:
-        raise HTTPException(409, "The backend handoff is not enabled.")
     if body.confirmed is not True or body.scope_digest != digest:
         raise HTTPException(409, "Confirm the current reviewed reference scope.")
-    if str(auth.user.id) != seed["manifest"]["actor_user_id"]:
+    return serialise_job(await queue_reviewed_reference_job(
+        db, run, auth.user.id, body.scope, seed, digest,
+    ))
+
+
+async def queue_reviewed_reference_job(db, run, actor_id, scope, seed, digest, *, parent_id=None):
+    if not get_settings().gila_reference_cloud_enabled:
+        raise HTTPException(409, "The backend handoff is not enabled.")
+    if str(actor_id) != seed["manifest"]["actor_user_id"]:
         raise HTTPException(403, "The original administrator must resume this reviewed scope.")
-    prior = await latest(db, run_id, body.scope)
+    prior = await latest(db, run.id, scope)
     if prior and prior.status in {"queued", "running", "succeeded"}:
-        return serialise_job(prior)
+        return prior
     checkpoint = (
         prior.params.get("_reference_checkpoint", seed["checkpoint"])
         if prior
         else seed["checkpoint"]
     )
-    if prior and (prior.created_by != auth.user.id or prior.params.get("scope_digest") != digest):
+    if prior and (prior.created_by != actor_id or prior.params.get("scope_digest") != digest):
         raise HTTPException(409, "The previous job has another actor or scope.")
+    if prior and parent_id and prior.params.get("_gila_cycle_parent") == str(parent_id):
+        return prior
     if reference_resume_action(checkpoint) == "review":
         raise HTTPException(409, "The previous outcome requires inspection before another start.")
     try:
         job = await create_job(
             db,
             project_id=run.project_id,
-            run_id=run_id,
+            run_id=run.id,
             kind=KIND,
             params={
                 "scope_digest": digest,
-                "reference_scope": body.scope,
+                "reference_scope": scope,
                 "total": len(seed["manifest"]["qids"]),
                 "_reference_checkpoint": checkpoint,
+                **({
+                    "_gila_cycle_parent": str(parent_id),
+                    "repair_workspace": True,
+                    "_gila_baseline_corrections": sum(
+                        row.get("corrected") is True for row in checkpoint.get("results", [])
+                    ),
+                } if parent_id else {}),
             },
-            created_by=auth.user.id,
+            created_by=actor_id,
         )
     except ActiveJobError as error:
         job = await db.get(RunJob, error.job_id)
         if not job or job.params.get("scope_digest") != digest:
             raise HTTPException(409, "Another reference scope is active.") from error
-    return serialise_job(job)
+    return job
