@@ -5,7 +5,7 @@ import {useProjectEvents} from "@/api/realtime";
 import {ReferenceRepairs, type ReferenceRepairJob, type ReferenceRepairStatus, type ReferenceScope} from "@/api/referenceRepairs";
 import {useRunJobs} from "@/stores/runJobs";
 
-export function useReferenceRepairStatus(scope: ReferenceScope) {
+export function useReferenceRepairStatus(scope: ReferenceScope, enabled = true) {
   const [state, setState] = useState<ReferenceRepairStatus | null>(null);
   const [error, setError] = useState("");
   const [lastSync, setLastSync] = useState<number | null>(null);
@@ -13,6 +13,7 @@ export function useReferenceRepairStatus(scope: ReferenceScope) {
   const refreshRef = useRef<() => void>(() => {});
 
   useEffect(() => {
+    if (!enabled) return;
     let stopped = false;
     let inflight = false;
     let dirty = false;
@@ -47,7 +48,7 @@ export function useReferenceRepairStatus(scope: ReferenceScope) {
     refreshRef.current = () => void refresh();
     void refresh();
     return () => { stopped = true; ++generation.current; clearTimeout(timer); };
-  }, [scope]);
+  }, [enabled, scope]);
 
   const refresh = useCallback(() => refreshRef.current(), []);
   useProjectEvents(state?.project_id ?? state?.job?.project_id, message => {

@@ -5,8 +5,6 @@ from base64 import b64encode
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from fastapi import HTTPException
-
 from app.models.run_job import RunJob
 from app.models.user import User
 from app.pipeline import wikidata_gila_audit_job as worker
@@ -16,6 +14,8 @@ from app.pipeline.wikidata_qid_ledger import record_ledger_mapping
 from app.publication.runtime import StudioCacheProjectionSource
 from app.routers import admin_gila_repairs as router
 from app.routers import wikidata_studio
+from fastapi import HTTPException
+
 from tests.test_publication_router import _add_canonical_cache, _canonical_item
 
 
@@ -75,10 +75,13 @@ async def test_repair_preparation_checks_freshness_in_the_worker(
         return await check_current(*args, timeout_seconds=timeout_seconds, **kwargs)
 
     monkeypatch.setattr(wikidata_studio, "_studio_cache_is_current", checked)
-    response = await sample_run["client"].post(
-        "/api/admin/wikidata-gila-repairs/prepare",
-        json={"audit_id": str(report.id), "case_id": "repair:1"},
-    )
+    client = sample_run["client"]
+    endpoint = "/api/admin/wikidata-gila-repairs"
+    audit = {"audit_id": str(report.id)}
+    if state == "current":
+        response = await client.post(f"{endpoint}/prepare-next", json=audit)
+    else:
+        response = await client.post(f"{endpoint}/prepare", json={**audit, "case_id": "repair:1"})
     if state == "foreign":
         assert response.status_code == 403
         spawn.assert_not_called()
@@ -87,6 +90,10 @@ async def test_repair_preparation_checks_freshness_in_the_worker(
     assert timeouts == []
     fetch_item.assert_not_awaited()
     job_id = uuid.UUID(response.json()["id"])
+    if state == "current":
+        resumed = await client.post(f"{endpoint}/prepare-next", json=audit)
+        assert resumed.json()["id"] == str(job_id)
+        assert creator.await_count == 1
     await prepare_worker.run_wikidata_publication_prepare_job(job_id)
     job = await db_session.get(RunJob, job_id)
     if state != "current":
@@ -97,6 +104,14 @@ async def test_repair_preparation_checks_freshness_in_the_worker(
         return
     assert job.status == "succeeded", job.error
     assert job.result["publication_id"]
+    restored = await client.get(f"{endpoint}/preparations")
+    assert restored.json()["items"][0]["qids"] == ["Q42"]
+    assert restored.json()["items"][0]["publication_id"] == job.result["publication_id"]
+    assert restored.json()["items"][0]["case_id"] == "repair:1"
+    exhausted = await client.post(f"{endpoint}/prepare-next", json=audit)
+    assert exhausted.status_code == 200, exhausted.text
+    assert exhausted.json() is None
+    assert creator.await_count == 1
     fetch_item.assert_awaited_once()
     assert timeouts and set(timeouts) == {wikidata_studio.STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS}
 

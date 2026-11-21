@@ -13,6 +13,7 @@ from app.auth.admin import require_admin
 from app.auth.session import AuthContext
 from app.db import get_session
 from app.models.run_job import (
+    ACTIVE_JOB_STATUSES,
     JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
     RunJob,
@@ -35,9 +36,12 @@ CaseStatus = Literal[
 ]
 
 
-class PrepareRepair(BaseModel):
+class AuditSelection(BaseModel):
     model_config = ConfigDict(extra="forbid")
     audit_id: uuid.UUID
+
+
+class PrepareRepair(AuditSelection):
     case_id: str = Field(min_length=1, max_length=256)
 
 
@@ -234,6 +238,67 @@ async def review_case(body: PrepareRepair, auth: Admin, db: Database):
     return serialise_job(job)
 
 
+def _repair_jobs(run_id):
+    return select(RunJob).where(
+        RunJob.run_id == run_id,
+        RunJob.kind == JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
+        RunJob.params["_gila_source_fingerprint"].as_string().is_not(None),
+        RunJob.params["_gila_build_snapshot"].as_string().is_not(None),
+    )
+
+
+def _repair_job_summary(job: RunJob):
+    params = job.params
+    targets = params.get("_selected_existing") or {}
+    return {
+        **_job_summary(job),
+        "case_id": params.get("_gila_case_id"),
+        "qids": list(targets.values()),
+        "publication_id": (job.result or {}).get("publication_id"),
+    }
+
+
+@router.get("/preparations")
+async def preparations(
+    auth: Admin, db: Database,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+):
+    run = await _lookup_run_with_access(db, _run_id(), auth)
+    rows = (await db.scalars(_repair_jobs(run.id).order_by(
+        RunJob.created_at.desc(), RunJob.id.desc(),
+    ).offset(offset).limit(limit + 1))).all()
+    return {"items": [_repair_job_summary(job) for job in rows[:limit]], "more": len(rows) > limit}
+
+
+@router.post("/prepare-next")
+async def prepare_next(body: AuditSelection, auth: Admin, db: Database):
+    run = await _lookup_run_with_access(db, _run_id(), auth, write=True)
+    report = await _require_report(db, run.id, body.audit_id)
+    active = await db.scalar(_repair_jobs(run.id).where(RunJob.status.in_(ACTIVE_JOB_STATUSES)))
+    if active:
+        return serialise_job(active)
+    ready = [case for case in gila_cases(report) if case.get("can_prepare")]
+    if not ready:
+        return None
+    revision = report.params.get("_gila_build_revision")
+    digest = report.params.get("_gila_build_digest")
+    source = report.params.get("_gila_source_fingerprint")
+    if not (revision and digest and source):
+        raise HTTPException(409, "Run a fresh audit before preparation.")
+    snapshot = RunJob.params["_gila_build_snapshot"]
+    selected = RunJob.params["_selected_existing"]
+    prepared_mappings = (await db.scalars(_repair_jobs(run.id).with_only_columns(selected).where(
+        RunJob.status == "succeeded",
+        snapshot[0].as_string() == revision,
+        snapshot[1].as_string() == digest,
+        RunJob.params["_gila_source_fingerprint"].as_string() == source,
+    ))).all()
+    prepared = {qid for mapping in prepared_mappings if mapping for qid in mapping.values()}
+    row = next((case for case in ready if case.get("qid") not in prepared), None)
+    return await _prepare_case(auth, db, run.id, body.audit_id, row) if row else None
+
+
 @router.post("/prepare")
 async def prepare(body: PrepareRepair, auth: Admin, db: Database):
     run = await _lookup_run_with_access(db, _run_id(), auth, write=True)
@@ -241,7 +306,10 @@ async def prepare(body: PrepareRepair, auth: Admin, db: Database):
     row = next((case for case in gila_cases(report) if case["case_id"] == body.case_id), None)
     if not row or not row.get("can_prepare"):
         raise HTTPException(409, "This case needs source or identity review before publication.")
-    run_id = run.id
+    return await _prepare_case(auth, db, run.id, body.audit_id, row)
+
+
+async def _prepare_case(auth, db, run_id, audit_id, row):
     await db.commit()
     try:
         creator_uid = await ReferenceItemReader().creator_uid(row["qid"])
@@ -250,7 +318,7 @@ async def prepare(body: PrepareRepair, auth: Admin, db: Database):
     if creator_uid != GILA_CREATOR_UID:
         raise HTTPException(403, "This repair requires first-revision creator UID 6935067.")
     run = await _lookup_run_with_access(db, run_id, auth, write=True)
-    report = await _require_report(db, run.id, body.audit_id)
+    report = await _require_report(db, run.id, audit_id)
     payload = PreparePublicationRequest(
         profile_id="mhm-wikidata",
         profile_version="1-nodes",
@@ -267,6 +335,8 @@ async def prepare(body: PrepareRepair, auth: Admin, db: Database):
                 "actor_id": str(auth.user.id),
                 "request": payload.model_dump(mode="json"),
                 "_selected_existing": {row["local_id"]: row["qid"]},
+                "_gila_audit_id": str(audit_id),
+                "_gila_case_id": row["case_id"],
                 "_gila_build_snapshot": [
                     report.params["_gila_build_revision"], report.params["_gila_build_digest"],
                 ],

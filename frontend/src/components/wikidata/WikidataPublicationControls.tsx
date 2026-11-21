@@ -12,7 +12,9 @@ export interface WikidataPublicationControlsProps {
   publication: PublicationSummary;
   entities: PublicationEntity[];
   onAdvance: (command: PublicationAdvanceCommand) => void | Promise<void>;
-  auditHref: string;
+  auditHref?: string;
+  onOpenAudit?: () => void;
+  scopedRepair?: boolean;
   onPrepareNewRelease?: () => void | Promise<void>;
   onUseExisting?: (entityKeys: string[]) => void | Promise<void>;
   busyCommand?: PublicationAdvanceCommand["type"] | null;
@@ -49,6 +51,8 @@ export function WikidataPublicationControls({
   entities,
   onAdvance,
   auditHref,
+  onOpenAudit,
+  scopedRepair = false,
   onPrepareNewRelease,
   onUseExisting,
   busyCommand = null,
@@ -148,7 +152,7 @@ export function WikidataPublicationControls({
           {busyCommand ? commandLabel(busyCommand) : readiness.publishAllowed ? "Publish to Wikidata" : !readiness.approvalCurrent ? "Approve Release for checks" : "Check before publish"}
         </button>}
       </div>
-      {plan && <details open={aiActive || (!readiness.publishAllowed && !execution && !!plan.action_counts.blocked)}><summary className="cursor-pointer text-sm">Automatic preparation</summary><WikidataPublicationAiReview
+      {plan && !scopedRepair && <details open={aiActive || (!readiness.publishAllowed && !execution && !!plan.action_counts.blocked)}><summary className="cursor-pointer text-sm">Automatic preparation</summary><WikidataPublicationAiReview
         key={`${publication.publication_id}:${plan.plan_id}`} publication={publication}
         busy={busyCommand !== null} onAdvance={onAdvance} onActiveChange={setAiActive} /></details>}
       <details className="rounded-lg border border-white/10 p-3 space-y-3">
@@ -214,7 +218,7 @@ export function WikidataPublicationControls({
                 <summary className="cursor-pointer">Why this record is not included</summary>
                 <p className="break-words">{action.reason}</p>
               </details>
-              <WikidataBlockedActionDrawer
+              {!scopedRepair && <WikidataBlockedActionDrawer
                 entityKey={action.entity_key}
                 targetQid={action.target_qid}
                 consent={null}
@@ -222,7 +226,7 @@ export function WikidataPublicationControls({
                 target={publication.target}
                 disabled={busy || executionActive || !readiness.approvalCurrent || !publication.source_current}
                 onUseExisting={onUseExisting}
-              />
+              />}
               <p className="muted">Only the creator account can update an existing item. Use other items without updates.</p>
             </li>)}
           </ul>
@@ -267,9 +271,11 @@ export function WikidataPublicationControls({
         >
           {busyCommand === "publish" ? commandLabel("publish") : `Publish to ${publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}`}
         </button>
-        <a className="button-ghost text-sm ml-auto" href={auditHref} data-testid="publication-audit-link">
+        {onOpenAudit ? <button type="button" className="button-ghost text-sm ml-auto" onClick={onOpenAudit}>
           Publication history
-        </a>
+        </button> : <a className="button-ghost text-sm ml-auto" href={auditHref} data-testid="publication-audit-link">
+          Publication history
+        </a>}
       </div>
 
       </details>

@@ -1,13 +1,17 @@
-import {useEffect, useState} from "react";
-import {Link} from "react-router-dom";
+import {useCallback, useEffect, useState} from "react";
+import {useLocation} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
 import {GilaRepairs, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus} from "@/api/gilaRepairs";
-import {ReferenceRepairs, type ReferenceRepairStatus} from "@/api/referenceRepairs";
+import type {ReferenceRepairStatus, ReferenceScope} from "@/api/referenceRepairs";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
+import {ManuscriptRepairReleases} from "@/components/wikidata/ManuscriptRepairReleases";
+import {ReferenceRepairQueue} from "@/components/wikidata/ReferenceRepairQueue";
+import {WikidataRepairInventory} from "@/components/wikidata/WikidataRepairInventory";
 import {WikidataSourceReview} from "@/components/wikidata/WikidataSourceReview";
 import {useDebounce} from "@/hooks/useDebounce";
+import {useReferenceRepairStatus} from "@/hooks/useReferenceRepairStatus";
 import {useRunJobs} from "@/stores/runJobs";
 import {ensureRunJob, studioBuildProgressMessage, waitForRunJob} from "@/utils/waitForRunJob";
 
@@ -67,9 +71,17 @@ function failureText(error: unknown) {
   return error instanceof ApiError ? error.detail : error instanceof Error ? error.message : "The request failed.";
 }
 
-function AuditResult({report, queue, needsRecheck, onOpenCases}: {
-  report: GilaReport; queue?: ReferenceRepairStatus; needsRecheck: boolean;
+function AuditResult({
+  report, queue, needsRecheck, publishedSinceAudit, onOpenCases, onStartRepair, onOpenReferences,
+  preparing, auditBusy,
+}: {
+  report: GilaReport; queue: ReferenceRepairStatus | null; needsRecheck: boolean;
+  publishedSinceAudit: boolean;
   onOpenCases: (filter: CaseFilter | "") => void;
+  onStartRepair: () => void;
+  onOpenReferences: () => void;
+  preparing: boolean;
+  auditBusy: boolean;
 }) {
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -119,18 +131,18 @@ function AuditResult({report, queue, needsRecheck, onOpenCases}: {
     aria-label="Audit result">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h2 className="text-lg font-semibold">{needsRecheck ? "Reference repairs complete. A fresh audit is due."
-          : complete ? "All nine requirements verified" : "Work remains after the audit"}</h2>
+        <h2 className="text-lg font-semibold">{publishedSinceAudit ? "Manuscript edits published. A fresh audit is due."
+          : needsRecheck ? "Reference repairs complete. A fresh audit is due." : complete ? "All nine requirements verified" : "Work remains after the audit"}</h2>
         <p className="mt-1 text-sm muted">The audit checks Wikidata and makes no edits.</p>
         <p className="mt-1 text-xs muted">Last completed audit · {new Date(report.finished_at).toLocaleString()}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {report.case_count > 0 && <button className="button-primary"
-          onClick={() => onOpenCases("ready_to_prepare")}>Start manuscript repairs</button>}
-        {hasRepeatedReferences && <Link className={canStart ? "button-primary" : "button-ghost"}
-          to="/admin/wikidata-reference-repairs?scope=remaining">
-          {canStart ? "Start fixing references" : "View reference repairs"}
-        </Link>}
+        {report.case_count > 0 && <button className="button-primary" disabled={preparing || auditBusy} onClick={onStartRepair}>
+          {preparing ? "Request the repair…" : "Start manuscript repairs"}
+        </button>}
+        {hasRepeatedReferences && <button className="button-ghost" onClick={onOpenReferences}>
+          {canStart ? "Review reference queue" : "View reference repairs"}
+        </button>}
         {report.case_count > 0 && <button className="button-ghost"
           onClick={() => onOpenCases("")}>Review open cases</button>}
         <button className="button-ghost" disabled={exporting}
@@ -148,8 +160,9 @@ function AuditResult({report, queue, needsRecheck, onOpenCases}: {
       </div>)}
     </dl>
     {needsRecheck && <p className="text-sm muted">
-      {queue?.verified ? `The reference queue verified ${queue.verified.toLocaleString()} corrections after this audit.`
-        : "The reference queue finished after this audit."}{" "}
+      {publishedSinceAudit ? "A repair release updated Wikidata after this audit."
+        : queue?.verified ? `The reference queue verified ${queue.verified.toLocaleString()} corrections after this audit.`
+          : "The reference queue finished after this audit."}{" "}
       Run a fresh audit to check the current Wikidata revisions and all nine requirements.
     </p>}
     {referenceCounts && <p className="text-sm muted">
@@ -161,15 +174,18 @@ function AuditResult({report, queue, needsRecheck, onOpenCases}: {
   </section>;
 }
 
-function CaseDetails({item, report, runId, expanded}: {
-  item: GilaCase; report: GilaReport; runId: string; expanded: boolean;
+interface RepairCaseActions {
+  preparing: boolean;
+  onPrepare: (caseId: string) => void;
+  onSourceSaved: () => void;
+}
+
+function CaseDetails({item, report, runId, expanded, actions}: {
+  item: GilaCase; report: GilaReport; runId: string; expanded: boolean; actions: RepairCaseActions;
 }) {
   const [showSource, setShowSource] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [preparing, setPreparing] = useState(false);
-  const [prepareProgress, setPrepareProgress] = useState("");
-  const [publication, setPublication] = useState<string>();
   const [caseReview, setCaseReview] = useState<GilaCaseReview>();
   const [reviewProgress, setReviewProgress] = useState("");
   const canReview = item.disposition === "manual_review" && Boolean(item.qid && item.control_number)
@@ -220,29 +236,6 @@ function CaseDetails({item, report, runId, expanded}: {
   const links = item.qids ?? (item.qid ? [item.qid] : []);
   const reasons = [...new Set([item.reason, item.live_reason, item.completion_reason].filter(Boolean))];
 
-  async function prepare() {
-    setPreparing(true);
-    setError("");
-    setPrepareProgress("Request a repair release.");
-    try {
-      const job = await GilaRepairs.prepare(report.id, item.case_id);
-      const finished = await waitForRunJob(runId, job.id, {
-        onUpdate: snapshot => setPrepareProgress(
-          snapshot.progress.message ?? "Wait for the repair worker.",
-        ),
-      });
-      const id = finished.result?.publication_id;
-      if (typeof id !== "string") throw new Error("The worker did not return a Publication release.");
-      setPublication(id);
-      setNotice("The release is ready for review and a dry run.");
-    } catch (failure) {
-      setError(failureText(failure));
-    } finally {
-      setPreparing(false);
-      setPrepareProgress("");
-    }
-  }
-
   return <div className="space-y-4 border-t border-glass-line px-4 py-4 text-sm">
     {item.source_value && <blockquote className="whitespace-pre-wrap rounded-lg bg-[var(--surface-inset)] p-3" dir="auto">{item.source_value}</blockquote>}
     <dl className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
@@ -266,9 +259,8 @@ function CaseDetails({item, report, runId, expanded}: {
         onClick={() => void reviewWithKimi()}>{caseReview ? "Run Kimi review again" : "Review with Kimi"}</button>}
       {canUseSourceReview && <button className="button-ghost" aria-expanded={showSource}
         onClick={() => setShowSource(value => !value)}>{showSource ? "Close source review" : "Review source"}</button>}
-      {item.can_prepare && !publication && !notice && <button className="button-primary" disabled={preparing}
-        onClick={() => void prepare()}>{preparing ? "Prepare the release…" : "Prepare repair release"}</button>}
-      {publication && <Link className="button-primary" to={`/runs/${runId}/wikidata-studio?publication=${publication}`}>Review the release</Link>}
+      {item.can_prepare && !notice && <button className="button-primary" disabled={actions.preparing}
+        onClick={() => actions.onPrepare(item.case_id)}>Prepare repair release</button>}
     </div>
     {notice && <p role="status">{notice}</p>}
     {reviewProgress && <p role="status">{reviewProgress}</p>}
@@ -287,15 +279,18 @@ function CaseDetails({item, report, runId, expanded}: {
       </details>
       <p className="muted">The review checks evidence. A repair release requires separate proof and approval.</p>
     </section>}
-    {prepareProgress && <p role="status">{prepareProgress}</p>}
     {error && <p className="text-danger" role="alert">{error}</p>}
     {showSource && item.local_id && <WikidataSourceReview runId={runId} localId={item.local_id}
-      onSaved={() => setNotice("The source decision is saved. Rebuild the canonical source and run the audit again.")} />}
+      onSaved={() => {
+        setNotice("The source decision is saved. Use Rebuild source and run audit above.");
+        actions.onSourceSaved();
+      }} />}
   </div>;
 }
 
-function Cases({report, runId, point, initialFilter}: {
+function Cases({report, runId, point, initialFilter, actions}: {
   report: GilaReport; runId: string; point: number | null; initialFilter: CaseFilter | "";
+  actions: RepairCaseActions;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<CaseFilter | "">(initialFilter);
@@ -368,7 +363,8 @@ function Cases({report, runId, point, initialFilter}: {
                 <span className="text-xs font-medium text-[var(--text-muted)]">{labels[item.classification === "absent_in_source" ? "absent_in_source" : item.disposition]}</span>
               </span>
             </summary>
-            <CaseDetails item={item} report={report} runId={runId} expanded={Boolean(expanded[item.case_id])} />
+            <CaseDetails item={item} report={report} runId={runId} expanded={Boolean(expanded[item.case_id])}
+              actions={actions} />
           </details>
         </li>)}
       </ul>
@@ -384,6 +380,7 @@ function Cases({report, runId, point, initialFilter}: {
 }
 
 export default function AdminGilaRepairs() {
+  const {hash} = useLocation();
   const [state, setState] = useState<GilaStatus>();
   const [refreshError, setRefreshError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -394,7 +391,28 @@ export default function AdminGilaRepairs() {
   }>({point: null, initialFilter: "", selection: 0});
   const {point, initialFilter, selection} = caseView;
   const [poll, setPoll] = useState(0);
-  const [queue, setQueue] = useState<ReferenceRepairStatus>();
+  const [referenceScope, setReferenceScope] = useState<ReferenceScope>("remaining");
+  const [referencesOpen, setReferencesOpen] = useState(false);
+  useEffect(() => {
+    if (hash !== "#repair-references" && hash !== "#repair-references-original") return;
+    setReferencesOpen(true);
+    setReferenceScope(hash === "#repair-references-original" ? "original" : "remaining");
+    const frame = window.requestAnimationFrame(() => document.getElementById("repair-references")?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [hash]);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [repairNotice, setRepairNotice] = useState("");
+  const [repairError, setRepairError] = useState("");
+  const [requestedRepairJob, setRequestedRepairJob] = useState<{id: string; request: number}>();
+  const [sourceEdited, setSourceEdited] = useState(false);
+  const remainingQueue = useReferenceRepairStatus("remaining", Boolean(state));
+  const originalQueue = useReferenceRepairStatus("original", referencesOpen && referenceScope === "original");
+  const queue = remainingQueue.state;
+  const [lastPublication, setLastPublication] = useState(0);
+  const onLiveChanges = useCallback((finishedAt: string) => {
+    setLastPublication(current => Math.max(current, Date.parse(finishedAt) || 0));
+  }, []);
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -420,26 +438,50 @@ export default function AdminGilaRepairs() {
 
   const job = state?.job;
   const report = state?.report;
-  const reportId = report?.id;
-  useEffect(() => {
-    if (!reportId) return;
-    let cancelled = false;
-    void ReferenceRepairs.status("remaining").then(status => {
-      if (!cancelled) setQueue(status);
-    }).catch(() => {
-      if (!cancelled) setQueue(undefined);
-    });
-    return () => { cancelled = true; };
-  }, [reportId]);
-  const needsRecheck = Boolean(report && queue?.job?.status === "succeeded"
-    && queue.job.finished_at && Date.parse(queue.job.finished_at) > Date.parse(report.finished_at));
+  const publishedSinceAudit = Boolean(report && lastPublication > Date.parse(report.finished_at));
+  const needsRecheck = publishedSinceAudit || Boolean(report && [queue, originalQueue.state].some(
+    status => status?.job?.status === "succeeded" && status.job.finished_at
+      && Date.parse(status.job.finished_at) > Date.parse(report.finished_at),
+  ));
   const active = job?.status === "queued" || job?.status === "running";
-  const rebuildRequired = job?.status === "failed" && (
+  const rebuildRequired = sourceEdited || (job?.status === "failed" && (
     job.progress.phase === "source_rebuild_required"
     || job.error === "Build the canonical Studio source and start the audit again."
-  );
+  ));
   const processed = job?.progress.processed ?? 0;
   const total = job?.progress.total ?? 0;
+
+  function focusSection(id: string) {
+    window.requestAnimationFrame(() => document.getElementById(id)?.focus());
+  }
+
+  function openReferences() {
+    setReferencesOpen(true);
+    setReferenceScope("remaining");
+    focusSection("repair-references");
+  }
+
+  async function requestRepair(caseId?: string) {
+    if (!report || preparing || rebuildRequired || active || starting) return;
+    setPreparing(true);
+    setRepairNotice("");
+    setRepairError("");
+    try {
+      const next = caseId ? await GilaRepairs.prepare(report.id, caseId) : await GilaRepairs.prepareNext(report.id);
+      if (next) {
+        setRequestedRepairJob(current => ({id: next.id, request: (current?.request ?? 0) + 1}));
+        focusSection("repair-releases");
+      } else {
+        setRepairNotice("No further releases are ready to prepare from this audit.");
+        openCases(null, "ready_to_prepare");
+      }
+    } catch (failure) {
+      setRepairError(failureText(failure));
+      focusSection("repair-request-status");
+    } finally {
+      setPreparing(false);
+    }
+  }
 
   function openCases(point: number | null, filter: CaseFilter | "" = "") {
     setCaseView(current => ({point, initialFilter: filter, selection: current.selection + 1}));
@@ -475,6 +517,7 @@ export default function AdminGilaRepairs() {
             setBuildProgress(studioBuildProgressMessage(snapshot));
           },
         });
+        setSourceEdited(false);
         setBuildProgress("The Studio build is ready. The page will start the live audit.");
       }
       const nextJob = await GilaRepairs.start();
@@ -489,7 +532,7 @@ export default function AdminGilaRepairs() {
   }
 
   return <AdminLayout><div className="min-w-0 space-y-4">
-    <Glass as="section" contentClassName="space-y-5">
+    <Glass as="section" contentClassName="space-y-5" id="repair-audit" tabIndex={-1}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold sm:text-3xl">Wikidata Manuscript Audit and Repair</h1>
@@ -503,13 +546,19 @@ export default function AdminGilaRepairs() {
         </button>
       </div>
       {report && <AuditResult key={report.id} report={report} queue={queue} needsRecheck={needsRecheck}
-        onOpenCases={filter => openCases(null, filter)} />}
+        publishedSinceAudit={publishedSinceAudit} onOpenCases={filter => openCases(null, filter)} onStartRepair={() => void requestRepair()}
+        onOpenReferences={openReferences} preparing={preparing}
+        auditBusy={Boolean(rebuildRequired || active || starting)} />}
+      {(repairNotice || repairError) && <div id="repair-request-status" tabIndex={-1}>
+        {repairError ? <p role="alert" className="text-danger">{repairError}</p> : <p role="status">{repairNotice}</p>}
+      </div>}
       <details className="rounded-xl border border-glass-line px-4 py-3 text-sm">
         <summary className="cursor-pointer font-medium">How repairs work</summary>
         <ol className="mt-2 list-decimal space-y-1 pl-5 muted">
           <li>Run the audit to find cases. The audit reads Wikidata.</li>
-          <li>Open a case and check its source. Prepare a repair release when the source supports the change.</li>
-          <li>Review the release in Wikidata Studio. Run a dry run before you publish.</li>
+          <li>Start manuscript repairs to prepare the next eligible release. Open a case to review its source or run a Kimi review.</li>
+          <li>Review the release on this page. Run a dry run before you publish.</li>
+          <li>Open the reference queue below to confirm its repair scope and monitor progress.</li>
         </ol>
         <p className="mt-2 muted">The system checks the creator before each edit. It can edit only items that the project account created.</p>
       </details>
@@ -531,10 +580,14 @@ export default function AdminGilaRepairs() {
           ? "The audit needs a current canonical Studio build. Rebuild the source to run the audit."
           : job.error ?? job.progress.message ?? "The job remains active if you close this page."}</p>
       </section>}
-      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-        {state && <Link className="link-accent underline" to={`/runs/${state.run_id}/wikidata-studio`}>Open Wikidata Studio</Link>}
-        {!report?.reference_blocks && <Link className="link-accent underline" to="/admin/wikidata-reference-repairs?scope=remaining">Open the remaining reference queue</Link>}
-      </div>
+      {state && <nav className="flex flex-wrap gap-2" aria-label="Repair sections">
+        {!report?.reference_blocks && <button className="button-ghost" onClick={openReferences}>Open reference queues</button>}
+        {report && <button className="button-ghost" onClick={() => focusSection("repair-releases")}>Repair releases</button>}
+        <button className="button-ghost" aria-expanded={inventoryOpen} onClick={() => {
+          setInventoryOpen(value => !value);
+          if (!inventoryOpen) focusSection("repair-inventory");
+        }}>Saved repair inventory</button>
+      </nav>}
     </Glass>
     {state && report && <>
       <Glass as="section" contentClassName="space-y-3">
@@ -552,7 +605,27 @@ export default function AdminGilaRepairs() {
         </ul>
       </Glass>
       <Cases key={`${report.id}:${selection}`} report={report} runId={state.run_id} point={point}
-        initialFilter={initialFilter} />
+        initialFilter={initialFilter} actions={{
+          preparing: Boolean(preparing || rebuildRequired || active || starting),
+          onPrepare: caseId => void requestRepair(caseId),
+          onSourceSaved: () => setSourceEdited(true),
+        }} />
+      <ManuscriptRepairReleases key={requestedRepairJob?.request ?? 0} runId={state.run_id}
+        requestedJobId={requestedRepairJob?.id} onLiveChanges={onLiveChanges} />
     </>}
+    {referencesOpen && <section id="repair-references" tabIndex={-1} className="space-y-3">
+      <nav className="flex flex-wrap gap-2" aria-label="Reference repair scope">
+        <button className={referenceScope === "remaining" ? "button-primary" : "button-ghost"}
+          aria-pressed={referenceScope === "remaining"} onClick={() => setReferenceScope("remaining")}>Remaining references</button>
+        <button className={referenceScope === "original" ? "button-primary" : "button-ghost"}
+          aria-pressed={referenceScope === "original"} onClick={() => setReferenceScope("original")}>Original queue</button>
+      </nav>
+      <ReferenceRepairQueue key={referenceScope} scope={referenceScope}
+        status={referenceScope === "remaining" ? remainingQueue : originalQueue}
+        onVerify={() => focusSection("repair-audit")} />
+    </section>}
+    {state && inventoryOpen && <div id="repair-inventory" tabIndex={-1}>
+      <WikidataRepairInventory runId={state.run_id} embedded />
+    </div>}
   </div></AdminLayout>;
 }

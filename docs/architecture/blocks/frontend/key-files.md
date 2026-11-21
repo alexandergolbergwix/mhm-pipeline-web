@@ -76,12 +76,12 @@ The Wikidata item drawer, Publication controls, blocked-action drawer, and AI re
 | `frontend/src/api/wikidataSourceReview.ts` | Typed local source-review API |
 | `frontend/src/routes/ProjectDetail.tsx` | MARCXML upload option |
 
-`frontend/src/routes/WikidataRepairPlan.tsx` and `frontend/src/api/wikidataRepairPlan.ts` provide the separate [read-only repair plan](../wikidata-studio/repair-plan.md). `frontend/src/App.tsx` registers the protected route.
+`WikidataRepairInventory.tsx` and `api/wikidataRepairPlan.ts` provide the saved inventory on the audit page and the [read-only repair plan](../wikidata-studio/repair-plan.md). `frontend/src/App.tsx` registers the protected route.
 
 `backend/scripts/gila_repair_controls.js` supplies the separate [local operator controls](../wikidata-studio/local-reference-repair-ui.md). It does not replace the authenticated React Studio page.
 
-`AdminRoute.tsx` and `admin/AdminReferenceRepairs.tsx` provide the protected [backend repair controls](../wikidata-studio/admin-reference-repairs.md). `api/runJobs.ts` names the new job kind. The Admin sidebar links to the page.
+`AdminRoute.tsx` and `admin/AdminReferenceRepairs.tsx` provide the protected [backend repair controls](../wikidata-studio/admin-reference-repairs.md). `api/runJobs.ts` names the new job kind. The Admin sidebar opens the manuscript audit workspace. The direct route remains available.
 
 `useReferenceRepairStatus.ts`, `api/referenceRepairs.ts`, and `ReferenceRepairProgress.tsx` supply [live administrator reference progress](../wikidata-studio/live-reference-progress.md).
 
-`AdminGilaRepairs.tsx` and `api/gilaRepairs.ts` provide [Wikidata Manuscript Audit and Repair](../wikidata-studio/admin-gila-repairs.md). The page polls for progress, shows bounded case pages, displays Kimi case reviews, and opens the existing source review and Publication flows.
+`AdminGilaRepairs.tsx` and `api/gilaRepairs.ts` provide [Wikidata Manuscript Audit and Repair](../wikidata-studio/admin-gila-repairs.md). The page uses `ManuscriptRepairReleases.tsx` and `ReferenceRepairQueue.tsx` for release controls and reference queue progress in the [repair workspace](../wikidata-studio/manuscript-repair-workspace.md).

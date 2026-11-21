@@ -12,6 +12,7 @@ import {
   type ReferenceOnlySelection,
 } from "@/api/publication";
 import type {StudioBuild, StudioItem} from "@/api/wikidataStudio";
+import {WikidataPublicationAudit} from "@/components/wikidata/WikidataPublicationAudit";
 import {WikidataPublicationControls} from "@/components/wikidata/WikidataPublicationControls";
 import {usePublicationEntityPage} from "@/hooks/usePublicationEntityPage";
 import {Glass} from "@/components/glass";
@@ -25,7 +26,9 @@ export interface WikidataPublicationPanelProps {
   runId: string;
   source: "legacy" | "canonical";
   approvedOnly: boolean;
-  build: StudioBuild;
+  build?: StudioBuild;
+  repairPublicationId?: string;
+  onLiveChanges?: (finishedAt: string) => void;
   onPublicationActiveChange?: (active: boolean) => void;
   onOpenSourceItem?: (entityId: string) => void;
 }
@@ -88,10 +91,13 @@ export function WikidataPublicationPanel({
   source,
   approvedOnly,
   build,
+  repairPublicationId,
+  onLiveChanges,
   onPublicationActiveChange,
   onOpenSourceItem,
 }: WikidataPublicationPanelProps) {
   const [restoring, setRestoring] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
   const [target, setTarget] = useState<PublicationTarget>("test");
   const [deferConnections, setDeferConnections] = useState(true);
   const [publication, setPublication] = useState<PublicationSummary | null>(null);
@@ -103,8 +109,8 @@ export function WikidataPublicationPanel({
   const [error, setError] = useState<string | null>(null);
 
   const compatibilityItems = useMemo(
-    () => build.items.map(compatibilityEntity),
-    [build.items],
+    () => build?.items.map(compatibilityEntity) ?? [],
+    [build],
   );
   const release = publication?.current_release;
   const entityPage = usePublicationEntityPage({
@@ -127,7 +133,8 @@ export function WikidataPublicationPanel({
   useEffect(() => {
     let stopped = false;
     setRestoring(true);
-    const requestedPublication = new URLSearchParams(window.location.search).get("publication");
+    const requestedPublication = repairPublicationId
+      ?? new URLSearchParams(window.location.search).get("publication");
     const restored = requestedPublication
       ? PublicationApi.read(runId, requestedPublication, {type: "summary"})
       : PublicationApi.latest(runId);
@@ -136,9 +143,11 @@ export function WikidataPublicationPanel({
         setPublication(saved);
         setTarget(saved.target);
         setDeferConnections(saved.profile_version !== "1");
-        const {jobs} = await RunJobs.listForRun(runId, false, {kind: "wikidata_publication_dry_run", limit: 1});
-        const job = jobs[0];
-        if (stopped || !job || job.params.publication_id !== saved.publication_id) return;
+        const {jobs} = await RunJobs.listForRun(runId, false, {
+          kind: "wikidata_publication_dry_run", limit: repairPublicationId ? 20 : 1,
+        });
+        const job = jobs.find(row => row.params.publication_id === saved.publication_id);
+        if (stopped || !job) return;
         setJobSnapshot(job);
         useRunJobs.getState().upsertJob(job);
         if (job.status === "queued" || job.status === "running") setPrepareJobId(job.id);
@@ -147,9 +156,10 @@ export function WikidataPublicationPanel({
         if (!stopped) setError(caught instanceof ApiError ? caught.detail : String(caught));
       }).finally(() => { if (!stopped) setRestoring(false); });
     return () => { stopped = true; };
-  }, [runId]);
+  }, [repairPublicationId, runId]);
 
   const prepare = useCallback(async (referenceOnly?: ReferenceOnlySelection) => {
+    if (repairPublicationId) return;
     setBusyCommand("prepare");
     setError(null);
     setRouteUnavailable(false);
@@ -177,13 +187,18 @@ export function WikidataPublicationPanel({
     } finally {
       setBusyCommand(null);
     }
-  }, [approvedOnly, deferConnections, runId, source, target, publication]);
+  }, [approvedOnly, deferConnections, repairPublicationId, runId, source, target, publication]);
 
   // Live execution progress: the durable write pass takes tens of minutes,
   // and the summary is only read once on mount — the "Upload progress" card
   // froze at its first count (2026-10-16). Poll while an execution runs and
   // repaint only when the counts actually move.
   const execution = publication?.execution ?? null;
+  useEffect(() => {
+    if (publication?.target === "live" && execution?.finished_at && execution.succeeded > 0) {
+      onLiveChanges?.(execution.finished_at);
+    }
+  }, [execution?.finished_at, execution?.succeeded, onLiveChanges, publication?.target]);
   const executionActive = execution !== null
     && (execution.status === "running" || execution.status === "queued" || execution.background_active === true);
   const executionKey = execution
@@ -233,15 +248,16 @@ export function WikidataPublicationPanel({
         if (stopped) return;
         setJobSnapshot((previous) => (
           previous && previous.status === job.status && previous.error === job.error
-            ? previous : job
+            && previous.progress.processed === job.progress.processed
+            && previous.progress.message === job.progress.message ? previous : job
         ));
         useRunJobs.getState().upsertJob(job);
         if (job.status === "queued" || job.status === "running") {
           timer = window.setTimeout(() => { void poll(); }, 5000);
           return;
         }
-        const publicationId = typeof job.result?.publication_id === "string"
-          ? job.result.publication_id : null;
+        const publicationId = repairPublicationId ?? (typeof job.result?.publication_id === "string"
+          ? job.result.publication_id : null);
         if (publicationId) {
           const response = await PublicationApi.read(runId, publicationId, {type: "summary"});
           if (stopped) return;
@@ -261,7 +277,7 @@ export function WikidataPublicationPanel({
     };
     void poll();
     return () => { stopped = true; window.clearTimeout(timer); };
-  }, [prepareJobId, runId]);
+  }, [prepareJobId, repairPublicationId, runId]);
 
   const advance = useCallback(async (command: PublicationAdvanceCommand) => {
     if (!publication) return;
@@ -308,12 +324,13 @@ export function WikidataPublicationPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="kicker">Publication</div>
-          <h3 className="text-lg font-medium">Publish to Wikidata</h3>
+          <h3 className="text-lg font-medium">{repairPublicationId ? "Repair release" : "Publish to Wikidata"}</h3>
           <p className="mt-1 max-w-3xl text-sm muted">
-            Prepare your items, review the result, then publish.
+            {repairPublicationId ? "Review the scoped changes and run the checks before you publish."
+              : "Prepare your items, review the result, then publish."}
           </p>
         </div>
-        {publication && (
+        {publication && !repairPublicationId && (
           <button
             type="button"
             className="button-ghost text-sm"
@@ -326,7 +343,8 @@ export function WikidataPublicationPanel({
         )}
       </div>
 
-      {!publication && !routeUnavailable && (
+      {repairPublicationId && restoring && <p role="status" className="muted">Read the repair release…</p>}
+      {!publication && !routeUnavailable && !repairPublicationId && (
         <div className="space-y-3">
           <fieldset className="flex flex-wrap gap-4 text-sm" disabled={busyCommand !== null}>
             <legend className="mb-2 text-xs muted">Wikidata target</legend>
@@ -364,7 +382,7 @@ export function WikidataPublicationPanel({
           <button
             type="button"
             className="button-primary text-sm"
-            disabled={restoring || busyCommand !== null || prepareJobId !== null || build.total === 0}
+            disabled={restoring || busyCommand !== null || prepareJobId !== null || !build?.total}
             onClick={() => { void prepare(); }}
             data-testid="publication-prepare"
           >
@@ -384,7 +402,7 @@ export function WikidataPublicationPanel({
 
       {publication && release && (
         <>
-          {publication.profile_version === "1-nodes" && <p className="text-sm text-warn">
+          {!repairPublicationId && publication.profile_version === "1-nodes" && <p className="text-sm text-warn">
             This Release defers connections that need new QIDs. Review the deferred claims below.
             A later Release must add these connections after their targets receive QIDs.
           </p>}
@@ -400,15 +418,19 @@ export function WikidataPublicationPanel({
             busyCommand={prepareJobId ? "dry_run" : busyCommand === "prepare" ? null : busyCommand}
             error={error}
             onAdvance={advance}
-            onPrepareNewRelease={prepare}
-            onUseExisting={(entityKeys) => {
+            onPrepareNewRelease={repairPublicationId ? undefined : prepare}
+            onUseExisting={repairPublicationId ? undefined : (entityKeys) => {
               if (!publication.plan) return;
               return prepare({publication_id: publication.publication_id,
                 plan_id: publication.plan.plan_id, plan_digest: publication.plan.plan_digest,
                 entity_keys: entityKeys});
             }}
-            auditHref={`/runs/${encodeURIComponent(runId)}/wikidata-studio/publications/${encodeURIComponent(publication.publication_id)}/audit`}
+            auditHref={repairPublicationId ? undefined
+              : `/runs/${encodeURIComponent(runId)}/wikidata-studio/publications/${encodeURIComponent(publication.publication_id)}/audit`}
+            scopedRepair={Boolean(repairPublicationId)}
+            onOpenAudit={repairPublicationId ? () => setShowHistory(value => !value) : undefined}
           />
+          {showHistory && <WikidataPublicationAudit runId={runId} publicationId={publication.publication_id} />}
 
           <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-entity-page">
             <div className="flex flex-wrap items-center justify-between gap-2">

@@ -40,6 +40,11 @@ interface AuditJob {
   error: string | null;
 }
 
+export interface GilaPreparation extends AuditJob {
+  qids: string[];
+  publication_id: string | null;
+}
+
 export interface GilaReport {
   id: string;
   finished_at: string;
@@ -82,6 +87,10 @@ export const GilaRepairs = {
   reviewCase: (auditId: string, caseId: string) => api.post<RunJobSnapshot>(endpoint + "/case-review", {
     audit_id: auditId, case_id: caseId,
   }),
+  preparations: (offset = 0) =>
+    api.get<{items: GilaPreparation[]; more: boolean}>(endpoint + "/preparations?offset=" + offset),
+  prepareNext: (auditId: string) =>
+    api.post<RunJobSnapshot | null>(endpoint + "/prepare-next", {audit_id: auditId}),
   prepare: (auditId: string, caseId: string) => api.post<RunJobSnapshot>(endpoint + "/prepare", {
     audit_id: auditId, case_id: caseId,
   }),

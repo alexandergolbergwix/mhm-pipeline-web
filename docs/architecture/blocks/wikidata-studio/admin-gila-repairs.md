@@ -49,8 +49,8 @@ The panel shows the date of the last completed audit during a new check.
 The panel uses the same audit date to show repeated references on project-created and other items.
 If the remaining reference queue finishes after that audit, select **Verify repairs on Wikidata**.
 The next audit reads Wikidata again and checks all nine requirements.
-Select **Start manuscript repairs** to open the ready cases across all nine requirements.
-If none are ready, select **Review cases that need a decision**.
+Select **Start manuscript repairs** to prepare the next eligible release across all nine requirements.
+Review and verify repairs on the same page. See the [repair workspace](manuscript-repair-workspace.md).
 The **Ready to prepare** filter shows only cases with evidence for a repair release.
 Cases on items with a known different creator stay in manual review.
 The manuscript and work model has its own review case under point 2. See also [Kimi case review](gila-case-review.md).
@@ -75,7 +75,7 @@ The preparation worker checks the audited MARC fingerprint, current target, and 
 It uses the five-minute Studio freshness limit (W-358).
 An anonymous first-revision check refuses items with a different or unknown creator before preparation.
 The Publication job seals one existing item and checks the audited build again.
-The operator uses the normal Publication review, dry run, and publish flow.
+The operator uses the normal Publication review, dry run, and publish controls on this page.
 Only an update to the exact selected QID can pass.
 The gateway requires fresh proof that both the first revision and the active Wikidata account have UID `6935067`.
 A different, hidden, or unavailable creator remains outside the write scope.
@@ -84,7 +84,7 @@ The worker applies the same guard before each send.
 The exact Ḥizzuq Emunah case can prepare an author-only release when the audit verifies the linked manuscript, work, and author authority (W-359).
 The release adds P50 to Q141175530 and keeps the existing author name and other statements.
 
-Select **Start fixing references** to open the reviewed citation scope.
+Select **Review reference queue** to open the citation scope on the same page.
 Confirm the scope on the reference queue page before the worker starts.
 Select **Review open cases** for work that needs source review or a repair release.
 The reference queue has its own progress and verified receipts.

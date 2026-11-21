@@ -185,6 +185,10 @@ function jobRunPath(job: RunJobSnapshot): string {
       return `/runs/${job.run_id}/extraction`;
     case "rdf_build":
       return `/runs/${job.run_id}/rdf`;
+    case "wikidata_reference_repair":
+      return job.params.reference_scope === "remaining"
+        ? "/admin/wikidata-gila-repairs#repair-references"
+        : "/admin/wikidata-gila-repairs#repair-references-original";
     case "wikidata_gila_audit":
     case "wikidata_gila_case_review":
       return "/admin/wikidata-gila-repairs";

@@ -1,6 +1,12 @@
 import {expect, test} from "@playwright/test";
 
+import {summary} from "./fixtures/publication-fixtures";
 import {installStudioMocks, makeBuildResponse, TEST_RUN_ID} from "./fixtures/wikidata-fixtures";
+
+test.beforeEach(async ({page}) => {
+  await page.route("**/api/admin/wikidata-gila-repairs/preparations?*", route =>
+    route.fulfill({json: {more: false, items: []}}));
+});
 
 test("the administrator sees live audit progress and can inspect source gaps", async ({page}) => {
   await installStudioMocks(page, makeBuildResponse());
@@ -139,8 +145,8 @@ test("the audit shows work left and opens the scoped repair controls", async ({p
   await expect(page.getByText("0 of 9", {exact: true})).toBeVisible();
   await expect(page.getByText("4 repeated references on project-created items.", {exact: false})).toBeVisible();
   await expect(page.getByText("10 on items that other accounts created.", {exact: false})).toBeVisible();
-  await page.getByRole("link", {name: "Start fixing references"}).click();
-  await expect(page).toHaveURL(/wikidata-reference-repairs\?scope=remaining$/);
+  await page.getByRole("button", {name: "Review reference queue"}).click();
+  await expect(page).toHaveURL(/wikidata-gila-repairs$/);
   await page.getByText("View the audited items").click();
   await expect(page.getByText("10 at latest audit · Other creator")).toBeVisible();
   const start = page.getByRole("button", {name: "Start backend reference repairs"});
@@ -150,6 +156,7 @@ test("the audit shows work left and opens the scoped repair controls", async ({p
   await start.click();
   await expect(page.getByRole("heading", {name: "In queue", exact: true})).toBeVisible();
   expect(starts).toBe(1);
+  await expect(page).toHaveURL(/wikidata-gila-repairs$/);
 });
 
 test("the audit asks for verification after reference repairs and exports evidence", async ({page}) => {
@@ -173,6 +180,10 @@ test("the audit asks for verification after reference repairs and exports eviden
   });
   let readyCase = false;
   let preparations = 0;
+  let preparationComplete = false;
+  const preparation = {id: "prepare-1", qids: ["Q42"], publication_id: null,
+    status: "running", progress: {message: "Verify the audited source."}};
+  let stage: Parameters<typeof summary>[0] = "prepare";
   await page.route("**/api/admin/wikidata-gila-repairs/cases?*", route => {
     const {searchParams} = new URL(route.request().url());
     const items = readyCase && searchParams.get("disposition") === "ready_to_prepare"
@@ -180,9 +191,32 @@ test("the audit asks for verification after reference repairs and exports eviden
       : [];
     return route.fulfill({json: {items, total: items.length}});
   });
-  await page.route("**/api/admin/wikidata-gila-repairs/prepare", route => {
-    preparations++;
-    return route.fulfill({status: 400, json: {detail: "Unexpected preparation request"}});
+  await page.route("**/api/admin/wikidata-gila-repairs/prepare-next", route => {
+    expect(route.request().postDataJSON()).toEqual({audit_id: "audit-1"});
+    if (readyCase) preparations++;
+    return route.fulfill({contentType: "application/json", body: JSON.stringify(readyCase ? preparation : null)});
+  });
+  await page.route("**/api/admin/wikidata-gila-repairs/preparations?*", route => route.fulfill({json: {
+    more: false,
+    items: preparations === 0 ? [] : [preparationComplete ? {
+      ...preparation, publication_id: "publication-7", status: "succeeded",
+      progress: {message: "The repair release is ready."},
+    } : preparation],
+  }}));
+  await page.route("**/jobs?kind=wikidata_publication_dry_run&limit=20", route =>
+    route.fulfill({json: {jobs: []}}));
+  await page.route("**/wikidata-publications/publication-7/read", route => {
+    const {type} = route.request().postDataJSON().query;
+    if (type === "audit") return route.fulfill({json: {items: [], total: 0, next_cursor: null}});
+    if (type === "entities") return route.fulfill({json: {items: [], total: 0, next_cursor: null}});
+    expect(type).toBe("summary");
+    return route.fulfill({json: {publication: summary(stage)}});
+  });
+  await page.route("**/wikidata-publications/publication-7/advance", route => {
+    const {type} = route.request().postDataJSON().command;
+    expect(type).toBe(stage === "prepare" ? "review" : stage === "review" ? "dry_run" : "publish");
+    stage = type;
+    return route.fulfill({json: {publication: summary(stage)}});
   });
   await page.route("**/api/admin/wikidata-gila-repairs/evidence?audit_id=audit-1", route =>
     route.fulfill({json: {audit_id: "audit-1", reference_repairs: [{qid: "Q42", after_revision: 22}]}}));
@@ -203,8 +237,21 @@ test("the audit asks for verification after reference repairs and exports eviden
   await expect(page.getByRole("combobox", {name: "Case status"})).toHaveValue("manual_review");
   readyCase = true;
   await page.getByRole("button", {name: "Start manuscript repairs"}).click();
-  await expect(page.getByRole("button", {name: "Prepare repair release"})).toBeVisible();
-  expect(preparations).toBe(0);
+  await expect(page.getByText("Verify the audited source.")).toBeVisible();
+  expect(preparations).toBe(1);
+  preparationComplete = true;
+  await expect(page.getByRole("heading", {name: "Repair release", exact: true})).toBeVisible();
+  await page.getByRole("button", {name: "Approve Release for checks"}).click();
+  await page.getByRole("button", {name: "Check before publish", exact: true}).click();
+  await page.getByText("Publication details and manual actions").click();
+  await page.getByRole("button", {name: "Publication history"}).click();
+  await expect(page.getByRole("heading", {name: "Durable publication events"})).toBeVisible();
+  await page.getByRole("button", {name: "Publish to Wikidata", exact: true}).click();
+  await expect(page.getByTestId("publication-execution-progress")).toBeVisible();
+  await expect(page).toHaveURL(/wikidata-gila-repairs$/);
+  await page.reload();
+  await expect(page.getByTestId("publication-execution-progress")).toBeVisible();
+  await expect(page).toHaveURL(/wikidata-gila-repairs$/);
   const download = page.waitForEvent("download");
   await page.getByRole("button", {name: "Download audit evidence"}).click();
   expect((await download).suggestedFilename()).toBe("wikidata-audit-audit-1.json");
