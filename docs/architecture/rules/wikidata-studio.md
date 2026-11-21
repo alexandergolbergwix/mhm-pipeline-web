@@ -4404,3 +4404,11 @@ Use the project User-Agent with its contact URL for public candidate searches.
 The production API rejected the generic HTTP client with status 403.
 The same search succeeded with the project header.
 The candidate search is a required step before the Kimi evidence check.
+
+## Rule W-366 — Keep exact source proof independent of Kimi
+
+Retry incomplete responses and temporary service errors within a fixed limit.
+A creator-verified repair can proceed when the current source and authority evidence prove one target.
+Use one explicit production role and verify every jurisdiction named in MARC 751.
+KIMA adds exact name candidates. Current Wikidata links must confirm the stated place.
+A name without a source condition or conflicting candidates requires further evidence.

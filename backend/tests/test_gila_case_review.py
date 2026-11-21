@@ -230,3 +230,73 @@ async def test_candidate_search_identifies_the_project_to_wikimedia(monkeypatch)
     )
 
     assert await automatic_evidence.search_candidates(None, "www.wikidata.org", "Mikulov", uuid.uuid4()) == [QID]
+
+
+def test_marc_place_and_one_jurisdiction_can_prove_exact_containment():
+    raw = {"001": CN, "751$a": '"Náchod (Czech Republic)|Paris (France)"',
+           "751$e": '"place of writing|related place"'}
+    parts = identity._place_parts(raw)
+    assert parts == ("Náchod", "", "Czech Republic")
+    assert identity._place_parts({**raw, "751$e": "place of writing"}) is None
+    assert identity._place_parts({**raw, "751$e": "place of writing|place of writing"}) is None
+
+    def claim(value):
+        return {"mainsnak": {"snaktype": "value", "datavalue": {"value": value}}}
+
+    entity = {
+        "labels": {"en": {"value": "Nachod"}},
+        "claims": {"P625": [claim({"latitude": 50.4})], "P17": [claim({"id": "Q213"})]},
+    }
+    assert identity._places_agree(entity, {"Q213": {"labels": {"en": {"value": "Czech Republic"}}}}, parts)
+    assert not identity._places_agree(entity, {"Q213": {"labels": {"en": {"value": "Another country"}}}}, parts)
+
+
+@pytest.mark.asyncio
+async def test_kimi_retries_truncated_review_and_accepts_one_json_fence(monkeypatch):
+    import httpx
+
+    monkeypatch.setenv("QUBRID_API_KEY", "test-key")
+    results = iter([
+        {"finish_reason": "length", "message": {"content": "", "reasoning_content": "work"}},
+        {"finish_reason": "stop", "message": {"content": '```json\n{"candidate_qid":null,"explanation":"No match."}\n```'}},
+    ])
+    client = httpx.AsyncClient
+    requests = []
+    def respond(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [next(results)]})
+
+    monkeypatch.setattr(worker.httpx, "AsyncClient",
+        lambda **kwargs: client(transport=httpx.MockTransport(respond), **kwargs))
+    result = await worker._ask_model({"wikidata_candidates": [{"qid": QID}]})
+    assert result.candidate_qid is None
+    assert len(requests) == 2
+
+
+@pytest.mark.asyncio
+async def test_batch_keeps_exact_source_proof_when_kimi_is_unavailable(sample_run, monkeypatch):
+    monkeypatch.setattr(worker, "search_candidates", AsyncMock(return_value=[QID]))
+    monkeypatch.setattr(worker.ReferenceItemReader, "fetch_batch", AsyncMock(return_value=_human()))
+    model = AsyncMock(side_effect=worker.ReviewUnavailable("Kimi is unavailable."))
+    monkeypatch.setattr(worker, "_ask_model", model)
+    result = await worker.inspect_case(
+        _scribe_record(), {"qid": "Q10", "reason": "named_scribe_identity_unresolved"},
+        sample_run["user_id"], automatic=True,
+    )
+    assert result["decision"] == "verified_match"
+    assert result["candidate_qid"] == QID
+    assert result["model"] is None
+    model.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_batch_leaves_a_scribe_with_only_a_name_open(monkeypatch):
+    search = AsyncMock()
+    monkeypatch.setattr(worker, "search_candidates", search)
+    raw = {"001": CN, "_control_number": CN, "700$a": "Named scribe", "700$e": "scribe"}
+    result = await worker.inspect_case(
+        raw, {"qid": "Q10", "reason": "named_scribe_identity_unresolved"}, uuid.uuid4(),
+        automatic=True,
+    )
+    assert result["decision"] == "needs_evidence"
+    search.assert_not_awaited()

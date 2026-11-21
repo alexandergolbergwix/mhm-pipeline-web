@@ -414,6 +414,8 @@ class RepairCycle:
                 key: (evidence.result or {}).get(key, 0)
                 for key in ("checked", "supported", "needs_evidence", "excluded_creator", "unavailable")
             }
+            if unavailable := self.result["evidence_review"]["unavailable"]:
+                self.attention("find_evidence", f"Evidence checks were unavailable for {unavailable} cases.")
         else:
             self.attention("find_evidence", evidence.error)
         try:

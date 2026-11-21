@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import asdict
 
 from app.pipeline import marc_occurrences
@@ -77,25 +78,31 @@ def _place_parts(raw: dict) -> tuple[str, str, str] | None:
     record = prepare_record_for_pipeline(raw.copy())
     rows = marc_occurrences.occurrences(record, "751")
     if rows:
-        pairs = [
-            (marc_occurrences.values(row, "a"), marc_occurrences.values(row, "e"))
-            for row in rows
+        if any(len(marc_occurrences.values(row, "a")) != 1
+               for row in rows if _relators(row) & _PLACE_ROLES):
+            return None
+        qualified = [
+            marc_occurrences.values(row, "a")[0]
+            for row in rows if _relators(row) & _PLACE_ROLES
         ]
     else:
-        pairs = [(
-            marc_occurrences.split_slots(raw.get("751$a")),
-            marc_occurrences.split_slots(raw.get("751$e")),
-        )]
-    qualified = [
-        names[0] for names, roles in pairs if len(names) == len(roles) == 1
-        and roles[0].strip().strip('"').casefold() in _PLACE_ROLES
-    ]
+        names = marc_occurrences.split_slots(raw.get("751$a"))
+        roles = marc_occurrences.split_slots(raw.get("751$e"))
+        if len(names) != len(roles):
+            return None
+        qualified = [
+            name for name, role in zip(names, roles, strict=True)
+            if role.strip().strip('"').casefold() in _PLACE_ROLES
+        ]
     if len(qualified) != 1:
         return None
-    match = re.fullmatch(r"([^()]+)\(([^(),]+),([^(),]+)\)", qualified[0].strip())
+    match = re.fullmatch(r"([^()]+)\(([^(),]+)(?:,([^(),]+))?\)", qualified[0].strip())
     if not match:
         return None
-    return match[1].strip(), match[2].strip(), match[3].strip()
+    name, qualifier, country = (value.strip() if value else "" for value in match.groups())
+    if not name or not qualifier or (match[3] is not None and not country):
+        return None
+    return (name, qualifier, country) if country else (name, "", qualifier)
 
 
 def _authority_ids(raw: dict) -> set[tuple[str, str]]:
@@ -135,24 +142,28 @@ def _names(entity: dict) -> set[str]:
     }
 
 
+def _place_key(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value.casefold())
+    return " ".join("".join(c for c in decomposed if not unicodedata.combining(c)).split())
+
+
 def _places_agree(entity: dict, context: dict, parts: tuple[str, str, str]) -> bool:
-    name, region, country = (" ".join(value.casefold().split()) for value in parts)
+    name, region, jurisdiction = map(_place_key, parts)
     countries = _wikidata_links(entity, "P17")
     parents = _wikidata_links(entity, "P131")
     parents |= {
         parent for qid in parents for parent in _wikidata_links(context.get(qid, {}), "P131")
     }
+    parent_names = {_place_key(value) for qid in parents for value in _names(context.get(qid, {}))}
+    country_names = {_place_key(value) for qid in countries for value in _names(context.get(qid, {}))}
+    containment = (
+        region in parent_names and jurisdiction in country_names
+        if region else jurisdiction in country_names | parent_names
+    )
     return (
         bool(_claim_values(entity, "P625"))
-        and any(" ".join(value.casefold().split()) == name for value in _names(entity))
-        and any(
-            " ".join(value.casefold().split()) == country
-            for qid in countries for value in _names(context.get(qid, {}))
-        )
-        and any(
-            " ".join(value.casefold().split()) == region
-            for qid in parents for value in _names(context.get(qid, {}))
-        )
+        and name in {_place_key(value) for value in _names(entity)}
+        and containment
     )
 
 

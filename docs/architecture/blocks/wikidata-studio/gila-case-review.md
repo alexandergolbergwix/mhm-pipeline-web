@@ -13,21 +13,28 @@ It uses `moonshotai/Kimi-K2.6` through the Chat Completions API.
 It uses `QUBRID_API_KEY` or its `QUABRID_API_KEY` alias and the optional `QUBRID_BASE_URL`.
 The case needs one current source record and the latest completed audit.
 The worker checks access, the audit ID, and the record hash again before it saves the result.
+It validates the QID and the response format. It retries an incomplete response or a temporary service error up to twice.
 
 The original MARC record establishes the name, role, or place.
 For a scribe, the system requires a Wikidata ID on the exact MARC occurrence or an exact VIAF or NLI ID.
 The ID can come from the occurrence or a high-confidence approved authority match for the same record, name, and role.
 The batch also searches live VIAF when the record ties a name and both life dates to one scribe.
 The VIAF record must match all three values. Wikidata must link to that exact VIAF ID.
+The worker checks VIAF identifiers on the Wikidata candidates as well as the result of the VIAF name search.
 A name match alone leaves the identity open.
-For a place, MARC 751 must specify the production role and a unique place, region, and country.
-The system looks up those names through the current public administrative links.
+For a place, MARC 751 must tie one place name to the production role and name at least one jurisdiction.
+The worker uses aligned flat slots or one structured occurrence to verify the role.
+It searches Wikidata and the exact KIMA name index.
+The candidate needs coordinates, a name match, and live administrative or country links for each stated jurisdiction.
+The preparation worker checks the same evidence again.
 An item for the holding library or a related place cannot supply the production role.
 
 **Repair all eligible items** checks supported open cases after the audit and reference queues.
 The first-revision creator check excludes other items before the batch requests evidence.
-Kimi selects a candidate from the public results or asks for more evidence.
-Code checks the source and candidate independently.
+A unique candidate with independent source proof can proceed without a model response.
+Kimi can review cases with a source identifier or another exact comparison field.
+The model response cannot authorize publication. Code checks the source and candidate independently.
+The job records unavailable evidence checks and continues with the proven cases.
 The preparation worker repeats the checks with the same MARC hash, authority IDs, and public revisions.
 The release adds only the supported claim, with a reference to the Ktiv record.
 It adds a separate reference for a live VIAF match. The final audit checks this authority record again.

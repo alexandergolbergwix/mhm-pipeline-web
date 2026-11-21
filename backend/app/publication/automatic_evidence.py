@@ -76,7 +76,7 @@ async def collect_evidence(db, document, actor_id, force_refresh=False, *, run_i
     return evidence
 
 
-async def search_candidates(db, site, label, actor_id, force_refresh=False):
+async def search_candidates(db, site, label, actor_id, force_refresh=False, *, limit=3):
     if site not in {'www.wikidata.org', 'test.wikidata.org'}:
         raise ValueError('Unsupported Wikidata target')
     language = 'he' if re.search(r'[\u0590-\u05ff]', label) else 'en'
@@ -86,14 +86,14 @@ async def search_candidates(db, site, label, actor_id, force_refresh=False):
             headers={"User-Agent": WIKIDATA_PUBLIC_USER_AGENT},
         ) as client:
             response = await client.get(f'https://{site}/w/api.php', params={'action': 'wbsearchentities',
-                'format': 'json', 'language': language, 'search': label[:250], 'type': 'item', 'limit': 3})
+                'format': 'json', 'language': language, 'search': label[:250], 'type': 'item', 'limit': limit})
             response.raise_for_status()
             if len(response.content) > 262144:
                 raise ValueError('Candidate search exceeded its size limit')
             payload = response.json()
             if 'error' in payload or not isinstance(payload.get('search'), list):
                 raise ValueError('Candidate search did not complete')
-            return [row['id'] for row in payload['search'] if re.fullmatch(r'Q[1-9][0-9]*', str(row.get('id')))][:3]
+            return [row['id'] for row in payload['search'] if re.fullmatch(r'Q[1-9][0-9]*', str(row.get('id')))][:limit]
     return await cache_lookup_or_call(db, kind='wikidata.candidate_search', user_id=actor_id,
-        query_summary={'site': site, 'label': label, 'language': language, 'reader': 'candidate-v1'},
+        query_summary={'site': site, 'label': label, 'language': language, 'reader': 'candidate-v1', 'limit': limit},
         fetch=fetch, skip_cache=force_refresh)
