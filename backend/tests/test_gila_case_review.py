@@ -3,12 +3,14 @@ import uuid
 import zlib
 from base64 import b64encode
 from unittest.mock import AsyncMock, Mock
+from types import SimpleNamespace
 
 import pytest
 from app.models.run import RunRecord
 from app.models.run_job import RunJob
 from app.models.user import User
 from app.pipeline import wikidata_gila_case_review as worker
+from app.pipeline import wikidata_gila_identity_evidence as identity
 from app.routers import admin_gila_repairs
 from sqlalchemy import select
 
@@ -35,7 +37,7 @@ def test_flat_marc_and_multiple_occurrences_cannot_confirm_an_identity():
     raw = {"001": CN, "_control_number": CN, "700$a": "Named scribe", "700$e": "scribe",
            "700$1": "https://www.wikidata.org/entity/Q42"}
     for record in (raw, _scribe_record(repeat=True)):
-        excerpts, _, source_qid = worker._source_evidence(record, scribe=True)
+        excerpts, _, source_qid = identity._source_evidence(record, scribe=True)
         assert excerpts
         assert source_qid is None
         review = worker.ModelReview(candidate_qid=QID, explanation="A possible match.")
@@ -53,10 +55,10 @@ def test_production_place_requires_the_exact_region_and_country():
         "001": CN, "751$a": '"Mikulov (Jihomoravský kraj, Czech Republic)"',
         "751$e": '"place of writing"',
     }
-    parts = worker._place_parts(record)
+    parts = identity._place_parts(record)
     assert parts == ("Mikulov", "Jihomoravský kraj", "Czech Republic")
-    assert worker._place_parts({**record, "751$e": "related place"}) is None
-    assert worker._place_parts({**record, "751$e": "place of writing|related place"}) is None
+    assert identity._place_parts({**record, "751$e": "related place"}) is None
+    assert identity._place_parts({**record, "751$e": "place of writing|related place"}) is None
 
     def claim(value):
         return {"mainsnak": {"snaktype": "value", "datavalue": {"value": value}}}
@@ -74,9 +76,9 @@ def test_production_place_requires_the_exact_region_and_country():
         "Q582488": {"claims": {"P131": [claim({"id": "Q192697"})]}},
         "Q192697": named("Jihomoravský kraj"),
     }
-    assert worker._places_agree(place, context, parts)
-    assert not worker._places_agree(place, context, (parts[0], "Another region", parts[2]))
-    assert not worker._places_agree(place, context, (parts[0], parts[1], "Another country"))
+    assert identity._places_agree(place, context, parts)
+    assert not identity._places_agree(place, context, (parts[0], "Another region", parts[2]))
+    assert not identity._places_agree(place, context, (parts[0], parts[1], "Another country"))
 
 
 @pytest.mark.asyncio
@@ -125,3 +127,54 @@ async def test_admin_can_run_and_reopen_a_case_review(sample_run, db_session, mo
     assert model.await_args.args[0]["role"] == "scribe"
     generic = await client.post(f"/api/runs/{run_id}/jobs", json={"kind": job.kind})
     assert generic.status_code == 403
+
+
+def test_exact_marc_and_authority_are_required_for_a_scribe_claim():
+    raw = {
+        "001": CN, "_control_number": CN,
+        "700$a": "Named scribe|Former owner", "700$e": "scribe|former owner",
+    }
+    case = {"control_number": CN, "qid": "Q10", "reason": "named_scribe_identity_unresolved"}
+
+    def snak(value, pid):
+        return {"snaktype": "value", "property": pid, "datavalue": {"value": value}}
+
+    person = _human()["Q42"]
+    person["claims"]["P214"] = [{"mainsnak": snak("12345", "P214")}]
+    manuscript = {"id": "Q10", "claims": {"P3959": [{"mainsnak": snak(CN, "P3959")}]}}
+    evidence = SimpleNamespace(
+        entity_kind="person", approved=True, confidence="high", source="viaf",
+        role="scribe", entity_text="Named scribe", viaf_id="12345", mazal_id="", payload={},
+    )
+    assert identity._repair_statement(raw, case, manuscript, person, {}) is None
+    statement = identity._repair_statement(raw, case, manuscript, person, {}, authority_rows=[evidence])
+    assert statement["property"] == "P11603"
+    assert statement["value"] == "Q42"
+    assert statement["qualifiers"][0]["value"] == "Named scribe"
+    assert any(row["property"] == "P3959" and row["value"] == CN
+               for row in statement["reference_blocks"][0])
+
+    reference = {"snaks": {"P3959": [snak(CN, "P3959")]}}
+    manuscript["claims"]["P11603"] = [{
+        "mainsnak": snak({"id": "Q42"}, "P11603"),
+        "qualifiers": {"P1932": [snak("Named scribe", "P1932")]},
+        "references": [reference],
+    }]
+    assert identity.live_source_match(
+        raw, manuscript, {"Q42": person}, CN, scribe=True, name="Named scribe",
+        authority_rows=[evidence],
+    )
+    assert identity._repair_statement(raw, case, manuscript, person, {}, authority_rows=[evidence]) is None
+
+    del manuscript["claims"]["P11603"]
+    evidence.entity_text = "Former owner"
+    assert identity._repair_statement(raw, case, manuscript, person, {}, authority_rows=[evidence]) is None
+
+
+@pytest.mark.asyncio
+async def test_batch_case_excludes_foreign_creators_before_search(monkeypatch):
+    monkeypatch.setattr(worker.ReferenceItemReader, "creator_uid", AsyncMock(return_value=123))
+    inspect = AsyncMock()
+    monkeypatch.setattr(worker, "inspect_case", inspect)
+    assert await worker._batch_case({"qid": "Q10"}, uuid.uuid4(), uuid.uuid4()) == ("excluded_creator", None)
+    inspect.assert_not_called()

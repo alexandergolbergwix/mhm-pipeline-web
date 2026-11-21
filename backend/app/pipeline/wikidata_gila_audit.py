@@ -57,8 +57,10 @@ def build_gila_audit_report(
     live_entities: Mapping[str, object] | None = None,
     approved_author_qids: Mapping[tuple[str, str], Iterable[str]] | None = None,
     include_repair_payloads: bool = True,
+    repair_authority_by_cn: Mapping[str, list] | None = None,
 ) -> dict[str, object]:
     """Compare local proposals with sources; never report a live correction."""
+    from app.pipeline.wikidata_gila_identity_evidence import live_source_match
     from converter.wikidata.content_projection import _work_title_key  # noqa: PLC0415
 
     sources = list(marc_records)
@@ -102,6 +104,8 @@ def build_gila_audit_report(
             raise ValueError("An audit source must have a control number.")
         item = manuscripts.get(cn, {})
         cases: list[dict[str, object]] = []
+        public_qid = (qids_by_cn or {}).get(cn)
+        public_item = live_entities.get(public_qid) if live_entities and public_qid else None
 
         def case(
             point: int,
@@ -110,9 +114,11 @@ def build_gila_audit_report(
             reason: str,
             *,
             target: list[dict[str, object]] = cases,
+            verified: bool = False,
         ) -> None:
             target.append(
-                {"point": point, "classification": classification, "field": field, "reason": reason}
+                {"point": point, "classification": classification, "field": field, "reason": reason,
+                 **({"verified": True} if verified else {})}
             )
             totals[classification] += 1
 
@@ -171,12 +177,21 @@ def build_gila_audit_report(
                     for q in _rows(s.get("qualifiers"))
                 )
             ]
-            if any(s.get("value_type") == "somevalue" for s in named):
-                case(5, "identity_or_scope_uncertain", "700", "named_scribe_identity_unresolved")
-            elif not named and not projected_scribes:
-                case(5, "present_not_transferred", "700", "source_scribe_claim_absent")
-            elif not named:
-                case(5, "identity_or_scope_uncertain", "700", "verify_scribe_target_identity")
+            reason = (
+                "named_scribe_identity_unresolved" if any(
+                    s.get("value_type") == "somevalue" for s in named
+                ) else "source_scribe_claim_absent" if not named and not projected_scribes
+                else "verify_scribe_target_identity" if not named else ""
+            )
+            if reason:
+                case(
+                    5, "present_not_transferred" if reason == "source_scribe_claim_absent"
+                    else "identity_or_scope_uncertain", "700", reason,
+                    verified=live_source_match(
+                        raw, public_item, live_entities, cn, scribe=True, name=name,
+                        authority_rows=(repair_authority_by_cn or {}).get(cn, ()),
+                    ),
+                )
         source_authors[cn] = [_text(row.get("name")) for row in _rows(record.get("authors"))]
         for review in _rows(record.get("person_subfield_reviews")):
             case(
@@ -228,7 +243,10 @@ def build_gila_audit_report(
                 )
 
         if record.get("place") and not _claims(item, "P1071"):
-            case(7, "identity_or_scope_uncertain", "751/260", "production_place_not_resolved")
+            case(
+                7, "identity_or_scope_uncertain", "751/260", "production_place_not_resolved",
+                verified=live_source_match(raw, public_item, live_entities, cn, scribe=False),
+            )
         source_extent = _text(record.get("extent_text") or raw.get("300$a") or raw.get("943$a"))
         if not record.get("extent"):
             if source_extent:

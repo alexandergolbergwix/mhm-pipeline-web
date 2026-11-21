@@ -1386,3 +1386,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 219. **R219 — Confirm a repair against the new revision (W-362).** Apply the original revision check before the edit. Confirm the exact claims and creator at read-back.
 
 220. **R220 — Retain the verified case after a repair (W-363).** Keep the case in the total after the current public claim passes the source checks. Pin an automatic repair to the audit revision.
+
+221. **R221 — A Kimi result needs independent source proof (W-364).** Bind the result to the audit, MARC hash, authority IDs, and public revisions. Repeat creator and evidence checks before Publication. *Why:* The one-click job skipped open cases that needed a source identity check.

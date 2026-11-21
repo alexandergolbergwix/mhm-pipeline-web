@@ -1295,6 +1295,8 @@ def serialise_job(
     if job.kind == JOB_KIND_WIKIDATA_PUBLICATION_AI_REVIEW:
         progress = {key: value for key, value in progress.items() if key != "report"}
         result = {key: value for key, value in result.items() if key != "report"} if isinstance(result, dict) else result
+    if job.kind == JOB_KIND_WIKIDATA_GILA_CASE_REVIEW and isinstance(result, dict):
+        result = _public_params(result)
     # Never ship TRACE events on the wire — job polls H12'd at ~1.8 MB (W-128).
     if isinstance(result, dict) and isinstance(result.get("session_snapshot"), dict):
         if include_session_snapshot:

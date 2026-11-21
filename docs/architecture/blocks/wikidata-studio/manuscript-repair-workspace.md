@@ -9,9 +9,11 @@ The workspace uses the existing workers and their saved results.
 1. Select **Repair all eligible items** to authorize the job to publish edits.
 2. The job audits all nine requests against live Wikidata and the current MARC source.
 3. The job rebuilds a stale canonical source once and repeats the audit.
-4. The job checks the reviewed reference queues and prepares supported manuscript and work repairs.
-5. The job approves the scoped release, runs the dry run, and publishes the ready updates.
-6. The job audits live Wikidata again and displays the results on this page.
+4. The job checks the reviewed reference queues.
+5. Kimi checks open scribe and production place cases against MARC and authority evidence.
+6. The job rechecks the evidence and prepares the supported repairs.
+7. The job approves the scoped release, runs the dry run, and publishes the ready updates.
+8. The job audits live Wikidata again and displays the results on this page.
 
 The job service saves each stage. Close or reload the page to return to the same repair.
 The job rechecks administrator and project edit access before an automatic write.
@@ -30,7 +32,9 @@ Conflicts in physical form or scribe identity require source review.
 
 Open a requirement to see its verified count and remaining cases.
 Use the filters to find missing source facts, uncertain identities, and cases that need reference evidence.
-Use Kimi for supported case reviews when you need an evidence recommendation.
+Use **Review with Kimi** to inspect the evidence for one supported case.
+The automatic result shows the number of checked cases, supported cases, creator exclusions, and unavailable checks.
+See [Kimi case review](gila-case-review.md) for source and authority requirements.
 Provide evidence for unresolved records, passages, or model decisions before another audit.
 Items that other accounts created are read-only.
 

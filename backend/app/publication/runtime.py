@@ -281,6 +281,7 @@ class StudioCacheProjectionSource(ProjectionSource):
         self.selected_existing: dict[str, str] = {}
         self.repair_statements: dict[str, list[dict]] = {}
         self.repair_revisions: dict[str, int] = {}
+        self.repair_evidence_statements: dict[str, list[dict]] = {}
         self.exact_author_retry_base: int | None = None
         self.troki_author_only = False
         # None → the ledger namespace follows WIKIDATA_TEST_MODE (the same
@@ -432,8 +433,19 @@ class StudioCacheProjectionSource(ProjectionSource):
             if exact_statements is not None:
                 if any(statement not in item.get("statements", []) for statement in exact_statements):
                     raise PublicationSourceError("The audited repair statements changed")
+                additions = self.repair_evidence_statements.get(_item_entity_key(item), [])
+                if additions and (
+                    not self.selected_existing or _item_entity_type(item) != "manuscript"
+                    or _item_entity_key(item) not in self.repair_revisions
+                    or any(row.get("property") not in {"P11603", "P1071"} for row in additions)
+                ):
+                    raise PublicationSourceError("The evidence repair requires an exact manuscript and revision")
+                scoped = list(exact_statements)
+                for statement in additions:
+                    if statement not in scoped:
+                        scoped.append(statement)
                 item.update(
-                    statements=exact_statements, deferred_statements=[],
+                    statements=scoped, deferred_statements=[],
                     labels={}, descriptions={}, aliases={},
                 )
                 revision = self.repair_revisions.get(_item_entity_key(item))
@@ -687,6 +699,7 @@ class PublicationRuntime:
         troki_author_only: bool = False,
         repair_statements: dict[str, list[dict]] | None = None,
         repair_revisions: dict[str, int] | None = None,
+        repair_evidence_statements: dict[str, list[dict]] | None = None,
         exact_author_retry_base: int | None = None,
     ) -> PublicationMutationResponse:
         if request.profile_id != "mhm-wikidata" or request.profile_version not in {"1", "1-nodes"}:
@@ -705,6 +718,7 @@ class PublicationRuntime:
         self._projection_source.troki_author_only = troki_author_only
         self._projection_source.repair_statements = repair_statements or {}
         self._projection_source.repair_revisions = repair_revisions or {}
+        self._projection_source.repair_evidence_statements = repair_evidence_statements or {}
         self._projection_source.exact_author_retry_base = exact_author_retry_base
         target = _target_ref(request.target)
         self._projection_source.ledger_is_test = target.environment != "production"

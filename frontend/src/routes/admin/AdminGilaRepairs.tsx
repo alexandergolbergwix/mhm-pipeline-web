@@ -58,6 +58,7 @@ const repairPhases: Record<string, string> = {
   references_original: "Check the original reference queue",
   references_remaining: "Check the remaining reference queue",
   audit_after_references: "Check revisions after reference repairs",
+  find_evidence: "Check source evidence with Kimi",
   prepare: "Check source evidence and item creators",
   dry_run: "Check the publication plan",
   publish: "Publish and verify supported edits",
@@ -206,8 +207,10 @@ function CaseDetails({item, report, runId, expanded, actions}: {
   const [error, setError] = useState("");
   const [caseReview, setCaseReview] = useState<GilaCaseReview>();
   const [reviewProgress, setReviewProgress] = useState("");
-  const canReview = item.disposition === "manual_review" && Boolean(item.qid && item.control_number)
-    && (item.reason === "production_place_not_resolved" || item.reason === "named_scribe_identity_unresolved");
+  const canReview = (item.disposition === "manual_review" || item.disposition === "repair_required")
+    && Boolean(item.qid && item.control_number)
+    && ["production_place_not_resolved", "named_scribe_identity_unresolved",
+      "source_scribe_claim_absent", "verify_scribe_target_identity"].includes(item.reason ?? "");
 
   useEffect(() => {
     if (!canReview || !expanded) return;
@@ -595,7 +598,7 @@ export default function AdminGilaRepairs() {
           </button>
         </div>
       </div>
-      <p className="text-sm muted">Automatic repair publishes supported edits to Wikidata on items the project account created.</p>
+      <p className="text-sm muted">Kimi checks MARC and authority evidence for unresolved scribes and places of production. The job publishes source-supported edits only on items the project account created.</p>
       {automatic && <section id="automatic-manuscript-repair" tabIndex={-1}
         aria-label="Automatic manuscript repair" aria-live="polite"
         className="space-y-2 rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4">
@@ -619,6 +622,13 @@ export default function AdminGilaRepairs() {
             · {automaticResult.reference_items_corrected} items with reference repairs verified
             {automaticResult.requirements_verified != null && ` · ${automaticResult.requirements_verified} of 9 requirements verified`}
           </p>
+          {automaticResult.evidence_review && <p className="text-sm muted">
+            {automaticResult.evidence_review.checked} source cases reviewed
+            {" · "}{automaticResult.evidence_review.supported} passed the evidence checks
+            {" · "}{automaticResult.evidence_review.needs_evidence} still need evidence
+            {" · "}{automaticResult.evidence_review.excluded_creator} excluded by the creator check
+            {" · "}{automaticResult.evidence_review.unavailable} checks unavailable
+          </p>}
           {!!automaticResult.requirement_comparison?.length && <details>
             <summary className="cursor-pointer text-sm">Compare verification before and after repairs</summary>
             <div className="overflow-x-auto">

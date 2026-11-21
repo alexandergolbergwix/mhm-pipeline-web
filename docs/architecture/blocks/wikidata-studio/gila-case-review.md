@@ -11,21 +11,32 @@ It uses `QUBRID_API_KEY` or its `QUABRID_API_KEY` alias and the optional `QUBRID
 The case needs one current source record and the latest completed audit.
 The worker checks access, the audit ID, and the record hash again before it saves the result.
 
-The system confirms a scribe match when an intact MARC occurrence has the scribe role and explicitly identifies the current Wikidata person.
-For places it can also confirm a unique geographic match when MARC 751 names the place, region, and country for the production role.
-The system compares the names with the live administrative links.
-Kimi can select a candidate or ask for more evidence.
-The system classifies a match as a candidate if the independent checks cannot confirm it.
-A corpus choice about whether to combine manuscript and work items stays with the project.
+The original MARC record establishes the name, role, or place.
+For a scribe, the system requires a Wikidata ID on the exact MARC occurrence or an exact VIAF or NLI ID.
+The ID can come from the occurrence or a high-confidence approved authority match for the same record, name, and role.
+A name match alone leaves the identity open.
+For a place, MARC 751 must specify the production role and a unique place, region, and country.
+The system looks up those names through the current public administrative links.
+An item for the holding library or a related place cannot supply the production role.
 
-The case review saves evidence in the job result.
-A repair release follows the separate source and Publication checks.
-The review has no authority to edit Wikidata or change the audit outcome.
+**Repair all eligible items** checks supported open cases after the audit and reference queues.
+The first-revision creator check excludes other items before the batch requests evidence.
+Kimi selects a candidate from the public results or asks for more evidence.
+Code checks the source and candidate independently.
+The preparation worker repeats the checks with the same MARC hash, authority IDs, and public revisions.
+The release adds only the supported claim, with a reference to the Ktiv record.
+It preserves existing statements and excludes conflicting claims.
+Publication checks the creator and verifies the result at the new revision.
+The final audit also verifies the source case and retains it in its original requirement total.
+An unresolved identity, missing source passage, or corpus model decision stays open.
 
 ## Code and tests
 
 - `admin_gila_repairs.py` provides `POST /api/admin/wikidata-gila-repairs/case-review` and `GET` on the same path.
-- `wikidata_gila_case_review.py` owns the proof, provider call, and `wikidata_gila_case_review` job result.
+- `wikidata_gila_case_review.py` owns the provider call and the single and batch results for `wikidata_gila_case_review`.
+- `wikidata_gila_identity_evidence.py` proves the source identity and constructs exact statements.
+- `wikidata_publication_prepare_job.py` rechecks the private result against the same audit and repair cycle.
+- The job service excludes private proof details from the public job result.
 - `run_jobs.py` restricts job access to administrators. `run_job_params.py` restricts job start to the audit route.
 - `AdminGilaRepairs.tsx`, `api/gilaRepairs.ts`, and `api/runJobs.ts` show the case review and its progress.
 - `test_gila_case_review.py` checks role and place proof, exact candidate limits, and the route and worker.

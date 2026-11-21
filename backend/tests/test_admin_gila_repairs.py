@@ -90,7 +90,7 @@ async def test_repair_cycle_rebuilds_then_runs_both_repair_scopes_and_verifies()
         id=uuid.uuid4(), run_id=uuid.uuid4(), project_id=uuid.uuid4(), created_by=uuid.uuid4(),
         params={"_publication_credential": "fixture-envelope", "_cycle": "fixture-cycle"},
     ))
-    audit = SimpleNamespace(status="succeeded", result={"email_points": [
+    audit = SimpleNamespace(id=uuid.uuid4(), status="succeeded", result={"email_points": [
         {"point": 5, "title": "People and roles", "status": "repair_required",
          "counts": {"repair_required": 1, "manual_review": 1325}},
     ]})
@@ -102,20 +102,22 @@ async def test_repair_cycle_rebuilds_then_runs_both_repair_scopes_and_verifies()
              "counts": {"verified": 1, "manual_review": 1325}},
         ], "reference_blocks": 459},
     )
+    evidence = SimpleNamespace(id=uuid.uuid4(), status="succeeded", result={"checked": 2, "supported": 1})
     cycle.stage = AsyncMock(side_effect=[
         SimpleNamespace(status="failed", progress={"phase": "source_rebuild_required"}),
-        SimpleNamespace(status="succeeded"), audit, verified,
+        SimpleNamespace(status="succeeded"), audit, evidence, verified,
     ])
     cycle.references = AsyncMock()
     cycle.publication = AsyncMock(side_effect=ValueError("The source changed before publication."))
     await cycle.run()
     assert [call.args[1] for call in cycle.stage.await_args_list] == [
-        "initial_audit", "rebuild", "audit_after_rebuild", "verify",
+        "initial_audit", "rebuild", "audit_after_rebuild", "find_evidence", "verify",
     ]
     assert [call.args for call in cycle.references.await_args_list] == [
         ("original", audit), ("remaining", audit),
     ]
-    cycle.publication.assert_awaited_once_with(audit)
+    cycle.publication.assert_awaited_once_with(audit, evidence)
+    assert cycle.result["evidence_review"]["supported"] == 1
     assert cycle.result["requirements_verified"] == 1
     assert cycle.result["repeated_references"] == 459
     assert cycle.result["requirement_comparison"] == [
@@ -389,3 +391,84 @@ async def test_admin_audit_start_progress_and_case_pagination(sample_run, db_ses
     assert (await client.get(f"/api/runs/{run_id}/jobs/{job.id}")).status_code == 403
     forbidden = await client.get(base + "/evidence", params={"audit_id": str(job.id)})
     assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_evidence_only_batch_seals_one_sourced_update(sample_run, db_session, monkeypatch):
+    from app.models.publication import Publication, PublicationEntityRow
+    from app.pipeline import wikidata_gila_case_review as evidence_worker
+    from app.pipeline.wikidata_gila_identity_evidence import _repair_statement
+    from app.pipeline.wikidata_source_choices import digest, source_hash
+    from sqlalchemy import select
+
+    cn = "990000000000000001"
+    run_id, actor, project = (sample_run[key] for key in ("run_id", "user_id", "project_id"))
+    local_id = f"QDraft_MS_{cn}"
+    item = {
+        **_canonical_item(local_id, "A manuscript"),
+        "entity_type": "manuscript", "existing_qid": "Q10", "records": [cn],
+    }
+    await _add_canonical_cache(db_session, run_id, items=[item])
+    snapshot = await StudioCacheProjectionSource(db_session).current_snapshot(
+        run_id=run_id, source="canonical", approved_only=True,
+    )
+    records = await load_run_marc_records(db_session, run_id)
+    case = {
+        "case_id": "source:scribe", "reason": "named_scribe_identity_unresolved",
+        "disposition": "manual_review", "control_number": cn, "qid": "Q10", "local_id": local_id,
+    }
+    audit = RunJob(
+        id=uuid.uuid4(), project_id=project, run_id=run_id, created_by=actor,
+        kind=worker.KIND, status="succeeded", result={},
+        params={
+            "_gila_cases": b64encode(zlib.compress(json.dumps([case]).encode())).decode(),
+            "_gila_build_revision": snapshot.revision, "_gila_build_digest": snapshot.digest,
+            "_gila_source_fingerprint": worker.gila_record_fingerprint(records),
+        },
+    )
+    raw = {"001": cn, "_control_number": cn, "marc_occurrences": [{"tag": "700", "subfields": [
+        {"code": "a", "value": "A scribe"}, {"code": "e", "value": "scribe"},
+        {"code": "1", "value": "https://www.wikidata.org/entity/Q42"},
+    ]}]}
+    manuscript = {"id": "Q10", "lastrevid": 123, "claims": {"P3959": [{
+        "mainsnak": {"snaktype": "value", "datavalue": {"value": cn}},
+    }]}}
+    candidate = {"id": "Q42", "lastrevid": 456, "claims": {"P31": [{
+        "mainsnak": {"snaktype": "value", "datavalue": {"value": {"id": "Q5"}}},
+    }]}}
+    assert _repair_statement(raw, case, manuscript, candidate, {})
+    parent_id = str(uuid.uuid4())
+    evidence = RunJob(
+        id=uuid.uuid4(), project_id=project, run_id=run_id, created_by=actor,
+        kind="wikidata_gila_case_review", status="succeeded",
+        result={"_repairs": [{
+            "case_id": case["case_id"], "candidate_qid": "Q42", "candidate_revision": 456,
+            "base_revision": 123, "source_hash": source_hash(raw), "authority_digest": digest([]),
+        }]},
+        params={"_audit_id": str(audit.id), "_gila_cycle_parent": parent_id,
+                "_gila_cycle_step": "find_evidence"},
+    )
+    assert prepare_worker.audited_batch_params(audit, actor) is None
+    params = prepare_worker.audited_batch_params(audit, actor, evidence=evidence)
+    job = RunJob(
+        id=uuid.uuid4(), project_id=project, run_id=run_id, created_by=actor,
+        kind="wikidata_publication_prepare", status="running",
+        params={**params, "_gila_cycle_parent": parent_id},
+    )
+    db_session.add_all([audit, evidence, job])
+    await db_session.commit()
+    monkeypatch.setattr(prepare_worker, "fetch_merged_wikidata_item", AsyncMock(return_value=item))
+    monkeypatch.setattr(evidence_worker, "_case_record", AsyncMock(return_value=raw))
+    monkeypatch.setattr(evidence_worker.ReferenceItemReader, "creator_uid", AsyncMock(return_value=6935067))
+    monkeypatch.setattr(evidence_worker.ReferenceItemReader, "fetch_batch",
+                        AsyncMock(return_value={"Q10": manuscript, "Q42": candidate}))
+    await prepare_worker.run_wikidata_publication_prepare_job(job.id)
+    await db_session.refresh(job)
+    assert job.status == "succeeded", job.error
+    publication = await db_session.get(Publication, uuid.UUID(job.result["publication_id"]))
+    row = await db_session.scalar(select(PublicationEntityRow).where(
+        PublicationEntityRow.release_id == publication.latest_release_id,
+    ))
+    assert row.document["publication_gila_repair_qid"] == "Q10"
+    assert row.document["publication_gila_audited_revision"] == 123
+    assert [(claim["property"], claim["value"]) for claim in row.document["statements"]] == [("P11603", "Q42")]

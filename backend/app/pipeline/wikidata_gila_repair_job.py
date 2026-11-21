@@ -19,6 +19,7 @@ from app.models.run import Run
 from app.models.run_job import (
     ACTIVE_JOB_STATUSES,
     JOB_KIND_WIKIDATA_GILA_AUDIT,
+    JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
     JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
@@ -224,8 +225,8 @@ class RepairCycle:
             "stage": phase, "reason": reason or "The job needs review.",
         })
 
-    async def publication(self, audit):
-        params = audited_batch_params(audit, self.actor)
+    async def publication(self, audit, evidence):
+        params = audited_batch_params(audit, self.actor, evidence=evidence)
         if params is None:
             return
         async with session_scope() as db:
@@ -404,8 +405,19 @@ class RepairCycle:
                 repair_audit = refreshed
             else:
                 self.attention("audit_after_references", refreshed.error)
+        evidence = await self.stage(
+            JOB_KIND_WIKIDATA_GILA_CASE_REVIEW, "find_evidence",
+            "Find evidence in MARC and Wikidata with Kimi.", {"_audit_id": str(repair_audit.id)},
+        )
+        if evidence.status == "succeeded":
+            self.result["evidence_review"] = {
+                key: (evidence.result or {}).get(key, 0)
+                for key in ("checked", "supported", "needs_evidence", "excluded_creator", "unavailable")
+            }
+        else:
+            self.attention("find_evidence", evidence.error)
         try:
-            await self.publication(repair_audit)
+            await self.publication(repair_audit, evidence)
         except ValueError as exc:
             self.attention("publication", str(exc))
         final = await self.stage(

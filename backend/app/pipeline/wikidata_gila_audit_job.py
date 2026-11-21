@@ -145,11 +145,21 @@ def _linked_entities(entities: Mapping[str, dict]) -> set[str]:
     return {
         value["id"]
         for entity in entities.values()
-        for pid in ("P1574", "P50", "P3342", "P11603")
+        for pid in ("P1574", "P50", "P3342", "P11603", "P1071")
         for claim in entity["claims"].get(pid, [])
         if claim.get("rank") != "deprecated"
         and isinstance(value := claim["mainsnak"].get("datavalue", {}).get("value"), dict)
         and _live_qid(value.get("id"))
+    }
+
+
+def _geographic_context(entities, qids, properties):
+    from app.pipeline.wikidata_source_choices import _claim_values
+
+    return {
+        value["id"] for qid in qids if qid in entities
+        for pid in properties for value in _claim_values(entities[qid], pid)
+        if isinstance(value, dict) and _live_qid(value.get("id"))
     }
 
 
@@ -386,6 +396,7 @@ async def run_gila_audit_job(job_id: uuid.UUID) -> None:
 
 async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
     from app.routers.wikidata_studio import STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS
+    from app.pipeline.wikidata_gila_case_review import load_authority_evidence
 
     try:
         await update_job_progress(
@@ -414,6 +425,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             records = await load_run_marc_records(db, run_id)
             ledger = await load_global_ledger(db, is_test=False)
             canonical = await _canonical_items(projection, run_id, snapshot, ledger)
+            proof_authority = await load_authority_evidence(db, run_id)
         mappings = _catalogue_mappings(records, ledger)
         seed, _ = load_seed()
         inventory = remaining_reference_inventory()["items"]
@@ -431,6 +443,11 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
         await _live_items(job_id, known, entities, seen, "public_items")
         linked = await asyncio.to_thread(_linked_entities, entities)
         await _live_items(job_id, linked, entities, seen, "linked_items")
+        places = await asyncio.to_thread(_geographic_context, entities, mappings.values(), ("P1071",))
+        parents = await asyncio.to_thread(_geographic_context, entities, places, ("P131", "P17"))
+        await _live_items(job_id, parents, entities, seen, "linked_items")
+        regions = await asyncio.to_thread(_geographic_context, entities, parents, ("P131",))
+        await _live_items(job_id, regions, entities, seen, "linked_items")
         if await is_cancel_requested(job_id):
             raise AuditCancelledError()
         await update_job_progress(
@@ -450,6 +467,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             qids_by_cn=mappings,
             live_entities=entities,
             include_repair_payloads=False,
+            repair_authority_by_cn=proof_authority,
         )
         packet = await asyncio.to_thread(
             build_gila_completion_packet,

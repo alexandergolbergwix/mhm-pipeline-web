@@ -96,7 +96,7 @@ already-judged items.
 | `wikidata_studio_build` | `wikidata_studio_build_job.py` | Sequential: delegates to `execute_studio_build` (fingerprint cache per Rule W-26). A dropped connection retries from the saved batch cursor, at most 3 times. The Modal function and the web wait are 24 hours, and CPU phases run off the event loop (Rule W-261). Modal: shard fan-out via `modal_jobs.py` — streamed fingerprint, CN slices of 2,000 by default (`MHM_WIKIDATA_BUILD_SHARD_SIZE`), merge + corpus-wide finish + cache upsert (wikidata-studio "Sharded build") |
 | `wikidata_upload` | `wikidata_upload_job.py` | Two-pass dry-run/test/live upload (W-30 / W-192); `owner_only` is serial, rejects local references and shards, and needs a live credential for dry-run (W-303) |
 | `wikidata_publication_prepare` | `wikidata_publication_prepare_job.py` | Streams the Studio source into a sealed immutable Release; the payload has request metadata and an actor ID but no credential secret |
-| `wikidata_gila_case_review` | `wikidata_gila_case_review.py` | Reviews one place or scribe case with Qubrid. The admin audit routes own job start and recovery. |
+| `wikidata_gila_case_review` | `wikidata_gila_case_review.py` | Reviews a place or scribe case with Qubrid. The repair cycle can start a batch for the current audit. The API omits private evidence. |
 | `wikidata_gila_repair` | `wikidata_gila_repair_job.py` | Coordinates the audit and repair jobs in the light slot. The administrator starts it from the audit page. |
 
 The manuscript repair coordinator uses a light slot. Its child jobs use the global and heavy limits. This permits a child job to run when the global limit is one.

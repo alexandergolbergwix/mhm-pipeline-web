@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
+
+import httpx
 
 from converter.wikidata import troki_author_repair as troki
 from sqlalchemy import select
@@ -11,6 +14,7 @@ from sqlalchemy import select
 from app.db import session_scope
 from app.models.run_job import (
     JOB_KIND_WIKIDATA_GILA_AUDIT,
+    JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
     JOB_STATUS_CANCELLED,
     JOB_STATUS_FAILED,
     JOB_STATUS_SUCCEEDED,
@@ -25,7 +29,10 @@ from app.publication.runtime import PublicationRuntime, _has_blocking_item_issue
 from app.schemas.publication import PreparePublicationRequest, RunPublicationSource
 
 
-def audited_batch_params(report, actor_id):
+logger = logging.getLogger(__name__)
+
+
+def audited_batch_params(report, actor_id, *, evidence=None):
     from app.pipeline.wikidata_gila_audit_job import gila_cases
 
     rows = gila_cases(report)
@@ -34,6 +41,13 @@ def audited_batch_params(report, actor_id):
         for case in rows
         if case.get("can_prepare") and case.get("local_id") and case.get("qid")
     }
+    evidence_ids = {
+        proof["case_id"] for proof in (evidence.result or {}).get("_repairs", [])
+    } if evidence and evidence.status == JOB_STATUS_SUCCEEDED else set()
+    eligible.update(
+        (case["local_id"], case["qid"], False) for case in rows
+        if case["case_id"] in evidence_ids and case.get("local_id") and case.get("qid")
+    )
     if not eligible:
         return None
     revision, digest, fingerprint = (
@@ -52,6 +66,7 @@ def audited_batch_params(report, actor_id):
         "request": request.model_dump(mode="json"),
         "_gila_batch": sorted(eligible),
         "_gila_audit_id": str(report.id),
+        **({"_gila_evidence_job": str(evidence.id)} if evidence_ids else {}),
         "_gila_build_snapshot": [revision, digest],
         "_gila_source_fingerprint": fingerprint,
         "_gila_open_case_counts": {
@@ -185,6 +200,56 @@ async def _select_batch(job_id, db, run_id, entries):
     }
 
 
+async def _read_evidence(db, job, latest):
+    params = job.params
+    if not params.get("_gila_evidence_job"):
+        return {}
+    evidence = await db.get(RunJob, uuid.UUID(params["_gila_evidence_job"]))
+    if (
+        evidence is None or evidence.kind != JOB_KIND_WIKIDATA_GILA_CASE_REVIEW
+        or evidence.status != JOB_STATUS_SUCCEEDED or evidence.run_id != job.run_id
+        or evidence.created_by != job.created_by or evidence.project_id != job.project_id
+        or evidence.params.get("_audit_id") != str(latest.id)
+        or evidence.params.get("_gila_cycle_parent") != params.get("_gila_cycle_parent")
+        or evidence.params.get("_gila_cycle_step") != "find_evidence"
+    ):
+        raise ValueError("The Kimi evidence does not belong to this repair and audit.")
+    return {proof["case_id"]: proof for proof in (evidence.result or {}).get("_repairs", [])}
+
+
+async def _evidence_statements(db, run_id, item, cases):
+    from app.pipeline.wikidata_gila_case_review import (
+        SCRIBE_REASONS, _case_record, load_authority_evidence, prepare_evidence_statement,
+    )
+    from app.pipeline.marc_verify_context import canonical_control_number
+
+    statements = []
+    revisions = set()
+    if not item or item.get("entity_type") != "manuscript":
+        return statements, revisions
+    records = {canonical_control_number(cn) for cn in item.get("records", [])}
+    for case, proof in cases:
+        if records != {case["control_number"]}:
+            continue
+        try:
+            cn = case["control_number"]
+            raw = await _case_record(db, run_id, cn)
+            authority_rows = (
+                (await load_authority_evidence(db, run_id, cn)).get(cn, [])
+                if case["reason"] in SCRIBE_REASONS else []
+            )
+            await db.commit()
+            async with asyncio.timeout(30):
+                statement = await prepare_evidence_statement(raw, case, proof, authority_rows=authority_rows)
+        except (ValueError, httpx.HTTPError, TimeoutError) as exc:
+            logger.warning("Repair evidence for %s could not be checked (%s)", case["qid"], type(exc).__name__)
+            continue
+        if statement and statement not in statements:
+            statements.append(statement)
+            revisions.add(proof["base_revision"])
+    return statements, revisions
+
+
 async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
     async with session_scope() as db:
         job = await db.get(RunJob, job_id)
@@ -212,6 +277,7 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
         batch = params.get("_gila_batch")
         batch_result = {}
         exact_statements = {}
+        evidence_statements = {}
         audited_revisions = {}
         if selected is not None or batch:
             from app.pipeline.marc_verify_context import load_run_marc_records
@@ -248,10 +314,17 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
                 if selected and params.get("_gila_cycle_parent"):
                     from app.pipeline.wikidata_gila_audit_job import gila_cases
 
+                    proofs = await _read_evidence(db, job, latest)
                     cases = {}
+                    source_cases = {}
                     for row in gila_cases(latest):
-                        if row.get("can_prepare") and row.get("local_id") in selected and row.get("qid") == selected[row["local_id"]]:
-                            cases.setdefault(row["local_id"], []).append(row)
+                        local_id = row.get("local_id")
+                        if local_id not in selected or row.get("qid") != selected[local_id]:
+                            continue
+                        if row.get("can_prepare"):
+                            cases.setdefault(local_id, []).append(row)
+                        if proof := proofs.get(row["case_id"]):
+                            source_cases.setdefault(local_id, []).append((row, proof))
                     for local_id, qid in list(selected.items()):
                         if troki_author_only and local_id == troki.WORK_LOCAL_ID:
                             continue
@@ -259,11 +332,16 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
                             db, job.run_id, local_id, source="canonical",
                         )
                         audited_cases = cases.get(local_id, [])
-                        revisions = {case.get("live_revision") for case in audited_cases}
-                        revision = next(iter(revisions)) if len(revisions) == 1 else None
                         statements = audited_statements(item or {}, audited_cases)
-                        if statements and type(revision) is int and revision > 0:
+                        additions, revisions = await _evidence_statements(
+                            db, job.run_id, item, source_cases.get(local_id, []),
+                        )
+                        if statements:
+                            revisions.update(case.get("live_revision") for case in audited_cases)
+                        revision = next(iter(revisions)) if len(revisions) == 1 else None
+                        if (statements or additions) and type(revision) is int and revision > 0:
                             exact_statements[local_id] = statements
+                            evidence_statements[local_id] = additions
                             audited_revisions[local_id] = revision
                         else:
                             del selected[local_id]
@@ -309,7 +387,8 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
                 "selected_existing": selected,
                 "expected_snapshot": tuple(params["_gila_build_snapshot"]),
                 "troki_author_only": troki_author_only,
-                **({"repair_statements": exact_statements, "repair_revisions": audited_revisions}
+                **({"repair_statements": exact_statements, "repair_revisions": audited_revisions,
+                    "repair_evidence_statements": evidence_statements}
                    if exact_statements else {}),
                 **({"exact_author_retry_base": params["_gila_retry_base"]}
                    if troki_author_only and params.get("_gila_retry_base") else {}),

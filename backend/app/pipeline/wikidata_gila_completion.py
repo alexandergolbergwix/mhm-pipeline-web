@@ -188,6 +188,8 @@ def build_gila_completion_packet(
                 if classification == "present_not_transferred"
                 else "manual_review"
             )
+            if read and case.get("verified") is True:
+                disposition = "verified"
             points[point].append(disposition)
             case_rows.append(
                 {

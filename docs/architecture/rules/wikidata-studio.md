@@ -4388,3 +4388,12 @@ Keep conflicting classifications and unknown person identities open for review.
 Require source-bound claims, creator proof, and the audited revision for an automatic edit.
 
 See [Gila completion packet](../blocks/wikidata-studio/gila-completion-packet.md).
+
+## Rule W-364 — Require independent proof for automatic evidence repairs
+
+The one-click job runs the Kimi evidence check for supported open cases.
+The original MARC record supplies the role. An exact VIAF or NLI authority ID can confirm a person.
+The preparation worker checks the current source, target, and revision. It constructs the statement from validated evidence.
+The write path checks the first-revision creator and permits only the exact scoped update.
+The final audit checks the sourced public statement and retains the case in the requirement total.
+See [Kimi case review](../blocks/wikidata-studio/gila-case-review.md).
