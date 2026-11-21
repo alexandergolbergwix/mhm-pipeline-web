@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 import pytest
+from requests import Response
+from requests.hooks import dispatch_hook
+from wikibaseintegrator.wbi_exceptions import MaxRetriesReachedException
 
 from app.publication.gateway import (
     GatewayMutation, GatewayRecoveryRequest, GatewayWriteRequest, TargetObservation,
@@ -438,6 +441,54 @@ async def test_write_refreshes_expired_csrf_token_before_retry() -> None:
     assert uploader.item.write_count == 2
     assert [options["max_retries"] for options in uploader.item.write_options] == [1, 1]
     assert [options["maxlag"] for options in uploader.item.write_options] == [50, 50]
+
+
+@pytest.mark.asyncio
+async def test_publication_preserves_lag_rejection_during_item_read(monkeypatch) -> None:
+    uploader = WikidataUploader(token="", allow_live=True, write_maxlag=50)
+    read_options = []
+
+    def read_item(qid: str, **options: object) -> None:
+        assert qid == "Q9001"
+        read_options.append(options)
+        response = Response()
+        response.status_code = 200
+        response.headers["Retry-After"] = "12"
+        response._content = b'{"error":{"code":"maxlag","lag":55}}'
+        dispatch_hook("response", options.get("hooks"), response)
+        raise MaxRetriesReachedException(options["max_retries"])
+
+    monkeypatch.setattr(uploader, "_get_authenticated_user", lambda: "Creator")
+    monkeypatch.setattr(uploader, "_get_first_revision_author", lambda qid: "Creator")
+    monkeypatch.setattr(uploader, "_is_our_item", lambda qid, **kwargs: True)
+    monkeypatch.setattr(uploader, "_assert_modifiable", lambda qid, **kwargs: None)
+    monkeypatch.setattr(uploader, "_init_wbi", lambda: SimpleNamespace(item=SimpleNamespace(get=read_item)))
+    boundary = CurrentWikidataBoundary(uploader=uploader)
+    mutation = GatewayMutation(
+        entity_key="manuscript:1",
+        entity_type="manuscript",
+        action="update",
+        target_qid="Q9001",
+        payload_digest="payload",
+        entity_digest="1" * 64,
+        document={"labels": {"en": "Manuscript"}, "statements": []},
+        identity_assertions=("P217:shelf-1",),
+        expected_revision=17,
+    )
+
+    with pytest.raises(WikidataMaxlagError) as error:
+        await boundary.write_once(
+            GatewayWriteRequest(
+                intent_id="intent-1",
+                request_key="execution-1:manuscript-1:1",
+                mutation=mutation,
+                authorize_send=_authorize_send,
+            )
+        )
+
+    assert error.value.retry_after_seconds == 12
+    assert len(read_options) == 1
+    assert read_options[0]["maxlag"] == 50
 
 
 @pytest.mark.asyncio

@@ -132,7 +132,7 @@ export function WikidataPublicationControls({
         <span aria-current={readiness.publishAllowed || execution ? "step" : undefined}>3. Publish</span>
       </nav>
       <div className="rounded-lg bg-white/5 p-4 space-y-3">
-        <p className="text-lg font-medium">{executionWaitingForReview ? "Upload actions complete" : executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : executionFinishedSuccessfully ? "Upload complete" : execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
+        <p className="text-lg font-medium">{executionWaitingForReview ? "Upload paused with unresolved items" : executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : executionFinishedSuccessfully ? "Upload complete" : execution ? "Publication progress" : readiness.publishAllowed ? "Ready to publish" : !publication.source_current ? "Source changed" : !readiness.approvalCurrent ? "Prepare your items" : plan ? "Resolve items before publication" : "Check your items"}</p>
         <p className="text-sm muted">{release.entity_count} items in this Release · Target: {publication.target === "live" ? "www.wikidata.org" : "test.wikidata.org"}</p>
         {plan && <p className="text-sm">{actionCount(plan.action_counts, "create")} new · {actionCount(plan.action_counts, "update")} updates · reused without updates: {actionCount(plan.action_counts, "skip")} · {actionCount(plan.action_counts, "blocked")} need attention</p>}
         {plan && <div className="rounded-md border border-white/10 surface-inset p-3" data-testid="publication-result-summary" aria-live="polite">
@@ -308,9 +308,9 @@ export function WikidataPublicationControls({
         <div className="rounded-lg border border-white/10 p-3 space-y-2" data-testid="publication-execution-progress" aria-live="polite">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="kicker">{executionWaitingForReview ? "Upload actions complete" : executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : executionFinishedSuccessfully ? "Upload complete" : "Upload progress"}</div>
+              <div className="kicker">{executionWaitingForReview ? "Upload paused" : executionFailed ? executionFinishedWithErrors ? "Upload finished with errors" : "Upload stopped" : executionFinishedSuccessfully ? "Upload complete" : "Upload progress"}</div>
               <p className="text-sm text-ink">
-                {execution.processed.toLocaleString()} of {execution.total.toLocaleString()} upload actions complete
+                {execution.processed.toLocaleString()} of {execution.total.toLocaleString()} upload actions processed
               </p>
             </div>
             <span className="rounded-full border border-white/10 px-2 py-1 text-xs muted">{retryAt ? "Wikidata delay" : executionWaitingForReview ? "needs retry" : execution.status}</span>
@@ -322,7 +322,7 @@ export function WikidataPublicationControls({
           )}
           {execution.status === "paused" && !executionActive && (
             <p className="text-sm text-warn">{executionWaitingForReview
-              ? "All safe items finished. Resume to retry the unresolved items."
+              ? "Review the upload results before you retry."
               : "The upload paused before it finished. Resume to continue from the saved state."}</p>
           )}
           <div className="h-2 overflow-hidden rounded-full bg-white/10" aria-label="Execution progress">

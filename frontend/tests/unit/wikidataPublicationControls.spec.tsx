@@ -459,7 +459,7 @@ describe("WikidataPublicationControls", () => {
     expect(screen.queryByTestId("publication-resume")).toBeNull();
   });
 
-  it("explains that a paused upload needs a retry after safe items finish", () => {
+  it("shows unresolved items when the upload pauses", () => {
     render(<WikidataPublicationControls
       publication={publication({
         status: "paused",
@@ -487,8 +487,10 @@ describe("WikidataPublicationControls", () => {
     />);
 
     expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent(
-      "All safe items finished. Resume to retry the unresolved items.",
+      "2 of 2 upload actions processed",
     );
+    expect(screen.getByText("Upload paused with unresolved items")).toBeVisible();
+    expect(screen.getByText("Upload paused", {exact: true})).toBeVisible();
     expect(screen.getByTestId("publication-execution-progress")).toHaveTextContent(
       "1 item needs attention",
     );

@@ -17,7 +17,8 @@ Each success requires a full public read with the expected entity and response r
 The completion receipt also checks that the current entity fingerprint matches the durable successful intent.
 
 `converter/wikidata/retry_policy.py` defines `BULK_MAXLAG = 5`. Studio writes use `STUDIO_MAXLAG = 50` (W-353).
-The Studio write hook preserves lag rejections and parses numeric or HTTP-date `Retry-After` values.
+Studio uses the same limit on the WikibaseIntegrator read that prepares an existing item (W-361).
+The read and edit hooks preserve lag rejections and parse numeric or HTTP-date `Retry-After` values.
 The Publication gateway retains the delay in `WriteOutcome.retry_after_seconds`.
 The core adds a bounded exponential delay and jitter without shortening the server delay.
 The SQL repository commits the intent result and `ExecutionAction.next_attempt_at` together.

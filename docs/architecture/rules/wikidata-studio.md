@@ -4350,3 +4350,17 @@ pass. The existing creator, source, and Plan checks remain required.
 The regression test pauses the active worker before authorization. It asserts
 that an idle worker leaves the Execution active and that the gateway records
 one write.
+
+### Rule W-361 — Preserve lag delays during item preparation
+
+On 21 November 2026, a repair paused after four lag rejections during the item read.
+The client used the bulk limit of 5 in the read before the Studio edit.
+It replaced the server response with a generic error and the worker marked the outcome as unknown.
+The public item kept its original revision.
+
+Use the Studio limit of 50 for the item read before the edit.
+Preserve the confirmed rejection and its `Retry-After` value on the first response.
+The worker saves the delay and repeats the normal checks before the next attempt.
+The UI reports unresolved items when the upload pauses.
+
+See [Repair retries](../blocks/wikidata-studio/repair-retries.md).

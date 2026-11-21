@@ -18,6 +18,7 @@ import threading
 
 from converter.wikidata.retry_policy import (
     BULK_MAXLAG,
+    STUDIO_MAXLAG,
     ConfirmedMaxlagError,
     preserve_maxlag_rejection,
 )
@@ -1251,17 +1252,23 @@ class WikidataUploader:
                 wbi_item = wbi.item.new().from_json(prefetched)
             else:
                 try:
-                    options = {"mediawiki_api_url": _WIKIDATA_API, "allow_redirects": False} if owner_only else {}
-                    wbi_item = wbi.item.get(
-                        item.existing_qid,
-                        maxlag=BULK_MAXLAG,
-                        retry_after=5,
-                        max_retries=4,
-                        timeout=30,
-                        **options,
-                    )
-                except TypeError:
+                    options: dict[str, object] = {
+                        "maxlag": BULK_MAXLAG,
+                        "retry_after": 5,
+                        "max_retries": 4,
+                        "timeout": 30,
+                    }
                     if owner_only:
+                        options.update(mediawiki_api_url=_WIKIDATA_API, allow_redirects=False)
+                    elif self._write_maxlag == STUDIO_MAXLAG:
+                        options.update(
+                            maxlag=STUDIO_MAXLAG,
+                            max_retries=1,
+                            hooks={"response": preserve_maxlag_rejection},
+                        )
+                    wbi_item = wbi.item.get(item.existing_qid, **options)
+                except TypeError:
+                    if owner_only or self._write_maxlag == STUDIO_MAXLAG:
                         raise
                     wbi_item = wbi.item.get(item.existing_qid)
         else:

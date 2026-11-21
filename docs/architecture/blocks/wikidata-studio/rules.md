@@ -1380,3 +1380,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 216. **R216 — Add the exact sourced Troki author link (W-359).** Verify the linked manuscript, the existing work evidence, and the author authority. Limit the release to one P50 on Q141175530.
 
 217. **R217 — Keep an Execution active while a worker holds a lease (W-360).** A worker can finalize only after active write leases end. Limit the writer count by the current work and database pool capacity.
+
+218. **R218 — Preserve lag delays during item preparation (W-361).** Apply the Studio limit and retain the server delay on the item read before an edit. The worker can schedule a retry for a confirmed rejection.
