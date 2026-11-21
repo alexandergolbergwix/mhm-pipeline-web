@@ -263,7 +263,10 @@ async def test_kimi_retries_truncated_review_and_accepts_one_json_fence(monkeypa
     client = httpx.AsyncClient
     requests = []
     def respond(request):
-        requests.append(json.loads(request.content))
+        payload = json.loads(request.content)
+        requests.append(payload)
+        if not any("json" in message["content"].casefold() for message in payload["messages"]):
+            return httpx.Response(400, json={"error": {"message": "JSON mode needs an explicit JSON request."}})
         return httpx.Response(200, json={"choices": [next(results)]})
 
     monkeypatch.setattr(worker.httpx, "AsyncClient",

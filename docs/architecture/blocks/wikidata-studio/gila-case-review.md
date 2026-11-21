@@ -13,7 +13,8 @@ It uses `moonshotai/Kimi-K2.6` through the Chat Completions API.
 It uses `QUBRID_API_KEY` or its `QUABRID_API_KEY` alias and the optional `QUBRID_BASE_URL`.
 The case needs one current source record and the latest completed audit.
 The worker checks access, the audit ID, and the record hash again before it saves the result.
-It validates the QID and the response format. It retries an incomplete response or a temporary service error up to twice.
+The prompt explicitly requests JSON because Qubrid requires this term for JSON mode.
+The worker validates the QID and the response format. It retries an incomplete response or a temporary service error up to twice.
 
 The original MARC record establishes the name, role, or place.
 For a scribe, the system requires a Wikidata ID on the exact MARC occurrence or an exact VIAF or NLI ID.
