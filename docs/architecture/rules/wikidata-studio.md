@@ -4376,3 +4376,15 @@ Confirm the exact claims, source, and creator at the current public revision.
 If a repair job leaves the active list, read the final state from its detail endpoint.
 
 See [Manuscript repair workspace](../blocks/wikidata-studio/manuscript-repair-workspace.md).
+
+### Rule W-363 — Retain resolved cases in the audit counts
+
+The production audit removed the Troki case after the edit on 21 November 2026.
+It left the verified count unchanged because it counted only missing author links.
+
+Keep the exact author case in the total after the current source and live claim pass the checks.
+Count the physical form and the documented scribe name when the source proves them.
+Keep conflicting classifications and unknown person identities open for review.
+Require source-bound claims, creator proof, and the audited revision for an automatic edit.
+
+See [Gila completion packet](../blocks/wikidata-studio/gila-completion-packet.md).

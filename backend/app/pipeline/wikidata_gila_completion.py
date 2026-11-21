@@ -76,6 +76,8 @@ def _points_for_fact(fact: Mapping[str, object]) -> tuple[int, ...]:
         return (3, 6) if fact.get("scope") == "content_occurrence" else (3,)
     if pid in {"P217", "description:en", "P3959"}:
         return (1,)
+    if pid == "P31" and fact.get("scope") == "physical_form":
+        return (2,)
     if pid == "P361":
         return (4,)
     if pid in {"P50", "P2093", "P11603", "P3342"} or fact.get("scope") == "person_date_alignment":

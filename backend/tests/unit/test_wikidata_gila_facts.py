@@ -4,6 +4,46 @@ import pytest
 from app.pipeline.wikidata_gila_facts import compare_gila_source_facts
 
 
+def test_audit_checks_expected_physical_classes_without_treating_a_scroll_as_a_codex():
+    entity = {"id": "Q123", "lastrevid": 10, "claims": {"P31": [
+        {"mainsnak": {"snaktype": "value", "datavalue": {"value": {"id": "Q87167"}}}},
+    ]}}
+    facts = compare_gila_source_facts(
+        [{"001": "990001", "300$a": "scroll, 14 leaves"}], [],
+        qids_by_cn={"990001": "Q123"}, live_entities={"Q123": entity},
+    )["facts"]
+    classes = {row["expected_value"]: row["live_status"] for row in facts if row["property"] == "P31"}
+    assert classes["Q87167"] == "present"
+    assert "Q123172729" not in classes
+    assert "missing" in classes.values()
+
+
+def test_audit_exposes_a_source_bound_named_scribe_without_asserting_an_identity():
+    record = {"001": "990001", "contributors": [{"role": "scribe", "name": "Example Scribe"}]}
+    qualifier = {"property": "P1932", "value": "Example Scribe"}
+    ref = {"property": "P3959", "value": "990001"}
+    manuscript = {"entity_type": "manuscript", "records": ["990001"], "statements": [
+        {"property": "P11603", "value_type": "somevalue", "value": None,
+         "qualifiers": [qualifier], "reference_blocks": [[ref]]},
+    ]}
+    entity = {"id": "Q123", "lastrevid": 10, "claims": {}}
+    def scribe():
+        report = compare_gila_source_facts(
+            [record], [manuscript], qids_by_cn={"990001": "Q123"}, live_entities={"Q123": entity},
+        )
+        return next(row for row in report["facts"] if row["property"] == "P11603")
+
+    missing = scribe()
+    assert missing["expected_value"] == "somevalue"
+    assert missing["proposal_provenance"] == "source_bound"
+    entity["claims"]["P11603"] = [
+        {"mainsnak": {"snaktype": "value", "datavalue": {"value": {"id": "Q99"}}}},
+    ]
+    conflict = scribe()
+    assert conflict["expected_value"] is None
+    assert conflict["live_status"] == "identity_review"
+
+
 def test_audit_detects_a_lost_second_folio_in_the_final_payload() -> None:
     record = {
         "001": "990001",

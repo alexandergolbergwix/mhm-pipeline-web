@@ -67,6 +67,11 @@ test("one click starts an automatic repair and the page restores its result", as
         items_published: 1, reference_items_corrected: 0, requirements_verified: 6,
         stages_needing_attention: [],
         exclusions: [{qid: "Q42", reason: "other_creator"}],
+        requirement_comparison: [{
+          point: 5, title: "People and roles",
+          before: {repair_required: 1, manual_review: 1325},
+          after: {verified: 1, manual_review: 1325},
+        }],
       } : null,
     } : null,
   }}));
@@ -82,6 +87,8 @@ test("one click starts an automatic repair and the page restores its result", as
   await page.reload();
   await expect(page.getByRole("heading", {name: "Repair cycle complete"})).toBeVisible();
   await expect(page.getByText(/6 of 9 requirements verified/)).toBeVisible();
+  await page.getByText("Compare verification before and after repairs").click();
+  await expect(page.getByRole("row", {name: /People and roles.*0.08%/})).toBeVisible();
   await page.getByText("1 exclusions from repair plans").click();
   await expect(page.getByRole("link", {name: "Q42"})).toBeVisible();
   expect(launched).toBe(1);

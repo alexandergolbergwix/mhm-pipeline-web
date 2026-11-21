@@ -114,6 +114,22 @@ def test_audit_offers_the_author_repair_only_with_exact_evidence(changed):
     assert case.get("repair_kind") == ("troki_author" if changed is None else None)
 
 
+def test_audit_keeps_the_verified_author_case_after_the_edit():
+    item = _source_work()
+    entities = _live_entities()
+    before, = audit_worker._work_author_cases([item], entities)
+    author = _claim({"id": troki.AUTHOR_QID}, troki.WORK_SOURCE)
+    author["qualifiers"] = {"P1932": [_snak(troki.AUTHOR_HEADING)]}
+    entities[troki.WORK_QID]["claims"]["P50"] = [author]
+    after, = audit_worker._work_author_cases([item], entities)
+    assert before["case_id"] == after["case_id"]
+    assert after["disposition"] == "verified"
+    assert after["can_prepare"] is False
+    author["references"] = []
+    needs_evidence, = audit_worker._work_author_cases([item], entities)
+    assert needs_evidence["disposition"] == "manual_review"
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status,revision,expected", [
     ("paused", 31, 31), ("running", 31, None), ("paused", 32, None),

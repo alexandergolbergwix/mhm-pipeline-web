@@ -23,6 +23,10 @@ The plan for that retry uses the same base revision.
 The read-back checks the new claims and creator against the current public revision (W-362).
 The results show verified edits, reference corrections, exclusions, and the new audit.
 The evidence download includes verified Publication receipts from automatic repairs.
+The completed repair shows before and after case counts for all nine requirements.
+The preparation worker binds each audited claim to the public revision it checked.
+If the reference queue edits a public item, the job refreshes the audit before Publication.
+Conflicts in physical form or scribe identity require source review.
 
 Open a requirement to see its verified count and remaining cases.
 Use the filters to find missing source facts, uncertain identities, and cases that need reference evidence.

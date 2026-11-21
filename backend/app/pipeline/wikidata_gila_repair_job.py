@@ -60,6 +60,20 @@ class RepairCancelled(Exception):
     """The administrator stopped the repair cycle."""
 
 
+def compare_requirements(before, after):
+    initial = {row["point"]: row for row in before["email_points"]}
+    return [
+        {
+            "point": row["point"],
+            "title": row["title"],
+            "before": initial[row["point"]].get("counts", {}),
+            "after": row.get("counts", {}),
+        }
+        for row in after["email_points"]
+        if row["point"] in initial
+    ]
+
+
 async def exact_author_retry_base(actions, reader: ReferenceItemReader) -> int | None:
     bases = {action.target_revision for action, _ in actions}
     if len(bases) != 1 or any(
@@ -380,8 +394,18 @@ class RepairCycle:
             raise ValueError(audit.error or "The initial audit did not finish.")
         for scope in ("original", "remaining"):
             await self.references(scope, audit)
+        repair_audit = audit
+        if self.result["reference_items_corrected"]:
+            refreshed = await self.stage(
+                JOB_KIND_WIKIDATA_GILA_AUDIT, "audit_after_references",
+                "Check current revisions after reference repairs.", full=True,
+            )
+            if refreshed.status == "succeeded":
+                repair_audit = refreshed
+            else:
+                self.attention("audit_after_references", refreshed.error)
         try:
-            await self.publication(audit)
+            await self.publication(repair_audit)
         except ValueError as exc:
             self.attention("publication", str(exc))
         final = await self.stage(
@@ -390,6 +414,7 @@ class RepairCycle:
         if final.status != "succeeded":
             raise ValueError(final.error or "The verification audit did not finish.")
         self.result["audit_id"] = str(final.id)
+        self.result["requirement_comparison"] = compare_requirements(audit.result, final.result)
         self.result["requirements_verified"] = sum(
             point["status"] == "verified" for point in final.result["email_points"]
         )

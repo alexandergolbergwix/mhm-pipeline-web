@@ -280,6 +280,7 @@ class StudioCacheProjectionSource(ProjectionSource):
         self.automatic_documents: dict[str, dict[str, object]] = {}
         self.selected_existing: dict[str, str] = {}
         self.repair_statements: dict[str, list[dict]] = {}
+        self.repair_revisions: dict[str, int] = {}
         self.exact_author_retry_base: int | None = None
         self.troki_author_only = False
         # None → the ledger namespace follows WIKIDATA_TEST_MODE (the same
@@ -424,6 +425,7 @@ class StudioCacheProjectionSource(ProjectionSource):
             item.pop("publication_gila_repair_qid", None)
             item.pop("publication_gila_troki_author", None)
             item.pop("publication_gila_retry_base", None)
+            item.pop("publication_gila_audited_revision", None)
             if self.selected_existing:
                 item["publication_gila_repair_qid"] = self.selected_existing[_item_entity_key(item)]
             exact_statements = self.repair_statements.get(_item_entity_key(item))
@@ -434,6 +436,9 @@ class StudioCacheProjectionSource(ProjectionSource):
                     statements=exact_statements, deferred_statements=[],
                     labels={}, descriptions={}, aliases={},
                 )
+                revision = self.repair_revisions.get(_item_entity_key(item))
+                if revision is not None:
+                    item["publication_gila_audited_revision"] = revision
             if self.troki_author_only and _item_entity_key(item) == troki.WORK_LOCAL_ID:
                 statement = troki.author_statement(item)
                 if statement is None:
@@ -681,6 +686,7 @@ class PublicationRuntime:
         expected_snapshot: tuple[str, str] | None = None,
         troki_author_only: bool = False,
         repair_statements: dict[str, list[dict]] | None = None,
+        repair_revisions: dict[str, int] | None = None,
         exact_author_retry_base: int | None = None,
     ) -> PublicationMutationResponse:
         if request.profile_id != "mhm-wikidata" or request.profile_version not in {"1", "1-nodes"}:
@@ -698,6 +704,7 @@ class PublicationRuntime:
         self._projection_source.selected_existing = selected_existing or {}
         self._projection_source.troki_author_only = troki_author_only
         self._projection_source.repair_statements = repair_statements or {}
+        self._projection_source.repair_revisions = repair_revisions or {}
         self._projection_source.exact_author_retry_base = exact_author_retry_base
         target = _target_ref(request.target)
         self._projection_source.ledger_is_test = target.environment != "production"

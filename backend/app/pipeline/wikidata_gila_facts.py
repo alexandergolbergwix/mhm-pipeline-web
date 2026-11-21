@@ -15,14 +15,29 @@ from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
 from converter.wikidata.catalog_notes import is_catalog_note_placeholder
 from converter.wikidata.catalog_references import catalog_reference_code, catalog_reference_text
+from converter.wikidata.item_builder import WikidataItemBuilder
 from converter.wikidata.item_models import snak_identity
 from converter.wikidata.property_mapping import (
     LANG_TO_QID,
+    Q_MANUSCRIPT,
+    Q_MANUSCRIPT_CODEX,
+    Q_MANUSCRIPT_FRAGMENT,
+    Q_PRINTED_BOOK,
+    Q_SCROLL,
     SCRIPT_MODE_TO_QID,
     SCRIPT_TYPE_TO_QID,
     date_to_wikidata,
 )
 from converter.wikidata.work_identity import reference_control_numbers
+
+_PHYSICAL_CLASSES = {Q_MANUSCRIPT, Q_MANUSCRIPT_CODEX, Q_MANUSCRIPT_FRAGMENT, Q_SCROLL, Q_PRINTED_BOOK}
+_INCOMPATIBLE_FORMS = {
+    Q_MANUSCRIPT: {Q_PRINTED_BOOK},
+    Q_MANUSCRIPT_CODEX: {Q_SCROLL, Q_MANUSCRIPT_FRAGMENT, Q_PRINTED_BOOK},
+    Q_MANUSCRIPT_FRAGMENT: {Q_MANUSCRIPT_CODEX, Q_PRINTED_BOOK},
+    Q_SCROLL: {Q_MANUSCRIPT_CODEX, Q_PRINTED_BOOK},
+    Q_PRINTED_BOOK: _PHYSICAL_CLASSES - {Q_PRINTED_BOOK},
+}
 
 
 def _text(value: object) -> str:
@@ -100,6 +115,20 @@ def _source_facts(record: Mapping[str, object], *, catalog_choices=None) -> list
             scope="identity_description",
         ),
     ]
+    facts.extend(
+        SourceFact("300/655", "P31", qid, scope="physical_form")
+        for qid in WikidataItemBuilder._determine_instance_type(record)
+        if qid in _PHYSICAL_CLASSES
+    )
+    scribe_names = {
+        _text(row.get("name"))
+        for row in _objects(record.get("contributors"))
+        if str(row.get("role") or "").casefold() in {"scribe", "transcriber"} and row.get("name")
+    }
+    facts.extend(
+        SourceFact("700/800", "P11603", None, {"P1932": name}, source_value=name, scope="named_scribe")
+        for name in sorted(scribe_names - {""})
+    )
     shelfmark = _text(record.get("holding_942_shelfmark"))
     if shelfmark:
         facts.append(SourceFact("942", "P217", shelfmark, source_value=shelfmark))
@@ -391,8 +420,10 @@ def _matches(fact: SourceFact, statement: Mapping[str, object]) -> bool:
             return False
         if str(statement.get("unit") or "").rsplit("/", 1)[-1] != fact.unit:
             return False
-    elif fact.value is not None and _text(statement.get("value")) != _text(fact.value):
-        return False
+    elif fact.value is not None:
+        value = "somevalue" if statement.get("value_type") == "somevalue" else statement.get("value")
+        if _text(value) != _text(fact.value):
+            return False
     if fact.precision is not None and statement.get("precision") != fact.precision:
         return False
     if (
@@ -416,6 +447,12 @@ def _matches(fact: SourceFact, statement: Mapping[str, object]) -> bool:
         )
         for pid, value in fact.qualifiers.items()
     )
+
+
+def normalize_source_proposal(statement: Mapping[str, object]) -> Mapping[str, object]:
+    if statement.get("value_type") == "time":
+        return {"calendarmodel": wikibase_config["CALENDAR_MODEL_QID"], **statement}
+    return statement
 
 
 def _author_names(statements: Iterable[Mapping[str, object]]) -> set[str]:
@@ -634,15 +671,9 @@ def compare_gila_source_facts(
                 )
         for index, fact in enumerate(source_facts):
             candidates = [
-                row
+                normalize_source_proposal(row)
                 for row in statements
                 if (row.get("property") or row.get("property_id")) == fact.property_id
-            ]
-            candidates = [
-                {"calendarmodel": wikibase_config["CALENDAR_MODEL_QID"], **row}
-                if row.get("value_type") == "time"
-                else row
-                for row in candidates
             ]
             live_candidates = _live_claims(entity, fact.property_id) if fact.property_id else []
             if fact.property_id == "description:en":
@@ -653,6 +684,11 @@ def compare_gila_source_facts(
                 live_candidates = [{"value": live_description.get("value")}]
             proposed = [row for row in candidates if _matches(fact, row)]
             live = [row for row in live_candidates if _matches(fact, row)]
+            expected_value = fact.value
+            if (fact.scope == "named_scribe" and len(proposed) == 1
+                    and proposed[0].get("value_type") == "somevalue"
+                    and (not live_candidates or live and all(row.get("value") == "somevalue" for row in live))):
+                expected_value = "somevalue"
             proposal_status = "present" if proposed else "missing"
             live_status = "present" if live else "missing"
             classification = "present_not_transferred" if not proposed else ""
@@ -670,6 +706,16 @@ def compare_gila_source_facts(
                 )
                 if fact.scope == "source_date_conflict_or_boundary_requires_review":
                     reason = fact.scope
+            elif fact.scope == "physical_form" and any(
+                row.get("value") in _INCOMPATIBLE_FORMS.get(fact.value, ()) for row in live_candidates
+            ):
+                live_status = "identity_review"
+                classification = "identity_or_scope_uncertain"
+                reason = "conflicting_physical_form_requires_review"
+            elif fact.scope == "named_scribe" and live_candidates and not live:
+                live_status = "identity_review"
+                classification = "identity_or_scope_uncertain"
+                reason = "verify_scribe_target_identity"
             elif (
                 fact.property_id == "P1574"
                 and proposed
@@ -847,13 +893,14 @@ def compare_gila_source_facts(
                     "scope": fact.scope,
                     "source_value": fact.source_value,
                     "property": fact.property_id,
-                    "expected_value": fact.value,
+                    "expected_value": expected_value,
                     "expected_qualifiers": dict(fact.qualifiers),
                     "source_key": fact.source_key,
                     "reviewed_identity_current": fact.reviewed_identity_current,
                     "expected_precision": fact.precision,
                     "expected_calendar": fact.calendar,
                     "expected_unit": fact.unit,
+                    "expected_forbids_circa": fact.forbids_circa,
                     "expected_author": fact.author_name,
                     "source_scoped": fact.source_scoped,
                     "proposal_status": proposal_status,

@@ -409,6 +409,8 @@ class _SafeWikidataGatewaySession:
                 f"The remote revision changed from {mutation.expected_revision} "
                 f"to {snapshot.revision}"
             )
+        if mutation.document.get("publication_gila_audited_revision", snapshot.revision) != snapshot.revision:
+            return WriteOutcome.blocked("The item changed after the manuscript audit")
         if mutation.entity_type == "work":
             reason = _work_target_identity_error(_publication_entity_from_mutation(mutation), snapshot)
             if reason:
@@ -656,6 +658,11 @@ class CurrentWikidataBoundary:
                     observations[index] = TargetObservation.unknown(entity.entity_key, reason)
                     continue
                 repair_target = document.get("publication_gila_repair_qid")
+                if document.get("publication_gila_audited_revision", snapshot.revision) != snapshot.revision:
+                    observations[index] = TargetObservation.unknown(
+                        entity.entity_key, "The item changed after the manuscript audit.",
+                    )
+                    continue
                 if repair_target is not None and repair_target != qid:
                     observations[index] = TargetObservation.unknown(
                         entity.entity_key, "The sealed Gila repair target changed.",

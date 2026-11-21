@@ -227,6 +227,7 @@ def _case_inventory(packet, audit):
         "expected_precision",
         "expected_calendar",
         "expected_unit",
+        "expected_forbids_circa",
         "live_status",
         "live_revision",
         "reason",
@@ -245,6 +246,7 @@ def _case_inventory(packet, audit):
             row["case_id"].startswith("fact:")
             and row["disposition"] == "repair_required"
             and row.get("proposal_status") == "present"
+            and row.get("proposal_provenance") == "source_bound"
             and bool(row.get("expected_value"))
             and row.get("live_status") in {"missing", "present"}
             and bool(row.get("qid") and case["local_id"])
@@ -296,14 +298,16 @@ def _work_author_cases(canonical, entities):
             and isinstance(value := row["mainsnak"].get("datavalue", {}).get("value"), dict)
         }
         missing = expected - actual
-        if not missing:
-            continue
-        exact_author = (
+        exact_source = (
             troki.author_statement(item) is not None
-            and troki.work_matches(live, require_missing=True)
             and troki.manuscript_links_work(entities.get(troki.MANUSCRIPT_QID) or {})
             and troki.author_matches(entities.get(troki.AUTHOR_QID) or {})
         )
+        is_troki = item.get("local_id") == troki.WORK_LOCAL_ID
+        verified = is_troki and exact_source and troki.live_author_matches(live)
+        if not missing and not is_troki:
+            continue
+        exact_author = exact_source and troki.work_matches(live, require_missing=True)
         repair = bool(
             item.get("local_id") != troki.WORK_LOCAL_ID
             and qid
@@ -323,12 +327,14 @@ def _work_author_cases(canonical, entities):
                 "live_revision": live["lastrevid"],
                 "source_value": item.get("labels", {}).get("he")
                 or item.get("labels", {}).get("en"),
-                "expected_value": ", ".join(sorted(missing)),
+                "expected_value": ", ".join(sorted(expected if is_troki else missing)),
                 "source_field": "100",
                 "property": "P50",
-                "expected_values": sorted(missing),
-                "disposition": "repair_required" if repair or exact_author else "manual_review",
+                "expected_values": sorted(expected if is_troki else missing),
+                "disposition": "verified" if verified else
+                "repair_required" if repair or exact_author else "manual_review",
                 "reason": (
+                    "troki_author_link_confirmed" if verified else
                     "troki_author_link_verified" if exact_author else "author_authority_link_absent"
                 ),
                 "can_prepare": repair or exact_author,
@@ -457,19 +463,35 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             *_stale_catalogue_edit_cases(canonical),
         ]
         for case in additional_cases:
-            cases.append(case)
             disposition = case["disposition"]
+            if disposition == "verified":
+                packet["requirement_coverage"]["verified_claims"] += 1
+            else:
+                cases.append(case)
+                if disposition == "repair_required":
+                    packet["requirement_coverage"]["pending_repairs"] += 1
             point = packet["email_points"][case["points"][0] - 1]
             counts = point["counts"]
             counts[disposition] = counts.get(disposition, 0) + 1
-            if point["status"] == "verified" or (
+            if len(counts) == 1 and counts[disposition] == 1 or (
+                disposition != "verified" and point["status"] == "verified"
+            ) or (
                 point["status"] == "manual_review" and disposition == "repair_required"
             ):
                 point["status"] = disposition
-            packet["all_requirements_verified"] = False
             packet["disposition_counts"][disposition] = (
                 packet["disposition_counts"].get(disposition, 0) + 1
             )
+        packet["all_requirements_verified"] = all(
+            point["status"] == "verified" for point in packet["email_points"]
+        )
+        ready_counts = {}
+        for case in cases:
+            if case.get("can_prepare"):
+                for point in case["points"]:
+                    ready_counts[point] = ready_counts.get(point, 0) + 1
+        for point in packet["email_points"]:
+            point["ready_count"] = ready_counts.get(point["point"], 0)
         duplicates = await asyncio.to_thread(_repeated_reference_counts, entities)
         reference_checks = {
             row["qid"]: duplicates.get(row["qid"], 0) if row["qid"] in entities else None

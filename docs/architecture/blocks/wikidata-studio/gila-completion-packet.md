@@ -3,6 +3,9 @@
 > Up: [Wikidata Studio](README.md) · W-296, W-305, W-307, W-322
 
 The packet classifies every source fact and source case against all nine email points.
+The audit checks the supported physical classes from the manuscript source.
+It counts a scribe name with its source reference. The person identity remains a separate check.
+The exact Troki author case keeps its identity after the edit. A public claim with the expected author, source name, and Ktiv reference counts as verified.
 It separates `verified`, `manual_review`, `repair_required`, and `not_checked`.
 An unresolved work target remains a manual case.
 A known target with an absent supported statement remains a repair case.

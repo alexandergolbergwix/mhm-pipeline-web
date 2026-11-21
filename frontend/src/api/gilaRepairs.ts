@@ -69,6 +69,7 @@ export interface GilaReport {
   email_points: Array<{
     point: number; title: string; status: AuditDisposition;
     counts: Partial<Record<AuditDisposition, number>>;
+    ready_count?: number;
   }>;
 }
 
@@ -85,6 +86,12 @@ export interface AutomaticRepairJob extends AuditJob {
     items_published: number;
     reference_items_corrected: number;
     repeated_references?: number;
+    requirement_comparison?: Array<{
+      point: number;
+      title: string;
+      before: Partial<Record<AuditDisposition, number>>;
+      after: Partial<Record<AuditDisposition, number>>;
+    }>;
     exclusions: Array<{qid: string | null; reason: string}>;
     stages_needing_attention: Array<{stage: string; reason: string}>;
   } | null;

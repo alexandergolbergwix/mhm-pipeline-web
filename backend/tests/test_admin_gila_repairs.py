@@ -78,6 +78,10 @@ def test_automatic_repair_selects_only_the_exact_audited_claim():
     assert prepare_worker.audited_statements(
         {"statements": [correct, {**correct, "references": [{"property": "P248"}]}]}, [fact],
     ) == []
+    assert prepare_worker.audited_statements(
+        {"statements": [correct, {**correct, "references": [{"property": "P248"}]}, unrelated]},
+        [fact, {"property": "P50", "expected_value": "Q42"}],
+    ) == [unrelated]
 
 
 @pytest.mark.asyncio
@@ -86,10 +90,17 @@ async def test_repair_cycle_rebuilds_then_runs_both_repair_scopes_and_verifies()
         id=uuid.uuid4(), run_id=uuid.uuid4(), project_id=uuid.uuid4(), created_by=uuid.uuid4(),
         params={"_publication_credential": "fixture-envelope", "_cycle": "fixture-cycle"},
     ))
-    audit = SimpleNamespace(status="succeeded")
+    audit = SimpleNamespace(status="succeeded", result={"email_points": [
+        {"point": 5, "title": "People and roles", "status": "repair_required",
+         "counts": {"repair_required": 1, "manual_review": 1325}},
+    ]})
     verified = SimpleNamespace(
         id=uuid.uuid4(), status="succeeded",
-        result={"email_points": [{"status": "verified"}, {"status": "manual_review"}], "reference_blocks": 459},
+        result={"email_points": [
+            {"point": 4, "title": "Ktiv membership", "status": "verified"},
+            {"point": 5, "title": "People and roles", "status": "manual_review",
+             "counts": {"verified": 1, "manual_review": 1325}},
+        ], "reference_blocks": 459},
     )
     cycle.stage = AsyncMock(side_effect=[
         SimpleNamespace(status="failed", progress={"phase": "source_rebuild_required"}),
@@ -107,6 +118,11 @@ async def test_repair_cycle_rebuilds_then_runs_both_repair_scopes_and_verifies()
     cycle.publication.assert_awaited_once_with(audit)
     assert cycle.result["requirements_verified"] == 1
     assert cycle.result["repeated_references"] == 459
+    assert cycle.result["requirement_comparison"] == [
+        {"point": 5, "title": "People and roles",
+         "before": {"repair_required": 1, "manual_review": 1325},
+         "after": {"verified": 1, "manual_review": 1325}},
+    ]
     assert cycle.result["stages_needing_attention"][0]["stage"] == "publication"
 
 

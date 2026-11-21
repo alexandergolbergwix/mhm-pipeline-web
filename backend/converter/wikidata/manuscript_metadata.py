@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 
 from converter.wikidata.item_builder import (
     LANG_TO_QID,
@@ -328,7 +329,8 @@ class ManuscriptMetadataMixin:
         # Description — language, date/century, script tradition, material, NLI
         item.descriptions["en"] = _build_manuscript_description(record)
 
-    def _determine_instance_type(self, record: dict[str, object]) -> list[str]:
+    @staticmethod
+    def _determine_instance_type(record: Mapping[str, object]) -> list[str]:
         """Return all applicable P31 QIDs, most-specific first.
 
         Always emit at least Q87167 (manuscript) as the base type, placed last.

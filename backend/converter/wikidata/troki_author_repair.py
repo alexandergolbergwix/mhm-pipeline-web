@@ -90,6 +90,18 @@ def work_matches(entity, *, require_missing=False):
     )
 
 
+def live_author_matches(entity):
+    claims = _active_claims(entity, "P50")
+    return work_matches(entity) and any(
+        _snak_value(claim.get("mainsnak", {})) == AUTHOR_QID
+        and AUTHOR_HEADING in {
+            _snak_value(snak) for snak in (claim.get("qualifiers") or {}).get("P1932", [])
+        }
+        and _references_record(claim, WORK_SOURCE)
+        for claim in claims
+    )
+
+
 def manuscript_links_work(entity):
     return (
         entity.get("id") == MANUSCRIPT_QID

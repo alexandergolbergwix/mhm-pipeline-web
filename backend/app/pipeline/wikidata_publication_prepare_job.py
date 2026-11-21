@@ -62,13 +62,14 @@ def audited_batch_params(report, actor_id):
 
 
 def audited_statements(item: dict, cases: list[dict]) -> list[dict]:
-    from app.pipeline.wikidata_gila_facts import SourceFact, _matches
+    from app.pipeline.wikidata_gila_facts import SourceFact, _matches, normalize_source_proposal
 
     selected = []
     for case in cases:
         prop = case.get("property")
         if not isinstance(prop, str) or not prop.startswith("P"):
             continue
+        case_statements = []
         for value in case.get("expected_values") or [case.get("expected_value")]:
             if not isinstance(value, str) or not value:
                 continue
@@ -78,16 +79,20 @@ def audited_statements(item: dict, cases: list[dict]) -> list[dict]:
                 precision=case.get("expected_precision"),
                 calendar=case.get("expected_calendar") or "",
                 unit=case.get("expected_unit") or "",
+                forbids_circa=case.get("expected_forbids_circa") is True,
             )
             matches = [
                 statement for statement in item.get("statements", [])
                 if (statement.get("property") or statement.get("property_id")) == prop
-                and _matches(fact, statement)
+                and _matches(fact, normalize_source_proposal(statement))
             ]
             if len(matches) != 1:
-                return []
-            if matches[0] not in selected:
-                selected.append(matches[0])
+                break
+            case_statements.append(matches[0])
+        else:
+            for statement in case_statements:
+                if statement not in selected:
+                    selected.append(statement)
     return selected
 
 
@@ -207,6 +212,7 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
         batch = params.get("_gila_batch")
         batch_result = {}
         exact_statements = {}
+        audited_revisions = {}
         if selected is not None or batch:
             from app.pipeline.marc_verify_context import load_run_marc_records
             from app.pipeline.wikidata_gila_audit_job import gila_record_fingerprint
@@ -252,9 +258,13 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
                         item = await fetch_merged_wikidata_item(
                             db, job.run_id, local_id, source="canonical",
                         )
-                        statements = audited_statements(item or {}, cases.get(local_id, []))
-                        if statements:
+                        audited_cases = cases.get(local_id, [])
+                        revisions = {case.get("live_revision") for case in audited_cases}
+                        revision = next(iter(revisions)) if len(revisions) == 1 else None
+                        statements = audited_statements(item or {}, audited_cases)
+                        if statements and type(revision) is int and revision > 0:
                             exact_statements[local_id] = statements
+                            audited_revisions[local_id] = revision
                         else:
                             del selected[local_id]
                             batch_result["exclusions"].append({"qid": qid, "reason": "exact_claim_needs_evidence"})
@@ -299,7 +309,8 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
                 "selected_existing": selected,
                 "expected_snapshot": tuple(params["_gila_build_snapshot"]),
                 "troki_author_only": troki_author_only,
-                **({"repair_statements": exact_statements} if exact_statements else {}),
+                **({"repair_statements": exact_statements, "repair_revisions": audited_revisions}
+                   if exact_statements else {}),
                 **({"exact_author_retry_base": params["_gila_retry_base"]}
                    if troki_author_only and params.get("_gila_retry_base") else {}),
             } if selected is not None else {}),

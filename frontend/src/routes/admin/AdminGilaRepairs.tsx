@@ -2,7 +2,7 @@ import {useCallback, useEffect, useState} from "react";
 import {useLocation} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
-import {GilaRepairs, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus} from "@/api/gilaRepairs";
+import {GilaRepairs, type AuditDisposition, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus} from "@/api/gilaRepairs";
 import type {ReferenceRepairStatus, ReferenceScope} from "@/api/referenceRepairs";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
@@ -57,6 +57,7 @@ const repairPhases: Record<string, string> = {
   rebuild: "Rebuild the canonical source",
   references_original: "Check the original reference queue",
   references_remaining: "Check the remaining reference queue",
+  audit_after_references: "Check revisions after reference repairs",
   prepare: "Check source evidence and item creators",
   dry_run: "Check the publication plan",
   publish: "Publish and verify supported edits",
@@ -80,6 +81,12 @@ const explanations: Record<string, string> = {
 
 function failureText(error: unknown) {
   return error instanceof ApiError ? error.detail : error instanceof Error ? error.message : "The request failed.";
+}
+
+function coverageText(counts: Partial<Record<AuditDisposition, number>>) {
+  const verified = counts.verified ?? 0;
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  return total === 0 ? "No cases" : `${verified.toLocaleString()} / ${total.toLocaleString()} (${(verified / total * 100).toFixed(2)}%)`;
 }
 
 function AuditResult({
@@ -612,6 +619,24 @@ export default function AdminGilaRepairs() {
             · {automaticResult.reference_items_corrected} items with reference repairs verified
             {automaticResult.requirements_verified != null && ` · ${automaticResult.requirements_verified} of 9 requirements verified`}
           </p>
+          {!!automaticResult.requirement_comparison?.length && <details>
+            <summary className="cursor-pointer text-sm">Compare verification before and after repairs</summary>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead><tr>
+                  <th className="py-2 pr-4" scope="col">Requirement</th>
+                  <th className="py-2 pr-4" scope="col">Before</th>
+                  <th className="py-2" scope="col">After</th>
+                </tr></thead>
+                <tbody>{automaticResult.requirement_comparison.map(row =>
+                  <tr className="border-t border-glass-line" key={row.point}>
+                    <th className="py-2 pr-4 font-normal" scope="row">{row.title}</th>
+                    <td className="whitespace-nowrap py-2 pr-4 tabular-nums">{coverageText(row.before)}</td>
+                    <td className="whitespace-nowrap py-2 tabular-nums">{coverageText(row.after)}</td>
+                  </tr>)}</tbody>
+              </table>
+            </div>
+          </details>}
           {automaticResult.stages_needing_attention.map((stage, index) => <p key={index} className="text-sm text-warn">{stage.reason}</p>)}
           {automaticResult.exclusions.length > 0 && <details>
             <summary className="cursor-pointer text-sm">{automaticResult.exclusions.length} exclusions from repair plans</summary>
@@ -684,6 +709,9 @@ export default function AdminGilaRepairs() {
               <span className="mt-1 block text-xs muted">{labels[row.status]}</span>
               {total > 0 && <span className="mt-1 block text-xs muted">
                 {verified.toLocaleString()} / {total.toLocaleString()} cases verified ({(verified / total * 100).toFixed(1)}%)
+              </span>}
+              {row.ready_count != null && row.ready_count > 0 && <span className="mt-1 block text-xs muted">
+                {row.ready_count.toLocaleString()} {row.ready_count === 1 ? "case" : "cases"} ready for the creator check
               </span>}
             </button>
           </li>;})}

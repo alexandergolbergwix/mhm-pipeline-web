@@ -1384,3 +1384,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 218. **R218 — Preserve lag delays during item preparation (W-361).** Apply the Studio limit and retain the server delay on the item read before an edit. The worker can schedule a retry for a confirmed rejection.
 
 219. **R219 — Confirm a repair against the new revision (W-362).** Apply the original revision check before the edit. Confirm the exact claims and creator at read-back.
+
+220. **R220 — Retain the verified case after a repair (W-363).** Keep the case in the total after the current public claim passes the source checks. Pin an automatic repair to the audit revision.
