@@ -71,7 +71,6 @@ The audit needs public proof before it can confirm a correction.
 Use **Prepare repair release** for a source-supported case with a confirmed target.
 `POST /api/admin/wikidata-gila-repairs/prepare` accepts a case ID and audit ID.
 The server checks the current source, canonical build, item, and target.
-The page shows the progress of the repair release.
 The preparation worker checks the audited MARC fingerprint, current target, and Studio build.
 It uses the five-minute Studio freshness limit (W-358).
 An anonymous first-revision check refuses items with a different or unknown creator before preparation.
@@ -81,6 +80,9 @@ Only an update to the exact selected QID can pass.
 The gateway requires fresh proof that both the first revision and the active Wikidata account have UID `6935067`.
 A different, hidden, or unavailable creator remains outside the write scope.
 The worker applies the same guard before each send.
+
+The exact Ḥizzuq Emunah case can prepare an author-only release when the audit verifies the linked manuscript, work, and author authority (W-359).
+The release adds P50 to Q141175530 and keeps the existing author name and other statements.
 
 Select **Start fixing references** to open the reviewed citation scope.
 Confirm the scope on the reference queue page before the worker starts.

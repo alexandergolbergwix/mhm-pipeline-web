@@ -1208,6 +1208,7 @@ class WikidataUploader:
         *,
         read_only: bool = False,
         owner_only: bool = False,
+        exact_troki_author_repair: bool = False,
     ) -> tuple[object, int, list[str]]:
         """Convert a WikidataItem to a WikibaseIntegrator item object.
 
@@ -1280,7 +1281,21 @@ class WikidataUploader:
                 },
             )
 
-        if item.existing_qid and item.entity_type == "work" and not self._is_test:
+        if exact_troki_author_repair:
+            from converter.wikidata import troki_author_repair as troki  # noqa: PLC0415
+
+            statement = item.statements[0] if len(item.statements) == 1 else None
+            if (
+                self._is_test or item.existing_qid != troki.WORK_QID
+                or item.entity_type != "work" or item.local_id != troki.WORK_LOCAL_ID
+                or item.labels or item.descriptions or item.aliases
+                or statement is None or statement.property_id != "P50"
+                or statement.value != troki.AUTHOR_QID
+                or not troki.has_author_evidence(statement.qualifiers, statement.reference_blocks)
+                or not troki.work_matches(wbi_item.get_json())
+            ):
+                raise ClaimBuildError(["WORK_IDENTITY: the exact author repair evidence changed."])
+        elif item.existing_qid and item.entity_type == "work" and not self._is_test:
             from converter.wikidata.work_identity import (  # noqa: PLC0415
                 compare_work_identity,
                 work_identity_for_item,

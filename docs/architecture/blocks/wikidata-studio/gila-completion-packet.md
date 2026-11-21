@@ -48,6 +48,12 @@ Absent, uncertain, or different life dates do not select this audited fallback.
 An explicit rejected or conflicting authority match still blocks the fallback.
 The local authority entry does not prove that the current public work already has P50.
 
+The audit can now offer the exact missing P50 on Q141175530 (W-359).
+It checks the work's cited Ktiv record, the exact existing author name, the linked manuscript, and the public author IDs.
+The creator check precedes release preparation.
+The release contains only the sourced P50 statement and uses the normal review, dry run, and publish flow.
+A changed source, author, target, or manuscript link stops preparation.
+
 The current build versions are `source-aware-works-v26` and `hmo-wikidata-v29`.
 A fresh normal build must precede a public source update.
 
@@ -57,4 +63,6 @@ A fresh normal build must precede a public source update.
 - `backend/scripts/export_gila_completion.py` exports the packet from saved evidence.
 - `backend/tests/unit/test_wikidata_gila_completion.py` checks stale revisions, source gaps, duplicate IDs, and receipt proof.
 - `backend/tests/unit/test_wikidata_troki_author_identity.py` checks exact identity and rejection guards.
+- `backend/converter/wikidata/troki_author_repair.py` checks the exact source and target.
+- `backend/tests/test_gila_exact_troki_author_repair.py` checks the exact public repair scope.
 - [Person dates](../extraction/person-dates.md) defines the flattened-date boundary and its tests.

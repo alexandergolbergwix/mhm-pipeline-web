@@ -77,6 +77,7 @@ class _CurrentUploader(Protocol):
         item: object,
         *,
         read_only: bool = False,
+        exact_troki_author_repair: bool = False,
     ) -> tuple[_WritableItem, int, list[str]]: ...
 
     def _assert_modifiable(
@@ -851,7 +852,7 @@ class CurrentWikidataBoundary:
                     f"test.wikidata.org: {'; '.join(adapt.skipped[:6])}"
                 )
         self._uploader._check_moratorium_for_live()
-        wbi_item, _, _ = self._uploader._build_wbi_item(item)
+        wbi_item, _, _ = self._build_publication_item(item, mutation)
         kwargs: dict[str, object] = {
             "summary": (
                 f"MHM Pipeline publication; local_id={mutation.entity_key}; "
@@ -951,7 +952,7 @@ class CurrentWikidataBoundary:
                 if resolved_qid != mutation.target_qid:
                     return MutationConfirmation.unknown("The read-back QID does not match the mutation")
                 self._assert_publication_modifiable(mutation)
-                _, new_claims, _ = self._uploader._build_wbi_item(item)
+                _, new_claims, _ = self._build_publication_item(item, mutation)
             if new_claims:
                 return MutationConfirmation.not_applied(
                     "The read-back still lacks claims from the planned mutation"
@@ -969,6 +970,11 @@ class CurrentWikidataBoundary:
     @staticmethod
     def _entity_from_mutation(mutation: GatewayMutation) -> PublicationEntity:
         return _publication_entity_from_mutation(mutation)
+
+    def _build_publication_item(self, item, mutation: GatewayMutation):
+        if mutation.document.get("publication_gila_troki_author") is True:
+            return self._uploader._build_wbi_item(item, exact_troki_author_repair=True)
+        return self._uploader._build_wbi_item(item)
 
     def _native_item_from_mutation(
         self,
@@ -1062,6 +1068,25 @@ def _work_target_identity_error(
     try:
         if snapshot.target_site not in {None, "www.wikidata.org"}:
             return "The target work P31 cannot be verified on test Wikidata"
+        if entity.document.get("publication_gila_troki_author") is not None:
+            from converter.wikidata import troki_author_repair as troki  # noqa: PLC0415
+
+            document = thaw_json(entity.document)
+            if (
+                document.get(troki.REPAIR_MARKER) is not True
+                or document.get("publication_gila_repair_qid") != troki.WORK_QID
+                or entity.entity_key != troki.WORK_LOCAL_ID
+                or document.get("existing_qid") != troki.WORK_QID
+                or any(
+                    document.get(key)
+                    for key in ("labels", "descriptions", "aliases", "deferred_statements")
+                )
+                or len(document.get("statements", [])) != 1
+                or troki.author_statement(document) is None
+                or not troki.work_matches(snapshot.document)
+            ):
+                return "The exact author repair evidence changed"
+            return None
         if not isinstance(snapshot.document, Mapping) or not isinstance(
             snapshot.document.get("claims"), Mapping,
         ):

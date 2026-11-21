@@ -1376,3 +1376,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 214. **R214 — Save reviewed claim hashes in remaining reference plans (W-357).** Supply `source_sha256` before the queue saves a plan. Compare the same proof before a write.
 
 215. **R215 — Check the audited source in the repair preparation worker (W-358).** Keep the creator check before enqueue. Verify the MARC fingerprint, target, and Studio build in the worker.
+
+216. **R216 — Add the exact sourced Troki author link (W-359).** Verify the linked manuscript, the existing work evidence, and the author authority. Limit the release to one P50 on Q141175530.

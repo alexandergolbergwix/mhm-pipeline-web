@@ -36,6 +36,7 @@ from app.pipeline.wikidata_reference_repair_job import load_seed
 from app.pipeline.wikidata_source_choices import source_hash
 from app.publication.reviewed_reference_scope import remaining_reference_inventory
 from app.publication.runtime import PublicationSourceError, StudioCacheProjectionSource
+from converter.wikidata import troki_author_repair as troki
 from converter.wikidata.catalog_references import STALE_CATALOGUE_EDIT
 from converter.wikidata.reference_retrieval import current_reference_indices
 
@@ -126,6 +127,7 @@ async def _canonical_items(projection, run_id, snapshot, ledger):
         "work_candidate_evidence",
         "authority_evidence",
         "validation_issues",
+        "rebuild_required",
     )
     async for raw in projection._stream_items(run_id, "canonical", True, snapshot.digest):
         for item in filter_public_wikidata_items([raw], source="canonical"):
@@ -275,11 +277,9 @@ def _work_author_cases(canonical, entities):
         }
         if not expected:
             continue
-        # This published work has exact authority evidence. If the canonical
-        # ledger has no current association, the case remains a review.
         target = qid or (
-            "Q141175530"
-            if item.get("local_id") == "work:חזוק_אמונה" and expected == {"Q168171"}
+            troki.WORK_QID
+            if item.get("local_id") == troki.WORK_LOCAL_ID and expected == {troki.AUTHOR_QID}
             else None
         )
         live = entities.get(target)
@@ -294,8 +294,15 @@ def _work_author_cases(canonical, entities):
         missing = expected - actual
         if not missing:
             continue
+        exact_author = (
+            troki.author_statement(item) is not None
+            and troki.work_matches(live, require_missing=True)
+            and troki.manuscript_links_work(entities.get(troki.MANUSCRIPT_QID) or {})
+            and troki.author_matches(entities.get(troki.AUTHOR_QID) or {})
+        )
         repair = bool(
-            qid
+            item.get("local_id") != troki.WORK_LOCAL_ID
+            and qid
             and not (actual - expected)
             and item.get("local_id")
             and not item.get("rebuild_required")
@@ -314,9 +321,13 @@ def _work_author_cases(canonical, entities):
                 or item.get("labels", {}).get("en"),
                 "expected_value": ", ".join(sorted(missing)),
                 "source_field": "100",
-                "disposition": "repair_required" if repair else "manual_review",
-                "reason": "author_authority_link_absent",
-                "can_prepare": repair,
+                "disposition": "repair_required" if repair or exact_author else "manual_review",
+                "reason": (
+                    "troki_author_link_verified" if exact_author else "author_authority_link_absent"
+                ),
+                "can_prepare": repair or exact_author,
+                **({"repair_kind": "troki_author", "control_number": troki.WORK_SOURCE}
+                   if exact_author else {}),
             }
         )
     return cases
@@ -402,6 +413,8 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
         known.update(
             item.get("existing_qid") for item in canonical if _live_qid(item.get("existing_qid"))
         )
+        if any(troki.author_statement(item) is not None for item in canonical):
+            known.update({troki.WORK_QID, troki.MANUSCRIPT_QID, troki.AUTHOR_QID})
         seen: set[str] = set()
         await _live_items(job_id, known, entities, seen, "public_items")
         linked = await asyncio.to_thread(_linked_entities, entities)

@@ -279,6 +279,7 @@ class StudioCacheProjectionSource(ProjectionSource):
         self.reference_only: dict[str, dict[str, object]] = {}
         self.automatic_documents: dict[str, dict[str, object]] = {}
         self.selected_existing: dict[str, str] = {}
+        self.troki_author_only = False
         # None → the ledger namespace follows WIKIDATA_TEST_MODE (the same
         # default the Studio build records with); prepare() sets it from the
         # release target so a live release reads live mappings only.
@@ -354,8 +355,12 @@ class StudioCacheProjectionSource(ProjectionSource):
                                and (statement.get("property") or statement.get("property_id")) == "P50"
                                and (statement.get("references") or statement.get("reference_blocks"))],
             })
+            entity_key = _item_entity_key(target)
             qid = (_ledger_qid(target) if is_test_ledger else
                 str(target.get("existing_qid") or _ledger_qid(target))).strip()
+            if self.troki_author_only and entity_key in self.selected_existing:
+                if _ledger_qid(target) not in {"", self.selected_existing[entity_key]}:
+                    raise PublicationSourceError("The exact author repair target changed")
             if _QID.fullmatch(qid) and not _has_blocking_item_issue(target):
                 qids[_item_entity_key(target)] = qid
                 if is_test_ledger:
@@ -368,6 +373,17 @@ class StudioCacheProjectionSource(ProjectionSource):
             raise PublicationSourceError(str(exc)) from exc
         if not set(self.reference_only) <= entity_keys:
             raise PublicationSourceError("A reference-only item is absent from the current source")
+        if self.troki_author_only:
+            from converter.wikidata import troki_author_repair as troki
+
+            if (
+                is_test_ledger or self.selected_existing != {troki.WORK_LOCAL_ID: troki.WORK_QID}
+                or qids.get(troki.WORK_LOCAL_ID, troki.WORK_QID) != troki.WORK_QID
+                or troki.WORK_LOCAL_ID not in entity_keys
+                or self.automatic_documents or self.reference_only
+            ):
+                raise PublicationSourceError("The exact author repair target changed")
+            qids[troki.WORK_LOCAL_ID] = troki.WORK_QID
         if any(qids.get(key) != qid for key, qid in self.selected_existing.items()):
             raise PublicationSourceError("A selected repair item or its Wikidata target changed")
         for key, reference in self.reference_only.items():
@@ -404,8 +420,22 @@ class StudioCacheProjectionSource(ProjectionSource):
                 )
             item = dict(item)
             item.pop("publication_gila_repair_qid", None)
+            item.pop("publication_gila_troki_author", None)
             if self.selected_existing:
                 item["publication_gila_repair_qid"] = self.selected_existing[_item_entity_key(item)]
+            if self.troki_author_only:
+                statement = troki.author_statement(item)
+                if statement is None:
+                    raise PublicationSourceError("The exact author source changed")
+                item.update({
+                    troki.REPAIR_MARKER: True,
+                    "existing_qid": troki.WORK_QID,
+                    "statements": [statement],
+                    "deferred_statements": [],
+                    "labels": {},
+                    "descriptions": {},
+                    "aliases": {},
+                })
             from converter.wikidata.quickstatements import (  # noqa: PLC0415
                 reference_data, validate_source_references,
             )
@@ -634,6 +664,7 @@ class PublicationRuntime:
         idempotency_key: str | None = None,
         selected_existing: dict[str, str] | None = None,
         expected_snapshot: tuple[str, str] | None = None,
+        troki_author_only: bool = False,
     ) -> PublicationMutationResponse:
         if request.profile_id != "mhm-wikidata" or request.profile_version not in {"1", "1-nodes"}:
             raise PublicationSourceError("The requested publication profile is unsupported")
@@ -648,6 +679,7 @@ class PublicationRuntime:
             raise PublicationSourceError("The audited canonical build changed before preparation")
         self._projection_source.automatic_documents = automatic_documents or {}
         self._projection_source.selected_existing = selected_existing or {}
+        self._projection_source.troki_author_only = troki_author_only
         target = _target_ref(request.target)
         self._projection_source.ledger_is_test = target.environment != "production"
         from app.publication.reference_only import resolve_reference_selection

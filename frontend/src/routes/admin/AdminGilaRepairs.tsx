@@ -33,6 +33,7 @@ const explanations: Record<string, string> = {
   live_work_author_or_source_requires_review: "The current work target needs an author or source check.",
   live_work_identity_or_scope_requires_review: "Confirm the work identity and the folios before you set the link.",
   author_authority_link_absent: "The live work lacks the expected author link. Confirm the work mapping before preparation.",
+  troki_author_link_verified: "The source supports the author link for Ḥizzuq Emunah. This release adds only the sourced author statement.",
   stale_catalogue_edit: "The build skipped an old edit that could overwrite a catalogue code. Review the proposed work link against the MARC record.",
   manuscript_work_model_requires_decision: "Review the request to use both classes on one item. The project keeps the physical manuscript and its work in separate items.",
   item_has_other_creator: "Another account created this item. The manuscript repair system keeps it read-only.",

@@ -4317,3 +4317,18 @@ Use the five-minute Studio freshness limit in the worker.
 Keep the normal review, dry run, and creator checks before publication.
 
 See [Wikidata Manuscript Audit and Repair](../blocks/wikidata-studio/admin-gila-repairs.md).
+
+### Rule W-359 — Add the exact sourced Troki author link
+
+The audit found that Q141175530 lacks P50. Its sourced P2093 has the complete author name.
+The linked manuscript and the work refer to the known Ktiv catalogue records.
+The canonical source has the same name and the proven author item.
+
+Verify this exact evidence before preparing a release.
+Bind the release to Q141175530 and its single sourced P50 Q168171.
+Keep its original P2093, all other claims, and all metadata.
+Refuse a conflicting author, identity, or source.
+Recheck creator UID 6935067 and the target revision before each write.
+Use the normal approval, dry run, and revision receipt.
+
+See [Exact Troki authority](../blocks/wikidata-studio/gila-completion-packet.md).

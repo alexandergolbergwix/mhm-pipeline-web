@@ -228,6 +228,7 @@ async def prepare(body: PrepareRepair, auth: Admin, db: Database):
                     report.params["_gila_build_revision"], report.params["_gila_build_digest"],
                 ],
                 "_gila_source_fingerprint": report.params["_gila_source_fingerprint"],
+                "_gila_troki_author": row.get("repair_kind") == "troki_author",
             },
             created_by=auth.user.id,
         )
