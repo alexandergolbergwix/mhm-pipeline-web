@@ -14,6 +14,7 @@ from app.pipeline import wikidata_gila_repair_job as repair_worker
 from app.pipeline import wikidata_publication_prepare_job as prepare_worker
 from app.pipeline.marc_verify_context import load_run_marc_records
 from app.publication.credentials import configured_publication_gateway_factory
+from app.publication.gateway import GatewayMutation
 from app.publication.runtime import (
     PublicationRuntime,
     PublicationSourceError,
@@ -131,6 +132,47 @@ async def test_exact_retry_requires_an_idle_execution_and_both_reads_at_the_orig
         fetch=AsyncMock(return_value=entity),
     )
     assert await repair_worker.exact_author_retry_base([(previous, status)], reader) == expected
+
+
+@pytest.mark.parametrize("author,new_claims,expected", [
+    (troki.AUTHOR_QID, 0, "applied"),
+    (troki.AUTHOR_QID, 1, "not_applied"),
+    ("Q999", 0, "unknown"),
+])
+def test_author_retry_confirms_the_result_at_the_new_revision(monkeypatch, author, new_claims, expected):
+    source = _source_work()
+    document = {
+        troki.REPAIR_MARKER: True,
+        "publication_gila_repair_qid": troki.WORK_QID,
+        "publication_gila_retry_base": 10,
+        "existing_qid": troki.WORK_QID,
+        "local_id": troki.WORK_LOCAL_ID,
+        "entity_type": "work",
+        "records": [troki.WORK_SOURCE, troki.MANUSCRIPT_SOURCE],
+        "statements": [troki.author_statement(source)],
+        "work_candidate_evidence": source["work_candidate_evidence"],
+    }
+    mutation = GatewayMutation(
+        entity_key=troki.WORK_LOCAL_ID, entity_type="work", action="update",
+        target_qid=troki.WORK_QID, expected_revision=10, entity_digest="digest",
+        payload_digest="payload", identity_assertions=(), document=document,
+    )
+    live = _live_entities()[troki.WORK_QID]
+    live["claims"]["P50"] = [_claim({"id": author}, troki.WORK_SOURCE)]
+    snapshot = RemoteEntitySnapshot(qid=troki.WORK_QID, revision=11, fingerprint="result", document=live)
+    boundary = CurrentWikidataBoundary(uploader=SimpleNamespace(_is_test=False))
+    assert _work_target_identity_error(boundary._entity_from_mutation(mutation), snapshot)
+    monkeypatch.setattr(boundary, "_fetch_entity_sync", lambda _: snapshot)
+    owner_check = Mock()
+    monkeypatch.setattr(boundary, "_assert_publication_modifiable", owner_check)
+    monkeypatch.setattr(boundary, "_build_publication_item", Mock(return_value=(object(), new_claims, [])))
+
+    result = boundary._confirm_mutation_sync(mutation, troki.WORK_QID)
+
+    assert result.status == expected, result.detail
+    if expected == "applied":
+        assert result.revision == 11
+        owner_check.assert_called_once_with(mutation)
 
 
 @pytest.mark.asyncio

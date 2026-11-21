@@ -927,7 +927,9 @@ class CurrentWikidataBoundary:
             snapshot = self._fetch_entity_sync(resolved_qid)
             if snapshot is None:
                 return MutationConfirmation.not_applied("The target QID is absent")
-            reason = _work_target_identity_error(self._entity_from_mutation(mutation), snapshot)
+            reason = _work_target_identity_error(
+                self._entity_from_mutation(mutation), snapshot, confirming=True,
+            )
             if reason:
                 return MutationConfirmation.unknown(reason)
             item = self._native_item_from_mutation(mutation, target_qid=resolved_qid)
@@ -1055,6 +1057,7 @@ class CurrentWikidataBoundary:
 
 def _work_target_identity_error(
     entity: PublicationEntity, snapshot: RemoteEntitySnapshot,
+    *, confirming: bool = False,
 ) -> str | None:
     if entity.entity_type != "work":
         return None
@@ -1084,7 +1087,8 @@ def _work_target_identity_error(
                 or len(document.get("statements", [])) != 1
                 or troki.author_statement(document) is None
                 or not troki.work_matches(snapshot.document)
-                or document.get("publication_gila_retry_base", snapshot.revision) != snapshot.revision
+                or (not confirming
+                    and document.get("publication_gila_retry_base", snapshot.revision) != snapshot.revision)
             ):
                 return "The exact author repair evidence changed"
             return None

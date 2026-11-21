@@ -95,7 +95,7 @@ so fallbacks never inline `new Set()`.
   for verify modals (which also load the SSE session, pass optional
   `tier_model`, tolerate early 404s on `trace.jsonl`, and rolls back its
   optimistic running state if the enqueue request rejects).
-  For the private manuscript audit, the tray uses the job detail endpoint to get the final status.
+  When an audit, automatic repair, or repair child leaves the active list, the tray reads its final status from the job detail endpoint (W-362).
   The manuscript repair page reads the automatic job status and result on reload. It shows verified counts and opens the evidence cases for each request.
   The tray opens the audit page when an administrator selects **View** (W-355).
 - *Entity polling* — `useApprovalStore(runId, {active})` polls

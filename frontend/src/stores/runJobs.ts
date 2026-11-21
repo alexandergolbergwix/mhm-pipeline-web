@@ -31,6 +31,11 @@ export function isJobActive(status: RunJobStatus): boolean {
   return ACTIVE.includes(status);
 }
 
+function needsTerminalRefresh(job: RunJobSnapshot): boolean {
+  return job.kind === "wikidata_gila_audit" || job.kind === "wikidata_gila_repair"
+    || job.params.repair_workspace === true;
+}
+
 export function selectActiveJob(
   jobs: Record<string, RunJobSnapshot>,
   runId: string,
@@ -68,11 +73,10 @@ export const useRunJobs = create<RunJobsState>((set, get) => ({
         return {jobs: map};
       });
       const activeIds = new Set(jobs.map(job => job.id));
-      // The admin audit never publishes updates to the project WebSocket.
-      const missingAudits = get().activeJobs().filter(job =>
-        job.kind === "wikidata_gila_audit" && !activeIds.has(job.id),
+      const missingRepairJobs = get().activeJobs().filter(job =>
+        needsTerminalRefresh(job) && !activeIds.has(job.id),
       );
-      await Promise.all(missingAudits.map(async job => {
+      await Promise.all(missingRepairJobs.map(async job => {
         try {
           const snapshot = await RunJobs.get(job.run_id, job.id);
           if (seq === refreshSeq && !isJobActive(snapshot.status)) get().upsertJob(snapshot);
@@ -87,7 +91,7 @@ export const useRunJobs = create<RunJobsState>((set, get) => ({
         }
       }));
       if (seq === refreshSeq && jobs.length === 0
-        && !get().activeJobs().some(job => job.kind === "wikidata_gila_audit")) {
+        && !get().activeJobs().some(needsTerminalRefresh)) {
         get().stopPolling();
       }
     } catch {

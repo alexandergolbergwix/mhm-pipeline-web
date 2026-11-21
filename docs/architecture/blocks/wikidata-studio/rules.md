@@ -1382,3 +1382,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 217. **R217 — Keep an Execution active while a worker holds a lease (W-360).** A worker can finalize only after active write leases end. Limit the writer count by the current work and database pool capacity.
 
 218. **R218 — Preserve lag delays during item preparation (W-361).** Apply the Studio limit and retain the server delay on the item read before an edit. The worker can schedule a retry for a confirmed rejection.
+
+219. **R219 — Confirm a repair against the new revision (W-362).** Apply the original revision check before the edit. Confirm the exact claims and creator at read-back.

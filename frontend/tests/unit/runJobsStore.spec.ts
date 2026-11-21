@@ -120,4 +120,28 @@ describe("useRunJobs.refresh", () => {
       vi.useRealTimers();
     }
   });
+
+  it("reads final states for the repair coordinator and its publication jobs", async () => {
+    const repair = job({id: "parent", kind: "wikidata_gila_repair"});
+    const prepare = job({
+      id: "prepare", kind: "wikidata_publication_prepare", params: {repair_workspace: true},
+    });
+    const execution = job({
+      id: "publication", kind: "wikidata_publication_execution", params: {repair_workspace: true},
+    });
+    vi.spyOn(RunJobs, "listMine")
+      .mockResolvedValueOnce({jobs: [repair, prepare, execution]})
+      .mockResolvedValueOnce({jobs: []});
+    const detail = vi.spyOn(RunJobs, "get")
+      .mockResolvedValueOnce({...repair, status: "succeeded"})
+      .mockResolvedValueOnce({...prepare, status: "succeeded"})
+      .mockResolvedValueOnce({...execution, status: "failed"});
+
+    await useRunJobs.getState().refresh();
+    await useRunJobs.getState().refresh();
+
+    expect(detail.mock.calls.map(([, id]) => id)).toEqual(["parent", "prepare", "publication"]);
+    expect(useRunJobs.getState().jobs.publication?.status).toBe("failed");
+    expect(useRunJobs.getState().activeJobs()).toEqual([]);
+  });
 });

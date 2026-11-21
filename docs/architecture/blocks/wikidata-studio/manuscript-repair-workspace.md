@@ -20,6 +20,7 @@ If the dry run identifies blocked QIDs, the job prepares the remaining items in 
 Publication requires a confirmed first-revision creator and the existing revision and authorization checks.
 An earlier uncertain edit requires evidence. The exact Troki repair can proceed if the earlier execution is idle, two reads confirm the original revision, and the author claim is still absent.
 The plan for that retry uses the same base revision.
+The read-back checks the new claims and creator against the current public revision (W-362).
 The results show verified edits, reference corrections, exclusions, and the new audit.
 The evidence download includes verified Publication receipts from automatic repairs.
 

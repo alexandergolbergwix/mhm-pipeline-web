@@ -4364,3 +4364,15 @@ The worker saves the delay and repeats the normal checks before the next attempt
 The UI reports unresolved items when the upload pauses.
 
 See [Repair retries](../blocks/wikidata-studio/repair-retries.md).
+
+### Rule W-362 — Confirm a repair against the new revision
+
+On 21 November 2026, a Wikidata edit added the sourced Troki author link.
+The worker rejected the read-back because it expected the original revision.
+The job tray also kept the repair jobs active after the server recorded their final states.
+
+Apply the original revision check during reconciliation and before the edit.
+Confirm the exact claims, source, and creator at the current public revision.
+If a repair job leaves the active list, read the final state from its detail endpoint.
+
+See [Manuscript repair workspace](../blocks/wikidata-studio/manuscript-repair-workspace.md).
