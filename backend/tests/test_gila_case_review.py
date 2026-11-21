@@ -178,3 +178,29 @@ async def test_batch_case_excludes_foreign_creators_before_search(monkeypatch):
     monkeypatch.setattr(worker, "inspect_case", inspect)
     assert await worker._batch_case({"qid": "Q10"}, uuid.uuid4(), uuid.uuid4()) == ("excluded_creator", None)
     inspect.assert_not_called()
+
+
+def test_viaf_needs_an_exact_heading_and_both_marc_life_dates():
+    raw = {
+        "001": CN, "_control_number": CN,
+        "700$a": "Named scribe", "700$e": "scribe", "700$d": "1650-1710",
+    }
+    cluster = {
+        "viafID": "12345", "nameType": "Personal", "birthDate": "1650", "deathDate": "1710-01-02",
+        "mainHeadings": {"data": [{"text": "Named scribe, 1650-1710"}]},
+    }
+    assert identity._viaf_proves_scribe(raw, "12345", cluster)
+    assert not identity._viaf_proves_scribe(raw, "12345", {**cluster, "birthDate": "1651"})
+    assert not identity._viaf_proves_scribe(raw, "12345", {**cluster, "viafID": "12346"})
+    assert not identity._viaf_proves_scribe({**raw, "700$d": "1650?"}, "12345", cluster)
+
+    person = _human()["Q42"]
+    person["claims"]["P214"] = [{"mainsnak": {"snaktype": "value", "datavalue": {"value": "12345"}}}]
+    manuscript = {"id": "Q10", "claims": {"P3959": [{
+        "mainsnak": {"snaktype": "value", "datavalue": {"value": CN}},
+    }]}}
+    case = {"qid": "Q10", "control_number": CN, "reason": "named_scribe_identity_unresolved"}
+    statement = identity._repair_statement(raw, case, manuscript, person, {}, viaf_sources={"12345": cluster})
+    assert [[s["property"] for s in block] for block in statement["reference_blocks"]] == [
+        ["P248", "P3959", "P854", "P813"], ["P248", "P854", "P813"],
+    ]

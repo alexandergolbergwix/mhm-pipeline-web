@@ -14,6 +14,8 @@ The worker checks access, the audit ID, and the record hash again before it save
 The original MARC record establishes the name, role, or place.
 For a scribe, the system requires a Wikidata ID on the exact MARC occurrence or an exact VIAF or NLI ID.
 The ID can come from the occurrence or a high-confidence approved authority match for the same record, name, and role.
+The batch also searches live VIAF when the record ties a name and both life dates to one scribe.
+The VIAF record must match all three values. Wikidata must link to that exact VIAF ID.
 A name match alone leaves the identity open.
 For a place, MARC 751 must specify the production role and a unique place, region, and country.
 The system looks up those names through the current public administrative links.
@@ -25,6 +27,7 @@ Kimi selects a candidate from the public results or asks for more evidence.
 Code checks the source and candidate independently.
 The preparation worker repeats the checks with the same MARC hash, authority IDs, and public revisions.
 The release adds only the supported claim, with a reference to the Ktiv record.
+It adds a separate reference for a live VIAF match. The final audit checks this authority record again.
 It preserves existing statements and excludes conflicting claims.
 Publication checks the creator and verifies the result at the new revision.
 The final audit also verifies the source case and retains it in its original requirement total.

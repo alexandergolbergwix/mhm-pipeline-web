@@ -58,6 +58,7 @@ def build_gila_audit_report(
     approved_author_qids: Mapping[tuple[str, str], Iterable[str]] | None = None,
     include_repair_payloads: bool = True,
     repair_authority_by_cn: Mapping[str, list] | None = None,
+    repair_viaf_sources: Mapping[str, dict] | None = None,
 ) -> dict[str, object]:
     """Compare local proposals with sources; never report a live correction."""
     from app.pipeline.wikidata_gila_identity_evidence import live_source_match
@@ -190,6 +191,7 @@ def build_gila_audit_report(
                     verified=live_source_match(
                         raw, public_item, live_entities, cn, scribe=True, name=name,
                         authority_rows=(repair_authority_by_cn or {}).get(cn, ()),
+                        viaf_sources=repair_viaf_sources,
                     ),
                 )
         source_authors[cn] = [_text(row.get("name")) for row in _rows(record.get("authors"))]

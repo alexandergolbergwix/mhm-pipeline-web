@@ -9,7 +9,7 @@ from app.pipeline import marc_occurrences
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.wikidata_source_choices import _claim_values
 from converter.wikidata.item_models import WikidataStatement
-from converter.wikidata.property_mapping import nli_reference
+from converter.wikidata.property_mapping import nli_reference, viaf_reference
 
 SCRIBE_REASONS = frozenset({
     "named_scribe_identity_unresolved", "source_scribe_claim_absent", "verify_scribe_target_identity",
@@ -192,12 +192,74 @@ def _approved_authority_ids(raw, rows) -> set[tuple[str, str]]:
     return set(next(iter(matches))) if len(matches) == 1 else set()
 
 
-def _proven_candidates(raw, entities, context, *, scribe, source_qid, parts, authority_rows=()):
+def _scribe_life_dates(raw):
+    scribes = _source_scribe_rows(raw)
+    if len(scribes) != 1:
+        return None
+    row = scribes[0]
+    name = row["name"]
+    dates = re.fullmatch(r"([12][0-9]{3})\s*[-–]\s*([12][0-9]{3})\.?", str(row.get("dates") or "").strip())
+    if not dates or "?" in name or "？" in name or not 0 < int(dates[2]) - int(dates[1]) < 120:
+        return None
+    return name, dates[1], dates[2]
+
+
+def _heading_key(value: str) -> str:
+    return " ".join(re.findall(r"[^\W\d_]+", value.casefold()))
+
+
+def _viaf_proves_scribe(raw, identifier, cluster):
+    from converter.authority.biodata import extract_viaf_biodata
+
+    source = _scribe_life_dates(raw)
+    if not source or not cluster:
+        return False
+    name, birth, death = source
+    cluster = cluster.get("ns1:VIAFCluster", cluster)
+    if (
+        str(cluster.get("ns1:viafID") or cluster.get("viafID") or "") != identifier
+        or (cluster.get("ns1:nameType") or cluster.get("ns2:nameType") or cluster.get("nameType")) != "Personal"
+    ):
+        return False
+    bio = extract_viaf_biodata(cluster)
+    names = [_heading_key(heading) for headings in bio.names.values() for heading in headings]
+    return (
+        _heading_key(name) in names
+        and re.fullmatch(rf"{birth}(?:-[0-9]{{2}}(?:-[0-9]{{2}})?)?", bio.dates.get("birth", "")) is not None
+        and re.fullmatch(rf"{death}(?:-[0-9]{{2}}(?:-[0-9]{{2}})?)?", bio.dates.get("death", "")) is not None
+    )
+
+
+def _viaf_identifier(entity):
+    values = _claim_values(entity, "P214")
+    if len(values) == 1 and isinstance(values[0], str) and re.fullmatch(r"[0-9]{1,20}", values[0]):
+        return values[0]
+    return None
+
+
+def _viaf_citation_ids(entity):
+    return {
+        match[1]
+        for claim in entity.get("claims", {}).get("P11603", [])
+        if claim.get("rank") != "deprecated"
+        for ref in claim.get("references", [])
+        for snak in ref.get("snaks", {}).get("P854", [])
+        if isinstance((value := snak.get("datavalue", {}).get("value")), str)
+        and (match := re.fullmatch(r"https://viaf\.org/viaf/([0-9]{1,20})/?", value))
+    }
+
+
+def _proven_candidates(
+    raw, entities, context, *, scribe, source_qid, parts, authority_rows=(), viaf_sources=None,
+):
     if scribe:
         authorities = _authority_ids(raw) | _approved_authority_ids(raw, authority_rows)
         return {
             qid for qid, entity in entities.items()
-            if (qid == source_qid if source_qid else bool(authorities))
+            if (qid == source_qid if source_qid else bool(authorities) or (
+                (identifier := _viaf_identifier(entity))
+                and _viaf_proves_scribe(raw, identifier, (viaf_sources or {}).get(identifier))
+            ))
             and all(value in _claim_values(entity, pid) for pid, value in authorities)
         }
     if source_qid:
@@ -208,12 +270,13 @@ def _proven_candidates(raw, entities, context, *, scribe, source_qid, parts, aut
     }
 
 
-def verified_candidate(raw, entity, context, *, scribe, authority_rows=()):
+def verified_candidate(raw, entity, context, *, scribe, authority_rows=(), viaf_sources=None):
     _, _, source_qid = _source_evidence(raw, scribe=scribe)
     qid = entity["id"]
     proven = _proven_candidates(
         raw, {qid: entity}, context, scribe=scribe, source_qid=source_qid,
         parts=None if scribe else _place_parts(raw), authority_rows=authority_rows,
+        viaf_sources=viaf_sources,
     )
     if not proven:
         return False
@@ -221,7 +284,9 @@ def verified_candidate(raw, entity, context, *, scribe, authority_rows=()):
             else bool(_claim_values(entity, "P625")))
 
 
-def live_source_match(raw, manuscript, entities, cn, *, scribe, name="", authority_rows=()):
+def live_source_match(
+    raw, manuscript, entities, cn, *, scribe, name="", authority_rows=(), viaf_sources=None,
+):
     from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status
 
     if not manuscript or not entities or set(_claim_values(manuscript, "P3959")) != {cn}:
@@ -238,11 +303,16 @@ def live_source_match(raw, manuscript, entities, cn, *, scribe, name="", authori
     candidate = entities.get(claims[0]["value"])
     return bool(
         candidate and _reference_status(claims, cn, live=True) == "source_bound"
-        and verified_candidate(raw, candidate, entities, scribe=scribe, authority_rows=authority_rows)
+        and verified_candidate(
+            raw, candidate, entities, scribe=scribe, authority_rows=authority_rows,
+            viaf_sources=viaf_sources,
+        )
     )
 
 
-def _repair_statement(raw, case, manuscript, candidate, context, *, authority_rows=()):
+def _repair_statement(
+    raw, case, manuscript, candidate, context, *, authority_rows=(), viaf_sources=None,
+):
     """Build an additive statement only from exact catalogue and public evidence."""
     scribe = case["reason"] in SCRIBE_REASONS
     cn = case["control_number"]
@@ -251,6 +321,7 @@ def _repair_statement(raw, case, manuscript, candidate, context, *, authority_ro
         or set(_claim_values(manuscript, "P3959")) != {cn}
         or not verified_candidate(
             raw, candidate, context, scribe=scribe, authority_rows=authority_rows,
+            viaf_sources=viaf_sources,
         )
     ):
         return None
@@ -275,9 +346,16 @@ def _repair_statement(raw, case, manuscript, candidate, context, *, authority_ro
             return None
     elif claims:
         return None
-    statement = asdict(WikidataStatement(
+    claim = WikidataStatement(
         property_id=pid, value=candidate["id"], value_type="item",
         qualifiers=qualifiers, references=nli_reference(cn),
-    ))
+    )
+    if scribe and (identifier := _viaf_identifier(candidate)) and identifier in (viaf_sources or {}):
+        from converter.wikidata.item_models import merge_statement_references
+
+        merge_statement_references(claim, WikidataStatement(
+            pid, candidate["id"], "item", references=viaf_reference(identifier),
+        ))
+    statement = asdict(claim)
     statement["property"] = statement.pop("property_id")
     return statement

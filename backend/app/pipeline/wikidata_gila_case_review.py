@@ -27,6 +27,9 @@ from app.pipeline.wikidata_gila_identity_evidence import (
     _place_parts,
     _proven_candidates,
     _repair_statement,
+    _scribe_life_dates,
+    _viaf_identifier,
+    _viaf_proves_scribe,
     _source_evidence,
     _wikidata_links,
 )
@@ -34,6 +37,7 @@ from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.pipeline.wikidata_source_choices import _claim_values, digest, source_hash
 from app.publication.automatic_evidence import search_candidates
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
+from converter.authority.viaf_matcher import VIAFMatcher
 
 logger = logging.getLogger(__name__)
 MODEL = "moonshotai/Kimi-K2.6"
@@ -174,6 +178,21 @@ async def _search_authority(client, identifiers):
     return qids
 
 
+def _find_viaf_source(raw):
+    dates = _scribe_life_dates(raw)
+    if dates is None:
+        return {}
+    matcher = VIAFMatcher()
+    uri = matcher.match_person(dates[0])
+    match = re.fullmatch(r"https?://viaf\.org/viaf/([0-9]{1,20})/?", uri or "")
+    if match:
+        identifier = match[1]
+        cluster = matcher.get_cluster_raw(identifier)
+        if _viaf_proves_scribe(raw, identifier, cluster):
+            return {identifier: cluster}
+    return {}
+
+
 async def inspect_case(raw, case, actor, *, progress=None, authority_rows=()):
     """Collect public candidates and ask Kimi to assess the exact MARC evidence."""
     scribe = case["reason"] in SCRIBE_REASONS
@@ -190,6 +209,11 @@ async def inspect_case(raw, case, actor, *, progress=None, authority_rows=()):
             "candidate_qid": None, "candidate_revision": None, "source_excerpts": excerpts,
         }
     identifiers = _authority_ids(raw) | _approved_authority_ids(raw, authority_rows) if scribe else set()
+    viaf_sources = (
+        await asyncio.to_thread(_find_viaf_source, raw) if scribe and not (identifiers or source_qid)
+        else {}
+    )
+    lookup_ids = identifiers | {("P214", identifier) for identifier in viaf_sources}
     reader = ReferenceItemReader()
     async with asyncio.timeout(30):
         async with session_scope() as db:
@@ -198,20 +222,20 @@ async def inspect_case(raw, case, actor, *, progress=None, authority_rows=()):
                 if label else []
             )
         async with reader._public_client() as client:
-            authority_qids = await _search_authority(client, identifiers) if identifiers else set()
+            authority_qids = await _search_authority(client, lookup_ids) if lookup_ids else set()
             qids = sorted((set(candidates) | authority_qids | ({source_qid} if source_qid else set())) - {case["qid"]})
             entities = await reader.fetch_batch(client, qids) if qids else {}
             context = await _place_context(reader, client, entities) if parts else {}
     proven = _proven_candidates(
         raw, entities, context, scribe=scribe, source_qid=source_qid, parts=parts,
-        authority_rows=authority_rows,
+        authority_rows=authority_rows, viaf_sources=viaf_sources,
     )
     if progress:
         await progress()
     review = await _ask_model({
         "role": "scribe" if scribe else "place of production",
         "marc": excerpts, "audited_item": case["qid"],
-        "source_authority_ids": sorted(identifiers),
+        "source_authority_ids": sorted(lookup_ids),
         "wikidata_candidates": [
             {**_summary(entity), "matches_exact_catalogue_evidence": entity["id"] in proven}
             for entity in entities.values()
@@ -225,6 +249,7 @@ async def inspect_case(raw, case, actor, *, progress=None, authority_rows=()):
         "candidate_qid": review.candidate_qid,
         "candidate_revision": candidate["lastrevid"] if candidate else None,
         "source_hash": source_hash(raw), "source_excerpts": excerpts,
+        "_viaf_id": _viaf_identifier(candidate) if candidate and viaf_sources else None,
     }
 
 
@@ -250,7 +275,18 @@ async def prepare_evidence_statement(raw, case, evidence, *, authority_rows=()):
             await _place_context(reader, client, {qid: candidate})
             if case["reason"] == "production_place_not_resolved" else {}
         )
-    return _repair_statement(raw, case, manuscript, candidate, context, authority_rows=authority_rows)
+    viaf_sources = {}
+    if identifier := evidence.get("_viaf_id"):
+        if identifier != _viaf_identifier(candidate):
+            return None
+        cluster = await asyncio.to_thread(VIAFMatcher().get_cluster_raw, identifier)
+        if not _viaf_proves_scribe(raw, identifier, cluster):
+            return None
+        viaf_sources[identifier] = cluster
+    return _repair_statement(
+        raw, case, manuscript, candidate, context,
+        authority_rows=authority_rows, viaf_sources=viaf_sources,
+    )
 
 
 async def _batch_case(case, run_id, actor):
@@ -272,7 +308,7 @@ async def _batch_case(case, run_id, actor):
         "authority_digest": digest(sorted(_approved_authority_ids(raw, authority_rows))),
         "explanation": review["explanation"],
         "source_excerpts": review["source_excerpts"],
-        **{key: review[key] for key in ("source_hash", "candidate_qid", "candidate_revision")},
+        **{key: review[key] for key in ("source_hash", "candidate_qid", "candidate_revision", "_viaf_id")},
     }
     if await prepare_evidence_statement(raw, case, evidence, authority_rows=authority_rows) is None:
         return "needs_evidence", None

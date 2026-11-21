@@ -163,6 +163,18 @@ def _geographic_context(entities, qids, properties):
     }
 
 
+def _read_cited_viaf_sources(entities, manuscript_qids):
+    from app.pipeline.wikidata_gila_identity_evidence import _viaf_citation_ids
+    from converter.authority.viaf_matcher import VIAFMatcher
+
+    ids = {
+        identifier for qid in manuscript_qids if qid in entities
+        for identifier in _viaf_citation_ids(entities[qid])
+    }
+    matcher = VIAFMatcher()
+    return {identifier: matcher.get_cluster_raw(identifier) for identifier in sorted(ids)}
+
+
 async def _authorize(db, job: RunJob) -> None:
     if job is None or job.status != "running" or job.cancel_requested_at:
         raise AuditCancelledError()
@@ -460,6 +472,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
                 "message": "Compare the nine requirements against the source and live statements.",
             },
         )
+        viaf_sources = await asyncio.to_thread(_read_cited_viaf_sources, entities, mappings.values())
         audit = await asyncio.to_thread(
             build_gila_audit_report,
             records,
@@ -468,6 +481,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             live_entities=entities,
             include_repair_payloads=False,
             repair_authority_by_cn=proof_authority,
+            repair_viaf_sources=viaf_sources,
         )
         packet = await asyncio.to_thread(
             build_gila_completion_packet,
