@@ -43,6 +43,9 @@ interface AuditJob {
 export interface GilaPreparation extends AuditJob {
   qids: string[];
   publication_id: string | null;
+  batch_counts?: {eligible: number; prepared: number} | null;
+  exclusions?: Array<{qid: string; reason: string}>;
+  open_case_counts?: {manual_review: number; not_checked: number} | null;
 }
 
 export interface GilaReport {
@@ -89,8 +92,8 @@ export const GilaRepairs = {
   }),
   preparations: (offset = 0) =>
     api.get<{items: GilaPreparation[]; more: boolean}>(endpoint + "/preparations?offset=" + offset),
-  prepareNext: (auditId: string) =>
-    api.post<RunJobSnapshot | null>(endpoint + "/prepare-next", {audit_id: auditId}),
+  prepareBatch: (auditId: string) =>
+    api.post<RunJobSnapshot | null>(endpoint + "/prepare-batch", {audit_id: auditId}),
   prepare: (auditId: string, caseId: string) => api.post<RunJobSnapshot>(endpoint + "/prepare", {
     audit_id: auditId, case_id: caseId,
   }),

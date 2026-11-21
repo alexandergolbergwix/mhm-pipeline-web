@@ -338,6 +338,8 @@ class StudioCacheProjectionSource(ProjectionSource):
                 return ""
             return str(lookup_ledger_qid(ledger, key) or "")
 
+        from converter.wikidata import troki_author_repair as troki
+
         qids: dict[str, str] = {}
         verified_local: dict[str, str] = {}
         entity_keys: set[str] = set()
@@ -358,8 +360,8 @@ class StudioCacheProjectionSource(ProjectionSource):
             entity_key = _item_entity_key(target)
             qid = (_ledger_qid(target) if is_test_ledger else
                 str(target.get("existing_qid") or _ledger_qid(target))).strip()
-            if self.troki_author_only and entity_key in self.selected_existing:
-                if _ledger_qid(target) not in {"", self.selected_existing[entity_key]}:
+            if self.troki_author_only and entity_key == troki.WORK_LOCAL_ID:
+                if _ledger_qid(target) not in {"", troki.WORK_QID}:
                     raise PublicationSourceError("The exact author repair target changed")
             if _QID.fullmatch(qid) and not _has_blocking_item_issue(target):
                 qids[_item_entity_key(target)] = qid
@@ -374,10 +376,8 @@ class StudioCacheProjectionSource(ProjectionSource):
         if not set(self.reference_only) <= entity_keys:
             raise PublicationSourceError("A reference-only item is absent from the current source")
         if self.troki_author_only:
-            from converter.wikidata import troki_author_repair as troki
-
             if (
-                is_test_ledger or self.selected_existing != {troki.WORK_LOCAL_ID: troki.WORK_QID}
+                is_test_ledger or self.selected_existing.get(troki.WORK_LOCAL_ID) != troki.WORK_QID
                 or qids.get(troki.WORK_LOCAL_ID, troki.WORK_QID) != troki.WORK_QID
                 or troki.WORK_LOCAL_ID not in entity_keys
                 or self.automatic_documents or self.reference_only
@@ -423,7 +423,7 @@ class StudioCacheProjectionSource(ProjectionSource):
             item.pop("publication_gila_troki_author", None)
             if self.selected_existing:
                 item["publication_gila_repair_qid"] = self.selected_existing[_item_entity_key(item)]
-            if self.troki_author_only:
+            if self.troki_author_only and _item_entity_key(item) == troki.WORK_LOCAL_ID:
                 statement = troki.author_statement(item)
                 if statement is None:
                     raise PublicationSourceError("The exact author source changed")

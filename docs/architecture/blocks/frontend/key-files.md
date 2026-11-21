@@ -84,4 +84,4 @@ The Wikidata item drawer, Publication controls, blocked-action drawer, and AI re
 
 `useReferenceRepairStatus.ts`, `api/referenceRepairs.ts`, and `ReferenceRepairProgress.tsx` supply [live administrator reference progress](../wikidata-studio/live-reference-progress.md).
 
-`AdminGilaRepairs.tsx` and `api/gilaRepairs.ts` provide [Wikidata Manuscript Audit and Repair](../wikidata-studio/admin-gila-repairs.md). The page uses `ManuscriptRepairReleases.tsx` and `ReferenceRepairQueue.tsx` for release controls and reference queue progress in the [repair workspace](../wikidata-studio/manuscript-repair-workspace.md).
+`AdminGilaRepairs.tsx` and `api/gilaRepairs.ts` provide [Wikidata Manuscript Audit and Repair](../wikidata-studio/admin-gila-repairs.md). The page uses `ManuscriptRepairReleases.tsx` and `ReferenceRepairQueue.tsx` for batch outcomes, release controls, and reference queue progress in the [repair workspace](../wikidata-studio/manuscript-repair-workspace.md).

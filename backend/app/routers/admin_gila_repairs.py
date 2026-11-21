@@ -12,6 +12,7 @@ from sqlalchemy.orm import defer
 from app.auth.admin import require_admin
 from app.auth.session import AuthContext
 from app.db import get_session
+from app.models.publication import Publication
 from app.models.run_job import (
     ACTIVE_JOB_STATUSES,
     JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
@@ -249,12 +250,16 @@ def _repair_jobs(run_id):
 
 def _repair_job_summary(job: RunJob):
     params = job.params
+    result = job.result or {}
     targets = params.get("_selected_existing") or {}
     return {
         **_job_summary(job),
         "case_id": params.get("_gila_case_id"),
-        "qids": list(targets.values()),
-        "publication_id": (job.result or {}).get("publication_id"),
+        "qids": result.get("prepared_qids", list(targets.values())),
+        "publication_id": result.get("publication_id"),
+        "batch_counts": result.get("batch_counts"),
+        "exclusions": (result.get("exclusions") or [])[:50],
+        "open_case_counts": params.get("_gila_open_case_counts"),
     }
 
 
@@ -269,6 +274,73 @@ async def preparations(
         RunJob.created_at.desc(), RunJob.id.desc(),
     ).offset(offset).limit(limit + 1))).all()
     return {"items": [_repair_job_summary(job) for job in rows[:limit]], "more": len(rows) > limit}
+
+
+@router.post("/prepare-batch")
+async def prepare_batch(body: AuditSelection, auth: Admin, db: Database):
+    run = await _lookup_run_with_access(db, _run_id(), auth, write=True)
+    report = await _require_report(db, run.id, body.audit_id)
+    current = await db.scalar(_repair_jobs(run.id).where(RunJob.status.in_(ACTIVE_JOB_STATUSES)))
+    if current:
+        if (
+            current.params.get("_gila_batch")
+            and current.params.get("_gila_audit_id") == str(report.id)
+        ):
+            return serialise_job(current)
+        raise HTTPException(409, "Wait for the active repair preparation to finish.")
+    previous = await db.scalar(_repair_jobs(run.id).where(
+        RunJob.params["_gila_audit_id"].as_string() == str(report.id),
+        RunJob.params["_gila_batch"].as_string().is_not(None),
+        RunJob.status == "succeeded",
+    ).order_by(RunJob.created_at.desc(), RunJob.id.desc()).limit(1))
+    publication_id = (previous.result or {}).get("publication_id") if previous else None
+    if publication_id:
+        publication = await db.get(Publication, uuid.UUID(publication_id))
+        if publication is not None and publication.state not in {"failed", "cancelled"}:
+            return serialise_job(previous)
+    rows = gila_cases(report)
+    eligible = list({
+        (case["local_id"], case["qid"], case.get("repair_kind") == "troki_author")
+        for case in rows
+        if case.get("can_prepare") and case.get("local_id") and case.get("qid")
+    })
+    if not eligible:
+        return None
+    if not all(report.params.get(key) for key in (
+        "_gila_build_revision", "_gila_build_digest", "_gila_source_fingerprint",
+    )):
+        raise HTTPException(409, "Run a fresh audit before preparation.")
+    payload = PreparePublicationRequest(
+        profile_id="mhm-wikidata", profile_version="1-nodes", target="live",
+        source=RunPublicationSource(projection_source="canonical"),
+    )
+    try:
+        job = await create_job(
+            db, project_id=run.project_id, run_id=run.id,
+            kind=JOB_KIND_WIKIDATA_PUBLICATION_PREPARE, created_by=auth.user.id,
+            params={
+                "actor_id": str(auth.user.id),
+                "request": payload.model_dump(mode="json"),
+                "_gila_batch": sorted(eligible),
+                "_gila_audit_id": str(report.id),
+                "_gila_build_snapshot": [
+                    report.params["_gila_build_revision"], report.params["_gila_build_digest"],
+                ],
+                "_gila_source_fingerprint": report.params["_gila_source_fingerprint"],
+                "_gila_open_case_counts": {
+                    "manual_review": sum(row.get("disposition") == "manual_review" for row in rows),
+                    "not_checked": sum(row.get("disposition") == "not_checked" for row in rows),
+                },
+            },
+        )
+    except ActiveJobError as exc:
+        job = await db.get(RunJob, exc.job_id)
+        if (
+            job is None or not job.params.get("_gila_batch")
+            or job.params.get("_gila_audit_id") != str(body.audit_id)
+        ):
+            raise HTTPException(409, "Wait for the active repair preparation to finish.") from exc
+    return serialise_job(job)
 
 
 @router.post("/prepare-next")

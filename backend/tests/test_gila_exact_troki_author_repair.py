@@ -219,3 +219,95 @@ async def test_prepare_author_repair_from_admin_audit(
     else:
         assert job.status == "succeeded", job.error
         assert job.result["publication_id"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("all_foreign", [False, True])
+async def test_batch_seals_all_owned_targets_and_excludes_other_creators(
+    sample_run, db_session, monkeypatch, all_foreign,
+):
+    from app.models.publication import Publication, PublicationEntityRow
+    from sqlalchemy import select
+
+    run_id = sample_run["run_id"]
+    user = await db_session.get(User, sample_run["user_id"])
+    user.role = "admin"
+    exact = _source_work()
+    items = [exact]
+    cases = audit_worker._work_author_cases([exact], _live_entities())
+    for index in (42, 43, 44):
+        item = _canonical_item(f"work:{index}", f"Work {index}")
+        item["existing_qid"] = f"Q{index}"
+        items.append(item)
+        row = {
+            "case_id": f"repair:{index}", "local_id": item["local_id"],
+            "qid": item["existing_qid"], "can_prepare": True,
+        }
+        cases.append(row)
+        if index == 42:
+            cases.append({**row, "case_id": "repair:repeat"})
+    cases.append({"case_id": "source:review", "disposition": "manual_review"})
+    await _add_canonical_cache(db_session, run_id, items=items)
+    snapshot = await StudioCacheProjectionSource(db_session).current_snapshot(
+        run_id=run_id, source="canonical", approved_only=True,
+    )
+    records = await load_run_marc_records(db_session, run_id)
+    audit = RunJob(
+        project_id=sample_run["project_id"], run_id=run_id, created_by=user.id,
+        kind=audit_worker.KIND, status="succeeded", result={},
+        params={
+            "_gila_cases": b64encode(zlib.compress(json.dumps(cases).encode())).decode(),
+            "_gila_build_revision": snapshot.revision,
+            "_gila_build_digest": snapshot.digest,
+            "_gila_source_fingerprint": audit_worker.gila_record_fingerprint(records),
+        },
+    )
+    db_session.add(audit)
+    await db_session.commit()
+    monkeypatch.setattr(admin_gila_repairs, "_run_id", lambda: run_id)
+    reader = prepare_worker.ReferenceItemReader
+    owners = {troki.WORK_QID: 6935067, "Q42": 6935067, "Q43": 7, "Q44": None}
+    creator = AsyncMock(side_effect=lambda qid: 7 if all_foreign else owners[qid])
+    monkeypatch.setattr(reader, "creator_uid", creator)
+    monkeypatch.setattr(reader, "fetch", AsyncMock(side_effect=_live_entities().__getitem__))
+    monkeypatch.setattr("app.pipeline.run_job_service.spawn_job", Mock())
+
+    client = sample_run["client"]
+    endpoint = "/api/admin/wikidata-gila-repairs"
+    request = {"audit_id": str(audit.id)}
+    response = await client.post(f"{endpoint}/prepare-batch", json=request)
+    assert response.status_code == 200, response.text
+    job_id = uuid.UUID(response.json()["id"])
+    duplicate = await client.post(f"{endpoint}/prepare-batch", json=request)
+    assert duplicate.json()["id"] == str(job_id)
+    creator.assert_not_awaited()
+    await prepare_worker.run_wikidata_publication_prepare_job(job_id)
+    job = await db_session.get(RunJob, job_id)
+    assert job.status == "succeeded", job.error
+    assert creator.await_count == 4
+    if all_foreign:
+        assert job.result["batch_counts"] == {"eligible": 4, "prepared": 0}
+        assert all(row["reason"] == "other_creator" for row in job.result["exclusions"])
+        assert "publication_id" not in job.result
+        return
+    assert job.result["batch_counts"] == {"eligible": 4, "prepared": 2}
+    assert job.result["exclusions"] == [
+        {"qid": "Q43", "reason": "other_creator"},
+        {"qid": "Q44", "reason": "creator_unavailable"},
+    ]
+
+    publication = await db_session.get(Publication, uuid.UUID(job.result["publication_id"]))
+    docs = {row.entity_key: row.document for row in (await db_session.scalars(
+        select(PublicationEntityRow).where(
+            PublicationEntityRow.release_id == publication.latest_release_id,
+        ),
+    )).all()}
+    assert set(docs) == {troki.WORK_LOCAL_ID, "work:42"}
+    assert docs["work:42"]["publication_gila_repair_qid"] == "Q42"
+    assert troki.REPAIR_MARKER not in docs["work:42"]
+    assert [row["property"] for row in docs[troki.WORK_LOCAL_ID]["statements"]] == ["P50"]
+    assert docs[troki.WORK_LOCAL_ID][troki.REPAIR_MARKER] is True
+    saved = await client.get(f"{endpoint}/preparations")
+    assert saved.json()["items"][0]["open_case_counts"] == {"manual_review": 1, "not_checked": 0}
+    duplicate = await client.post(f"{endpoint}/prepare-batch", json=request)
+    assert duplicate.json()["id"] == str(job_id)

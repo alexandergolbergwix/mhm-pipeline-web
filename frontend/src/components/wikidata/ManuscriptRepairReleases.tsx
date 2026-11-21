@@ -4,6 +4,14 @@ import {GilaRepairs, type GilaPreparation} from "@/api/gilaRepairs";
 import {Glass} from "@/components/glass";
 import {WikidataPublicationPanel} from "@/components/wikidata/WikidataPublicationPanel";
 
+const exclusionReasons: Record<string, string> = {
+  other_creator: "Another account created the item.",
+  creator_unavailable: "Wikidata could not confirm the creator.",
+  target_conflict: "The audited item mappings conflict.",
+  source_changed: "The source or target changed after the audit.",
+  evidence_unavailable: "The worker could not confirm the current Wikidata evidence.",
+};
+
 function pending(job: GilaPreparation) {
   return job.status === "queued" || job.status === "running";
 }
@@ -60,10 +68,29 @@ export function ManuscriptRepairReleases({runId, requestedJobId, onLiveChanges}:
     {page && page.items.length > 0 && <ul className="divide-y divide-glass-line rounded-xl border border-glass-line">
       {page.items.map(job => <li key={job.id} className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
         <div>
-          <p className="font-medium">{job.qids.join(", ") || "Manuscript repair"}</p>
+          <p className="font-medium">{job.open_case_counts ? "Manuscript repair batch"
+            : job.qids.join(", ") || "Manuscript repair"}</p>
           <p className={job.error ? "text-danger" : "muted"} role={pending(job) ? "status" : undefined}>
             {job.error || job.progress.message || job.status}
           </p>
+          {pending(job) && Boolean(job.progress.total) && <p className="mt-1 text-sm muted">
+            {job.progress.processed ?? 0} of {job.progress.total} items checked
+          </p>}
+          {job.batch_counts && <p className="mt-1 text-sm">
+            {job.batch_counts.prepared} of {job.batch_counts.eligible} eligible items prepared
+          </p>}
+          {job.open_case_counts && <p className="mt-1 text-sm muted">
+            {job.open_case_counts.manual_review.toLocaleString()} audit cases require review.{" "}
+            {job.open_case_counts.not_checked.toLocaleString()} audit cases require evidence or a check.
+          </p>}
+          {Boolean(job.exclusions?.length) && <details className="mt-2">
+            <summary className="cursor-pointer">Items that did not pass the repair checks</summary>
+            <ul className="mt-1 space-y-1">
+              {job.exclusions?.map(item => <li key={item.qid}>
+                {item.qid} · {exclusionReasons[item.reason] ?? item.reason}
+              </li>)}
+            </ul>
+          </details>}
         </div>
         {job.publication_id && <button className="button-ghost"
           aria-pressed={selected === job.publication_id}

@@ -467,12 +467,12 @@ export default function AdminGilaRepairs() {
     setRepairNotice("");
     setRepairError("");
     try {
-      const next = caseId ? await GilaRepairs.prepare(report.id, caseId) : await GilaRepairs.prepareNext(report.id);
+      const next = caseId ? await GilaRepairs.prepare(report.id, caseId) : await GilaRepairs.prepareBatch(report.id);
       if (next) {
         setRequestedRepairJob(current => ({id: next.id, request: (current?.request ?? 0) + 1}));
         focusSection("repair-releases");
       } else {
-        setRepairNotice("No further releases are ready to prepare from this audit.");
+        setRepairNotice("This audit has no cases ready for a repair release.");
         openCases(null, "ready_to_prepare");
       }
     } catch (failure) {
@@ -556,7 +556,7 @@ export default function AdminGilaRepairs() {
         <summary className="cursor-pointer font-medium">How repairs work</summary>
         <ol className="mt-2 list-decimal space-y-1 pl-5 muted">
           <li>Run the audit to find cases. The audit reads Wikidata.</li>
-          <li>Start manuscript repairs to prepare the next eligible release. Open a case to review its source or run a Kimi review.</li>
+          <li>Start manuscript repairs to prepare all eligible items in one release. Open a case to review its source or run a Kimi review.</li>
           <li>Review the release on this page. Run a dry run before you publish.</li>
           <li>Open the reference queue below to confirm its repair scope and monitor progress.</li>
         </ol>

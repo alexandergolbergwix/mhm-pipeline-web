@@ -191,7 +191,7 @@ test("the audit asks for verification after reference repairs and exports eviden
       : [];
     return route.fulfill({json: {items, total: items.length}});
   });
-  await page.route("**/api/admin/wikidata-gila-repairs/prepare-next", route => {
+  await page.route("**/api/admin/wikidata-gila-repairs/prepare-batch", route => {
     expect(route.request().postDataJSON()).toEqual({audit_id: "audit-1"});
     if (readyCase) preparations++;
     return route.fulfill({contentType: "application/json", body: JSON.stringify(readyCase ? preparation : null)});
@@ -201,6 +201,9 @@ test("the audit asks for verification after reference repairs and exports eviden
     items: preparations === 0 ? [] : [preparationComplete ? {
       ...preparation, publication_id: "publication-7", status: "succeeded",
       progress: {message: "The repair release is ready."},
+      qids: ["Q42", "Q43"], batch_counts: {eligible: 3, prepared: 2},
+      open_case_counts: {manual_review: 1, not_checked: 4},
+      exclusions: [{qid: "Q44", reason: "other_creator"}],
     } : preparation],
   }}));
   await page.route("**/jobs?kind=wikidata_publication_dry_run&limit=20", route =>
@@ -240,6 +243,9 @@ test("the audit asks for verification after reference repairs and exports eviden
   await expect(page.getByText("Verify the audited source.")).toBeVisible();
   expect(preparations).toBe(1);
   preparationComplete = true;
+  await expect(page.getByText("2 of 3 eligible items prepared")).toBeVisible();
+  await page.getByText("Items that did not pass the repair checks").click();
+  await expect(page.getByText("Q44 · Another account created the item.")).toBeVisible();
   await expect(page.getByRole("heading", {name: "Repair release", exact: true})).toBeVisible();
   await page.getByRole("button", {name: "Approve Release for checks"}).click();
   await page.getByRole("button", {name: "Check before publish", exact: true}).click();
