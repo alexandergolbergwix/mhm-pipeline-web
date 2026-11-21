@@ -12,7 +12,7 @@ _ORIGIN = "https://www.wikidata.org"
 _API = f"{_ORIGIN}/w/api.php"
 _ENTITY_FIELDS = "info|labels|descriptions|aliases|claims|sitelinks"
 _QID = re.compile(r"Q[1-9][0-9]*\Z")
-_USER_AGENT = "MHMPipeline/1.0 (https://mhm-pipeline.org; reference item reader)"
+WIKIDATA_PUBLIC_USER_AGENT = "MHMPipeline/1.0 (https://mhm-pipeline.org; Wikidata evidence reader)"
 _READ_TIMEOUT = 12.0
 
 
@@ -29,7 +29,7 @@ class ReferenceItemReader:
     @staticmethod
     def _public_client() -> httpx.AsyncClient:
         return httpx.AsyncClient(
-            headers={"User-Agent": _USER_AGENT, "Cache-Control": "no-cache"},
+            headers={"User-Agent": WIKIDATA_PUBLIC_USER_AGENT, "Cache-Control": "no-cache"},
             follow_redirects=False,
         )
 

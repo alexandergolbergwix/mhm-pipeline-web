@@ -204,3 +204,29 @@ def test_viaf_needs_an_exact_heading_and_both_marc_life_dates():
     assert [[s["property"] for s in block] for block in statement["reference_blocks"]] == [
         ["P248", "P3959", "P854", "P813"], ["P248", "P854", "P813"],
     ]
+
+
+@pytest.mark.asyncio
+async def test_candidate_search_identifies_the_project_to_wikimedia(monkeypatch):
+    import httpx
+
+    from app.publication import automatic_evidence
+
+    async def without_cache(db, *, fetch, **kwargs):
+        return await fetch()
+
+    def wikimedia(request):
+        assert request.url.host == "www.wikidata.org"
+        assert request.url.params["action"] == "wbsearchentities"
+        if "https://mhm-pipeline.org" not in request.headers.get("User-Agent", ""):
+            return httpx.Response(403)
+        return httpx.Response(200, json={"search": [{"id": QID}]})
+
+    client = httpx.AsyncClient
+    monkeypatch.setattr(automatic_evidence, "cache_lookup_or_call", without_cache)
+    monkeypatch.setattr(
+        automatic_evidence.httpx, "AsyncClient",
+        lambda **kwargs: client(transport=httpx.MockTransport(wikimedia), **kwargs),
+    )
+
+    assert await automatic_evidence.search_candidates(None, "www.wikidata.org", "Mikulov", uuid.uuid4()) == [QID]

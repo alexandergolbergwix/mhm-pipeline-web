@@ -1388,3 +1388,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 220. **R220 — Retain the verified case after a repair (W-363).** Keep the case in the total after the current public claim passes the source checks. Pin an automatic repair to the audit revision.
 
 221. **R221 — A Kimi result needs independent source proof (W-364).** Bind the result to the audit, MARC hash, authority IDs, and public revisions. Repeat creator and evidence checks before Publication. *Why:* The one-click job skipped open cases that needed a source identity check.
+
+222. **R222 — Identify the client in Wikidata candidate searches (W-365).** Send the project User-Agent with its contact URL. *Why:* Wikimedia rejected generic client headers, and the Kimi stage lost access to candidate evidence.

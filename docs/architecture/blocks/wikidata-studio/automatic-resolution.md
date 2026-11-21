@@ -108,7 +108,7 @@ The report labels the prepared subset. It does not mark it as stale.
 ## Files and tests
 
 - `backend/app/publication/automatic_policy.py`: typed decisions and deterministic retention rules.
-- `backend/app/publication/automatic_evidence.py`: original records and bounded external evidence.
+- `backend/app/publication/automatic_evidence.py`: original records, bounded external evidence, and candidate search with the project User-Agent.
 - `backend/app/publication/automatic_projection.py`: subset and dependency handling.
 - `backend/app/pipeline/wikidata_publication_auto_job.py`: durable assessment, subset, policy review, and dry-run.
 - `backend/app/publication/runtime.py`: trusted internal automatic documents and prepare idempotency.

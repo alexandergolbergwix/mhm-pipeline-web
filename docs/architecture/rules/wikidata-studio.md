@@ -4397,3 +4397,10 @@ The preparation worker checks the current source, target, and revision. It const
 The write path checks the first-revision creator and permits only the exact scoped update.
 The final audit checks the sourced public statement and retains the case in the requirement total.
 See [Kimi case review](../blocks/wikidata-studio/gila-case-review.md).
+
+## Rule W-365 — Identify the public Wikidata candidate search client
+
+Use the project User-Agent with its contact URL for public candidate searches.
+The production API rejected the generic HTTP client with status 403.
+The same search succeeded with the project header.
+The candidate search is a required step before the Kimi evidence check.

@@ -5,6 +5,9 @@ Select **Review with Kimi** to check the current MARC record against live Wikida
 The case shows progress, the result, the MARC excerpts, and the candidate revision.
 Open the same case to see the saved review or resume progress updates.
 
+Public candidate searches send the project User-Agent with its contact URL.
+Without this header, Wikimedia can reject the request before the worker calls Kimi.
+
 The worker sends the bounded MARC excerpts and public candidate evidence to Qubrid.
 It uses `moonshotai/Kimi-K2.6` through the Chat Completions API.
 It uses `QUBRID_API_KEY` or its `QUABRID_API_KEY` alias and the optional `QUBRID_BASE_URL`.
