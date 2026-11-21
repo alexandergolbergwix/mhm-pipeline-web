@@ -1096,7 +1096,8 @@ class PublicationRuntime:
                 await self._session.commit()
             next_attempt_at = None
             background_active = (
-                execution_job is not None and execution_job.status in {"queued", "running"}
+                not terminal and execution_job is not None
+                and execution_job.status in {"queued", "running"}
             )
             job_progress = execution_job.progress if execution_job is not None else {}
             if (

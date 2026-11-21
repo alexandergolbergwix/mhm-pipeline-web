@@ -4332,3 +4332,21 @@ Recheck creator UID 6935067 and the target revision before each write.
 Use the normal approval, dry run, and revision receipt.
 
 See [Exact Troki authority](../blocks/wikidata-studio/gila-completion-packet.md).
+
+### Rule W-360 — Fence Execution completion against active write leases
+
+On 21 November 2026, a one-item Publication started multiple workers. An idle
+worker paused the Execution while another worker held the write lease. The
+gateway blocked the write before it reached Wikidata. Modal also reported
+database pool timeouts.
+
+Use the same Execution row lock for claim admission and the completion check.
+Keep the Execution status while any action has a live lease.
+Read the counters after the completion check acquires the lock.
+Limit writers to the remaining actions and reserve a database connection for
+progress and heartbeat updates. Read the persisted result after a parallel
+pass. The existing creator, source, and Plan checks remain required.
+
+The regression test pauses the active worker before authorization. It asserts
+that an idle worker leaves the Execution active and that the gateway records
+one write.

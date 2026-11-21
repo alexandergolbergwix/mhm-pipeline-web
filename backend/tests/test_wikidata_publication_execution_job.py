@@ -22,10 +22,12 @@ from app.pipeline.wikidata_publication_execution_job import (
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("requested_workers", [1, 16])
 async def test_execution_worker_uses_references_and_never_a_plaintext_secret(
     sample_run,
     db_session,
     monkeypatch,
+    requested_workers,
 ) -> None:
     execution_id = str(uuid.uuid4())
     publication_id = str(uuid.uuid4())
@@ -39,7 +41,7 @@ async def test_execution_worker_uses_references_and_never_a_plaintext_secret(
             "publication_id": publication_id,
             "execution_id": execution_id,
             "actor_id": actor_id,
-            "worker_count": 1,
+            "worker_count": requested_workers,
         },
         progress={},
         created_by=sample_run["user_id"],
@@ -48,6 +50,7 @@ async def test_execution_worker_uses_references_and_never_a_plaintext_secret(
     await db_session.commit()
 
     seen: dict[str, object] = {}
+    workers: list[str] = []
 
     class FakeRuntime:
         def __init__(self, *, session, gateway_factory, execution_progress=None) -> None:
@@ -56,6 +59,7 @@ async def test_execution_worker_uses_references_and_never_a_plaintext_secret(
 
         async def execute(self, **kwargs):
             seen["execute"] = kwargs
+            workers.append(kwargs["worker_id"])
             return SimpleNamespace(
                 execution=SimpleNamespace(
                     execution_id=execution_id,
@@ -78,8 +82,9 @@ async def test_execution_worker_uses_references_and_never_a_plaintext_secret(
         "publication_id": publication_id,
         "execution_id": execution_id,
         "actor_id": actor_id,
-        "worker_count": 1,
+        "worker_count": requested_workers,
     }
+    assert workers == [f"publication-job:{job.id}:w0"]
     assert seen["execute"] == {
         "run_id": sample_run["run_id"],
         "publication_id": publication_id,

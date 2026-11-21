@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -439,6 +440,67 @@ async def test_rejection_during_preflight_blocks_the_write(action: str) -> None:
         actor_id="worker", idempotency_key="resume"))
     assert boundary.calls == 0
     assert (await module.read(SummaryQuery(prepared.publication_id))).rejected_count == 1
+
+
+@pytest.mark.asyncio
+async def test_idle_worker_does_not_stop_an_execution_with_a_live_write_lease() -> None:
+    gateway = FakeWikidataGateway(observations={
+        "manuscript:1": TargetObservation.absent("manuscript:1"),
+    })
+    module = create_in_memory_publication_module(
+        entities_by_snapshot={"snapshot-7": (PublicationEntityInput(
+            entity_key="manuscript:1", entity_type="manuscript",
+            document={"labels": {"en": "Manuscript"}},
+        ),)}, gateway=gateway, clock=lambda: datetime(2026, 9, 5, 9, 0, tzinfo=UTC),
+    )
+    op = await module.prepare(_prepare_request())
+    query = SummaryQuery(op.publication_id)
+    summary = await module.read(query)
+    await module.advance(op.publication_id, ReviewCommand(
+        release_id=summary.release_id, expected_release_digest=summary.release_digest,
+        selection=EntitySelection.all(), decision="approve", actor_id="curator",
+        reason="Reviewed", idempotency_key="review",
+    ))
+    summary = await module.read(query)
+    await module.advance(op.publication_id, DryRunCommand(
+        approval_set_id=summary.approval_set_id or "",
+        expected_approval_digest=summary.approval_digest or "",
+        credential_ref="credential", actor_id="curator", idempotency_key="dry-run",
+    ))
+    summary = await module.read(query)
+    execution = await module.advance(op.publication_id, PublishCommand(
+        plan_id=summary.plan_id or "", dry_run_receipt_id=summary.dry_run_receipt_id or "",
+        expected_receipt_digest=summary.dry_run_receipt_digest or "", credential_ref="credential",
+        actor_id="curator", idempotency_key="publish",
+    ))
+    ready_to_send = asyncio.Event()
+    resume_send = asyncio.Event()
+    original_write = gateway.write
+
+    async def wait_then_send(request):
+        ready_to_send.set()
+        await resume_send.wait()
+        return await original_write(request)
+
+    gateway.write = wait_then_send
+
+    async def run_worker(worker_id):
+        return await module.advance(op.publication_id, ResumeCommand(
+            execution_id=execution.resource_id, credential_ref="credential", actor_id=worker_id,
+            idempotency_key=worker_id,
+        ))
+
+    active_worker = asyncio.create_task(run_worker("worker-1"))
+    try:
+        await asyncio.wait_for(ready_to_send.wait(), timeout=2)
+        await run_worker("worker-2")
+        status_while_leased = (await module.read(query)).execution_status
+    finally:
+        resume_send.set()
+        await asyncio.wait_for(active_worker, timeout=2)
+    assert status_while_leased == "running"
+    assert (await module.read(query)).execution_status == "succeeded"
+    assert len(gateway.write_calls) == 1
 
 
 @pytest.mark.asyncio

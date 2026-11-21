@@ -18,7 +18,7 @@ does not require these Publication gates (W-291).
 3. `review` stores digest-bound Approval Decisions on the sealed Release.
 4. `dry_run` queues `wikidata_publication_dry_run`. The worker reconciles the approved set and seals a Plan plus a short-lived Receipt.
 5. `publish` creates a queued Execution only.
-6. A worker resumes the Execution and writes one leased action at a time.
+6. A worker resumes the Execution and writes one leased action at a time (W-360).
 
 The API never writes to Wikidata during `prepare`, `review`, or `publish`.
 The worker commits a Write Intent before each remote call.

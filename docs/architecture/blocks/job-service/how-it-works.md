@@ -97,7 +97,7 @@ already-judged items.
 | `wikidata_upload` | `wikidata_upload_job.py` | Two-pass dry-run/test/live upload (W-30 / W-192); `owner_only` is serial, rejects local references and shards, and needs a live credential for dry-run (W-303) |
 | `wikidata_publication_prepare` | `wikidata_publication_prepare_job.py` | Streams the Studio source into a sealed immutable Release; the payload has request metadata and an actor ID but no credential secret |
 | `wikidata_gila_case_review` | `wikidata_gila_case_review.py` | Reviews one place or scribe case with Qubrid. The admin audit routes own job start and recovery. |
-| `wikidata_publication_execution` | `wikidata_publication_execution_job.py` | Runs a queued, digest-bound Publication Execution and resolves its server credential inside the worker. Waits for saved maxlag retry dates when all unresolved actions have confirmed lag rejections (W-353). |
+| `wikidata_publication_execution` | `wikidata_publication_execution_job.py` | Runs a queued Publication Execution with source, Plan, and creator checks. Limits writer count to available work and database capacity (W-360). Waits for confirmed maxlag retry dates (W-353). |
 | `hmo_coverage` | `hmo_coverage_job.py` | 9-14 min coverage report; write-throughs `HmoCoverageCache` (Rule W-39) |
 | `hmo_schema_bootstrap` | `hmo_schema_bootstrap_job.py` | Sequential `wbeditentity` per missing ontology class/property on Wikibase Cloud |
 | `hmo_item_upload` | `hmo_item_upload_job.py` | Live per-item Wikibase Cloud writes + deferred links, with audit context |

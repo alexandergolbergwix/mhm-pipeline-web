@@ -11,7 +11,7 @@ from typing import Any
 
 import sqlalchemy
 
-from app.db import session_scope
+from app.db import database_pool_capacity, session_scope
 from app.models.publication import Publication, PublicationExecution, PublicationExecutionAction
 from app.models.run_job import (
     JOB_STATUS_CANCELLED,
@@ -30,6 +30,7 @@ from app.publication.credentials import (
 )
 from app.publication.gateway import WikidataGateway
 from app.publication.runtime import PublicationRuntime, PublicationSummary
+from app.schemas.publication import PublicationSummaryQuery, PublicationSummaryRead
 from app.publication.types import TargetRef
 from app.publication.wikidata_gateway import (
     CurrentWikidataBoundaryFactory,
@@ -308,21 +309,25 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
                 "message": "Publication Execution is starting.",
             },
         )
-        # Parallel writers: the durable claim system already supports
-        # multiple workers (leased claims on disjoint actions), so K
-        # workers each drive their own gateway session and write
-        # concurrently. Serial writes made a 1736-item pass cost ~90 min
-        # plus maxlag storms (2026-10-16). Each worker needs its OWN DB
-        # session — one AsyncSession is not safe for concurrent use.
-        # Default 16 on the Modal container: the write path is
-        # network-bound (identity check + write + read-back per item),
-        # and the 429/maxlag retries absorb API pressure; 16 keeps
-        # every worker busy while staying within Wikidata bot limits.
-        worker_count = max(1, min(16, int(
+        requested_workers = int(
             job.params.get("worker_count")
             or os.environ.get("PUBLICATION_EXECUTION_WORKERS")
             or 16
-        )))
+        )
+        remaining = await db.scalar(
+            sqlalchemy.select(sqlalchemy.func.count())
+            .select_from(PublicationExecutionAction)
+            .where(
+                PublicationExecutionAction.execution_id == uuid.UUID(execution_id),
+                PublicationExecutionAction.state.in_(
+                    ("pending", "in_flight", "outcome_unknown", "pre_send_retryable")
+                ),
+            ),
+        )
+        # Reserve one connection for job progress and executor heartbeats.
+        worker_count = max(1, min(
+            16, requested_workers, remaining or 0, database_pool_capacity() - 1,
+        ))
         await db.rollback()
 
         async def _run_worker(index: int) -> PublicationSummary:
@@ -361,11 +366,22 @@ async def run_wikidata_publication_execution_job(job_id: uuid.UUID) -> None:
                 await _mark_execution_paused(execution_id)
                 raise
 
-            def _rank(summary: PublicationSummary) -> int:
-                status = summary.execution.status if summary.execution else ""
-                return {"succeeded": 0, "completed": 1, "cancelled": 2}.get(status, 3)
-
-            summary = max(summaries, key=_rank)
+            summary = summaries[0]
+            if worker_count > 1:
+                # An idle worker can return before the last claimed action settles.
+                async with session_scope() as final_db:
+                    runtime = PublicationRuntime(
+                        session=final_db, gateway_factory=gateway_factory,
+                    )
+                    final = await runtime.read(
+                        run_id=run_id,
+                        publication_id=publication_id,
+                        actor_id=actor_id,
+                        query=PublicationSummaryQuery(type="summary"),
+                    )
+                if not isinstance(final, PublicationSummaryRead):
+                    raise RuntimeError("The Publication execution summary is unavailable")
+                summary = final.publication
             for failure in failures:
                 logger.warning("A publication execution worker failed: %s", failure)
             if not summary.execution or summary.execution.status != "paused" or failures:

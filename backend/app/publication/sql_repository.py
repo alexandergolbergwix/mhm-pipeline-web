@@ -760,6 +760,28 @@ class SqlAlchemyPublicationRepository:
             raise LookupError(execution_id)
         return self._execution_record(row)
 
+    async def _lock_execution_status(self, execution_id: uuid.UUID) -> str | None:
+        # FOR NO KEY UPDATE serializes claims and completion without blocking
+        # the foreign-key checks for Write Intents held by active workers.
+        return await self._session.scalar(
+            select(ExecutionRow.status).where(ExecutionRow.id == execution_id)
+            .with_for_update(key_share=True)
+        )
+
+    async def lock_execution_for_completion(self, execution_id: str, now: datetime) -> bool:
+        execution_uuid = _uuid(execution_id)
+        if await self._lock_execution_status(execution_uuid) != "running":
+            return False
+        lease = await self._session.scalar(
+            select(ExecutionActionRow.action_key)
+            .where(
+                ExecutionActionRow.execution_id == execution_uuid,
+                ExecutionActionRow.lease_expires_at > now,
+            )
+            .limit(1)
+        )
+        return lease is None
+
     async def claim_execution_actions(
         self,
         execution_id: str,
@@ -771,12 +793,13 @@ class SqlAlchemyPublicationRepository:
         exclude_entity_keys: Collection[str] = (),
     ) -> tuple[ExecutionActionRecord, ...]:
         execution_uuid = _uuid(execution_id)
+        if await self._lock_execution_status(execution_uuid) != "running":
+            await self._session.commit()
+            return ()
         statement = (
             select(ExecutionActionRow)
-            .join(ExecutionRow, ExecutionRow.id == ExecutionActionRow.execution_id)
             .where(
                 ExecutionActionRow.execution_id == execution_uuid,
-                ExecutionRow.status == "running",
                 ExecutionActionRow.action.in_(("create", "update")),
                 ExecutionActionRow.state.in_(
                     ("pending", "pre_send_retryable", "in_flight", "outcome_unknown")

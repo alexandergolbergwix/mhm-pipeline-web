@@ -316,6 +316,10 @@ class PublicationRepository(Protocol):
         exclude_entity_keys: Collection[str] = (),
     ) -> tuple[ExecutionActionRecord, ...]: ...
 
+    async def lock_execution_for_completion(self, execution_id: str, now: datetime) -> bool:
+        """Hold admission for an idle, running Execution until the next checkpoint."""
+        ...
+
     async def latest_write_intent(
         self,
         execution_id: str,
@@ -738,6 +742,15 @@ class InMemoryPublicationRepository:
             row["lease_expires_at"] = now + lease_duration
             claimed.append(record)
         return tuple(claimed)
+
+    async def lock_execution_for_completion(self, execution_id: str, now: datetime) -> bool:
+        if (await self.get_execution(execution_id)).status != "running":
+            return False
+        return not any(
+            isinstance(expires, datetime) and expires > now
+            for row in self._execution_actions[execution_id].values()
+            if (expires := row.get("lease_expires_at")) is not None
+        )
 
     async def latest_write_intent(
         self,

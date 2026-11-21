@@ -80,6 +80,10 @@ def _pool_int(name: str, default: int) -> int:
         return default
 
 
+def database_pool_capacity() -> int:
+    return _pool_int("DB_POOL_SIZE", 1) + _pool_int("DB_MAX_OVERFLOW", 2)
+
+
 def _make_engine():
     settings = get_settings()
     # Rule W-285: one engine per process, and a rule-verify fan-out runs

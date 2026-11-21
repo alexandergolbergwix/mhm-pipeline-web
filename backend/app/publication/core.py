@@ -993,6 +993,11 @@ class PublicationModule:
                 or counts["in_flight"]
             ):
                 continue
+        if not await self._repository.lock_execution_for_completion(
+            execution.execution_id, self._clock(),
+        ):
+            await self._repository.checkpoint()
+            return
         counts = await self._repository.summarize_write_intents(execution.execution_id)
         await self._finish_execution_from_counts(publication, execution, counts)
 
