@@ -12,9 +12,14 @@ from sqlalchemy.orm import defer
 from app.auth.admin import require_admin
 from app.auth.session import AuthContext
 from app.db import get_session
-from app.models.run_job import JOB_KIND_WIKIDATA_PUBLICATION_PREPARE, RunJob
+from app.models.run_job import (
+    JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
+    JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
+    RunJob,
+)
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
 from app.pipeline.wikidata_gila_audit_job import KIND, gila_cases
+from app.pipeline.wikidata_gila_case_review import reviewable
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.pipeline.wikidata_reference_repair_job import load_seed
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
@@ -189,6 +194,44 @@ async def cases(
         )
     ]
     return {"items": filtered[offset : offset + limit], "total": len(filtered)}
+
+
+@router.get("/case-review")
+async def latest_case_review(
+    auth: Admin,
+    db: Database,
+    audit_id: uuid.UUID,
+    case_id: Annotated[str, Query(min_length=1, max_length=256)],
+):
+    run = await _lookup_run_with_access(db, _run_id(), auth)
+    await _require_report(db, run.id, audit_id)
+    job = await db.scalar(select(RunJob).where(
+        RunJob.run_id == run.id,
+        RunJob.kind == JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
+        RunJob.params["_audit_id"].as_string() == str(audit_id),
+        RunJob.params["_case_id"].as_string() == case_id,
+    ).order_by(RunJob.created_at.desc(), RunJob.id.desc()).limit(1))
+    return serialise_job(job) if job else None
+
+
+@router.post("/case-review")
+async def review_case(body: PrepareRepair, auth: Admin, db: Database):
+    run = await _lookup_run_with_access(db, _run_id(), auth, write=True)
+    report = await _require_report(db, run.id, body.audit_id)
+    row = next((case for case in gila_cases(report) if case["case_id"] == body.case_id), None)
+    if not row or not reviewable(row):
+        raise HTTPException(409, "This case does not have a supported Kimi source check.")
+    params = {"_audit_id": str(body.audit_id), "_case_id": body.case_id}
+    try:
+        job = await create_job(
+            db, project_id=run.project_id, run_id=run.id,
+            kind=JOB_KIND_WIKIDATA_GILA_CASE_REVIEW, params=params, created_by=auth.user.id,
+        )
+    except ActiveJobError as exc:
+        job = await db.get(RunJob, exc.job_id)
+        if job is None or job.params != params:
+            raise HTTPException(409, "Wait for the current Kimi case review to finish.") from exc
+    return serialise_job(job)
 
 
 @router.post("/prepare")

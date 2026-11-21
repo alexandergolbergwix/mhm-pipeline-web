@@ -25,6 +25,14 @@ export interface GilaCase {
   can_prepare?: boolean;
 }
 
+export interface GilaCaseReview {
+  decision: "verified_match" | "candidate" | "needs_evidence";
+  explanation: string;
+  candidate_qid: string | null;
+  candidate_revision: number | null;
+  source_excerpts: string[];
+}
+
 interface AuditJob {
   id: string;
   status: RunJobSnapshot["status"];
@@ -68,6 +76,12 @@ export const GilaRepairs = {
   start: () => api.post<AuditJob>(endpoint + "/start", {}),
   evidence: (auditId: string) => api.get<unknown>(endpoint + "/evidence?" + new URLSearchParams({audit_id: auditId})),
   cases: (params: URLSearchParams) => api.get<{items: GilaCase[]; total: number}>(endpoint + "/cases?" + params),
+  latestCaseReview: (auditId: string, caseId: string) =>
+    api.get<RunJobSnapshot | null>(endpoint + "/case-review?" +
+      new URLSearchParams({audit_id: auditId, case_id: caseId})),
+  reviewCase: (auditId: string, caseId: string) => api.post<RunJobSnapshot>(endpoint + "/case-review", {
+    audit_id: auditId, case_id: caseId,
+  }),
   prepare: (auditId: string, caseId: string) => api.post<RunJobSnapshot>(endpoint + "/prepare", {
     audit_id: auditId, case_id: caseId,
   }),

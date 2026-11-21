@@ -16,6 +16,7 @@ from app.auth.session import AuthContext, current_auth
 from app.db import get_session
 from app.models.run_job import (
     ACTIVE_JOB_STATUSES,
+    JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
     SUPPORTED_JOB_KINDS,
     RunJob,
 )
@@ -31,7 +32,9 @@ from app.routers.runs import _lookup_run_with_access
 from app.settings import get_settings
 
 router = APIRouter(tags=["run-jobs"])
-ADMIN_JOB_KINDS = ("wikidata_reference_repair", "wikidata_gila_audit")
+ADMIN_JOB_KINDS = (
+    "wikidata_reference_repair", "wikidata_gila_audit", JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
+)
 
 
 class StartRunJobRequest(BaseModel):

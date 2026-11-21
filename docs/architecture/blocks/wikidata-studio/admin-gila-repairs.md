@@ -53,7 +53,7 @@ Select **Start manuscript repairs** to open the ready cases across all nine requ
 If none are ready, select **Review cases that need a decision**.
 The **Ready to prepare** filter shows only cases with evidence for a repair release.
 Cases on items with a known different creator stay in manual review.
-The manuscript and work model has its own review case under point 2.
+The manuscript and work model has its own review case under point 2. See also [Kimi case review](gila-case-review.md).
 
 Select **Download audit evidence** to export checked manuscript IDs and revisions, open review cases, and verified reference queue receipts.
 The export keeps the audit date and the receipt dates.

@@ -211,3 +211,57 @@ test("the audit asks for verification after reference repairs and exports eviden
   await page.getByRole("button", {name: "Verify repairs on Wikidata"}).click();
   await expect(page.getByText("Check Wikidata items")).toBeVisible();
 });
+
+test("Kimi reviews an unresolved scribe and displays the source evidence", async ({page}) => {
+  await installStudioMocks(page, makeBuildResponse());
+  await page.route("**/api/auth/me", route => route.fulfill({json: {
+    id: "admin", role: "admin", name: "Admin", email: "admin@example.com",
+  }}));
+  await page.route("**/api/admin/stats", route => route.fulfill({json: {pending_access_requests: 0}}));
+  const caseId = "source:scribe:1";
+  const job = {id: "scribe-review", run_id: TEST_RUN_ID, kind: "wikidata_gila_case_review"};
+  await page.route("**/api/admin/wikidata-gila-repairs", route => route.fulfill({json: {
+    run_id: TEST_RUN_ID, job: null,
+    report: {
+      id: "audit-1", finished_at: "2026-11-20T08:17:21Z",
+      record_count: 897, public_read: 2161, reference_blocks: 0, case_count: 1,
+      requirement_coverage: {public_reads: 896},
+      email_points: [{point: 5, title: "People and roles", status: "manual_review"}],
+    },
+  }}));
+  await page.route("**/api/admin/wikidata-gila-repairs/cases?*", route => route.fulfill({json: {
+    items: [{case_id: caseId, points: [5], disposition: "manual_review",
+      qid: "Q141746831", control_number: "990000403660205171", reason: "named_scribe_identity_unresolved"}],
+    total: 1,
+  }}));
+  let complete = false;
+  const result = {decision: "candidate", explanation: "The source names a scribe but gives no authority ID.",
+    candidate_qid: "Q42", candidate_revision: 123, source_excerpts: ["700:1 $e scribe"]};
+  await page.route("**/api/admin/wikidata-gila-repairs/case-review?*", route =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(complete ? {...job, status: "succeeded", result} : null),
+    }));
+  await page.route("**/api/admin/wikidata-gila-repairs/case-review", route => {
+    expect(route.request().postDataJSON()).toEqual({audit_id: "audit-1", case_id: caseId});
+    return route.fulfill({json: {...job, status: "queued"}});
+  });
+  await page.route(`**/api/runs/${TEST_RUN_ID}/jobs/${job.id}`, route => route.fulfill({json: {
+    ...job, status: complete ? "succeeded" : "running", result,
+    progress: {message: "Kimi checks the MARC evidence and Wikidata candidates."},
+  }}));
+  await page.goto("/admin/wikidata-gila-repairs");
+  await page.getByText("The named scribe needs an identity check.", {exact: true}).first().click();
+  await page.getByRole("button", {name: "Review with Kimi"}).click();
+  await expect(page.getByRole("status").getByText("Kimi checks the MARC evidence and Wikidata candidates.")).toBeVisible();
+  complete = true;
+  await expect(page.getByRole("heading", {name: "Possible match. More evidence is necessary."})).toBeVisible();
+  await expect(page.getByRole("link", {name: "Q42"})).toHaveAttribute("href", /oldid=123/);
+  await page.getByText("MARC evidence", {exact: true}).click();
+  await expect(page.getByText("700:1 $e scribe")).toBeVisible();
+  await expect(page.getByRole("button", {name: "Prepare repair release"})).toHaveCount(0);
+
+  await page.reload();
+  await page.getByText("The named scribe needs an identity check.", {exact: true}).first().click();
+  await expect(page.getByRole("heading", {name: "Possible match. More evidence is necessary."})).toBeVisible();
+});

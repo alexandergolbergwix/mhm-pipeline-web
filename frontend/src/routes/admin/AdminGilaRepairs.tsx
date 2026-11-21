@@ -2,7 +2,7 @@ import {useEffect, useState} from "react";
 import {Link} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
-import {GilaRepairs, type CaseFilter, type GilaCase, type GilaReport, type GilaStatus} from "@/api/gilaRepairs";
+import {GilaRepairs, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus} from "@/api/gilaRepairs";
 import {ReferenceRepairs, type ReferenceRepairStatus} from "@/api/referenceRepairs";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
@@ -12,6 +12,28 @@ import {useRunJobs} from "@/stores/runJobs";
 import {ensureRunJob, studioBuildProgressMessage, waitForRunJob} from "@/utils/waitForRunJob";
 
 const pageSize = 25;
+const caseReviewLabels = {
+  verified_match: "Source confirms the match",
+  candidate: "Possible match. More evidence is necessary.",
+  needs_evidence: "The evidence did not establish a match.",
+};
+
+function readCaseReview(result: Record<string, unknown> | null): GilaCaseReview {
+  const decision = result?.decision;
+  const explanation = result?.explanation;
+  if ((decision !== "verified_match" && decision !== "candidate" && decision !== "needs_evidence")
+      || typeof explanation !== "string") {
+    throw new Error("The worker did not return a case review.");
+  }
+  const qid = result?.candidate_qid;
+  const excerpts = result?.source_excerpts;
+  return {
+    decision, explanation,
+    candidate_qid: typeof qid === "string" && /^Q[1-9][0-9]*$/.test(qid) ? qid : null,
+    candidate_revision: typeof result?.candidate_revision === "number" ? result.candidate_revision : null,
+    source_excerpts: Array.isArray(excerpts) ? excerpts.filter(value => typeof value === "string") : [],
+  };
+}
 const labels = {
   verified: "Verified", repair_required: "Repair needed", manual_review: "Needs review",
   not_checked: "Needs evidence", absent_in_source: "Absent from source",
@@ -34,6 +56,8 @@ const explanations: Record<string, string> = {
   live_work_identity_or_scope_requires_review: "Confirm the work identity and the folios before you set the link.",
   author_authority_link_absent: "The live work lacks the expected author link. Confirm the work mapping before preparation.",
   troki_author_link_verified: "The source supports the author link for Ḥizzuq Emunah. This release adds only the sourced author statement.",
+  production_place_not_resolved: "The production place needs a source check.",
+  named_scribe_identity_unresolved: "The named scribe needs an identity check.",
   stale_catalogue_edit: "The build skipped an old edit that could overwrite a catalogue code. Review the proposed work link against the MARC record.",
   manuscript_work_model_requires_decision: "Review the request to use both classes on one item. The project keeps the physical manuscript and its work in separate items.",
   item_has_other_creator: "Another account created this item. The manuscript repair system keeps it read-only.",
@@ -137,13 +161,60 @@ function AuditResult({report, queue, needsRecheck, onOpenCases}: {
   </section>;
 }
 
-function CaseDetails({item, report, runId}: {item: GilaCase; report: GilaReport; runId: string}) {
+function CaseDetails({item, report, runId, expanded}: {
+  item: GilaCase; report: GilaReport; runId: string; expanded: boolean;
+}) {
   const [showSource, setShowSource] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [preparing, setPreparing] = useState(false);
   const [prepareProgress, setPrepareProgress] = useState("");
   const [publication, setPublication] = useState<string>();
+  const [caseReview, setCaseReview] = useState<GilaCaseReview>();
+  const [reviewProgress, setReviewProgress] = useState("");
+  const canReview = item.disposition === "manual_review" && Boolean(item.qid && item.control_number)
+    && (item.reason === "production_place_not_resolved" || item.reason === "named_scribe_identity_unresolved");
+
+  useEffect(() => {
+    if (!canReview || !expanded) return;
+    let active = true;
+    setReviewProgress("Check for a saved case review.");
+    void GilaRepairs.latestCaseReview(report.id, item.case_id).then(async job => {
+      if (!active || !job) return;
+      if (job.status === "failed" || job.status === "cancelled") {
+        setError(job.error ?? "The prior case review stopped.");
+        return;
+      }
+      const finished = job.status === "succeeded" ? job : await waitForRunJob(runId, job.id, {
+        onUpdate: snapshot => {
+          if (active) setReviewProgress(snapshot.progress.message ?? "Wait for the review worker.");
+        },
+      });
+      if (active) setCaseReview(readCaseReview(finished.result));
+    }).catch(failure => {
+      if (active) setError(failureText(failure));
+    }).finally(() => {
+      if (active) setReviewProgress("");
+    });
+    return () => {active = false;};
+  }, [canReview, expanded, report.id, item.case_id, runId]);
+
+  async function reviewWithKimi() {
+    setCaseReview(undefined);
+    setReviewProgress("Request a case review.");
+    setError("");
+    try {
+      const job = await GilaRepairs.reviewCase(report.id, item.case_id);
+      const finished = await waitForRunJob(runId, job.id, {
+        onUpdate: snapshot => setReviewProgress(snapshot.progress.message ?? "Wait for the review worker."),
+      });
+      setCaseReview(readCaseReview(finished.result));
+    } catch (failure) {
+      setError(failureText(failure));
+    } finally {
+      setReviewProgress("");
+    }
+  }
   const sourceGap = item.classification === "absent_in_source";
   const canUseSourceReview = item.local_id && !sourceGap && !item.case_id.startsWith("work-author:");
   const links = item.qids ?? (item.qid ? [item.qid] : []);
@@ -191,6 +262,8 @@ function CaseDetails({item, report, runId}: {item: GilaCase; report: GilaReport;
         href={item.live_revision && item.qid === qid
           ? `https://www.wikidata.org/w/index.php?title=${qid}&oldid=${item.live_revision}`
           : `https://www.wikidata.org/wiki/${qid}`}>{qid}</a>)}
+      {canReview && <button className="button-primary" disabled={Boolean(reviewProgress)}
+        onClick={() => void reviewWithKimi()}>{caseReview ? "Run Kimi review again" : "Review with Kimi"}</button>}
       {canUseSourceReview && <button className="button-ghost" aria-expanded={showSource}
         onClick={() => setShowSource(value => !value)}>{showSource ? "Close source review" : "Review source"}</button>}
       {item.can_prepare && !publication && !notice && <button className="button-primary" disabled={preparing}
@@ -198,6 +271,22 @@ function CaseDetails({item, report, runId}: {item: GilaCase; report: GilaReport;
       {publication && <Link className="button-primary" to={`/runs/${runId}/wikidata-studio?publication=${publication}`}>Review the release</Link>}
     </div>
     {notice && <p role="status">{notice}</p>}
+    {reviewProgress && <p role="status">{reviewProgress}</p>}
+    {caseReview && <section className="space-y-2 rounded-lg border border-glass-line p-3" aria-label="Kimi case review">
+      <h3 className="font-semibold">{caseReviewLabels[caseReview.decision]}</h3>
+      <p dir="auto">{caseReview.explanation}</p>
+      {caseReview.candidate_qid && <a className="link-accent underline" target="_blank" rel="noreferrer"
+        href={caseReview.candidate_revision
+          ? `https://www.wikidata.org/w/index.php?title=${caseReview.candidate_qid}&oldid=${caseReview.candidate_revision}`
+          : `https://www.wikidata.org/wiki/${caseReview.candidate_qid}`}>
+        {caseReview.candidate_qid}
+      </a>}
+      <details>
+        <summary className="cursor-pointer">MARC evidence</summary>
+        {caseReview.source_excerpts.map((excerpt, index) => <p key={index} dir="auto" className="whitespace-pre-wrap break-words">{excerpt}</p>)}
+      </details>
+      <p className="muted">The review checks evidence. A repair release requires separate proof and approval.</p>
+    </section>}
     {prepareProgress && <p role="status">{prepareProgress}</p>}
     {error && <p className="text-danger" role="alert">{error}</p>}
     {showSource && item.local_id && <WikidataSourceReview runId={runId} localId={item.local_id}
@@ -214,6 +303,7 @@ function Cases({report, runId, point, initialFilter}: {
   const [result, setResult] = useState<{items: GilaCase[]; total: number}>();
   const [error, setError] = useState("");
   const search = useDebounce(query, 250);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let stopped = false;
@@ -265,7 +355,11 @@ function Cases({report, runId, point, initialFilter}: {
     {result && result.total > 0 && <>
       <ul className="divide-y divide-glass-line rounded-xl border border-glass-line">
         {result.items.map((item, index) => <li key={item.case_id}>
-          <details open={filter === "ready_to_prepare" && index === 0 ? true : undefined}>
+          <details open={filter === "ready_to_prepare" && index === 0 ? true : undefined}
+            onToggle={event => {
+              const open = event.currentTarget.open;
+              setExpanded(value => ({...value, [item.case_id]: open}));
+            }}>
             <summary className="cursor-pointer px-4 py-3">
               <span className="ml-2 inline-flex max-w-[92%] flex-wrap items-baseline gap-x-3 gap-y-1 align-middle">
                 <span className="font-mono text-xs muted">{item.qid ?? item.control_number ?? "Corpus"}</span>
@@ -274,7 +368,7 @@ function Cases({report, runId, point, initialFilter}: {
                 <span className="text-xs font-medium text-[var(--text-muted)]">{labels[item.classification === "absent_in_source" ? "absent_in_source" : item.disposition]}</span>
               </span>
             </summary>
-            <CaseDetails item={item} report={report} runId={runId} />
+            <CaseDetails item={item} report={report} runId={runId} expanded={Boolean(expanded[item.case_id])} />
           </details>
         </li>)}
       </ul>

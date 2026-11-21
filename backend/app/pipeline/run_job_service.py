@@ -40,6 +40,7 @@ from app.models.run_job import (
     JOB_KIND_WIKIDATA_UPLOAD,
     JOB_KIND_WIKIDATA_REFERENCE_REPAIR,
     JOB_KIND_WIKIDATA_GILA_AUDIT,
+    JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
     JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
@@ -81,6 +82,7 @@ SLOT_LIGHT = "light"
 SLOT_OTHER = "other"
 
 _VERIFY_KINDS = frozenset({
+    JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
     JOB_KIND_WIKIDATA_PUBLICATION_AI_REVIEW,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_AUTHORITY_VERIFY,
@@ -982,6 +984,10 @@ async def _execute_job(job_id: uuid.UUID) -> None:
             from app.pipeline.wikidata_gila_audit_job import run_gila_audit_job
 
             await run_gila_audit_job(job_id)
+        elif kind == JOB_KIND_WIKIDATA_GILA_CASE_REVIEW:
+            from app.pipeline.wikidata_gila_case_review import run_gila_case_review
+
+            await run_gila_case_review(job_id)
         elif kind == JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION:
             from app.pipeline.wikidata_publication_execution_job import (  # noqa: PLC0415
                 run_wikidata_publication_execution_job,

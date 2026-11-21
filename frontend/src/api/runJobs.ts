@@ -15,6 +15,7 @@ export type RunJobKind =
   | "wikidata_studio_build"
   | "wikidata_reference_repair"
   | "wikidata_gila_audit"
+  | "wikidata_gila_case_review"
   | "wikidata_upload"
   | "wikidata_publication_ai_review"
   | "wikidata_publication_dry_run"
@@ -144,6 +145,7 @@ export const JOB_KIND_LABELS: Record<string, string> = {
   wikidata_publication_prepare: "Wikidata Publication prepare",
   wikidata_reference_repair: "Wikidata reference repairs",
   wikidata_gila_audit: "Wikidata manuscript audit",
+  wikidata_gila_case_review: "Manuscript case review",
   wikidata_publication_execution: "Wikidata Publication execution",
   hmo_schema_bootstrap:     "HMO schema bootstrap",
   hmo_coverage:             "HMO coverage report",
@@ -184,6 +186,7 @@ function jobRunPath(job: RunJobSnapshot): string {
     case "rdf_build":
       return `/runs/${job.run_id}/rdf`;
     case "wikidata_gila_audit":
+    case "wikidata_gila_case_review":
       return "/admin/wikidata-gila-repairs";
     case "wikidata_studio_build":
     case "wikidata_verify":

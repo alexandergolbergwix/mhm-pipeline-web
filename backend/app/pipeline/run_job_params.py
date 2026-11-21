@@ -24,6 +24,7 @@ from app.models.run_job import (
     JOB_KIND_HMO_SCHEMA_BOOTSTRAP,
     JOB_KIND_NER_VERIFY,
     JOB_KIND_RDF_BUILD,
+    JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
     JOB_KIND_WIKIDATA_ITEM_BULK_APPROVE,
     JOB_KIND_WIKIDATA_STUDIO_BUILD,
     JOB_KIND_WIKIDATA_UPLOAD,
@@ -50,6 +51,8 @@ async def prepare_job_params(
             detail=f"unsupported job kind {kind!r}",
         )
 
+    if kind == JOB_KIND_WIKIDATA_GILA_CASE_REVIEW:
+        raise HTTPException(403, "Start the case review from the manuscript audit.")
     if kind in {
         "wikidata_reference_repair", "wikidata_gila_audit", "wikidata_publication_prepare",
         "wikidata_publication_execution", "wikidata_publication_dry_run",
