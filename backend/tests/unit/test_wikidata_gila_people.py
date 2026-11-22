@@ -487,3 +487,78 @@ def test_reviewed_catalogue_dates_require_the_exact_scribe_and_corroboration():
     person["id"] = proof.person_qid
     roles[cn, identifier] = parse_nli_records(_response(_record(source + source, cn)), {cn})[cn]
     assert plan() is None
+
+
+def test_reviewed_colophon_resolves_only_its_exact_named_placeholder(monkeypatch):
+    from hashlib import sha256
+
+    from app.pipeline import wikidata_gila_scribe_colophons as colophons
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    name = colophons.DELFOGIT_HEADING
+    note = "A reviewed colophon names the copyist."
+    fields = _field("700", ("a", name), ("4", "scr"))
+    record = parse_nli_records(_response(_record(fields + _field("957", ("a", note)))), {CONTROL})[CONTROL]
+    unknown = _claim(None, qualifiers={"P1932": name})
+    unknown["id"] = "Q10$reviewed"
+    unknown["mainsnak"] = {"snaktype": "somevalue"}
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P11603": [unknown]}}
+    case = {**people_role_cases(record, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
+    monkeypatch.setitem(colophons._COLOPHONS, CONTROL, (case["occurrence"], sha256(note.encode()).hexdigest()))
+    occupation = _claim({"id": "Q916292"})
+    occupation["references"] = [{"snaks": {"P854": [_snak(url)]}}
+                                for url in (colophons.DELFOGIT_PENN, colophons.DELFOGIT_PARMA)]
+    person = {"id": colophons.DELFOGIT_QID, "claims": {"P31": [_claim({"id": "Q5"})], "P106": [occupation]}}
+    wrong_mazal = _claim(colophons.DELFOGIT_WRONG_IDS["P8189"])
+    person["claims"]["P8189"] = [wrong_mazal]
+
+    def plan(raw=record):
+        return plan_person_role_repair(raw, case, manuscript, {}, person, {})
+
+    assert plan() is None
+    wrong_mazal["rank"] = "deprecated"
+    target, statement, selected = plan()
+    assert (target, selected) == ("Q10", unknown["id"])
+    assert [block[0]["value"] for block in statement.reference_blocks] == [colophons.DELFOGIT_PENN]
+    changed = parse_nli_records(_response(_record(fields + _field("957", ("a", "Changed note")))), {CONTROL})
+    assert plan(changed[CONTROL]) is None
+    unknown["mainsnak"] = _snak({"id": person["id"]})
+    assert not people_role_cases(record, manuscript, {person["id"]: person})[0]["verified"]
+    unknown["references"].append({"snaks": {"P854": [_snak(colophons.DELFOGIT_PENN)]}})
+    assert people_role_cases(record, manuscript, {person["id"]: person})[0]["authority_verified"]
+
+
+def test_reviewed_exemplar_requires_the_cited_deprecation_and_preserves_other_scribe(monkeypatch):
+    from hashlib import sha256
+
+    from app.pipeline import wikidata_gila_scribe_colophons as colophons
+
+    name = colophons.DELFOGIT_HEADING
+    actual_scribe = "מיליאב, עמנואל בן גד"
+    colophon = "The actual scribe signed this copy."
+    provenance = "The colophon refers to a different copy from the exemplar."
+    fields = (
+        _field("700", ("a", actual_scribe), ("4", "scr"))
+        + _field("700", ("a", name), ("4", "scr"))
+        + _field("957", ("a", colophon)) + _field("561", ("a", provenance))
+    )
+    record = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    old = _claim(None, qualifiers={"P1932": name, "P2241": {"id": colophons.MISATTRIBUTION}})
+    old["mainsnak"] = {"snaktype": "somevalue"}
+    keeper = _claim(None, qualifiers={"P1932": actual_scribe})
+    keeper["mainsnak"] = {"snaktype": "somevalue"}
+    manuscript = {"claims": {"P3959": [_claim(CONTROL)], "P11603": [old, keeper]}}
+
+    def case():
+        return next(row for row in people_role_cases(record, manuscript, {}) if row["source_value"] == name)
+
+    monkeypatch.setattr(colophons, "COLUMBIA_EXEMPLAR", CONTROL)
+    monkeypatch.setattr(colophons, "_EXEMPLAR_PROVENANCE", sha256(provenance.encode()).hexdigest())
+    monkeypatch.setitem(colophons._COLOPHONS, CONTROL, (case()["occurrence"], sha256(colophon.encode()).hexdigest()))
+    old["references"].append({"snaks": {"P854": [_snak(colophons.COLUMBIA_EXEMPLAR_URL)]}})
+    assert not case()["verified"]
+    old["rank"] = "deprecated"
+    assert case()["verified"] and case()["reason"] == "verified_scribe_misattribution"
+    assert not case()["authority_verified"] and not case()["role_verified"]
+    manuscript["claims"]["P11603"].remove(keeper)
+    assert not case()["verified"]

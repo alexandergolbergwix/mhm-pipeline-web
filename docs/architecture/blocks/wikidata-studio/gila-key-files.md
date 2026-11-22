@@ -61,3 +61,5 @@
 | `frontend/src/components/wikidata/WikidataSourceReview.tsx` | Requirement table and source choice forms |
 | `frontend/src/components/wikidata/WikidataItemDetailDrawer.tsx` | Source-review panel within a manuscript drawer |
 | `frontend/src/routes/ProjectDetail.tsx` | MARCXML source option |
+
+The `wikidata_gila_scribe_colophons.py` module binds reviewed colophons to exact MARC records.

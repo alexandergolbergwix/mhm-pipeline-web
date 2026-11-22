@@ -1414,3 +1414,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 233. **R233 — Verify alternate MAZAL names and limit repairs to the proven role (W-376).** Require an exact catalogue association and a unique source occurrence. Use the sole exact work for an added author with no work title. Keep each distinct source-supported scribe and its sources.
 
 234. **R234 — Keep the evidence for each verified scribe (W-377).** Check the exact MARC role, the authority, and each required citation. Bind a reviewed date case to the exact manuscript and person.
+
+235. **R235 — Bind a reviewed colophon to the exact scribe and manuscript (W-378).** Require the exact MARC source and the cited identity. Keep the correction on a deprecated exemplar attribution.

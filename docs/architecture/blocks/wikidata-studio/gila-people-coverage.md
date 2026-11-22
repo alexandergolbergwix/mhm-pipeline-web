@@ -67,6 +67,11 @@ If the evidence cites a second MARC record, the audit reads that record.
 The Vatican catalogue and NLI sources document the reviewed cases.
 See the [scribe evidence note](../../../audits/2026-11-22-scribe-evidence.md).
 
+The audit can verify a reviewed colophon with no external person ID.
+It checks the exact MARC note and the references on both live items.
+For a verified exemplar, it checks the deprecated claim and its holding
+catalogue citation. See the [Delfogit evidence](../../../audits/2026-11-22-delfogit-authority.md).
+
 The role planner in `wikidata_gila_people.py` supports scribes, authors, and
 former owners. An author repair requires a unique work for the exact MARC
 title. A MARC 700 author entry without a title needs a single source author,

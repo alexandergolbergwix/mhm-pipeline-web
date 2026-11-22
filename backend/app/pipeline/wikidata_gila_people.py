@@ -16,10 +16,14 @@ from app.pipeline.marc_ingest import _parse_marcxml, prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
 from app.pipeline.wikidata_gila_authority_reads import library_of_congress_identifier, mazal_authority_url, mazal_identifier
 from app.pipeline.wikidata_gila_catalogue_authority import NLI_SRU, REVIEWED_SCRIBE_SOURCES, catalogue_authority_url
-from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status
+from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status, _snak_value
 from app.pipeline.wikidata_gila_gnd_evidence import gnd_identifier
 from app.pipeline.wikidata_gila_identity_evidence import (
     _viaf_identifier, _viaf_reference_ids, live_source_match, viaf_proves_person,
+)
+from app.pipeline.wikidata_gila_scribe_colophons import (
+    COLUMBIA_EXEMPLAR_URL, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS, MISATTRIBUTION,
+    matches_reviewed_exemplar, reviewed_colophon_urls,
 )
 from app.pipeline.wikidata_source_choices import _claim_values
 from converter.authority.mazal_index import MazalIndex
@@ -288,6 +292,41 @@ def _cites_authority(claim, urls):
     )
 
 
+def _colophon_scribe_urls(candidate, record, cn, occurrence, display):
+    urls = reviewed_colophon_urls(record, cn, occurrence, display)
+    if not urls or candidate.get("id") != DELFOGIT_QID or "Q5" not in _links(candidate, "P31"):
+        return ()
+    if any(value in _claim_values(candidate, pid) for pid, value in DELFOGIT_WRONG_IDS.items()):
+        return ()
+    if not any(
+        claim["value"] == "Q916292" and all(_cites_authority(claim, (url,)) for url in (DELFOGIT_PENN, DELFOGIT_PARMA))
+        for claim in _live_claims(candidate, "P106")
+    ):
+        return ()
+    return urls
+
+
+def _confirmed_scribe_exclusion(manuscript, cn, display):
+    active = _live_claims(manuscript, "P11603")
+    if any(
+        claim["value"] == DELFOGIT_QID or display in _qualifier_values(claim, "P1932")
+        for claim in active
+    ) or not any(
+        _qualifier_values(claim, "P1932") == ["מיליאב, עמנואל בן גד"]
+        and _reference_status([claim], cn, live=True) == "source_bound"
+        for claim in active
+    ):
+        return False
+    return any(
+        claim.get("rank") == "deprecated" and claim.get("mainsnak", {}).get("snaktype") == "somevalue"
+        and [_snak_value(snak) for snak in claim.get("qualifiers", {}).get("P1932", [])] == [display]
+        and any(_snak_value(snak) == MISATTRIBUTION for snak in claim.get("qualifiers", {}).get("P2241", []))
+        and _reference_status([claim], cn, live=True) == "source_bound"
+        and _cites_authority({"references": claim.get("references", [])}, (COLUMBIA_EXEMPLAR_URL,))
+        for claim in manuscript.get("claims", {}).get("P11603", [])
+    )
+
+
 def _proves_dated_role(claim, candidate, role, names, dates, lc_headings, mazal_headings, viaf_sources):
     cited_viaf = _viaf_reference_ids(claim["references"])
     if cited_viaf & (viaf_sources or {}).keys():
@@ -466,6 +505,12 @@ def plan_person_role_repair(
         or any(marc.values(variant, code) for variant in variants for code in ("0", "1", "3", "5", "j", "n", "p"))
     ):
         return None
+    display = names[0].strip().rstrip(",")
+    if not display or display != case["source_value"]:
+        return None
+    occurrence = marc.source_key(row)
+    if role == "scribe" and matches_reviewed_exemplar(record, cn, occurrence, display):
+        return None
     dates = _exact_life_dates(variants)
     urls = _dated_authority_urls(candidate, source_names, dates, lc_headings, mazal_headings)
     gnd_url = _gnd_scribe_url(candidate, source_names, dates, gnd_sources) if role == "scribe" else None
@@ -476,17 +521,15 @@ def plan_person_role_repair(
         candidate, cn, row, variants, occurrences, mazal_people, catalogue_records,
         scribe=role == "scribe", lc_death_years=lc_death_years if role == "scribe" else None,
     )
-    required_urls = ()
+    colophon_urls = _colophon_scribe_urls(candidate, record, cn, occurrence, display) if role == "scribe" else ()
+    required_urls = colophon_urls
     if role == "author" and row["tag"] != "100" and not marc.values(row, "t"):
         if not catalogue_urls or not _sole_work_for_added_author(row, record, manuscript, occurrences):
             return None
         required_urls = catalogue_urls
-    elif not urls:
+    elif not urls and not required_urls:
         required_urls = catalogue_urls
     if not urls and not required_urls:
-        return None
-    display = names[0].strip().rstrip(",")
-    if not display or display != case["source_value"]:
         return None
     target = _author_target(row, record, manuscript, entities, cn) if role == "author" else manuscript
     if not target.get("id") or target["id"] == candidate["id"]:
@@ -497,6 +540,7 @@ def plan_person_role_repair(
     if role_qualifier:
         qualifiers.append({"property": "P3831", "value": role_qualifier, "type": "item"})
     existing = []
+    unknowns = []
     for claim in _live_claims(target, pid):
         if role_qualifier and _qualifier_values(claim, "P3831") != [role_qualifier]:
             if claim["value"] == candidate["id"] and not _qualifier_values(claim, "P3831"):
@@ -505,9 +549,17 @@ def plan_person_role_repair(
         if claim["value"] == "somevalue" and any(
             _heading(name) in source_names for name in _qualifier_values(claim, "P1932")
         ):
+            if colophon_urls:
+                if (
+                    not claim["claim_id"] or _qualifier_values(claim, "P1932") != [display]
+                    or {qualifier["property"] for qualifier in claim["qualifiers"]} != {"P1932"}
+                    or _reference_status([claim], cn, live=True) != "source_bound"
+                ):
+                    return None
+                unknowns.append(claim)
             continue
         if claim["value"] != candidate["id"]:
-            if role == "scribe" and (catalogue_urls or gnd_url) and _separate_scribe_claim(
+            if role == "scribe" and (catalogue_urls or gnd_url or colophon_urls) and _separate_scribe_claim(
                 claim, cn, row, source_names, occurrences,
             ):
                 continue
@@ -521,7 +573,7 @@ def plan_person_role_repair(
         ):
             return None
         existing.append(claim)
-    if len(existing) > 1:
+    if len(existing) + len(unknowns) > 1:
         return None
     if existing and _reference_status(existing, cn, live=True) == "source_bound":
         cited = (
@@ -531,13 +583,14 @@ def plan_person_role_repair(
         if cited or (role != "scribe" and has_dated_proof):
             return None
 
-    references = [] if existing and _reference_status(existing, cn, live=True) == "source_bound" else nli_reference(cn)
+    selected = existing or unknowns
+    references = [] if selected and _reference_status(selected, cn, live=True) == "source_bound" else nli_reference(cn)
     statement = WikidataStatement(pid, candidate["id"], "item", qualifiers=qualifiers, references=references)
     for url in required_urls or (urls[0],):
         merge_statement_references(statement, WikidataStatement(
             pid, candidate["id"], "item", references=[{"property": "P854", "value": url, "type": "url"}],
         ))
-    return target["id"], statement, existing[0]["claim_id"] if existing else None
+    return target["id"], statement, selected[0]["claim_id"] if selected else None
 
 
 def people_role_cases(
@@ -574,6 +627,7 @@ def people_role_cases(
         }
         source_qid = next(iter(source_qids)) if len(source_qids) == 1 else None
         uncertain = any(mark in display for mark in ("?", "？")) or any(marc.values(v, "j") for v in variants)
+        occurrence = marc.source_key(row)
         for role in roles:
             if role == "author":
                 target = _author_target(row, record, manuscript, entities, cn) if exact_manuscript else {}
@@ -590,6 +644,9 @@ def people_role_cases(
                     ) or (
                         (role == "scribe" and (url := _gnd_scribe_url(candidate, names, life_dates, gnd_sources)))
                         and _cites_authority(claim, (url,))
+                    ) or (
+                        (role == "scribe" and (urls := _colophon_scribe_urls(candidate, record, cn, occurrence, display)))
+                        and all(_cites_authority(claim, (url,)) for url in urls)
                     ) or (
                         (urls := _catalogue_role_urls(
                             candidate, cn, row, variants, occurrences, mazal_people, catalogue_records,
@@ -632,7 +689,11 @@ def people_role_cases(
                         authority_rows=authority_rows, viaf_sources=viaf_sources, gnd_sources=gnd_sources,
                         lc_headings=lc_headings,
                     )
+            exclusion = role == "scribe" and exact_manuscript and (
+                matches_reviewed_exemplar(record, cn, occurrence, display) and _confirmed_scribe_exclusion(target, cn, display)
+            )
             reason = (
+                "verified_scribe_misattribution" if exclusion else
                 "recorded_person_uncertainty" if preserved_uncertainty else
                 "verified_person_authority" if verified_link else
                 "named_scribe_identity_unresolved" if role == "scribe" and not uncertain else
@@ -642,7 +703,7 @@ def people_role_cases(
                 "point": 5, "field": marc.source_key(row), "source_field": marc.source_key(row),
                 "occurrence": marc.source_key(row), "source_value": display, "person_role": role,
                 "classification": "identity_or_scope_uncertain", "reason": reason,
-                "verified": verified_link or preserved_uncertainty,
+                "verified": verified_link or preserved_uncertainty or exclusion,
                 "authority_verified": verified_link, "role_verified": role_present and (not uncertain or preserved_uncertainty),
             })
     return cases

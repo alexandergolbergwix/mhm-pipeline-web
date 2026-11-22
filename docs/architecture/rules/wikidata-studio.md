@@ -4517,3 +4517,15 @@ role. Bind the source to the control number, authority ID, and person item.
 Check the full MARC heading and dates in both copies. Match one scribe
 occurrence and keep the original date text. Check a cited secondary MARC
 record when the proof uses it. Keep the creator and current revision checks.
+
+## Rule W-378 — Bind a reviewed colophon to the exact scribe and manuscript
+
+Use a reviewed colophon when a national person identifier is unavailable.
+Require the exact MARC control number, scribe occurrence, and colophon
+text. Require both cited catalogues on the verified person claim. Reject
+active identifiers that those catalogues and the authority file disprove.
+The manuscript claim must cite its own source and the confirmed identity.
+
+A reviewed exemplar attribution requires the exact copy and provenance
+notes. Verify the deprecated claim and the cited correction. Keep the
+scribe of the physical copy. Count the correction as a verified case.
