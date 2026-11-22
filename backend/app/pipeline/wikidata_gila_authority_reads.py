@@ -67,7 +67,7 @@ def mazal_authority_url(identifier: str) -> str:
     return f"https://www.nli.org.il/he/a-topic/{identifier}"
 
 
-async def read_mazal_headings(identifiers: set[str]) -> dict[str, frozenset[str]]:
+async def read_mazal_people(identifiers: set[str]) -> dict[str, tuple[frozenset[str], str]]:
     """Use only preferred headings from imported personal-name records."""
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError
@@ -84,17 +84,28 @@ async def read_mazal_headings(identifiers: set[str]) -> dict[str, frozenset[str]
                 FROM mazal_authorities
                 WHERE nli_id = ANY(CAST(:ids AS text[]))
                   AND entity_type = 'person' AND main_marc_tag = '100'
-                  AND dates IS NOT NULL
             """), {"ids": ids})
             return {
-                identifier: frozenset(
-                    f"{name.strip()} {dates.strip()}" for name in (hebrew, latin) if name and name.strip()
+                identifier: (
+                    frozenset(name.strip() for name in (hebrew, latin) if name and name.strip()),
+                    (dates or "").strip(),
                 )
                 for identifier, hebrew, latin, dates in rows
             }
     except SQLAlchemyError as exc:
         logger.warning("MAZAL authority records are unavailable for this audit (%s)", type(exc).__name__)
         return {}
+
+
+def dated_mazal_headings(people: dict[str, tuple[frozenset[str], str]]) -> dict[str, frozenset[str]]:
+    return {
+        identifier: frozenset(f"{name} {dates}" for name in names)
+        for identifier, (names, dates) in people.items() if dates
+    }
+
+
+async def read_mazal_headings(identifiers: set[str]) -> dict[str, frozenset[str]]:
+    return dated_mazal_headings(await read_mazal_people(identifiers))
 
 
 def library_of_congress_headings(payload, identifier: str) -> frozenset[str]:

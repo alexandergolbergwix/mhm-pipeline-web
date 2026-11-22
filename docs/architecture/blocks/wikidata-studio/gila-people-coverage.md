@@ -47,6 +47,14 @@ record. The audit still requires the catalogue reference. In production
 v845, the VIAF outage left the verified Modena claim open because the
 Library of Congress used a different Hebrew heading.
 
+When the life dates do not identify the person, the audit can use the
+catalogue association with MAZAL. It checks the exact control number and
+authority ID through NLI Alma SRU. A preferred name must match one MARC
+100 or 700 occurrence in both the source copy and the current catalogue.
+The audit also checks the role and any stated dates. The claim must cite
+the exact SRU query and the catalogue record. The code that reads the
+authority association lives in `wikidata_gila_catalogue_authority.py`.
+
 The role planner in `wikidata_gila_people.py` supports scribes, authors, and
 former owners. An author repair requires a unique work for the exact MARC
 title. A copy role requires the exact manuscript. The planner keeps existing

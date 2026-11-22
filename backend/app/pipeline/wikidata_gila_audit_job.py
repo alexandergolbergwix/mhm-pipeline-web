@@ -221,6 +221,23 @@ async def _read_mazal_role_authorities(entities, manuscript_qids, work_qids):
     return await read_mazal_headings(identifiers)
 
 
+async def _read_catalogue_role_evidence(entities, mappings, work_qids):
+    from app.pipeline.wikidata_gila_authority_reads import mazal_identifier, read_mazal_people
+    from app.pipeline.wikidata_gila_catalogue_authority import cited_catalogue_identities, read_catalogue_authority_records
+
+    manuscript_qids = set(mappings.values())
+    work_qids = set(work_qids) | _geographic_context(entities, manuscript_qids, ("P1574",))
+    pairs = {
+        (cn, identifier)
+        for _, claim in _cited_person_roles(entities, manuscript_qids, work_qids)
+        for cn, identifier in cited_catalogue_identities(claim)
+        if cn in mappings and identifier == mazal_identifier(entities.get(claim["value"], {}))
+    }
+    profiles = await read_mazal_people({identifier for _, identifier in pairs})
+    records = await read_catalogue_authority_records({pair for pair in pairs if pair[1] in profiles})
+    return profiles, records
+
+
 async def _authorize(db, job: RunJob) -> None:
     if job is None or job.status != "running" or job.cancel_requested_at:
         raise AuditCancelledError()
@@ -545,9 +562,10 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             },
         )
         work_qids = {item.get("existing_qid") for item in canonical if item.get("entity_type") == "work"}
-        (viaf_sources, lc_headings), mazal_headings = await asyncio.gather(
+        (viaf_sources, lc_headings), mazal_headings, (mazal_people, catalogue_records) = await asyncio.gather(
             _read_cited_authority_sources(entities, mappings.values(), work_qids),
             _read_mazal_role_authorities(entities, mappings.values(), work_qids),
+            _read_catalogue_role_evidence(entities, mappings, work_qids),
         )
         from app.pipeline.wikidata_gila_gnd_evidence import cited_gnd_ids, read_gnd_sources
 
@@ -567,6 +585,8 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             people_marc=people_marc,
             repair_lc_headings=lc_headings,
             repair_mazal_headings=mazal_headings,
+            repair_mazal_people=mazal_people,
+            repair_catalogue_records=catalogue_records,
         )
         packet = await asyncio.to_thread(
             build_gila_completion_packet,

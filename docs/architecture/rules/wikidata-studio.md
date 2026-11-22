@@ -4477,3 +4477,13 @@ An existing scribe claim needs an exact catalogue reference and a citation
 to the same MAZAL record or VIAF record. Use MAZAL after a VIAF outage.
 Keep a case open if the identity proof conflicts. The first-creator and
 revision checks still apply to each live edit. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).
+
+## Rule W-374 — Bind the person to the exact MARC occurrence
+
+Confirm the link between the exact control number and the current MAZAL ID
+through NLI Alma SRU. The preferred name must identify one personal-name
+occurrence. The selected occurrence must agree with the imported MARC fields
+for the name and the role. Check the stated life dates when the source
+provides them. A confirmed repair cites the exact authority query and the
+catalogue record. Check the first creator and the current revision before
+each write. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).

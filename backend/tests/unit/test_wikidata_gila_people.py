@@ -200,7 +200,7 @@ def test_audit_verifies_dated_author_with_independent_authority():
 
 
 def test_dated_repair_keeps_placeholder_and_rejects_conflicting_scribe():
-    from app.pipeline.wikidata_gila_people import plan_dated_person_repair
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
 
     fields = _field("700", ("a", "Example, Leah"), ("d", "1690-1760"), ("4", "scr"))
     record = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
@@ -211,13 +211,13 @@ def test_dated_repair_keeps_placeholder_and_rejects_conflicting_scribe():
     case = {**people_role_cases(record, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
     headings = {"n12345678": {"Example, Leah, 1690-1760"}}
 
-    target, statement, claim_id = plan_dated_person_repair(record, case, manuscript, {}, person, headings)
+    target, statement, claim_id = plan_person_role_repair(record, case, manuscript, {}, person, headings)
     assert (target, statement.property_id, statement.value, claim_id) == ("Q10", "P11603", "Q42", None)
     assert len(statement.reference_blocks) == 2
     assert statement.reference_blocks[1][0]["value"] == "https://id.loc.gov/authorities/names/n12345678.html"
     assert manuscript["claims"]["P11603"] == [placeholder]
     manuscript["claims"]["P11603"].append(_claim({"id": "Q43"}))
-    assert plan_dated_person_repair(record, case, manuscript, {}, person, headings) is None
+    assert plan_person_role_repair(record, case, manuscript, {}, person, headings) is None
 
 
 def test_modena_scribe_uses_mazal_when_viaf_is_unavailable():
@@ -258,3 +258,59 @@ def test_mazal_accepts_only_years_explicitly_listed_in_the_authority():
     assert dated_mazal_match(person, {"example person"}, ("1542", "1620"), headings)
     assert dated_mazal_match(person, {"example person"}, ("1543", "1620"), headings)
     assert not dated_mazal_match(person, {"example person"}, ("1541", "1620"), headings)
+
+
+@pytest.mark.asyncio
+async def test_scribe_without_dates_requires_exact_catalogue_authority_link():
+    import httpx
+
+    from app.pipeline.wikidata_gila_catalogue_authority import (
+        catalogue_authority_url, cited_catalogue_identities, read_catalogue_authority_records,
+    )
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    fields = _field("700", ("a", "Example, Leah"), ("4", "scr"))
+    raw = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    identifier = "987007265574105171"
+    person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P8189": [_claim(identifier)]}}
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)]}}
+    case = {**people_role_cases(raw, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
+    profiles = {identifier: (frozenset({"Example, Leah"}), "")}
+    payload = _response(_record(fields)).replace(b"<records>", b"<numberOfRecords>1</numberOfRecords><records>")
+
+    def response(request):
+        assert request.url.params["query"] == f"(alma.mms_id={CONTROL}) and (alma.authority_id={identifier})"
+        return httpx.Response(200, content=payload)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(response)) as client:
+        records = await read_catalogue_authority_records({(CONTROL, identifier)}, client=client)
+    assert plan_person_role_repair(raw, case, manuscript, {}, person, {}, mazal_people=profiles) is None
+    plan = plan_person_role_repair(
+        raw, case, manuscript, {}, person, {}, mazal_people=profiles, catalogue_records=records,
+    )
+    assert plan[:1] == ("Q10",)
+    url = catalogue_authority_url(CONTROL, identifier)
+    assert plan[1].reference_blocks[-1][0]["value"] == url
+    link = _claim({"id": "Q42"}, qualifiers={"P1932": "Example, Leah"})
+    link["references"].append({"snaks": {"P854": [_snak(url)]}})
+    assert cited_catalogue_identities(link) == {(CONTROL, identifier)}
+    manuscript["claims"]["P11603"] = [link]
+    args = {"mazal_people": profiles, "catalogue_records": records}
+    assert people_role_cases(raw, manuscript, {"Q42": person}, **args)[0]["authority_verified"]
+
+    same_name = parse_nli_records(_response(_record(fields + _field("600", ("a", "Example, Leah")))), {CONTROL})[CONTROL]
+    args["catalogue_records"] = {(CONTROL, identifier): same_name}
+    assert not people_role_cases(raw, manuscript, {"Q42": person}, **args)[0]["authority_verified"]
+
+
+@pytest.mark.asyncio
+async def test_catalogue_authority_check_rejects_unexpected_marc_control_number():
+    import httpx
+
+    from app.pipeline.wikidata_gila_catalogue_authority import read_catalogue_authority_records
+
+    payload = _response(_record("", "990000403370205171"))
+    payload = payload.replace(b"<records>", b"<numberOfRecords>1</numberOfRecords><records>")
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200, content=payload))
+    async with httpx.AsyncClient(transport=transport) as client:
+        assert await read_catalogue_authority_records({(CONTROL, "987007265574105171")}, client=client) == {}

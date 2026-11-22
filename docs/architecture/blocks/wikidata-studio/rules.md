@@ -1406,3 +1406,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 229. **R229 — Require exact authority evidence for dated roles (W-372).** Match the complete MARC name and both life dates. Keep the existing claims. Check the first creator of the item before each write.
 
 230. **R230 — Use exact MAZAL personal authority evidence (W-373).** Check the person's current J9U ID, the preferred heading, and the stated life dates. For a scribe, also check the authority citation and the catalogue reference.
+
+231. **R231 — Verify the catalogue association with MAZAL (W-374).** Require the exact control number and authority ID in NLI Alma SRU. Match one occurrence to the preferred name and the stated role. Preserve the first-creator check for writes.
