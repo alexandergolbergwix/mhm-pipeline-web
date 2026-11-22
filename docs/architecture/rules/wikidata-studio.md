@@ -4432,3 +4432,13 @@ Wait for the server's retry delay before the next public request in the batch.
 Keep each read within its retry budget. Preserve the creator, revision, and source checks.
 Production v840 lost 25 evidence checks after a burst of public read failures.
 See [the evidence worker](../blocks/wikidata-studio/gila-case-review.md).
+
+
+## Rule W-369 — Preserve existing claims in a scoped manuscript publication
+
+A scoped Gila repair provides only the claims that the audit supports.
+The write keeps other existing claims when the repair adds a new work or scribe link.
+The write also keeps other claims when the scoped repair contains P31.
+Production v840 and v841 removed existing P1574 and P11603 claims when the uploader applied its complete-source replacement rules.
+The release uses the creator and revision guards before it writes.
+See [the case review workflow](../blocks/wikidata-studio/gila-case-review.md).

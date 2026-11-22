@@ -1210,6 +1210,7 @@ class WikidataUploader:
         read_only: bool = False,
         owner_only: bool = False,
         exact_troki_author_repair: bool = False,
+        preserve_existing_claims: bool = False,
     ) -> tuple[object, int, list[str]]:
         """Convert a WikidataItem to a WikibaseIntegrator item object.
 
@@ -1587,7 +1588,7 @@ class WikidataUploader:
                     wbi_item.claims.add(claim, action_if_exists=ActionIfExists.FORCE_APPEND)
                     existing_list.append(claim)
                     added_properties.append(pid)
-        elif is_owned_by_us and "P31" in built_by_pid:
+        elif is_owned_by_us and "P31" in built_by_pid and not preserve_existing_claims:
             for pid, claims_list in built_by_pid.items():
                 existing_list = existing_by_pid[pid]
                 proposed_ids = [_claim_identity(claim) for claim in claims_list]
@@ -1641,7 +1642,7 @@ class WikidataUploader:
                     added_properties.append(stale_pid)
         else:
             for pid, claims_list in built_by_pid.items():
-                if is_owned_by_us and pid in _DEFERRED_LINK_PIDS:
+                if is_owned_by_us and pid in _DEFERRED_LINK_PIDS and not preserve_existing_claims:
                     # Pass 2 of a deferred link: the replacement and the removal
                     # of the superseded claim are one write, so a failed write keeps the old claim.
                     proposed_ids = [_claim_identity(claim) for claim in claims_list]

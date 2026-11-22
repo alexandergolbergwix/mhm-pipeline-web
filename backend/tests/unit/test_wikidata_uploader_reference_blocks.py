@@ -1186,3 +1186,32 @@ def test_deferred_p1574_keeps_remote_claim_until_pass2_write(monkeypatch: pytest
     pass2_ok, _, _ = uploader._build_wbi_item(deferred, read_only=True)
     _commit(remote, pass2_ok)
     assert [c["mainsnak"]["datavalue"]["value"]["id"] for c in remote["claims"]["P1574"]] == ["Q2"]
+
+
+@pytest.mark.parametrize(("pid", "includes_class"), [("P1574", False), ("P11603", False), ("P1574", True)])
+def test_scoped_manuscript_publication_preserves_unrelated_claims(monkeypatch, pid, includes_class):
+    from app.publication.gateway import GatewayMutation
+    from app.publication.wikidata_gateway import CurrentWikidataBoundary
+
+    uploader = _uploader()
+    monkeypatch.setattr(uploader, "_assert_modifiable", lambda *args, **kwargs: None)
+    old = _statement(pid, "Q111", "item", [_source("https://example.org/original")])
+    remote = _item_with_existing_claim(monkeypatch, uploader, uploader._build_claim(old))
+    original = copy.deepcopy(remote.get_json()["claims"][pid][0])
+    statements = [_statement(pid, "Q222", "item", [_source("https://example.org/audit")])]
+    if includes_class:
+        statements.append(WikidataStatement("P31", "Q87167", "item"))
+    native = WikidataItem(
+        entity_type="manuscript", local_id="ms:1", existing_qid="Q123",
+        statements=statements,
+    )
+    mutation = GatewayMutation(
+        entity_key="ms:1", entity_type="manuscript", action="update",
+        target_qid="Q123", payload_digest="fixture", entity_digest="fixture",
+        document={"publication_gila_repair_qid": "Q123"}, identity_assertions=("wikidata:Q123",),
+        expected_revision=1,
+    )
+    item, _, _ = CurrentWikidataBoundary(uploader=uploader)._build_publication_item(native, mutation)
+    active = [claim.get_json() for claim in item.claims.get(pid) if not claim.removed]
+    assert original in active
+    assert {c["mainsnak"]["datavalue"]["value"]["id"] for c in active} == {"Q111", "Q222"}

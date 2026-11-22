@@ -983,6 +983,8 @@ class CurrentWikidataBoundary:
     def _build_publication_item(self, item, mutation: GatewayMutation):
         if mutation.document.get("publication_gila_troki_author") is True:
             return self._uploader._build_wbi_item(item, exact_troki_author_repair=True)
+        if mutation.document.get("publication_gila_repair_qid") is not None:
+            return self._uploader._build_wbi_item(item, preserve_existing_claims=True)
         return self._uploader._build_wbi_item(item)
 
     def _native_item_from_mutation(

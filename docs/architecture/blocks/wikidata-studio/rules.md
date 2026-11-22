@@ -1396,3 +1396,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 224. **R224 — Check the exact source occurrence before an automatic link (W-367).** Match a missing work link to one Ktiv-qualified public title with compatible source authorship. Use GND only when it confirms both MARC life years. Repeat the checks before publication and during audit.
 
 225. **R225 — Pace public evidence reads (W-368).** Share the request schedule across the batch. Wait for the server retry delay before the next read.
+
+226. **R226 — Preserve other claims during scoped manuscript publication (W-369).** Use the scoped update even when the repair includes P31 or a deferred-link property.

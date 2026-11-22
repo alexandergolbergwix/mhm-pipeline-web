@@ -41,6 +41,8 @@ The worker skips an existing link for the same work or source scope.
 The release adds a `P1574` claim with the MARC title and folio qualifiers and the Ktiv citation.
 Release preparation accepts this evidence only for the selected manuscript and audited revision.
 The release test checks the scoped claim and its citation.
+The publication writer preserves other existing claims on the selected manuscript.
+The gateway test checks this rule for work and scribe links and repairs that include P31.
 The final audit checks the same source, work, and live link for points 3 and 6.
 The first-revision creator check excludes other items before the batch requests evidence.
 A unique candidate with independent source proof can proceed without a model response.
