@@ -638,3 +638,58 @@ def test_milhaud_misattribution_preserves_the_verified_delfogit_link(monkeypatch
     keeper["mainsnak"] = _snak({"id": reviewed.DELFOGIT_QID})
     assert case()["verified"] and case()["reason"] == "verified_scribe_misattribution"
     assert not case()["authority_verified"] and not case()["role_verified"]
+
+
+def test_reviewed_scribe_note_requires_exact_authority_and_placeholder(monkeypatch):
+    from hashlib import sha256
+
+    from app.pipeline import wikidata_gila_scribe_colophons as reviewed
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    name = "Reviewed name"
+    old_name = "Old expanded name"
+    note = "The signed colophon identifies the scribe."
+    authority_url = "https://example.org/authority"
+    digest = sha256(sha256(note.encode()).hexdigest().encode()).hexdigest()
+
+    def source(text):
+        return parse_nli_records(_response(_record(
+            _field("700", ("a", name), ("4", "scr")) + _field("957", ("a", text)),
+        )), {CONTROL})[CONTROL]
+
+    record = source(note)
+    old = _claim(None, qualifiers={"P1932": old_name})
+    old["id"] = "Q10$reviewed"
+    old["mainsnak"] = {"snaktype": "somevalue"}
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P11603": [old]}}
+    case = {**people_role_cases(record, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
+    identity = reviewed.ReviewedScribePerson(
+        "Q20", "שם", (authority_url,), identifier=("P227", "123456789"),
+        wrong_ids=(("P8189", "987000000000005171"),),
+    )
+    monkeypatch.setitem(reviewed._EXTRA_SCRIBE_NOTES, CONTROL, reviewed.ReviewedScribeNote(
+        identity, case["occurrence"], name, digest, former_heading=old_name,
+    ))
+    person = {"id": identity.qid, "labels": {"he": {"value": identity.hebrew_name}}, "claims": {
+        "P31": [_claim({"id": "Q5"})], "P227": [_claim("123456789")],
+    }}
+
+    def plan(raw=record):
+        return plan_person_role_repair(raw, case, manuscript, {}, person, {})
+
+    _, statement, claim_id = plan()
+    assert claim_id == old["id"]
+    assert statement.qualifiers == [{"property": "P1932", "value": name, "type": "string"}]
+    assert [block[0]["value"] for block in statement.reference_blocks] == [authority_url]
+    assert plan(source(note + " Changed.")) is None
+    unrelated_id = _claim("987000000000005171")
+    person["claims"]["P8189"] = [unrelated_id]
+    assert plan() is None
+    unrelated_id["rank"] = "deprecated"
+    assert plan() is not None
+
+    old["mainsnak"] = _snak({"id": identity.qid})
+    old["qualifiers"]["P1932"] = [_snak(name)]
+    assert not people_role_cases(record, manuscript, {identity.qid: person})[0]["verified"]
+    old["references"].append({"snaks": {"P854": [_snak(authority_url)]}})
+    assert people_role_cases(record, manuscript, {identity.qid: person})[0]["authority_verified"]

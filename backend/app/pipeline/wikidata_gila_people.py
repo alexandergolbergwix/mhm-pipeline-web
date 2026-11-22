@@ -24,7 +24,7 @@ from app.pipeline.wikidata_gila_identity_evidence import (
 from app.pipeline.wikidata_gila_scribe_colophons import (
     DELFOGIT_HEADING, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS,
     MILHAUD_COLUMBIA, MILHAUD_DS_ID, MILHAUD_HEADING, MILHAUD_QID, MISATTRIBUTION,
-    reviewed_colophon_urls, reviewed_scribe_exclusion,
+    reviewed_colophon_urls, reviewed_scribe_exclusion, reviewed_scribe_note,
 )
 from app.pipeline.wikidata_source_choices import _claim_values
 from converter.authority.mazal_index import MazalIndex
@@ -294,8 +294,12 @@ def _cites_authority(claim, urls):
 
 
 def _colophon_scribe_urls(candidate, record, cn, occurrence, display):
+    if "Q5" not in _links(candidate, "P31"):
+        return ()
+    if proof := reviewed_scribe_note(record, cn, occurrence, display, candidate):
+        return proof.person.urls
     urls = reviewed_colophon_urls(record, cn, occurrence, display)
-    if not urls or "Q5" not in _links(candidate, "P31"):
+    if not urls:
         return ()
     if display == MILHAUD_HEADING:
         return urls if (
@@ -532,6 +536,8 @@ def plan_person_role_repair(
         scribe=role == "scribe", lc_death_years=lc_death_years if role == "scribe" else None,
     )
     colophon_urls = _colophon_scribe_urls(candidate, record, cn, occurrence, display) if role == "scribe" else ()
+    reviewed_note = reviewed_scribe_note(record, cn, occurrence, display, candidate) if colophon_urls else None
+    accepted_placeholder = (reviewed_note.former_heading if reviewed_note else None) or display
     required_urls = colophon_urls
     if role == "author" and row["tag"] != "100" and not marc.values(row, "t"):
         if not catalogue_urls or not _sole_work_for_added_author(row, record, manuscript, occurrences):
@@ -556,12 +562,14 @@ def plan_person_role_repair(
             if claim["value"] == candidate["id"] and not _qualifier_values(claim, "P3831"):
                 return None
             continue
-        if claim["value"] == "somevalue" and any(
-            _heading(name) in source_names for name in _qualifier_values(claim, "P1932")
+        placeholder_names = _qualifier_values(claim, "P1932") if claim["value"] == "somevalue" else []
+        if placeholder_names and (
+            any(_heading(name) in source_names for name in placeholder_names)
+            or (bool(colophon_urls) and accepted_placeholder in placeholder_names)
         ):
             if colophon_urls:
                 if (
-                    not claim["claim_id"] or _qualifier_values(claim, "P1932") != [display]
+                    not claim["claim_id"] or placeholder_names != [accepted_placeholder]
                     or {qualifier["property"] for qualifier in claim["qualifiers"]} != {"P1932"}
                     or _reference_status([claim], cn, live=True) != "source_bound"
                 ):

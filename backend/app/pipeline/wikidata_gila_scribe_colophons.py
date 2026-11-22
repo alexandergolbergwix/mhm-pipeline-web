@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 
 from app.pipeline import marc_occurrences as marc
+from app.pipeline.wikidata_source_choices import _claim_values
 
 DELFOGIT_QID = "Q141175708"
 DELFOGIT_HEADING = "דלפוגיט, אליהו"
@@ -34,6 +35,170 @@ class ReviewedScribeExclusion:
     retained_heading: str
     reference_url: str
     retained_qid: str | None = None
+
+
+@dataclass(frozen=True)
+class ReviewedScribePerson:
+    qid: str
+    hebrew_name: str
+    urls: tuple[str, ...]
+    identifier: tuple[str, str] | None = None
+    hewiki_title: str | None = None
+    wrong_ids: tuple[tuple[str, str], ...] = ()
+
+    def matches(self, item: Mapping) -> bool:
+        if item.get("id") != self.qid or item.get("labels", {}).get("he", {}).get("value") != self.hebrew_name:
+            return False
+        if self.identifier:
+            pid, value = self.identifier
+            if _claim_values(item, pid) != [value]:
+                return False
+        if self.hewiki_title and item.get("sitelinks", {}).get("hewiki", {}).get("title") != self.hewiki_title:
+            return False
+        return all(value not in _claim_values(item, pid) for pid, value in self.wrong_ids)
+
+
+@dataclass(frozen=True)
+class ReviewedScribeNote:
+    person: ReviewedScribePerson
+    occurrence: str
+    heading: str
+    digest: str
+    tag: str = "957"
+    former_heading: str | None = None
+
+
+_QATI = ReviewedScribePerson(
+    "Q108378115", "משה קטיעי",
+    ("https://teman.org.il/content/13032",),
+    hewiki_title="משה קטיעי",
+)
+_ELADWI = ReviewedScribePerson(
+    "Q141175696", "יוסף בן עמרם בן עודד אלעדוי",
+    ("https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage"
+     "?docId=PNX_MANUSCRIPTS990001366470205171&scope=KTIV&vid=KTIV",),
+    identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1177"),
+    wrong_ids=(("P8189", "987007402783005171"), ("P214", "68156495355517561081")),
+)
+_HAGAGI = ReviewedScribePerson(
+    "Q141953242", "חיים בן שלום בן דוד בן יצחק אלחגאג",
+    ("https://searcharchives.bl.uk/catalog/032-003376507",),
+    identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1114"),
+    wrong_ids=(("P8189", "987007312320105171"),),
+)
+_MEHLER = ReviewedScribePerson(
+    "Q1710859", "יהודה מילר רויטלינגן",
+    ("https://www.deutsche-biographie.de/sfz59820.html",),
+    identifier=("P227", "136768687"),
+)
+_BASHIRI = ReviewedScribePerson(
+    "Q22935567", "יחיא בשירי",
+    ("https://id.loc.gov/authorities/names/no2008160185.html",),
+    identifier=("P244", "no2008160185"),
+)
+
+
+# Bind each identification to the full set of notes in the reviewed MARC field.
+_EXTRA_SCRIBE_NOTES = {
+    "990000561550205171": ReviewedScribeNote(
+        _QATI, "700:1", "אלקטיעי, משה בן סעדיה",
+        "7b8f460deeac6f56020bdb1a0d6b754a9f7422370fc6673cc992fe9cb834cfb2",
+    ),
+    "990000566640205171": ReviewedScribeNote(
+        _QATI, "700:1", "אלקטיעי, משה בן סעדיה",
+        "8185bb0c81b322a523c7e9d56abe94584521e4aaa8dc30e09dbb9f112dd60c7c",
+    ),
+    "990000593730205171": ReviewedScribeNote(
+        _HAGAGI, "700:1", "אלחגאג', חיים בן שלום בן דוד בן יצחק",
+        "b4f1ed7f37d56defc1cd4f72aeed6ef326dae5aabe2c6b38174d4f6bd8e0074a",
+    ),
+    "990000602640205171": ReviewedScribeNote(
+        _HAGAGI, "700:1", "אלחגאגי, חיים בן שלום",
+        "c613d0f6e142a3eaf327a65262963879d1f4a8d9d9612d410f921e46c7216653",
+    ),
+    "990000610900205171": ReviewedScribeNote(
+        _MEHLER, "700:1", "מילר, יהודה בן שמואל רויטלינגן",
+        "5bd1780036dbf239f4da2e422a6ba48c8d41164eeed15de55043f83df4655cd2",
+    ),
+    "990000612200205171": ReviewedScribeNote(
+        _HAGAGI, "700:1", "אלחגאגי, חיים בן שלום",
+        "8efe2fd70ac6f1e6b5a04dd790ad55625801688cf7e966ef1875d1985df70990",
+    ),
+    "990001088900205171": ReviewedScribeNote(
+        _HAGAGI, "700:1", "אלחגאג', חיים בן שלום בן דוד בן יצחק",
+        "ba89fb7b2703b9502a97a2655b9177e8dd92f0950800e56afd1cfb372b49c9e4",
+    ),
+    "990001122020205171": ReviewedScribeNote(
+        _HAGAGI, "700:1", "אלחגאגי, חיים בן שלום",
+        "af3599b1ad82bc53fee2f049072b480321ede9012af2716470f388cbf36ce5e1",
+    ),
+    "990001189730205171": ReviewedScribeNote(
+        _QATI, "700:1", "אלקטיעי, משה בן סעדיה",
+        "1b21cf12e43d12b6f74fc6206125b321a252ef340226b28119b783f8eb3440ab",
+    ),
+    "990001211120205171": ReviewedScribeNote(
+        _HAGAGI, "700:1", "אלחגאגי, חיים בן שלום",
+        "387ff17540fe65e315cdd19f632b3f529d00092de25b08185c15d7a7cb21c740",
+    ),
+    "990001219490205171": ReviewedScribeNote(
+        _HAGAGI, "700:1", "אלחגאג', חיים בן שלום בן דוד בן יצחק",
+        "e497e158adf35a47e3dd12eed7ca8225c004a46990dd99c89a176f5ff2f30a2e",
+    ),
+    "990001273580205171": ReviewedScribeNote(
+        _HAGAGI, "700:1", "אלחגאגי, חיים בן שלום",
+        "d51ea54692d31c20503c8c33f9d3e2ea39352266df25f5cd30363bf4535090ab",
+    ),
+    "990001349520205171": ReviewedScribeNote(
+        _QATI, "700:2", "אלקטיעי, משה בן סעדיה",
+        "215ba3da2f44b7b1a5599c3e4a91d861ff3ff568eff8a9fb82beb7001d6508e9",
+    ),
+    "990001366470205171": ReviewedScribeNote(
+        _ELADWI, "700:1", "אלעדוי, יוסף בן עמרם בן עודד",
+        "ab9f533a4e28b6141327797baa2668b2f12fd99445d9a5bff5122b2f641d6246", former_heading="יוסף בן עמרם בן עודד בן זכריה בן יהודה",
+    ),
+    "990001758470205171": ReviewedScribeNote(
+        _MEHLER, "700:1", "מילר, יהודה בן שמואל רויטלינגן",
+        "bd331d2b7ea43262fe66947c65fe837d540a0455f121bfe195a6e0d1e6fe37a6",
+    ),
+    "990001772940205171": ReviewedScribeNote(
+        _QATI, "700:1", "אלקטיעי, משה בן סעדיה",
+        "5c88a2026ca773f9ba8de7d3f9963ad7d9433b69de964169cecfbb18a976a4d9",
+    ),
+    "990001827870205171": ReviewedScribeNote(
+        _ELADWI, "700:1", "אלעדוי, יוסף בן עמרם בן עודד",
+        "c5f3fd1b0cdf4f64808129af6f8ea7e8e257db4286c1769a2e6f151c30f957d3",
+    ),
+    "990001827880205171": ReviewedScribeNote(
+        _ELADWI, "700:1", "אלעדוי, יוסף בן עמרם בן עודד",
+        "7d0211799546474f659e7c37206fe724b5fe6a1a4f7be9a3b72dd7ff92c62605",
+    ),
+    "990001845770205171": ReviewedScribeNote(
+        _QATI, "700:1", "אלקטיעי, משה בן סעדיה",
+        "c72076b07841f7d62feba23e330f1ea00339e2c57613fd46aed58023bb7b55b3",
+    ),
+    "990001863380205171": ReviewedScribeNote(
+        _QATI, "700:1", "אלקטיעי, משה בן סעדיה",
+        "2b9e79e4b3de77e10907cc159ce86b8aa280dd86dcdb283e4a391bc0ddfc28ee",
+    ),
+    "990001901770205171": ReviewedScribeNote(
+        _ELADWI, "700:1", "אלעדוי, יוסף בן עמרם בן עודד",
+        "0cdf14b6e516fcf195716136e64ddef0202a8e7bdce898c4bc1220e775a0153a",
+    ),
+    "990038692590205171": ReviewedScribeNote(
+        _BASHIRI, "700:3", "בשירי, יחיא",
+        "3405ab7b7d492400d0c29302a7ef437258103637d65cdd336a24b071edf9f7d5", former_heading="בשירי, יחיא הלוי",
+    ),
+}
+
+
+def reviewed_scribe_note(
+    record: Mapping, cn: str, occurrence: str, heading: str, candidate: Mapping,
+) -> ReviewedScribeNote | None:
+    proof = _EXTRA_SCRIBE_NOTES.get(cn)
+    if not proof or proof.occurrence != occurrence or proof.heading != heading or not proof.person.matches(candidate):
+        return None
+    notes = _note_digests(record, proof.tag)
+    return proof if notes and sha256(" ".join(notes).encode()).hexdigest() == proof.digest else None
 
 
 # The review binds the MARC occurrence to the exact text of field 957.

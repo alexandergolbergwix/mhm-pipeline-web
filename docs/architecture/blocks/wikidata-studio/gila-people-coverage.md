@@ -99,3 +99,10 @@ guards and checked Publication workflow apply.
 Tests in `test_wikidata_gila_people.py` check the exact NLI control number,
 field preservation, linked-script role counts, authority evidence, and
 write scope. `test_gila_case_review.py` checks evidence and creator proof.
+
+The audit also checks the reviews for al-Qati‘i, al-Hagagi, Eladwi, Mehler,
+and Bashiri. Each review binds the exact MARC note to a live person item and a
+catalogue or authority citation. The person record must have no active
+authority ID that the review found incorrect. The plan can update an older
+name qualifier only when the exact review identifies that qualifier.
+See the [source review](../../../audits/2026-11-22-remaining-scribe-authorities.md).

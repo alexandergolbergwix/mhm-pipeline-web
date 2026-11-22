@@ -1418,3 +1418,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 235. **R235 — Bind a reviewed colophon to the exact scribe and manuscript (W-378).** Require the exact MARC source and the cited identity. Keep the correction on a deprecated exemplar attribution.
 
 236. **R236 — Bind an external scribe item to its reviewed authority (W-379).** Check the live person record, the name authority, and the exact MARC scribe note before a link.
+
+237. **R237 — Check the exact scribe identity and the source note (W-380).** Match the MARC occurrence and the complete note. Reject the link when a known incorrect authority ID has an active rank.

@@ -4537,3 +4537,9 @@ the Columbia record and link to the exact Digital Scriptorium name authority.
 Match the reviewed MARC colophon or title-page note to the exact occurrence.
 Link only the manuscript. For the Columbia volume 28 correction, keep the
 verified Delfogit claim and cite the holding catalogue on the deprecated claim.
+
+## Rule W-380 — Check the reviewed scribe identity and the source note
+
+The audit checks the full set of MARC notes for the reviewed field. It also checks the exact contributor occurrence, scribe role, and person item. It requires the catalogue or authority citation on the manuscript statement.
+
+Reject a reviewed link when a known incorrect authority ID has an active rank. Apply each correction only to the exact claim on an item that the project account created. Check the current revision before the edit.
