@@ -224,6 +224,7 @@ async def _read_mazal_role_authorities(entities, manuscript_qids, work_qids):
 async def _read_catalogue_role_evidence(entities, mappings, work_qids):
     from app.pipeline.wikidata_gila_authority_reads import mazal_identifier, read_mazal_people
     from app.pipeline.wikidata_gila_catalogue_authority import cited_catalogue_identities, read_catalogue_authority_records
+    from app.pipeline.wikidata_gila_people import catalogue_mazal_names
 
     manuscript_qids = set(mappings.values())
     work_qids = set(work_qids) | _geographic_context(entities, manuscript_qids, ("P1574",))
@@ -233,8 +234,10 @@ async def _read_catalogue_role_evidence(entities, mappings, work_qids):
         for cn, identifier in cited_catalogue_identities(claim)
         if cn in mappings and identifier == mazal_identifier(entities.get(claim["value"], {}))
     }
-    profiles = await read_mazal_people({identifier for _, identifier in pairs})
-    records = await read_catalogue_authority_records({pair for pair in pairs if pair[1] in profiles})
+    records = await read_catalogue_authority_records(pairs)
+    profiles = await read_mazal_people(
+        {identifier for _, identifier in records}, source_names=catalogue_mazal_names(records.values()),
+    )
     return profiles, records
 
 

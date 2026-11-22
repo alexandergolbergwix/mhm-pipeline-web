@@ -7,6 +7,7 @@ from collections.abc import Iterable, Mapping
 
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
+from app.pipeline.wikidata_gila_authority_reads import MazalPersonAuthority
 from app.pipeline.wikidata_gila_facts import compare_gila_source_facts
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals, entity_digest
 from app.pipeline.wikidata_source_coverage import source_passages
@@ -63,7 +64,7 @@ def build_gila_audit_report(
     people_marc: Mapping[str, dict] | None = None,
     repair_lc_headings: Mapping[str, frozenset[str]] | None = None,
     repair_mazal_headings: Mapping[str, frozenset[str]] | None = None,
-    repair_mazal_people: Mapping[str, tuple[frozenset[str], str]] | None = None,
+    repair_mazal_people: Mapping[str, MazalPersonAuthority] | None = None,
     repair_catalogue_records: Mapping[tuple[str, str], dict] | None = None,
 ) -> dict[str, object]:
     """Compare local proposals with sources; never report a live correction."""

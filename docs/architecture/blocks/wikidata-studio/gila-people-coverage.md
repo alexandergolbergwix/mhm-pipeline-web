@@ -49,17 +49,22 @@ Library of Congress used a different Hebrew heading.
 
 When the life dates do not identify the person, the audit can use the
 catalogue association with MAZAL. It checks the exact control number and
-authority ID through NLI Alma SRU. A preferred name must match one MARC
-100 or 700 occurrence in both the source copy and the current catalogue.
-The audit also checks the role and any stated dates. The claim must cite
+authority ID through NLI Alma SRU. The audit checks for one MARC 100 or 700
+occurrence with a preferred name in both copies of the source. If a copy has
+no preferred name, the audit checks the registered alternate names from
+MAZAL. The audit also checks the role and any stated dates. The claim must cite
 the exact SRU query and the catalogue record. The code that reads the
 authority association lives in `wikidata_gila_catalogue_authority.py`.
 
 The role planner in `wikidata_gila_people.py` supports scribes, authors, and
 former owners. An author repair requires a unique work for the exact MARC
-title. A copy role requires the exact manuscript. The planner keeps existing
-claims and unknown values. It can add the catalogue and authority references
-to an existing claim with the same scope. A conflict or an uncertain source
+title. A MARC 700 author entry without a title needs a single source author,
+a single exact linked work, and an exact catalogue association. A copy role
+requires the exact manuscript. The planner can add a second scribe when
+the existing scribe claim cites the catalogue and matches a different
+explicit scribe in MARC. The planner keeps existing claims and unknown
+values. It adds missing references and reuses a valid catalogue citation.
+A conflict or an uncertain source
 leaves the case open. Before a live edit, the operator must check the current
 revision and the first creator of the exact target.
 

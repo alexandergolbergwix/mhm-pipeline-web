@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.pipeline import wikidata_gila_audit_job as audit_job
+from app.pipeline.wikidata_gila_authority_reads import MazalPersonAuthority
 from app.pipeline.wikidata_gila_people import parse_nli_records, people_role_cases
 from app.pipeline.wikidata_publication_prepare_job import audited_batch_params
 
@@ -275,7 +276,7 @@ async def test_scribe_without_dates_requires_exact_catalogue_authority_link():
     person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P8189": [_claim(identifier)]}}
     manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)]}}
     case = {**people_role_cases(raw, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
-    profiles = {identifier: (frozenset({"Example, Leah"}), "")}
+    profiles = {identifier: MazalPersonAuthority(frozenset({"Example, Leah"}), "")}
     payload = _response(_record(fields)).replace(b"<records>", b"<numberOfRecords>1</numberOfRecords><records>")
 
     def response(request):
@@ -314,3 +315,70 @@ async def test_catalogue_authority_check_rejects_unexpected_marc_control_number(
     transport = httpx.MockTransport(lambda _request: httpx.Response(200, content=payload))
     async with httpx.AsyncClient(transport=transport) as client:
         assert await read_catalogue_authority_records({(CONTROL, "987007265574105171")}, client=client) == {}
+
+
+def test_indexed_mazal_name_proves_one_scribe_and_preserves_the_other():
+    from app.pipeline.wikidata_gila_people import catalogue_mazal_names, plan_person_role_repair
+
+    fields = _field("700", ("a", "Example, Leah"), ("4", "scr")) + _field("700", ("a", "Example, Miriam"), ("4", "scr"))
+    raw = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    identifier = "987007265574105171"
+    person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P8189": [_claim(identifier)]}}
+    companion = _claim({"id": "Q51"}, qualifiers={"P1932": "Example, Miriam"})
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P11603": [companion]}}
+    case = {**people_role_cases(raw, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
+    preferred = {identifier: MazalPersonAuthority(frozenset({"Leah Marcella Example"}), "")}
+    indexed = {identifier: MazalPersonAuthority(frozenset({"Leah Marcella Example"}), "", frozenset({"example leah"}))}
+    catalogue = {(CONTROL, identifier): raw}
+    assert catalogue_mazal_names([raw]) == {"example leah", "example miriam"}
+    assert plan_person_role_repair(raw, case, manuscript, {}, person, {},
+                                  mazal_people=preferred, catalogue_records=catalogue) is None
+    plan = plan_person_role_repair(raw, case, manuscript, {}, person, {},
+                                   mazal_people=indexed, catalogue_records=catalogue)
+    assert plan[1].property_id == "P11603"
+    assert plan[2] is None
+    assert manuscript["claims"]["P11603"] == [companion]
+    companion["references"] = []
+    assert plan_person_role_repair(raw, case, manuscript, {}, person, {},
+                                   mazal_people=indexed, catalogue_records=catalogue) is None
+
+
+def test_added_author_without_title_needs_one_explicit_work():
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    fields = _field("245", ("a", "Book title")) + _field("700", ("a", "Example, Leah"), ("4", "aut"))
+    raw = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    identifier = "987007265574105171"
+    person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P8189": [_claim(identifier)]}}
+    work = {"id": "Q88", "claims": {"P1476": [_claim({"text": "Book title", "language": "en"})]}}
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P1574": [_claim({"id": "Q88"})]}}
+    case = {**people_role_cases(raw, manuscript, {"Q88": work})[0], "control_number": CONTROL, "qid": "Q10"}
+    profiles = {identifier: MazalPersonAuthority(frozenset({"Example, Leah"}), "")}
+
+    def plan(source):
+        return plan_person_role_repair(source, case, manuscript, {"Q88": work}, person, {},
+                                       mazal_people=profiles, catalogue_records={(CONTROL, identifier): source})
+
+    assert plan(raw)[0] == "Q88"
+    composite = parse_nli_records(_response(_record(fields + _field("505", ("a", "A second text")))), {CONTROL})[CONTROL]
+    assert plan(composite) is None
+    manuscript["claims"]["P1574"].append(_claim({"id": "Q89"}))
+    assert plan(raw) is None
+
+
+def test_existing_catalogue_reference_is_reused_for_an_authority_repair():
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    record = parse_nli_records(_response(_record(_field("700", ("a", "Example, Leah"), ("4", "scr")))), {CONTROL})[CONTROL]
+    identifier = "987007265574105171"
+    person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P8189": [_claim(identifier)]}}
+    existing = _claim({"id": "Q42"}, qualifiers={"P1932": "Example, Leah"})
+    existing["id"] = "Q10$existing"
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P11603": [existing]}}
+    case = {**people_role_cases(record, manuscript, {"Q42": person})[0], "control_number": CONTROL, "qid": "Q10"}
+    plan = plan_person_role_repair(record, case, manuscript, {}, person, {},
+        mazal_people={identifier: MazalPersonAuthority(frozenset({"Example, Leah"}), "")},
+        catalogue_records={(CONTROL, identifier): record})
+    assert plan[2] == existing["id"]
+    assert len(plan[1].reference_blocks) == 1
+    assert [row["property"] for row in plan[1].reference_blocks[0]] == ["P854"]

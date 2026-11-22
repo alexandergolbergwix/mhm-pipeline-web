@@ -21,6 +21,7 @@ from app.pipeline.wikidata_gila_identity_evidence import (
     _viaf_identifier, _viaf_reference_ids, live_source_match, viaf_proves_person,
 )
 from app.pipeline.wikidata_source_choices import _claim_values
+from converter.authority.mazal_index import MazalIndex
 from converter.wikidata.content_projection import _work_title_key
 from converter.wikidata.item_models import WikidataStatement, merge_statement_references
 from converter.wikidata.property_mapping import Q_ADDRESSEE_ROLE, Q_FORMER_OWNER_ROLE, Q_SENDER_ROLE, nli_reference
@@ -161,6 +162,15 @@ def _person_occurrences(record: Mapping) -> list[tuple[dict, list[dict]]]:
     return result
 
 
+def catalogue_mazal_names(records) -> set[str]:
+    return {
+        MazalIndex.normalize_name(name)
+        for record in records for _, variants in _person_occurrences(record)
+        for variant in variants for name in marc.values(variant, "a")
+        if len(_heading(name).split()) >= 2
+    }
+
+
 def _work_target(manuscript: Mapping, entities: Mapping, title: str, cn: str) -> Mapping:
     if not title:
         return {}
@@ -295,24 +305,62 @@ def _catalogue_role_url(candidate, cn, row, variants, occurrences, mazal_people,
     live = (catalogue_records or {}).get((cn, identifier))
     if not profile or not live or "Q5" not in _links(candidate, "P31") or row["tag"] not in {"100", "700"}:
         return None
-    preferred = {_heading(name) for name in profile[0] if len(_heading(name).split()) >= 2}
-    if not preferred:
-        return None
+    preferred = {_heading(name) for name in profile.preferred_names if len(_heading(name).split()) >= 2}
     for rows in (occurrences, _person_occurrences(live)):
-        matched = [
+        preferred_rows = [
             (field, alternate) for field, alternate in rows
-            if preferred & {_heading(name) for v in alternate for name in marc.values(v, "a")}
+            if preferred & {_heading(name) for variant in alternate for name in marc.values(variant, "a")}
+        ]
+        matched = preferred_rows or [
+            (field, alternate) for field, alternate in rows
+            if profile.indexed_names & {
+                MazalIndex.normalize_name(name) for variant in alternate for name in marc.values(variant, "a")
+                if len(_heading(name).split()) >= 2
+            }
         ]
         if matched != [(row, variants)]:
             return None
     if any(marc.values(v, code) for v in variants for code in ("0", "1", "3", "5", "j", "n", "p")):
         return None
     source_dates = {value.strip() for v in variants for value in marc.values(v, "d") if value.strip()}
-    if source_dates and source_dates != {profile[1]} and not _dated_authority_match(
-        candidate, preferred, _exact_life_dates(variants), {f"{name} {profile[1]}" for name in profile[0]},
+    if source_dates and source_dates != {profile.dates} and not _dated_authority_match(
+        candidate, preferred, _exact_life_dates(variants),
+        {f"{name} {profile.dates}" for name in profile.preferred_names},
     ):
         return None
     return catalogue_authority_url(cn, identifier)
+
+
+def _sole_work_for_added_author(row, record, manuscript, occurrences):
+    indicators = row.get("indicators", ())
+    if row["tag"] != "700" or len(indicators) != 2 or indicators[1] not in {"", " "}:
+        return False
+    if len({claim["value"] for claim in _live_claims(manuscript, "P1574")}) != 1:
+        return False
+    if [field for field, variants in occurrences if "author" in _row_roles(field, variants)] != [row]:
+        return False
+    fields = marc.occurrences(record)
+    return (
+        sum(field["tag"] == "245" for field in fields) == 1
+        and not any(
+            field["tag"] in {"505", "730", "740", "773", "774"}
+            or (field["tag"] in {"700", "710", "711", "800", "810", "811"} and marc.values(field, "t"))
+            for field in fields
+        )
+    )
+
+
+def _separate_scribe_claim(claim, cn, selected, source_names, occurrences):
+    names = {_heading(name) for name in _qualifier_values(claim, "P1932")}
+    if len(names) != 1 or names & source_names or _reference_status([claim], cn, live=True) != "source_bound":
+        return False
+    matches = [
+        field for field, variants in occurrences
+        if any(_heading(name) in names for variant in variants for name in marc.values(variant, "a"))
+        and "scribe" in _row_roles(field, variants)
+        and not any(marc.values(variant, "j") for variant in variants)
+    ]
+    return len(matches) == 1 and matches[0] != selected
 
 
 def plan_person_role_repair(
@@ -345,16 +393,19 @@ def plan_person_role_repair(
         return None
     urls = _dated_authority_urls(candidate, source_names, _exact_life_dates(variants), lc_headings, mazal_headings)
     has_dated_proof = bool(urls)
-    if not urls and (url := _catalogue_role_url(
+    catalogue_url = _catalogue_role_url(
         candidate, cn, row, variants, occurrences, mazal_people, catalogue_records,
-    )):
-        urls.append(url)
+    )
+    if role == "author" and row["tag"] != "100" and not marc.values(row, "t"):
+        if not catalogue_url or not _sole_work_for_added_author(row, record, manuscript, occurrences):
+            return None
+        urls.insert(0, catalogue_url)
+    elif not urls and catalogue_url:
+        urls.append(catalogue_url)
     if not urls:
         return None
     display = names[0].strip().rstrip(",")
     if not display or display != case["source_value"]:
-        return None
-    if role == "author" and row["tag"] != "100" and not marc.values(row, "t"):
         return None
     target = _author_target(row, record, manuscript, entities, cn) if role == "author" else manuscript
     if not target.get("id") or target["id"] == candidate["id"]:
@@ -375,6 +426,8 @@ def plan_person_role_repair(
         ):
             continue
         if claim["value"] != candidate["id"]:
+            if role == "scribe" and catalogue_url and _separate_scribe_claim(claim, cn, row, source_names, occurrences):
+                continue
             if role != "former owner" or claim["value"] in {"somevalue", "novalue"}:
                 return None
             continue
@@ -391,7 +444,8 @@ def plan_person_role_repair(
         if _cites_authority(existing[0], urls) or (role != "scribe" and has_dated_proof):
             return None
 
-    statement = WikidataStatement(pid, candidate["id"], "item", qualifiers=qualifiers, references=nli_reference(cn))
+    references = [] if existing and _reference_status(existing, cn, live=True) == "source_bound" else nli_reference(cn)
+    statement = WikidataStatement(pid, candidate["id"], "item", qualifiers=qualifiers, references=references)
     merge_statement_references(statement, WikidataStatement(
         pid, candidate["id"], "item", references=[
             {"property": "P854", "value": urls[0], "type": "url"},

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import re
+from dataclasses import dataclass, replace
 
 import httpx
 
@@ -17,6 +18,13 @@ _VIAF_ID = re.compile(r"[0-9]{1,20}\Z")
 _MAZAL_ID = re.compile(r"987[0-9]{6,17}\Z")
 _VIAF_RETRY_BUDGET = 8.0
 _VIAF_INTERVAL = 0.5
+
+
+@dataclass(frozen=True)
+class MazalPersonAuthority:
+    preferred_names: frozenset[str]
+    dates: str
+    indexed_names: frozenset[str] = frozenset()
 
 
 async def read_viaf_clusters(client: httpx.AsyncClient, identifiers: set[str]) -> dict[str, dict]:
@@ -67,8 +75,10 @@ def mazal_authority_url(identifier: str) -> str:
     return f"https://www.nli.org.il/he/a-topic/{identifier}"
 
 
-async def read_mazal_people(identifiers: set[str]) -> dict[str, tuple[frozenset[str], str]]:
-    """Use only preferred headings from imported personal-name records."""
+async def read_mazal_people(
+    identifiers: set[str], *, source_names: set[str] | None = None,
+) -> dict[str, MazalPersonAuthority]:
+    """Read preferred names and any indexed forms present in a catalogue record."""
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError
 
@@ -85,22 +95,34 @@ async def read_mazal_people(identifiers: set[str]) -> dict[str, tuple[frozenset[
                 WHERE nli_id = ANY(CAST(:ids AS text[]))
                   AND entity_type = 'person' AND main_marc_tag = '100'
             """), {"ids": ids})
-            return {
-                identifier: (
+            profiles = {
+                identifier: MazalPersonAuthority(
                     frozenset(name.strip() for name in (hebrew, latin) if name and name.strip()),
                     (dates or "").strip(),
                 )
                 for identifier, hebrew, latin, dates in rows
             }
+            if profiles and source_names:
+                indexed = await db.execute(text("""
+                    SELECT DISTINCT nli_id, normalized_name
+                    FROM mazal_name_index
+                    WHERE normalized_name = ANY(CAST(:names AS text[]))
+                      AND nli_id = ANY(CAST(:ids AS text[]))
+                      AND entity_type = 'person'
+                """), {"ids": sorted(profiles), "names": sorted(source_names)})
+                for identifier, name in indexed:
+                    profile = profiles[identifier]
+                    profiles[identifier] = replace(profile, indexed_names=profile.indexed_names | {name})
+            return profiles
     except SQLAlchemyError as exc:
         logger.warning("MAZAL authority records are unavailable for this audit (%s)", type(exc).__name__)
         return {}
 
 
-def dated_mazal_headings(people: dict[str, tuple[frozenset[str], str]]) -> dict[str, frozenset[str]]:
+def dated_mazal_headings(people: dict[str, MazalPersonAuthority]) -> dict[str, frozenset[str]]:
     return {
-        identifier: frozenset(f"{name} {dates}" for name in names)
-        for identifier, (names, dates) in people.items() if dates
+        identifier: frozenset(f"{name} {profile.dates}" for name in profile.preferred_names)
+        for identifier, profile in people.items() if profile.dates
     }
 
 

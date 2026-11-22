@@ -4495,3 +4495,12 @@ counts the claim and its references. The historical proposal inventory
 omits the unaddressable claim. The write planner still rejects a claim
 ID outside its target. The v847 audit stopped on inherited claim IDs
 in linked person items. See [historical repairs](../blocks/wikidata-studio/historical-repairs.md).
+
+## Rule W-376 — Verify alternate MAZAL names and limit repairs to the proven role
+
+Check the exact NLI catalogue association before you use a registered alternate
+name from the imported MAZAL index. Use it when the record has no occurrence
+with a preferred name. Require one exact occurrence in each MARC source.
+An added author with no work title needs one exact work and one source author.
+A second scribe needs a different explicit MARC occurrence for the existing
+scribe claim. Keep the existing claims and reuse the exact catalogue citation.
