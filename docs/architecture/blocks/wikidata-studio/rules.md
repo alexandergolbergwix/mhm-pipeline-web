@@ -1408,3 +1408,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 230. **R230 — Use exact MAZAL personal authority evidence (W-373).** Check the person's current J9U ID, the preferred heading, and the stated life dates. For a scribe, also check the authority citation and the catalogue reference.
 
 231. **R231 — Verify the catalogue association with MAZAL (W-374).** Require the exact control number and authority ID in NLI Alma SRU. Match one occurrence to the preferred name and the stated role. Preserve the first-creator check for writes.
+
+232. **R232 — Continue the read-only audit when an inherited claim ID prevents a repair (W-375).** Keep the reference in the audit count. Require an exact target claim ID in each write proposal.

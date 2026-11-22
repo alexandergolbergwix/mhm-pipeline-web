@@ -97,6 +97,22 @@ def test_clean_entity_produces_no_reference_repair() -> None:
     )
 
 
+def test_read_only_audit_skips_inherited_claim_id_but_write_plan_rejects_it() -> None:
+    entity = _entity()
+    inherited = deepcopy(entity["claims"]["P571"][0])
+    inherited["id"] = "Q456$date"
+    entity["claims"]["P571"].insert(0, inherited)
+
+    proposals = build_gila_repair_proposals({"Q123": entity}, include_payloads=False)
+    assert [proposal["qid"] for proposal in proposals] == ["Q123"]
+    assert "changes" not in proposals[0]
+    inherited_only = {**entity, "claims": {"P571": [inherited]}}
+    assert build_gila_repair_proposals({"Q123": inherited_only}, include_payloads=False) == []
+    assert inherited["references"] == _entity()["claims"]["P571"][0]["references"]
+    with pytest.raises(ValueError, match="exact claim ID"):
+        build_gila_repair_proposals({"Q123": entity})
+
+
 @pytest.mark.parametrize("wrapper", ["{text}", '"{text}"', '"{text}".', '""{text}"".'])
 def test_duplicate_colophon_needs_source_text_and_keeps_all_references(wrapper: str) -> None:
     text = 'השלמתי בשנת ת"י שמואל(?)'

@@ -3,6 +3,12 @@
 > Up: [Wikidata Studio](README.md) · Rules W-307, W-310, W-323
 
 `wikidata_gila_repairs.py` remains a read-only proposal builder.
+
+Wikidata can retain a claim ID from another item after a merge. The read-only
+audit can count that reference and continue with the other evidence. The
+proposal builder omits an inventory proposal for that claim. A write proposal
+still requires an exact claim ID for the target item.
+
 `wikidata_gila_execution.py` provides the separate executor.
 `backend/scripts/execute_gila_repairs.py` provides the operator command.
 The command first creates a fresh plan with the normal credential and ownership guard.

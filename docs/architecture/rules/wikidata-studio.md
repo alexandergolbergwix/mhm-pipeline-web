@@ -4487,3 +4487,11 @@ for the name and the role. Check the stated life dates when the source
 provides them. A confirmed repair cites the exact authority query and the
 catalogue record. Check the first creator and the current revision before
 each write. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).
+
+## Rule W-375 — Continue the read-only audit when a claim ID belongs to another item
+
+A merge can retain a claim ID from a different item. The read-only audit
+counts the claim and its references. The historical proposal inventory
+omits the unaddressable claim. The write planner still rejects a claim
+ID outside its target. The v847 audit stopped on inherited claim IDs
+in linked person items. See [historical repairs](../blocks/wikidata-studio/historical-repairs.md).

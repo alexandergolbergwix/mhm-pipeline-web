@@ -162,6 +162,8 @@ def build_gila_repair_proposals(
                     continue
                 claim_id = claim.get("id")
                 if not isinstance(claim_id, str) or not claim_id.startswith(f"{qid}$"):
+                    if not include_payloads:
+                        continue
                     raise ValueError("A repair requires an exact claim ID.")
                 after = deepcopy(claim)
                 after["references"] = distinct
