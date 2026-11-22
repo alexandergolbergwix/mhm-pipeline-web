@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 _MADS = "http://www.loc.gov/mads/rdf/v1#"
 _LCCN = re.compile(r"n[a-z]?[0-9]{6,12}\Z")
 _VIAF_ID = re.compile(r"[0-9]{1,20}\Z")
+_MAZAL_ID = re.compile(r"987[0-9]{6,17}\Z")
 _VIAF_RETRY_BUDGET = 8.0
 _VIAF_INTERVAL = 0.5
 
@@ -53,6 +54,47 @@ def library_of_congress_identifier(entity) -> str | None:
     if len(values) == 1 and isinstance(values[0], str) and _LCCN.fullmatch(values[0]):
         return values[0]
     return None
+
+
+def mazal_identifier(entity) -> str | None:
+    values = _claim_values(entity, "P8189")
+    if len(values) == 1 and isinstance(values[0], str) and _MAZAL_ID.fullmatch(values[0]):
+        return values[0]
+    return None
+
+
+def mazal_authority_url(identifier: str) -> str:
+    return f"https://www.nli.org.il/he/a-topic/{identifier}"
+
+
+async def read_mazal_headings(identifiers: set[str]) -> dict[str, frozenset[str]]:
+    """Use only preferred headings from imported personal-name records."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.db import session_scope
+
+    ids = sorted(identifier for identifier in identifiers if _MAZAL_ID.fullmatch(identifier))
+    if not ids:
+        return {}
+    try:
+        async with session_scope() as db:
+            rows = await db.execute(text("""
+                SELECT nli_id, preferred_name_heb, preferred_name_lat, dates
+                FROM mazal_authorities
+                WHERE nli_id = ANY(CAST(:ids AS text[]))
+                  AND entity_type = 'person' AND main_marc_tag = '100'
+                  AND dates IS NOT NULL
+            """), {"ids": ids})
+            return {
+                identifier: frozenset(
+                    f"{name.strip()} {dates.strip()}" for name in (hebrew, latin) if name and name.strip()
+                )
+                for identifier, hebrew, latin, dates in rows
+            }
+    except SQLAlchemyError as exc:
+        logger.warning("MAZAL authority records are unavailable for this audit (%s)", type(exc).__name__)
+        return {}
 
 
 def library_of_congress_headings(payload, identifier: str) -> frozenset[str]:

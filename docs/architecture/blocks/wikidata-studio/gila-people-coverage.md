@@ -38,6 +38,15 @@ the same authority record. The VIAF fallback still applies to earlier claims.
 The audit reads authors on linked work items and counts a repeated link to
 the same work once when it selects the work for a source occurrence.
 
+The audit also uses the preferred personal names and life dates in the
+imported MAZAL authority file. It checks the exact MAZAL ID on the live
+person. If MAZAL lists alternate birth years, the MARC year must be one
+of those years. The audit still requires the exact death year. A scribe
+claim must cite the MAZAL record or the person's exact unavailable VIAF
+record. The audit still requires the catalogue reference. In production
+v845, the VIAF outage left the verified Modena claim open because the
+Library of Congress used a different Hebrew heading.
+
 The role planner in `wikidata_gila_people.py` supports scribes, authors, and
 former owners. An author repair requires a unique work for the exact MARC
 title. A copy role requires the exact manuscript. The planner keeps existing

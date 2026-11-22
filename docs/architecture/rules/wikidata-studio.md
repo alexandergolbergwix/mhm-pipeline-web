@@ -4467,3 +4467,13 @@ a unique work and the correct catalogue reference. A copy role requires the
 exact manuscript. Check the first creator and the current revision of the
 target item before the write. Keep the existing claims. Verify the complete
 item after the write. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).
+
+## Rule W-373 — Read exact MAZAL authority records when VIAF is unavailable
+
+Use the imported MAZAL personal authority for the current J9U ID on the
+Wikidata person. Require an exact preferred name and the stated life years.
+A stated birth year can be one of the explicit alternatives in MAZAL.
+An existing scribe claim needs an exact catalogue reference and a citation
+to the same MAZAL record or VIAF record. Use MAZAL after a VIAF outage.
+Keep a case open if the identity proof conflicts. The first-creator and
+revision checks still apply to each live edit. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).

@@ -14,7 +14,7 @@ import httpx
 from app.pipeline import marc_occurrences as marc
 from app.pipeline.marc_ingest import _parse_marcxml, prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
-from app.pipeline.wikidata_gila_authority_reads import library_of_congress_identifier
+from app.pipeline.wikidata_gila_authority_reads import library_of_congress_identifier, mazal_authority_url, mazal_identifier
 from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status
 from app.pipeline.wikidata_gila_identity_evidence import (
     _viaf_identifier, _viaf_reference_ids, live_source_match, viaf_proves_person,
@@ -235,29 +235,61 @@ def _exact_life_dates(variants):
 
 def dated_lc_match(candidate, names, dates, lc_headings):
     """Require an exact personal-name heading and both MARC life dates."""
-    identifier = library_of_congress_identifier(candidate)
-    if not identifier or not dates or "Q5" not in _links(candidate, "P31"):
+    return _dated_authority_match(
+        candidate, names, dates, (lc_headings or {}).get(library_of_congress_identifier(candidate), ()),
+    )
+
+
+def dated_mazal_match(candidate, names, dates, mazal_headings):
+    return _dated_authority_match(
+        candidate, names, dates, (mazal_headings or {}).get(mazal_identifier(candidate), ()),
+    )
+
+
+def _dated_authority_match(candidate, names, dates, headings):
+    if not dates or not headings or "Q5" not in _links(candidate, "P31"):
         return False
     birth, death = dates
-    for label in (lc_headings or {}).get(identifier, ()):
-        match = re.fullmatch(r"(.+?)[, ]+([12][0-9]{3})\s*[-–־]\s*([12][0-9]{3})\.?\s*", label)
-        if match and (match[2], match[3]) == (birth, death) and _heading(match[1]) in names:
+    for label in headings:
+        match = re.fullmatch(
+            r"(.+?)[, ]+([12][0-9]{3})(?: or ([12][0-9]{3}))?\s*[-–־]\s*([12][0-9]{3})\.?\s*",
+            label,
+        )
+        if match and birth in (match[2], match[3]) and death == match[4] and _heading(match[1]) in names:
             return True
     return False
 
 
-def _cites_lc(claim, candidate):
-    identifier = library_of_congress_identifier(candidate)
-    if not identifier:
-        return False
-    url = f"https://id.loc.gov/authorities/names/{identifier}.html"
+def _dated_authority_urls(candidate, names, dates, lc_headings, mazal_headings):
+    """Return each exact authority that can substantiate the name and dates."""
+    urls = []
+    if dated_lc_match(candidate, names, dates, lc_headings):
+        urls.append(f"https://id.loc.gov/authorities/names/{library_of_congress_identifier(candidate)}.html")
+    if dated_mazal_match(candidate, names, dates, mazal_headings):
+        urls.append(mazal_authority_url(mazal_identifier(candidate)))
+    return urls
+
+
+def _cites_authority(claim, urls):
     return any(
-        snak.get("datavalue", {}).get("value") == url
+        snak.get("datavalue", {}).get("value") in urls
         for reference in claim["references"] for snak in reference.get("snaks", {}).get("P854", [])
     )
 
 
-def plan_dated_person_repair(raw, case, manuscript, entities, candidate, lc_headings):
+def _proves_dated_role(claim, candidate, role, names, dates, lc_headings, mazal_headings, viaf_sources):
+    cited_viaf = _viaf_reference_ids(claim["references"])
+    if cited_viaf & (viaf_sources or {}).keys():
+        return False
+    urls = _dated_authority_urls(candidate, names, dates, lc_headings, mazal_headings)
+    if not urls:
+        return False
+    if role != "scribe" or _cites_authority(claim, urls):
+        return True
+    return _viaf_identifier(candidate) in cited_viaf and dated_mazal_match(candidate, names, dates, mazal_headings)
+
+
+def plan_dated_person_repair(raw, case, manuscript, entities, candidate, lc_headings, *, mazal_headings=None):
     """Return an exact target, statement and optional claim ID for a checked role."""
     record = prepare_record_for_pipeline(dict(raw))
     cn = canonical_control_number(record["_control_number"])
@@ -274,12 +306,15 @@ def plan_dated_person_repair(raw, case, manuscript, entities, candidate, lc_head
         return None
     row, variants = source[0]
     names = [name for variant in variants for name in marc.values(variant, "a")]
+    source_names = {_heading(name) for name in names}
     if (
         len(marc.values(row, "a")) != 1 or role not in _row_roles(row, variants)
         or any("?" in name or "？" in name for name in names)
         or any(marc.values(variant, code) for variant in variants for code in ("0", "1", "3", "5", "j", "n", "p"))
-        or not dated_lc_match(candidate, {_heading(name) for name in names}, _exact_life_dates(variants), lc_headings)
     ):
+        return None
+    urls = _dated_authority_urls(candidate, source_names, _exact_life_dates(variants), lc_headings, mazal_headings)
+    if not urls:
         return None
     display = names[0].strip().rstrip(",")
     if not display or display != case["source_value"]:
@@ -290,7 +325,6 @@ def plan_dated_person_repair(raw, case, manuscript, entities, candidate, lc_head
     if not target.get("id") or target["id"] == candidate["id"]:
         return None
 
-    source_names = {_heading(name) for name in names}
     qualifiers = [{"property": "P1932", "value": display, "type": "string"}]
     role_qualifier = _ROLE_QUALIFIERS.get(role)
     if role_qualifier:
@@ -319,20 +353,22 @@ def plan_dated_person_repair(raw, case, manuscript, entities, candidate, lc_head
     if len(existing) > 1:
         return None
     if existing and _reference_status(existing, cn, live=True) == "source_bound":
-        if role != "scribe" or _cites_lc(existing[0], candidate):
+        if role != "scribe" or _cites_authority(existing[0], urls):
             return None
 
     statement = WikidataStatement(pid, candidate["id"], "item", qualifiers=qualifiers, references=nli_reference(cn))
-    identifier = library_of_congress_identifier(candidate)
     merge_statement_references(statement, WikidataStatement(
         pid, candidate["id"], "item", references=[
-            {"property": "P854", "value": f"https://id.loc.gov/authorities/names/{identifier}.html", "type": "url"},
+            {"property": "P854", "value": urls[0], "type": "url"},
         ],
     ))
     return target["id"], statement, existing[0]["claim_id"] if existing else None
 
 
-def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf_sources=None, gnd_sources=None, lc_headings=None):
+def people_role_cases(
+    raw, manuscript, live_entities, *, authority_rows=(), viaf_sources=None, gnd_sources=None,
+    lc_headings=None, mazal_headings=None,
+):
     """Report one check per MARC occurrence and role."""
     record = prepare_record_for_pipeline(dict(raw))
     cn = canonical_control_number(record["_control_number"])
@@ -367,18 +403,19 @@ def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf
                 target = _author_target(row, record, manuscript, entities, cn) if exact_manuscript else {}
             else:
                 target = manuscript if exact_manuscript else {}
-            lc_proven = set()
+            dated_proven = set()
             if role in _DATED_AUTHORITY_ROLES and life_dates and not uncertain and not source_ids and not source_qids:
                 pid = "P50" if role == "author" else "P11603" if role == "scribe" else "P3342"
-                lc_proven = {
+                dated_proven = {
                     claim["value"] for claim in _live_claims(target, pid)
-                    if dated_lc_match(candidate := entities.get(claim["value"], {}), names, life_dates, lc_headings)
-                    and (role != "scribe" or _cites_lc(claim, candidate))
-                    and not _viaf_reference_ids(claim["references"]) & (viaf_sources or {}).keys()
+                    if _proves_dated_role(
+                        claim, entities.get(claim["value"], {}), role, names, life_dates,
+                        lc_headings, mazal_headings, viaf_sources,
+                    )
                 }
             matches = [
                 (claim, candidate) for claim, candidate in
-                _matching_role_claims(role, names, source_qid, target, entities, lc_proven)
+                _matching_role_claims(role, names, source_qid, target, entities, dated_proven)
                 if _reference_status([claim], cn, live=True) == "source_bound"
             ]
             concrete = [pair for pair in matches if pair[0]["value"] not in {"somevalue", "novalue"}]
@@ -396,7 +433,7 @@ def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf
                 verified_link = not uncertain and "Q5" in _links(candidate, "P31") and bool(
                     (source_qid and candidate.get("id") == source_qid)
                     or (source_ids and all(value in _claim_values(candidate, pid) for pid, value in source_ids))
-                    or claim["value"] in lc_proven
+                    or claim["value"] in dated_proven
                 )
                 if (not verified_link and not uncertain and not source_ids and not source_qids
                     and life_dates and "Q5" in _links(candidate, "P31") and (viaf := _viaf_identifier(candidate))):

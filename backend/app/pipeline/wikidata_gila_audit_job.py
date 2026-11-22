@@ -168,11 +168,22 @@ def _geographic_context(entities, qids, properties):
     }
 
 
+def _cited_person_roles(entities, manuscript_qids, work_qids):
+    from app.pipeline.wikidata_gila_facts import _live_claims
+
+    for qids, properties in ((manuscript_qids, ("P11603", "P3342")), (work_qids, ("P50",))):
+        for qid in qids:
+            entity = entities.get(qid, {})
+            for pid in properties:
+                for claim in _live_claims(entity, pid):
+                    if claim["references"]:
+                        yield pid, claim
+
+
 async def _read_cited_authority_sources(entities, manuscript_qids, work_qids=()):
     from app.pipeline.wikidata_gila_authority_reads import (
         authority_audit_client, library_of_congress_identifier, read_library_of_congress_headings, read_viaf_clusters,
     )
-    from app.pipeline.wikidata_gila_facts import _live_claims
     from app.pipeline.wikidata_gila_identity_evidence import _viaf_citation_ids, _viaf_reference_ids
 
     manuscript_qids = set(manuscript_qids)
@@ -189,14 +200,25 @@ async def _read_cited_authority_sources(entities, manuscript_qids, work_qids=())
         viaf_sources = await read_viaf_clusters(client, ids)
         lc_ids = {
             identifier
-            for qids, properties in ((manuscript_qids, ("P11603", "P3342")), (work_qids, ("P50",)))
-            for qid in qids for pid in properties
-            for claim in _live_claims(entities.get(qid, {}), pid)
-            if claim["references"] and not (pid == "P11603" and _viaf_reference_ids(claim["references"]) & viaf_sources.keys())
+            for pid, claim in _cited_person_roles(entities, manuscript_qids, work_qids)
+            if not (pid == "P11603" and _viaf_reference_ids(claim["references"]) & viaf_sources.keys())
             if (identifier := library_of_congress_identifier(entities.get(claim["value"], {})))
         }
         lc_headings = await read_library_of_congress_headings(client, lc_ids)
     return viaf_sources, lc_headings
+
+
+async def _read_mazal_role_authorities(entities, manuscript_qids, work_qids):
+    from app.pipeline.wikidata_gila_authority_reads import mazal_identifier, read_mazal_headings
+
+    manuscript_qids = set(manuscript_qids)
+    work_qids = set(work_qids) | _geographic_context(entities, manuscript_qids, ("P1574",))
+    identifiers = {
+        identifier
+        for _, claim in _cited_person_roles(entities, manuscript_qids, work_qids)
+        if (identifier := mazal_identifier(entities.get(claim["value"], {})))
+    }
+    return await read_mazal_headings(identifiers)
 
 
 async def _authorize(db, job: RunJob) -> None:
@@ -522,9 +544,10 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
                 "message": "Compare the nine requirements against the source and live statements.",
             },
         )
-        viaf_sources, lc_headings = await _read_cited_authority_sources(
-            entities, mappings.values(),
-            {item.get("existing_qid") for item in canonical if item.get("entity_type") == "work"},
+        work_qids = {item.get("existing_qid") for item in canonical if item.get("entity_type") == "work"}
+        (viaf_sources, lc_headings), mazal_headings = await asyncio.gather(
+            _read_cited_authority_sources(entities, mappings.values(), work_qids),
+            _read_mazal_role_authorities(entities, mappings.values(), work_qids),
         )
         from app.pipeline.wikidata_gila_gnd_evidence import cited_gnd_ids, read_gnd_sources
 
@@ -543,6 +566,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             repair_gnd_sources=gnd_sources,
             people_marc=people_marc,
             repair_lc_headings=lc_headings,
+            repair_mazal_headings=mazal_headings,
         )
         packet = await asyncio.to_thread(
             build_gila_completion_packet,

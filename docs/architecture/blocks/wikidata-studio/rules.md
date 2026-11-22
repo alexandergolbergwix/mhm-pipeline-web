@@ -1404,3 +1404,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 228. **R228 — Verify published scribe links through independent authority evidence (W-371).** Honor the VIAF retry delay. The alternate authority requires the exact catalogue name and dates.
 
 229. **R229 — Require exact authority evidence for dated roles (W-372).** Match the complete MARC name and both life dates. Keep the existing claims. Check the first creator of the item before each write.
+
+230. **R230 — Use exact MAZAL personal authority evidence (W-373).** Check the person's current J9U ID, the preferred heading, and the stated life dates. For a scribe, also check the authority citation and the catalogue reference.

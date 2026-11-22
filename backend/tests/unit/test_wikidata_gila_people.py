@@ -218,3 +218,43 @@ def test_dated_repair_keeps_placeholder_and_rejects_conflicting_scribe():
     assert manuscript["claims"]["P11603"] == [placeholder]
     manuscript["claims"]["P11603"].append(_claim({"id": "Q43"}))
     assert plan_dated_person_repair(record, case, manuscript, {}, person, headings) is None
+
+
+def test_modena_scribe_uses_mazal_when_viaf_is_unavailable():
+    fields = _field("700", ("a", "מודנה, יהודה אריה בן יצחק"), ("d", "1571-1648"), ("4", "scr"))
+    record = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    identifier = "987007265574105171"
+    person = {"id": "Q1652176", "claims": {
+        "P31": [_claim({"id": "Q5"})], "P214": [_claim("4948231")], "P8189": [_claim(identifier)],
+    }}
+    link = _claim({"id": "Q1652176"}, qualifiers={"P1932": "מודנה, יהודה אריה בן יצחק"})
+    link["references"].append({"snaks": {"P854": [_snak("https://viaf.org/viaf/4948231")]}})
+    manuscript = {"claims": {"P3959": [_claim(CONTROL)], "P11603": [link]}}
+    headings = {identifier: {"מודנה, יהודה אריה בן יצחק 1571-1648"}}
+
+    def verified(mazal_headings=headings, viaf_sources=None):
+        return people_role_cases(
+            record, manuscript, {"Q1652176": person},
+            viaf_sources=viaf_sources, mazal_headings=mazal_headings,
+        )[0]["authority_verified"]
+
+    assert verified()
+    assert not verified({identifier: {"מודנה, יהודה אריה בן יצחק 1571-1649"}})
+    assert not verified(viaf_sources={"4948231": {"viafID": "4948231", "nameType": "Personal"}})
+    link["references"].pop()
+    assert not verified()
+    link["references"].append({"snaks": {"P854": [_snak(f"https://www.nli.org.il/he/a-topic/{identifier}")]}})
+    assert verified()
+    link["references"][0]["snaks"].clear()
+    assert not verified()
+
+
+def test_mazal_accepts_only_years_explicitly_listed_in_the_authority():
+    from app.pipeline.wikidata_gila_people import dated_mazal_match
+
+    identifier = "987007265574105171"
+    person = {"claims": {"P31": [_claim({"id": "Q5"})], "P8189": [_claim(identifier)]}}
+    headings = {identifier: {"Example Person 1542 or 1543-1620"}}
+    assert dated_mazal_match(person, {"example person"}, ("1542", "1620"), headings)
+    assert dated_mazal_match(person, {"example person"}, ("1543", "1620"), headings)
+    assert not dated_mazal_match(person, {"example person"}, ("1541", "1620"), headings)
