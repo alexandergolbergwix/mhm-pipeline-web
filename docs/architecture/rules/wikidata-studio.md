@@ -4458,3 +4458,12 @@ Congress personal authority can verify a published scribe. Require the
 exact VIAF citation, catalogue reference, MARC name, and both life dates.
 This check grants no permission to write. Production v843 omitted a verified
 scribe when VIAF returned HTTP 429. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).
+
+## Rule W-372 — Verify the exact role with the catalogue and the authority record
+
+Use the exact MARC heading and both life dates to confirm a named role with
+the linked Library of Congress personal authority. An author repair requires
+a unique work and the correct catalogue reference. A copy role requires the
+exact manuscript. Check the first creator and the current revision of the
+target item before the write. Keep the existing claims. Verify the complete
+item after the write. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).

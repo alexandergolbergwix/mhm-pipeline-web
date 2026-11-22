@@ -14,11 +14,15 @@ import httpx
 from app.pipeline import marc_occurrences as marc
 from app.pipeline.marc_ingest import _parse_marcxml, prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
+from app.pipeline.wikidata_gila_authority_reads import library_of_congress_identifier
 from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status
-from app.pipeline.wikidata_gila_identity_evidence import _viaf_identifier, live_source_match, viaf_proves_person
+from app.pipeline.wikidata_gila_identity_evidence import (
+    _viaf_identifier, _viaf_reference_ids, live_source_match, viaf_proves_person,
+)
 from app.pipeline.wikidata_source_choices import _claim_values
 from converter.wikidata.content_projection import _work_title_key
-from converter.wikidata.property_mapping import Q_ADDRESSEE_ROLE, Q_FORMER_OWNER_ROLE, Q_SENDER_ROLE
+from converter.wikidata.item_models import WikidataStatement, merge_statement_references
+from converter.wikidata.property_mapping import Q_ADDRESSEE_ROLE, Q_FORMER_OWNER_ROLE, Q_SENDER_ROLE, nli_reference
 
 logger = logging.getLogger(__name__)
 NLI_SRU = "https://nli.alma.exlibrisgroup.com/view/sru/972NNL_INST"
@@ -38,6 +42,7 @@ _RELATORS = {
 _ROLE_QUALIFIERS = {
     "former owner": Q_FORMER_OWNER_ROLE, "sender": Q_SENDER_ROLE, "recipient": Q_ADDRESSEE_ROLE,
 }
+_DATED_AUTHORITY_ROLES = {"author", "scribe", "former owner", "sender", "recipient", "mentioned"}
 _AUTHORITY_PATTERNS = (
     ("P214", r"(?:https?://(?:www\.)?viaf\.org/viaf/|\(VIAF\))([0-9]+)/?"),
     ("P8189", r"(?:https?://(?:www\.)?nli\.org\.il/(?:en|he)/(?:a-topic|authorities)/|\(NNL\))(987[0-9]+)/?"),
@@ -159,17 +164,32 @@ def _person_occurrences(record: Mapping) -> list[tuple[dict, list[dict]]]:
 def _work_target(manuscript: Mapping, entities: Mapping, title: str, cn: str) -> Mapping:
     if not title:
         return {}
-    matches = []
+    matches = {}
     for link in _live_claims(manuscript, "P1574"):
         target = entities.get(str(link["value"]), {})
         titles = {_work_title_key(claim["value"]) for claim in _live_claims(target, "P1476")}
         if title in titles and _reference_status([link], cn, live=True) == "source_bound":
-            matches.append(target)
-    return matches[0] if len(matches) == 1 else {}
+            matches[link["value"]] = target
+    return next(iter(matches.values())) if len(matches) == 1 else {}
 
 
 def _qualifier_values(claim: Mapping, pid: str) -> list:
     return [row["value"] for row in claim["qualifiers"] if row["property"] == pid]
+
+
+def _row_roles(row, variants):
+    terms = [_relator(value) for variant in variants for code in ("e", "4") for value in marc.values(variant, code)]
+    return list(dict.fromkeys(term for term in terms if term)) or [
+        {"100": "author", "600": "subject"}.get(row["tag"], "unassigned"),
+    ]
+
+
+def _author_target(row, record, manuscript, entities, cn):
+    titles = marc.values(row, "t")
+    if len(titles) > 1:
+        return {}
+    title = titles[0] if titles else record.get("title")
+    return _work_target(manuscript, entities, _work_title_key(title), cn)
 
 
 def _actual_name(entity: Mapping, claim: Mapping) -> set[str]:
@@ -182,7 +202,7 @@ def _actual_name(entity: Mapping, claim: Mapping) -> set[str]:
     }
 
 
-def _matching_role_claims(role, names, source_qid, entity, entities):
+def _matching_role_claims(role, names, source_qid, entity, entities, independently_proven=()):
     pid = "P50" if role == "author" else "P11603" if role == "scribe" else "P3342"
     if role not in {"author", "scribe", "mentioned", *_ROLE_QUALIFIERS}:
         return []
@@ -197,7 +217,7 @@ def _matching_role_claims(role, names, source_qid, entity, entities):
             continue
         if role == "mentioned" and role_values:
             continue
-        if names & _actual_name(candidate, claim):
+        if value in independently_proven or names & _actual_name(candidate, claim):
             result.append((claim, candidate))
     return result
 
@@ -213,6 +233,105 @@ def _exact_life_dates(variants):
     return match[1], match[2]
 
 
+def dated_lc_match(candidate, names, dates, lc_headings):
+    """Require an exact personal-name heading and both MARC life dates."""
+    identifier = library_of_congress_identifier(candidate)
+    if not identifier or not dates or "Q5" not in _links(candidate, "P31"):
+        return False
+    birth, death = dates
+    for label in (lc_headings or {}).get(identifier, ()):
+        match = re.fullmatch(r"(.+?)[, ]+([12][0-9]{3})\s*[-–־]\s*([12][0-9]{3})\.?\s*", label)
+        if match and (match[2], match[3]) == (birth, death) and _heading(match[1]) in names:
+            return True
+    return False
+
+
+def _cites_lc(claim, candidate):
+    identifier = library_of_congress_identifier(candidate)
+    if not identifier:
+        return False
+    url = f"https://id.loc.gov/authorities/names/{identifier}.html"
+    return any(
+        snak.get("datavalue", {}).get("value") == url
+        for reference in claim["references"] for snak in reference.get("snaks", {}).get("P854", [])
+    )
+
+
+def plan_dated_person_repair(raw, case, manuscript, entities, candidate, lc_headings):
+    """Return an exact target, statement and optional claim ID for a checked role."""
+    record = prepare_record_for_pipeline(dict(raw))
+    cn = canonical_control_number(record["_control_number"])
+    role = case["person_role"]
+    pid = {"author": "P50", "scribe": "P11603", "former owner": "P3342"}.get(role)
+    if not pid or (
+        cn != case["control_number"] or manuscript.get("id") != case["qid"]
+        or set(_claim_values(manuscript, "P3959")) != {cn}
+    ):
+        return None
+    source = [(row, variants) for row, variants in _person_occurrences(record)
+              if marc.source_key(row) == case["occurrence"]]
+    if len(source) != 1:
+        return None
+    row, variants = source[0]
+    names = [name for variant in variants for name in marc.values(variant, "a")]
+    if (
+        len(marc.values(row, "a")) != 1 or role not in _row_roles(row, variants)
+        or any("?" in name or "？" in name for name in names)
+        or any(marc.values(variant, code) for variant in variants for code in ("0", "1", "3", "5", "j", "n", "p"))
+        or not dated_lc_match(candidate, {_heading(name) for name in names}, _exact_life_dates(variants), lc_headings)
+    ):
+        return None
+    display = names[0].strip().rstrip(",")
+    if not display or display != case["source_value"]:
+        return None
+    if role == "author" and row["tag"] != "100" and not marc.values(row, "t"):
+        return None
+    target = _author_target(row, record, manuscript, entities, cn) if role == "author" else manuscript
+    if not target.get("id") or target["id"] == candidate["id"]:
+        return None
+
+    source_names = {_heading(name) for name in names}
+    qualifiers = [{"property": "P1932", "value": display, "type": "string"}]
+    role_qualifier = _ROLE_QUALIFIERS.get(role)
+    if role_qualifier:
+        qualifiers.append({"property": "P3831", "value": role_qualifier, "type": "item"})
+    existing = []
+    for claim in _live_claims(target, pid):
+        if role_qualifier and _qualifier_values(claim, "P3831") != [role_qualifier]:
+            if claim["value"] == candidate["id"] and not _qualifier_values(claim, "P3831"):
+                return None
+            continue
+        if claim["value"] == "somevalue" and any(
+            _heading(name) in source_names for name in _qualifier_values(claim, "P1932")
+        ):
+            continue
+        if claim["value"] != candidate["id"]:
+            if role != "former owner" or claim["value"] in {"somevalue", "novalue"}:
+                return None
+            continue
+        if (
+            not claim["claim_id"]
+            or any(qualifier["property"] not in {"P1932", "P3831"} for qualifier in claim["qualifiers"])
+            or any(_heading(name) not in source_names for name in _qualifier_values(claim, "P1932"))
+        ):
+            return None
+        existing.append(claim)
+    if len(existing) > 1:
+        return None
+    if existing and _reference_status(existing, cn, live=True) == "source_bound":
+        if role != "scribe" or _cites_lc(existing[0], candidate):
+            return None
+
+    statement = WikidataStatement(pid, candidate["id"], "item", qualifiers=qualifiers, references=nli_reference(cn))
+    identifier = library_of_congress_identifier(candidate)
+    merge_statement_references(statement, WikidataStatement(
+        pid, candidate["id"], "item", references=[
+            {"property": "P854", "value": f"https://id.loc.gov/authorities/names/{identifier}.html", "type": "url"},
+        ],
+    ))
+    return target["id"], statement, existing[0]["claim_id"] if existing else None
+
+
 def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf_sources=None, gnd_sources=None, lc_headings=None):
     """Report one check per MARC occurrence and role."""
     record = prepare_record_for_pipeline(dict(raw))
@@ -220,7 +339,6 @@ def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf
     manuscript = manuscript or {}
     entities = live_entities or {}
     exact_manuscript = set(_claim_values(manuscript, "P3959")) == {cn}
-    work = _work_target(manuscript, entities, _work_title_key(record.get("title")), cn) if exact_manuscript else {}
     cases = []
     for row, variants in _person_occurrences(record):
         names = marc.values(row, "a")
@@ -236,10 +354,7 @@ def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf
         source_names = {name for variant in variants for name in marc.values(variant, "a")}
         names = {_heading(name) for name in source_names}
         life_dates = _exact_life_dates(variants)
-        terms = [_relator(value) for variant in variants for code in ("e", "4") for value in marc.values(variant, code)]
-        roles = list(dict.fromkeys(term for term in terms if term))
-        if not roles:
-            roles = ["author"] if row["tag"] == "100" else ["subject" if row["tag"] == "600" else "unassigned"]
+        roles = _row_roles(row, variants)
         source_ids = _authority_ids(variants)
         source_qids = {
             match[1] for variant in variants for code in ("0", "1") for value in marc.values(variant, code)
@@ -248,15 +363,22 @@ def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf
         source_qid = next(iter(source_qids)) if len(source_qids) == 1 else None
         uncertain = any(mark in display for mark in ("?", "？")) or any(marc.values(v, "j") for v in variants)
         for role in roles:
-            title_values = marc.values(row, "t")
             if role == "author":
-                target = (_work_target(manuscript, entities, _work_title_key(title_values[0]), cn)
-                          if exact_manuscript and len(title_values) == 1 else work if not title_values else {})
+                target = _author_target(row, record, manuscript, entities, cn) if exact_manuscript else {}
             else:
                 target = manuscript if exact_manuscript else {}
+            lc_proven = set()
+            if role in _DATED_AUTHORITY_ROLES and life_dates and not uncertain and not source_ids and not source_qids:
+                pid = "P50" if role == "author" else "P11603" if role == "scribe" else "P3342"
+                lc_proven = {
+                    claim["value"] for claim in _live_claims(target, pid)
+                    if dated_lc_match(candidate := entities.get(claim["value"], {}), names, life_dates, lc_headings)
+                    and (role != "scribe" or _cites_lc(claim, candidate))
+                    and not _viaf_reference_ids(claim["references"]) & (viaf_sources or {}).keys()
+                }
             matches = [
                 (claim, candidate) for claim, candidate in
-                _matching_role_claims(role, names, source_qid, target, entities)
+                _matching_role_claims(role, names, source_qid, target, entities, lc_proven)
                 if _reference_status([claim], cn, live=True) == "source_bound"
             ]
             concrete = [pair for pair in matches if pair[0]["value"] not in {"somevalue", "novalue"}]
@@ -274,6 +396,7 @@ def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf
                 verified_link = not uncertain and "Q5" in _links(candidate, "P31") and bool(
                     (source_qid and candidate.get("id") == source_qid)
                     or (source_ids and all(value in _claim_values(candidate, pid) for pid, value in source_ids))
+                    or claim["value"] in lc_proven
                 )
                 if (not verified_link and not uncertain and not source_ids and not source_qids
                     and life_dates and "Q5" in _links(candidate, "P31") and (viaf := _viaf_identifier(candidate))):

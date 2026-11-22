@@ -180,3 +180,41 @@ async def test_viaf_retry_keeps_the_cluster_after_the_wait(monkeypatch):
             "248556677": {"ns1:viafID": "248556677"},
         }
     assert delays == [3.0, 0.5]
+
+
+def test_audit_verifies_dated_author_with_independent_authority():
+    fields = _field("100", ("a", "Example, Leah"), ("d", "1690-1760")) + _field("245", ("a", "Book title"))
+    record = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P244": [_claim("n12345678")]}}
+    manuscript = {"claims": {"P3959": [_claim(CONTROL)], "P1574": [_claim({"id": "Q88"}), _claim({"id": "Q88"})]}}
+    author = _claim({"id": "Q42"})
+    work = {"id": "Q88", "claims": {"P1476": [_claim({"text": "Book title", "language": "en"})], "P50": [author]}}
+    entities = {"Q42": person, "Q88": work}
+    headings = {"n12345678": {"Example, Leah, 1690-1760"}}
+
+    assert people_role_cases(record, manuscript, entities, lc_headings=headings)[0]["authority_verified"]
+    assert not people_role_cases(record, manuscript, entities,
+                                 lc_headings={"n12345678": {"Example, Leah, 1690-1761"}})[0]["authority_verified"]
+    author.pop("references")
+    assert not people_role_cases(record, manuscript, entities, lc_headings=headings)[0]["authority_verified"]
+
+
+def test_dated_repair_keeps_placeholder_and_rejects_conflicting_scribe():
+    from app.pipeline.wikidata_gila_people import plan_dated_person_repair
+
+    fields = _field("700", ("a", "Example, Leah"), ("d", "1690-1760"), ("4", "scr"))
+    record = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P244": [_claim("n12345678")]}}
+    placeholder = _claim(None, qualifiers={"P1932": "Example, Leah"})
+    placeholder["mainsnak"] = {"snaktype": "somevalue"}
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P11603": [placeholder]}}
+    case = {**people_role_cases(record, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
+    headings = {"n12345678": {"Example, Leah, 1690-1760"}}
+
+    target, statement, claim_id = plan_dated_person_repair(record, case, manuscript, {}, person, headings)
+    assert (target, statement.property_id, statement.value, claim_id) == ("Q10", "P11603", "Q42", None)
+    assert len(statement.reference_blocks) == 2
+    assert statement.reference_blocks[1][0]["value"] == "https://id.loc.gov/authorities/names/n12345678.html"
+    assert manuscript["claims"]["P11603"] == [placeholder]
+    manuscript["claims"]["P11603"].append(_claim({"id": "Q43"}))
+    assert plan_dated_person_repair(record, case, manuscript, {}, person, headings) is None

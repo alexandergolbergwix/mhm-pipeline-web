@@ -173,8 +173,10 @@ async def _read_cited_authority_sources(entities, manuscript_qids, work_qids=())
         authority_audit_client, library_of_congress_identifier, read_library_of_congress_headings, read_viaf_clusters,
     )
     from app.pipeline.wikidata_gila_facts import _live_claims
-    from app.pipeline.wikidata_gila_identity_evidence import _viaf_citation_ids, _viaf_identifier, _viaf_reference_ids
+    from app.pipeline.wikidata_gila_identity_evidence import _viaf_citation_ids, _viaf_reference_ids
 
+    manuscript_qids = set(manuscript_qids)
+    work_qids = set(work_qids) | _geographic_context(entities, manuscript_qids, ("P1574",))
     ids = {
         identifier for qid in manuscript_qids if qid in entities
         for identifier in _viaf_citation_ids(entities[qid])
@@ -185,16 +187,14 @@ async def _read_cited_authority_sources(entities, manuscript_qids, work_qids=())
     )
     async with authority_audit_client() as client:
         viaf_sources = await read_viaf_clusters(client, ids)
-        lc_ids = set()
-        for qid in manuscript_qids:
-            if qid not in entities:
-                continue
-            for claim in _live_claims(entities[qid], "P11603"):
-                candidate = entities.get(claim["value"], {})
-                viaf = _viaf_identifier(candidate)
-                if viaf not in viaf_sources and viaf in _viaf_reference_ids(claim["references"]):
-                    if identifier := library_of_congress_identifier(candidate):
-                        lc_ids.add(identifier)
+        lc_ids = {
+            identifier
+            for qids, properties in ((manuscript_qids, ("P11603", "P3342")), (work_qids, ("P50",)))
+            for qid in qids for pid in properties
+            for claim in _live_claims(entities.get(qid, {}), pid)
+            if claim["references"] and not (pid == "P11603" and _viaf_reference_ids(claim["references"]) & viaf_sources.keys())
+            if (identifier := library_of_congress_identifier(entities.get(claim["value"], {})))
+        }
         lc_headings = await read_library_of_congress_headings(client, lc_ids)
     return viaf_sources, lc_headings
 
@@ -502,6 +502,9 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
         await _live_items(job_id, known, entities, seen, "public_items")
         linked = await asyncio.to_thread(_linked_entities, entities)
         await _live_items(job_id, linked, entities, seen, "linked_items")
+        linked_works = await asyncio.to_thread(_geographic_context, entities, mappings.values(), ("P1574",))
+        work_people = await asyncio.to_thread(_geographic_context, entities, linked_works, ("P50",))
+        await _live_items(job_id, work_people, entities, seen, "linked_items")
         places = await asyncio.to_thread(_geographic_context, entities, mappings.values(), ("P1071",))
         parents = await asyncio.to_thread(_geographic_context, entities, places, ("P131", "P17"))
         await _live_items(job_id, parents, entities, seen, "linked_items")

@@ -1402,3 +1402,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 227. **R227 — Count each MARC role once (W-370).** Bind scribe evidence to the same full MARC fields used in both audits. Keep the release and creator checks.
 
 228. **R228 — Verify published scribe links through independent authority evidence (W-371).** Honor the VIAF retry delay. The alternate authority requires the exact catalogue name and dates.
+
+229. **R229 — Require exact authority evidence for dated roles (W-372).** Match the complete MARC name and both life dates. Keep the existing claims. Check the first creator of the item before each write.

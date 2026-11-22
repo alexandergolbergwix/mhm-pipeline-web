@@ -31,6 +31,21 @@ applies to published claims with the exact catalogue reference. It grants no
 permission to write. Tests exercise both retry paths and reject conflicting
 evidence. The code lives in wikidata_gila_authority_reads.py.
 
+The audit can also verify a role with the person's exact Library of Congress
+authority record. It requires the full MARC name, both life dates, the correct
+role, and the exact catalogue reference. For a scribe, the claim must cite
+the same authority record. The VIAF fallback still applies to earlier claims.
+The audit reads authors on linked work items and counts a repeated link to
+the same work once when it selects the work for a source occurrence.
+
+The role planner in `wikidata_gila_people.py` supports scribes, authors, and
+former owners. An author repair requires a unique work for the exact MARC
+title. A copy role requires the exact manuscript. The planner keeps existing
+claims and unknown values. It can add the catalogue and authority references
+to an existing claim with the same scope. A conflict or an uncertain source
+leaves the case open. Before a live edit, the operator must check the current
+revision and the first creator of the exact target.
+
 The page displays counts for the full MARC records, verified roles, verified
 authority links, and preserved uncertainties. The new point 5 denominator
 counts source roles, so it differs from the old projection count.

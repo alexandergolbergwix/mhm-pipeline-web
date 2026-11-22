@@ -70,7 +70,7 @@ panel lists all three bulk targets but enables submission only for `dry_run`.
 - [Gila audit completion](gila-audit-completion.md) — source-qualified claims,
   the accepted model, and the full-run review report (W-296).
 - [Gila audit risks](gila-audit-risks.md) — open work-identity, folio, and historical reference-data gaps.
-- [People, roles, and authority links](gila-people-coverage.md) — full MARC fields and creator-only scribe repairs.
+- [People, roles, and authority links](gila-people-coverage.md) — full MARC fields and creator-only repairs for named roles.
 - [Gila completion packet](gila-completion-packet.md) — all nine points, source cases, exact revisions, and correction receipts.
 - [Wikidata Manuscript Audit and Repair](admin-gila-repairs.md) — live audit, case review, and a scoped repair Release.
 - [Repair plan](repair-plan.md) — separate read-only inventory and operator steps through normal Studio controls.
