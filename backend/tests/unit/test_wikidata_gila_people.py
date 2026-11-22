@@ -141,7 +141,7 @@ async def test_audit_keeps_scribe_verification_across_viaf_rate_limit(monkeypatc
     monkeypatch.setattr(reads.asyncio, "sleep", no_wait)
     monkeypatch.setattr(reads, "authority_audit_client",
                         lambda: httpx.AsyncClient(transport=httpx.MockTransport(serve)))
-    viaf_sources, lc_headings = await audit_job._read_cited_authority_sources(entities, ["Q10"])
+    viaf_sources, lc_headings, _ = await audit_job._read_cited_authority_sources(entities, ["Q10"])
     result = people_role_cases(record, manuscript, entities, viaf_sources=viaf_sources, lc_headings=lc_headings)
     assert result[0]["authority_verified"]
     assert requests == ["viaf.org"] * viaf_requests + ["id.loc.gov"]
@@ -382,3 +382,108 @@ def test_existing_catalogue_reference_is_reused_for_an_authority_repair():
     assert plan[2] == existing["id"]
     assert len(plan[1].reference_blocks) == 1
     assert [row["property"] for row in plan[1].reference_blocks[0]] == ["P854"]
+
+
+def test_death_year_needs_exact_catalogue_match_and_both_citations():
+    from app.pipeline.wikidata_gila_authority_reads import library_of_congress_death_year
+    from app.pipeline.wikidata_gila_catalogue_authority import catalogue_authority_url
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    identifier = "987007265574105171"
+    lccn = "no2008160185"
+    mads = "http://www.loc.gov/mads/rdf/v1#"
+    payload = [
+        {"@id": f"http://id.loc.gov/authorities/names/{lccn}",
+         "@type": [mads + "Authority", mads + "PersonalName"], mads + "hasSource": [{"@id": "_:linked"}]},
+        {"@id": "_:linked", mads + "citationNote": [{"@value": "The copyist's note (d. 1661)"}]},
+        {"@id": "_:unlinked", mads + "citationNote": [{"@value": "A different person (d. 1662)"}]},
+    ]
+    assert library_of_congress_death_year(payload, lccn) == "1661"
+    assert library_of_congress_death_year(payload, "no2008160186") is None
+    raw = parse_nli_records(_response(_record(_field(
+        "700", ("a", "Example, Leah"), ("d", "נפטר 1661"), ("4", "scr"),
+    ))), {CONTROL})[CONTROL]
+    person = {"id": "Q42", "claims": {
+        "P31": [_claim({"id": "Q5"})], "P8189": [_claim(identifier)], "P244": [_claim(lccn)],
+        "P570": [_claim({"time": "+1661-01-01T00:00:00Z", "precision": 9, "before": 0, "after": 0,
+                        "calendarmodel": "http://www.wikidata.org/entity/Q1985727"})],
+    }}
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)]}}
+    case = {**people_role_cases(raw, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
+    proof = {
+        "mazal_people": {identifier: MazalPersonAuthority(frozenset({"Example, Leah"}), "active 17th century")},
+        "catalogue_records": {(CONTROL, identifier): raw},
+    }
+    assert not plan_person_role_repair(raw, case, manuscript, {}, person, {}, **proof)
+    proof["lc_death_years"] = {lccn: "1661"}
+    _, statement, _ = plan_person_role_repair(raw, case, manuscript, {}, person, {}, **proof)
+    urls = [block[0]["value"] for block in statement.reference_blocks[1:]]
+    assert urls == [catalogue_authority_url(CONTROL, identifier), f"https://id.loc.gov/authorities/names/{lccn}.html"]
+    link = _claim({"id": "Q42"}, qualifiers={"P1932": "Example, Leah"})
+    manuscript["claims"]["P11603"] = [link]
+    link["references"].append({"snaks": {"P854": [_snak(urls[0])]}})
+    assert not people_role_cases(raw, manuscript, {"Q42": person}, **proof)[0]["verified"]
+    link["references"].append({"snaks": {"P854": [_snak(urls[1])]}})
+    assert people_role_cases(raw, manuscript, {"Q42": person}, **proof)[0]["verified"]
+    payload[1][mads + "citationNote"].append({"@value": "Another account (d. 1664)"})
+    assert library_of_congress_death_year(payload, lccn) is None
+
+
+def test_gnd_variant_supplies_exact_name_and_both_dates():
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    raw = parse_nli_records(_response(_record(_field(
+        "700", ("a", "קמפר, יוהן"), ("d", "1670-1716"), ("4", "scr"),
+    ))), {CONTROL})[CONTROL]
+    identifier = "133857492"
+    url = f"https://d-nb.info/gnd/{identifier}"
+    person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P227": [_claim(identifier)]}}
+    claim = _claim({"id": "Q42"}, qualifiers={"P1932": "קמפר, יוהן"})
+    claim["id"] = "Q10$1"
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P11603": [claim]}}
+    case = {**people_role_cases(raw, manuscript, {"Q42": person})[0], "control_number": CONTROL, "qid": "Q10"}
+    gnd = {"gndIdentifier": identifier, "id": url, "type": ["DifferentiatedPerson"], "dateOfBirth": ["1670"],
+           "dateOfDeath": ["1716"], "preferredName": "Kemper, Johan", "variantName": ["קמפר, יוהן"]}
+    target, statement, selected = plan_person_role_repair(
+        raw, case, manuscript, {}, person, {}, gnd_sources={identifier: gnd},
+    )
+    assert (target, selected) == ("Q10", "Q10$1")
+    assert [block[0]["value"] for block in statement.reference_blocks] == [url]
+    claim["references"].append({"snaks": {"P854": [_snak(url)]}})
+    assert people_role_cases(raw, manuscript, {"Q42": person}, gnd_sources={identifier: gnd})[0]["verified"]
+    gnd["dateOfDeath"].append("1717")
+    assert not people_role_cases(raw, manuscript, {"Q42": person}, gnd_sources={identifier: gnd})[0]["verified"]
+
+
+def test_reviewed_catalogue_dates_require_the_exact_scribe_and_corroboration():
+    from app.pipeline.wikidata_gila_catalogue_authority import REVIEWED_SCRIBE_SOURCES, catalogue_authority_url
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    cn = "990000569120205171"
+    identifier = "987007298185505171"
+    proof = REVIEWED_SCRIBE_SOURCES[cn, identifier]
+    source = _field("700", ("a", proof.heading), ("d", proof.dates), ("e", "scribe"))
+    raw = parse_nli_records(_response(_record(source, cn)), {cn})[cn]
+    support = _record(_field("100", ("a", proof.heading), ("d", proof.dates)), proof.corroborating_control)
+    extra = parse_nli_records(_response(support), {proof.corroborating_control})
+    person = {"id": proof.person_qid, "claims": {"P31": [_claim({"id": "Q5"})], "P8189": [_claim(identifier)]}}
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(cn)]}}
+    case = {**people_role_cases(raw, manuscript, {})[0], "control_number": cn, "qid": "Q10"}
+    roles = {(cn, identifier): raw}
+    profiles = {identifier: MazalPersonAuthority(frozenset({proof.heading}), "1688-1743")}
+
+    def plan():
+        return plan_person_role_repair(raw, case, manuscript, {}, person, {},
+                                       mazal_people=profiles, catalogue_records=roles)
+
+    assert plan() is None
+    roles[proof.corroborating_control, identifier] = extra[proof.corroborating_control]
+    _, statement, _ = plan()
+    assert [block[0]["value"] for block in statement.reference_blocks[1:]] == [
+        catalogue_authority_url(cn, identifier), catalogue_authority_url(proof.corroborating_control, identifier),
+    ]
+    person["id"] = "Q99"
+    assert plan() is None
+    person["id"] = proof.person_qid
+    roles[cn, identifier] = parse_nli_records(_response(_record(source + source, cn)), {cn})[cn]
+    assert plan() is None

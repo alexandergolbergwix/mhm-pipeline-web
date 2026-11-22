@@ -4504,3 +4504,16 @@ with a preferred name. Require one exact occurrence in each MARC source.
 An added author with no work title needs one exact work and one source author.
 A second scribe needs a different explicit MARC occurrence for the existing
 scribe claim. Keep the existing claims and reuse the exact catalogue citation.
+
+## Rule W-377 — Keep the evidence for each verified scribe
+
+Use a GND personal name or variant with the exact MARC name and both life
+years. A MARC death year alone also needs the exact NLI catalogue association
+and a matching year from the Library of Congress. Require the current person
+item to agree with the death year. Keep the two citations on the scribe claim.
+
+A reviewed case with different dates needs a published source for that exact
+role. Bind the source to the control number, authority ID, and person item.
+Check the full MARC heading and dates in both copies. Match one scribe
+occurrence and keep the original date text. Check a cited secondary MARC
+record when the proof uses it. Keep the creator and current revision checks.

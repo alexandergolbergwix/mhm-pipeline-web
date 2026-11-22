@@ -63,6 +63,7 @@ def build_gila_audit_report(
     repair_gnd_sources: Mapping[str, dict] | None = None,
     people_marc: Mapping[str, dict] | None = None,
     repair_lc_headings: Mapping[str, frozenset[str]] | None = None,
+    repair_lc_death_years: Mapping[str, str] | None = None,
     repair_mazal_headings: Mapping[str, frozenset[str]] | None = None,
     repair_mazal_people: Mapping[str, MazalPersonAuthority] | None = None,
     repair_catalogue_records: Mapping[tuple[str, str], dict] | None = None,
@@ -176,6 +177,7 @@ def build_gila_audit_report(
                 authority_rows=(repair_authority_by_cn or {}).get(cn, ()),
                 viaf_sources=repair_viaf_sources, gnd_sources=repair_gnd_sources,
                 lc_headings=repair_lc_headings,
+                lc_death_years=repair_lc_death_years,
                 mazal_headings=repair_mazal_headings,
                 mazal_people=repair_mazal_people, catalogue_records=repair_catalogue_records,
             ))

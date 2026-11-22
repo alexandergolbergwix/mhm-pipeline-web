@@ -15,8 +15,9 @@ from app.pipeline import marc_occurrences as marc
 from app.pipeline.marc_ingest import _parse_marcxml, prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
 from app.pipeline.wikidata_gila_authority_reads import library_of_congress_identifier, mazal_authority_url, mazal_identifier
-from app.pipeline.wikidata_gila_catalogue_authority import NLI_SRU, catalogue_authority_url
+from app.pipeline.wikidata_gila_catalogue_authority import NLI_SRU, REVIEWED_SCRIBE_SOURCES, catalogue_authority_url
 from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status
+from app.pipeline.wikidata_gila_gnd_evidence import gnd_identifier
 from app.pipeline.wikidata_gila_identity_evidence import (
     _viaf_identifier, _viaf_reference_ids, live_source_match, viaf_proves_person,
 )
@@ -299,12 +300,87 @@ def _proves_dated_role(claim, candidate, role, names, dates, lc_headings, mazal_
     return _viaf_identifier(candidate) in cited_viaf and dated_mazal_match(candidate, names, dates, mazal_headings)
 
 
-def _catalogue_role_url(candidate, cn, row, variants, occurrences, mazal_people, catalogue_records):
+def _scribe_death_year_url(candidate, source_dates, lc_death_years):
+    if len(source_dates) != 1:
+        return None
+    match = re.fullmatch(r"(?:נפטר|died)\s+([12][0-9]{3})\.?", next(iter(source_dates)))
+    identifier = library_of_congress_identifier(candidate)
+    if not match or not identifier or (lc_death_years or {}).get(identifier) != match[1]:
+        return None
+    deaths = _claim_values(candidate, "P570")
+    if len(deaths) != 1 or not isinstance(deaths[0], Mapping):
+        return None
+    death = deaths[0]
+    if (
+        not str(death.get("time", "")).startswith(f"+{match[1]}-")
+        or death.get("precision", 0) < 9
+        or death.get("before") != 0 or death.get("after") != 0
+        or death.get("calendarmodel") != "http://www.wikidata.org/entity/Q1985727"
+    ):
+        return None
+    return f"https://id.loc.gov/authorities/names/{identifier}.html"
+
+
+def _gnd_scribe_url(candidate, names, dates, sources):
+    identifier = gnd_identifier(candidate)
+    record = (sources or {}).get(identifier)
+    if not record or not dates or "Q5" not in _links(candidate, "P31"):
+        return None
+    if (
+        record.get("gndIdentifier") != identifier or record.get("id") != f"https://d-nb.info/gnd/{identifier}"
+        or "DifferentiatedPerson" not in record.get("type", [])
+        or record.get("dateOfBirth") != [dates[0]] or record.get("dateOfDeath") != [dates[1]]
+    ):
+        return None
+    headings = {
+        _heading(name) for name in [record.get("preferredName"), *record.get("variantName", [])]
+        if isinstance(name, str)
+    }
+    if not any(name in headings and len(name.split()) >= 2 for name in names):
+        return None
+    return record["id"]
+
+
+def _matches_reviewed_scribe_fields(variants, proof):
+    names = {_heading(" ".join(marc.values(field, "a") + marc.values(field, "c"))) for field in variants}
+    dates = {value.strip() for field in variants for value in marc.values(field, "d") if value.strip()}
+    return proof.heading in names and dates == {proof.dates}
+
+
+def _reviewed_scribe_url(candidate, cn, identifier, row, variants, occurrences, live, catalogue_records):
+    proof = REVIEWED_SCRIBE_SOURCES.get((cn, identifier))
+    if not proof or proof.person_qid != candidate.get("id"):
+        return None
+    for rows in (occurrences, _person_occurrences(live)):
+        matching_scribes = [
+            (field, alternate) for field, alternate in rows
+            if _matches_reviewed_scribe_fields(alternate, proof) and "scribe" in _row_roles(field, alternate)
+        ]
+        if matching_scribes != [(row, variants)]:
+            return None
+    if not proof.corroborating_control:
+        return proof.url
+    alternate = catalogue_records.get((proof.corroborating_control, identifier), {})
+    main_entries = [fields for field, fields in _person_occurrences(alternate) if field["tag"] == "100"]
+    if len(main_entries) != 1 or not _matches_reviewed_scribe_fields(main_entries[0], proof):
+        return None
+    return catalogue_authority_url(proof.corroborating_control, identifier)
+
+
+def _catalogue_role_urls(candidate, cn, row, variants, occurrences, mazal_people, catalogue_records, *,
+                         scribe=False, lc_death_years=None):
     identifier = mazal_identifier(candidate)
     profile = (mazal_people or {}).get(identifier)
     live = (catalogue_records or {}).get((cn, identifier))
     if not profile or not live or "Q5" not in _links(candidate, "P31") or row["tag"] not in {"100", "700"}:
-        return None
+        return ()
+    if any(marc.values(v, code) for v in variants for code in ("0", "1", "3", "5", "j", "n", "p")):
+        return ()
+    catalogue_url = catalogue_authority_url(cn, identifier)
+    if scribe and (url := _reviewed_scribe_url(
+        candidate, cn, identifier, row, variants, occurrences, live, catalogue_records,
+    )):
+        return (catalogue_url, url)
     preferred = {_heading(name) for name in profile.preferred_names if len(_heading(name).split()) >= 2}
     for rows in (occurrences, _person_occurrences(live)):
         preferred_rows = [
@@ -319,16 +395,15 @@ def _catalogue_role_url(candidate, cn, row, variants, occurrences, mazal_people,
             }
         ]
         if matched != [(row, variants)]:
-            return None
-    if any(marc.values(v, code) for v in variants for code in ("0", "1", "3", "5", "j", "n", "p")):
-        return None
+            return ()
     source_dates = {value.strip() for v in variants for value in marc.values(v, "d") if value.strip()}
     if source_dates and source_dates != {profile.dates} and not _dated_authority_match(
         candidate, preferred, _exact_life_dates(variants),
         {f"{name} {profile.dates}" for name in profile.preferred_names},
     ):
-        return None
-    return catalogue_authority_url(cn, identifier)
+        death_url = _scribe_death_year_url(candidate, source_dates, lc_death_years)
+        return (catalogue_url, death_url) if death_url else ()
+    return (catalogue_url,)
 
 
 def _sole_work_for_added_author(row, record, manuscript, occurrences):
@@ -365,7 +440,7 @@ def _separate_scribe_claim(claim, cn, selected, source_names, occurrences):
 
 def plan_person_role_repair(
     raw, case, manuscript, entities, candidate, lc_headings, *, mazal_headings=None,
-    mazal_people=None, catalogue_records=None,
+    mazal_people=None, catalogue_records=None, lc_death_years=None, gnd_sources=None,
 ):
     """Return an exact target, statement and optional claim ID for a checked role."""
     record = prepare_record_for_pipeline(dict(raw))
@@ -391,18 +466,24 @@ def plan_person_role_repair(
         or any(marc.values(variant, code) for variant in variants for code in ("0", "1", "3", "5", "j", "n", "p"))
     ):
         return None
-    urls = _dated_authority_urls(candidate, source_names, _exact_life_dates(variants), lc_headings, mazal_headings)
+    dates = _exact_life_dates(variants)
+    urls = _dated_authority_urls(candidate, source_names, dates, lc_headings, mazal_headings)
+    gnd_url = _gnd_scribe_url(candidate, source_names, dates, gnd_sources) if role == "scribe" else None
+    if gnd_url:
+        urls.append(gnd_url)
     has_dated_proof = bool(urls)
-    catalogue_url = _catalogue_role_url(
+    catalogue_urls = _catalogue_role_urls(
         candidate, cn, row, variants, occurrences, mazal_people, catalogue_records,
+        scribe=role == "scribe", lc_death_years=lc_death_years if role == "scribe" else None,
     )
+    required_urls = ()
     if role == "author" and row["tag"] != "100" and not marc.values(row, "t"):
-        if not catalogue_url or not _sole_work_for_added_author(row, record, manuscript, occurrences):
+        if not catalogue_urls or not _sole_work_for_added_author(row, record, manuscript, occurrences):
             return None
-        urls.insert(0, catalogue_url)
-    elif not urls and catalogue_url:
-        urls.append(catalogue_url)
-    if not urls:
+        required_urls = catalogue_urls
+    elif not urls:
+        required_urls = catalogue_urls
+    if not urls and not required_urls:
         return None
     display = names[0].strip().rstrip(",")
     if not display or display != case["source_value"]:
@@ -426,7 +507,9 @@ def plan_person_role_repair(
         ):
             continue
         if claim["value"] != candidate["id"]:
-            if role == "scribe" and catalogue_url and _separate_scribe_claim(claim, cn, row, source_names, occurrences):
+            if role == "scribe" and (catalogue_urls or gnd_url) and _separate_scribe_claim(
+                claim, cn, row, source_names, occurrences,
+            ):
                 continue
             if role != "former owner" or claim["value"] in {"somevalue", "novalue"}:
                 return None
@@ -441,22 +524,25 @@ def plan_person_role_repair(
     if len(existing) > 1:
         return None
     if existing and _reference_status(existing, cn, live=True) == "source_bound":
-        if _cites_authority(existing[0], urls) or (role != "scribe" and has_dated_proof):
+        cited = (
+            all(_cites_authority(existing[0], (url,)) for url in required_urls)
+            if required_urls else _cites_authority(existing[0], urls)
+        )
+        if cited or (role != "scribe" and has_dated_proof):
             return None
 
     references = [] if existing and _reference_status(existing, cn, live=True) == "source_bound" else nli_reference(cn)
     statement = WikidataStatement(pid, candidate["id"], "item", qualifiers=qualifiers, references=references)
-    merge_statement_references(statement, WikidataStatement(
-        pid, candidate["id"], "item", references=[
-            {"property": "P854", "value": urls[0], "type": "url"},
-        ],
-    ))
+    for url in required_urls or (urls[0],):
+        merge_statement_references(statement, WikidataStatement(
+            pid, candidate["id"], "item", references=[{"property": "P854", "value": url, "type": "url"}],
+        ))
     return target["id"], statement, existing[0]["claim_id"] if existing else None
 
 
 def people_role_cases(
     raw, manuscript, live_entities, *, authority_rows=(), viaf_sources=None, gnd_sources=None,
-    lc_headings=None, mazal_headings=None, mazal_people=None, catalogue_records=None,
+    lc_headings=None, lc_death_years=None, mazal_headings=None, mazal_people=None, catalogue_records=None,
 ):
     """Report one check per MARC occurrence and role."""
     record = prepare_record_for_pipeline(dict(raw))
@@ -502,8 +588,15 @@ def people_role_cases(
                         claim, candidate := entities.get(claim["value"], {}), role, names, life_dates,
                         lc_headings, mazal_headings, viaf_sources,
                     ) or (
-                        (url := _catalogue_role_url(candidate, cn, row, variants, occurrences, mazal_people, catalogue_records))
+                        (role == "scribe" and (url := _gnd_scribe_url(candidate, names, life_dates, gnd_sources)))
                         and _cites_authority(claim, (url,))
+                    ) or (
+                        (urls := _catalogue_role_urls(
+                            candidate, cn, row, variants, occurrences, mazal_people, catalogue_records,
+                            scribe=role == "scribe",
+                            lc_death_years=lc_death_years if role == "scribe" else None,
+                        ))
+                        and all(_cites_authority(claim, (url,)) for url in urls)
                     )
                 }
             matches = [

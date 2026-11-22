@@ -130,10 +130,9 @@ async def read_mazal_headings(identifiers: set[str]) -> dict[str, frozenset[str]
     return dated_mazal_headings(await read_mazal_people(identifiers))
 
 
-def library_of_congress_headings(payload, identifier: str) -> frozenset[str]:
-    """Read only the exact personal name authority and its linked variants."""
+def _library_of_congress_person(payload, identifier: str):
     if not isinstance(payload, list):
-        return frozenset()
+        return {}, {}
     nodes = {row["@id"]: row for row in payload if isinstance(row, dict) and isinstance(row.get("@id"), str)}
     authority = nodes.get(f"http://id.loc.gov/authorities/names/{identifier}") or nodes.get(
         f"https://id.loc.gov/authorities/names/{identifier}", {},
@@ -142,7 +141,13 @@ def library_of_congress_headings(payload, identifier: str) -> frozenset[str]:
     if not isinstance(types, list) or not {_MADS + "Authority", _MADS + "PersonalName"} <= {
         value for value in types if isinstance(value, str)
     }:
-        return frozenset()
+        return {}, {}
+    return authority, nodes
+
+
+def library_of_congress_headings(payload, identifier: str) -> frozenset[str]:
+    """Read only the exact personal name authority and its linked variants."""
+    authority, nodes = _library_of_congress_person(payload, identifier)
     variants = [
         nodes.get(row.get("@id"), {})
         for row in authority.get(_MADS + "hasVariant", []) or []
@@ -156,8 +161,20 @@ def library_of_congress_headings(payload, identifier: str) -> frozenset[str]:
     )
 
 
+def library_of_congress_death_year(payload, identifier: str) -> str | None:
+    """Find one explicit death year in citations linked to the personal authority."""
+    authority, nodes = _library_of_congress_person(payload, identifier)
+    years = {
+        year
+        for link in authority.get(_MADS + "hasSource", []) if isinstance(link, dict)
+        for note in nodes.get(link.get("@id"), {}).get(_MADS + "citationNote", []) if isinstance(note, dict)
+        for year in re.findall(r"\bd\.\s*([12][0-9]{3})\b", str(note.get("@value", "")))
+    }
+    return next(iter(years)) if len(years) == 1 else None
+
+
 async def read_library_of_congress_headings(
-    client: httpx.AsyncClient, identifiers: set[str],
+    client: httpx.AsyncClient, identifiers: set[str], *, death_years: dict[str, str] | None = None,
 ) -> dict[str, frozenset[str]]:
     records = {}
     for identifier in sorted(identifiers):
@@ -168,8 +185,11 @@ async def read_library_of_congress_headings(
             if response.status_code == 429:
                 break
             response.raise_for_status()
-            if headings := library_of_congress_headings(response.json(), identifier):
+            payload = response.json()
+            if headings := library_of_congress_headings(payload, identifier):
                 records[identifier] = headings
+            if death_years is not None and (year := library_of_congress_death_year(payload, identifier)):
+                death_years[identifier] = year
         except (httpx.HTTPError, ValueError) as exc:
             logger.info("Library of Congress authority audit could not read %s (%s)", identifier, type(exc).__name__)
     return records

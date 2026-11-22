@@ -56,6 +56,17 @@ MAZAL. The audit also checks the role and any stated dates. The claim must cite
 the exact SRU query and the catalogue record. The code that reads the
 authority association lives in `wikidata_gila_catalogue_authority.py`.
 
+A GND authority can prove a scribe if its preferred name or variant matches
+the MARC name and both life years. A death year alone needs the exact NLI
+association, the same year in a Library of Congress citation note, and the
+same year on the person item. Both cited sources must stay on the claim.
+
+For a reviewed date difference, the catalogue reader checks the exact
+manuscript and person. It also checks the exact MARC name, dates, and role.
+If the evidence cites a second MARC record, the audit reads that record.
+The Vatican catalogue and NLI sources document the reviewed cases.
+See the [scribe evidence note](../../../audits/2026-11-22-scribe-evidence.md).
+
 The role planner in `wikidata_gila_people.py` supports scribes, authors, and
 former owners. An author repair requires a unique work for the exact MARC
 title. A MARC 700 author entry without a title needs a single source author,

@@ -1412,3 +1412,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 232. **R232 — Continue the read-only audit when an inherited claim ID prevents a repair (W-375).** Keep the reference in the audit count. Require an exact target claim ID in each write proposal.
 
 233. **R233 — Verify alternate MAZAL names and limit repairs to the proven role (W-376).** Require an exact catalogue association and a unique source occurrence. Use the sole exact work for an added author with no work title. Keep each distinct source-supported scribe and its sources.
+
+234. **R234 — Keep the evidence for each verified scribe (W-377).** Check the exact MARC role, the authority, and each required citation. Bind a reviewed date case to the exact manuscript and person.

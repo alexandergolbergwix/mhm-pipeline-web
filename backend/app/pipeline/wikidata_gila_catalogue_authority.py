@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from urllib.parse import parse_qs, urlencode, urlsplit
 from xml.etree import ElementTree as ET
 
@@ -18,6 +19,37 @@ _MAZAL = re.compile(r"987[0-9]{6,17}\Z")
 _SRU_NS = "{http://www.loc.gov/zing/srw/}"
 _BATCH_SIZE = 15
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ReviewedScribeSource:
+    person_qid: str
+    heading: str
+    dates: str
+    url: str
+    corroborating_control: str = ""
+
+
+_VATICAN_CATALOGUE = "https://www.nli.org.il/media/26037/vaticanhebmss.pdf"
+
+
+REVIEWED_SCRIBE_SOURCES = {
+    ("990001011060205171", "987007310213405171"): ReviewedScribeSource(
+        "Q5290097", "דומיניקו ירושלמי", "1555-1621", f"{_VATICAN_CATALOGUE}#page=580",
+    ),
+    ("990001011110205171", "987007310213405171"): ReviewedScribeSource(
+        "Q5290097", "דומיניקו ירושלמי", "1555-1621", f"{_VATICAN_CATALOGUE}#page=581",
+    ),
+    ("990001057000205171", "987007310213405171"): ReviewedScribeSource(
+        "Q5290097", "דומיניקו ירושלמי", "1555-1621", f"{_VATICAN_CATALOGUE}#page=581",
+    ),
+    ("990000569120205171", "987007298185505171"): ReviewedScribeSource(
+        "Q7021701", "ריקי רפאל עמנואל חי בן אברהם", "1687-1743", "", "990012776960205171",
+    ),
+    ("990001190680205171", "987007310565205171"): ReviewedScribeSource(
+        "Q6119523", "צמח יעקב בן חיים", "1570?-1667", "https://www.nli.org.il/he/a-topic/987007310565205171",
+    ),
+}
 
 
 def _params(authority_id: str, controls: list[str]) -> dict[str, str | int]:

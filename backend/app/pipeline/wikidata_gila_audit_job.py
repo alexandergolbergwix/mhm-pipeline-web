@@ -204,8 +204,9 @@ async def _read_cited_authority_sources(entities, manuscript_qids, work_qids=())
             if not (pid == "P11603" and _viaf_reference_ids(claim["references"]) & viaf_sources.keys())
             if (identifier := library_of_congress_identifier(entities.get(claim["value"], {})))
         }
-        lc_headings = await read_library_of_congress_headings(client, lc_ids)
-    return viaf_sources, lc_headings
+        lc_death_years = {}
+        lc_headings = await read_library_of_congress_headings(client, lc_ids, death_years=lc_death_years)
+    return viaf_sources, lc_headings, lc_death_years
 
 
 async def _read_mazal_role_authorities(entities, manuscript_qids, work_qids):
@@ -223,7 +224,9 @@ async def _read_mazal_role_authorities(entities, manuscript_qids, work_qids):
 
 async def _read_catalogue_role_evidence(entities, mappings, work_qids):
     from app.pipeline.wikidata_gila_authority_reads import mazal_identifier, read_mazal_people
-    from app.pipeline.wikidata_gila_catalogue_authority import cited_catalogue_identities, read_catalogue_authority_records
+    from app.pipeline.wikidata_gila_catalogue_authority import (
+        REVIEWED_SCRIBE_SOURCES, cited_catalogue_identities, read_catalogue_authority_records,
+    )
     from app.pipeline.wikidata_gila_people import catalogue_mazal_names
 
     manuscript_qids = set(mappings.values())
@@ -234,7 +237,11 @@ async def _read_catalogue_role_evidence(entities, mappings, work_qids):
         for cn, identifier in cited_catalogue_identities(claim)
         if cn in mappings and identifier == mazal_identifier(entities.get(claim["value"], {}))
     }
-    records = await read_catalogue_authority_records(pairs)
+    corroboration = {
+        (proof.corroborating_control, identifier) for cn, identifier in pairs
+        if (proof := REVIEWED_SCRIBE_SOURCES.get((cn, identifier))) and proof.corroborating_control
+    }
+    records = await read_catalogue_authority_records(pairs | corroboration)
     profiles = await read_mazal_people(
         {identifier for _, identifier in records}, source_names=catalogue_mazal_names(records.values()),
     )
@@ -565,7 +572,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             },
         )
         work_qids = {item.get("existing_qid") for item in canonical if item.get("entity_type") == "work"}
-        (viaf_sources, lc_headings), mazal_headings, (mazal_people, catalogue_records) = await asyncio.gather(
+        (viaf_sources, lc_headings, lc_death_years), mazal_headings, (mazal_people, catalogue_records) = await asyncio.gather(
             _read_cited_authority_sources(entities, mappings.values(), work_qids),
             _read_mazal_role_authorities(entities, mappings.values(), work_qids),
             _read_catalogue_role_evidence(entities, mappings, work_qids),
@@ -587,6 +594,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             repair_gnd_sources=gnd_sources,
             people_marc=people_marc,
             repair_lc_headings=lc_headings,
+            repair_lc_death_years=lc_death_years,
             repair_mazal_headings=mazal_headings,
             repair_mazal_people=mazal_people,
             repair_catalogue_records=catalogue_records,
