@@ -99,3 +99,84 @@ def test_selected_people_release_cannot_include_unselected_or_non_people_edits(m
     ]
 
     assert audited_batch_params(report, "actor", evidence=evidence, people_links={"Q10": "Q98"}) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("retry_after", "viaf_requests"), [("2", 2), ("120", 1)])
+async def test_audit_keeps_scribe_verification_across_viaf_rate_limit(monkeypatch, retry_after, viaf_requests):
+    import httpx
+
+    from app.pipeline import wikidata_gila_authority_reads as reads
+
+    record = parse_nli_records(_response(_record(_field(
+        "700", ("a", "אבן צור, יעקב בן ראובן"), ("d", "1673-1752"), ("e", "scribe"),
+    ))), {CONTROL})[CONTROL]
+    candidate = {
+        "id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})],
+        "P214": [_claim("248556677")], "P244": [_claim("n85362651")]},
+    }
+    linked = _claim({"id": "Q42"}, qualifiers={"P1932": "אבן צור, יעקב בן ראובן"})
+    linked["references"].append({"snaks": {"P854": [_snak("https://viaf.org/viaf/248556677")]}})
+    manuscript = {"claims": {"P3959": [_claim(CONTROL)], "P11603": [linked]}}
+    entities = {"Q10": manuscript, "Q42": candidate}
+    authority = [{
+        "@id": "http://id.loc.gov/authorities/names/n85362651",
+        "@type": ["http://www.loc.gov/mads/rdf/v1#PersonalName", "http://www.loc.gov/mads/rdf/v1#Authority"],
+        "http://www.loc.gov/mads/rdf/v1#authoritativeLabel": [{"@value": "אבן צור, יעקב בן ראובן, 1673־1752"}],
+    }]
+    requests = []
+    delays = []
+
+    async def no_wait(seconds):
+        delays.append(seconds)
+
+    def serve(request):
+        requests.append(request.url.host)
+        if request.url.host == "viaf.org":
+            return httpx.Response(429, headers={"Retry-After": retry_after})
+        assert request.url.path == "/authorities/names/n85362651.json"
+        return httpx.Response(200, json=authority)
+
+    monkeypatch.setattr(reads.asyncio, "sleep", no_wait)
+    monkeypatch.setattr(reads, "authority_audit_client",
+                        lambda: httpx.AsyncClient(transport=httpx.MockTransport(serve)))
+    viaf_sources, lc_headings = await audit_job._read_cited_authority_sources(entities, ["Q10"])
+    result = people_role_cases(record, manuscript, entities, viaf_sources=viaf_sources, lc_headings=lc_headings)
+    assert result[0]["authority_verified"]
+    assert requests == ["viaf.org"] * viaf_requests + ["id.loc.gov"]
+    assert delays == ([2.0] if viaf_requests == 2 else [])
+
+    conflicting_viaf = {"248556677": {"viafID": "248556677", "nameType": "Personal"}}
+    assert not people_role_cases(
+        record, manuscript, entities, viaf_sources=conflicting_viaf, lc_headings=lc_headings,
+    )[0]["authority_verified"]
+    assert not people_role_cases(
+        record, manuscript, entities, viaf_sources={}, lc_headings={"n85362651": {"אבן צור, יעקב בן ראובן, 1673־1753"}},
+    )[0]["authority_verified"]
+    linked["references"].pop()
+    assert not people_role_cases(
+        record, manuscript, entities, viaf_sources=viaf_sources, lc_headings=lc_headings,
+    )[0]["authority_verified"]
+
+
+@pytest.mark.asyncio
+async def test_viaf_retry_keeps_the_cluster_after_the_wait(monkeypatch):
+    import httpx
+
+    from app.pipeline import wikidata_gila_authority_reads as reads
+
+    responses = [
+        httpx.Response(429, headers={"Retry-After": "3"}),
+        httpx.Response(200, json={"ns1:VIAFCluster": {"ns1:viafID": "248556677"}}),
+    ]
+    delays = []
+
+    async def no_wait(seconds):
+        delays.append(seconds)
+
+    monkeypatch.setattr(reads.asyncio, "sleep", no_wait)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda _: responses.pop(0))) as client:
+        assert await reads.read_viaf_clusters(client, {"248556677"}) == {
+            "248556677": {"ns1:viafID": "248556677"},
+        }
+    assert delays == [3.0, 0.5]

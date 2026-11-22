@@ -274,17 +274,50 @@ def _viaf_identifier(entity):
     return None
 
 
-def _viaf_citation_ids(entity, properties=("P11603",)):
+def _viaf_reference_ids(references):
     return {
         match[1]
-        for pid in properties
-        for claim in entity.get("claims", {}).get(pid, [])
-        if claim.get("rank") != "deprecated"
-        for ref in claim.get("references", [])
+        for ref in references
         for snak in ref.get("snaks", {}).get("P854", [])
         if isinstance((value := snak.get("datavalue", {}).get("value")), str)
         and (match := re.fullmatch(r"https://viaf\.org/viaf/([0-9]{1,20})/?", value))
     }
+
+
+def _viaf_citation_ids(entity, properties=("P11603",)):
+    return {
+        identifier
+        for pid in properties
+        for claim in entity.get("claims", {}).get(pid, [])
+        if claim.get("rank") != "deprecated"
+        for identifier in _viaf_reference_ids(claim.get("references", []))
+    }
+
+
+def _library_of_congress_confirms_scribe(raw, candidate, claim, authority_rows, viaf_sources, lc_headings):
+    from app.pipeline.wikidata_gila_authority_reads import library_of_congress_identifier
+
+    if not lc_headings:
+        return False
+    source = _scribe_life_dates(raw)
+    viaf = _viaf_identifier(candidate)
+    if (
+        not source or not viaf or (viaf_sources or {}).get(viaf)
+        or viaf not in _viaf_reference_ids(claim["references"])
+        or "Q5" not in _wikidata_links(candidate, "P31")
+    ):
+        return False
+    _, _, stated_qid = _source_evidence(raw, scribe=True)
+    authority_ids = _authority_ids(raw) | _approved_authority_ids(raw, authority_rows)
+    if (stated_qid and stated_qid != candidate["id"]
+        or any(value not in _claim_values(candidate, pid) for pid, value in authority_ids)):
+        return False
+    name, birth, death = source
+    for label in (lc_headings or {}).get(library_of_congress_identifier(candidate), ()):
+        match = re.fullmatch(rf"(.+?)[, ]+{birth}\s*[-–־]\s*{death}\.?\s*", label)
+        if match and _heading_key(match[1]) == _heading_key(name):
+            return True
+    return False
 
 
 def _proven_candidates(
@@ -327,7 +360,7 @@ def verified_candidate(
 
 def live_source_match(
     raw, manuscript, entities, cn, *, scribe, name="",
-    authority_rows=(), viaf_sources=None, gnd_sources=None,
+    authority_rows=(), viaf_sources=None, gnd_sources=None, lc_headings=None,
 ):
     from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status
 
@@ -343,13 +376,14 @@ def live_source_match(
     if len(claims) != 1:
         return False
     candidate = entities.get(claims[0]["value"])
-    return bool(
-        candidate and _reference_status(claims, cn, live=True) == "source_bound"
-        and verified_candidate(
-            raw, candidate, entities, scribe=scribe, authority_rows=authority_rows,
-            viaf_sources=viaf_sources, gnd_sources=gnd_sources,
-        )
-    )
+    if not candidate or _reference_status(claims, cn, live=True) != "source_bound":
+        return False
+    return verified_candidate(
+        raw, candidate, entities, scribe=scribe, authority_rows=authority_rows,
+        viaf_sources=viaf_sources, gnd_sources=gnd_sources,
+    ) or (scribe and _library_of_congress_confirms_scribe(
+        raw, candidate, claims[0], authority_rows, viaf_sources, lc_headings,
+    ))
 
 
 def _repair_statement(

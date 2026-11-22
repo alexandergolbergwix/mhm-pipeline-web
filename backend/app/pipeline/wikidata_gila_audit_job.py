@@ -168,9 +168,12 @@ def _geographic_context(entities, qids, properties):
     }
 
 
-def _read_cited_viaf_sources(entities, manuscript_qids, work_qids=()):
-    from app.pipeline.wikidata_gila_identity_evidence import _viaf_citation_ids
-    from converter.authority.viaf_matcher import VIAFMatcher
+async def _read_cited_authority_sources(entities, manuscript_qids, work_qids=()):
+    from app.pipeline.wikidata_gila_authority_reads import (
+        authority_audit_client, library_of_congress_identifier, read_library_of_congress_headings, read_viaf_clusters,
+    )
+    from app.pipeline.wikidata_gila_facts import _live_claims
+    from app.pipeline.wikidata_gila_identity_evidence import _viaf_citation_ids, _viaf_identifier, _viaf_reference_ids
 
     ids = {
         identifier for qid in manuscript_qids if qid in entities
@@ -180,8 +183,20 @@ def _read_cited_viaf_sources(entities, manuscript_qids, work_qids=()):
         identifier for qid in work_qids if qid in entities
         for identifier in _viaf_citation_ids(entities[qid], ("P50",))
     )
-    matcher = VIAFMatcher()
-    return {identifier: matcher.get_cluster_raw(identifier) for identifier in sorted(ids)}
+    async with authority_audit_client() as client:
+        viaf_sources = await read_viaf_clusters(client, ids)
+        lc_ids = set()
+        for qid in manuscript_qids:
+            if qid not in entities:
+                continue
+            for claim in _live_claims(entities[qid], "P11603"):
+                candidate = entities.get(claim["value"], {})
+                viaf = _viaf_identifier(candidate)
+                if viaf not in viaf_sources and viaf in _viaf_reference_ids(claim["references"]):
+                    if identifier := library_of_congress_identifier(candidate):
+                        lc_ids.add(identifier)
+        lc_headings = await read_library_of_congress_headings(client, lc_ids)
+    return viaf_sources, lc_headings
 
 
 async def _authorize(db, job: RunJob) -> None:
@@ -504,8 +519,8 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
                 "message": "Compare the nine requirements against the source and live statements.",
             },
         )
-        viaf_sources = await asyncio.to_thread(
-            _read_cited_viaf_sources, entities, mappings.values(),
+        viaf_sources, lc_headings = await _read_cited_authority_sources(
+            entities, mappings.values(),
             {item.get("existing_qid") for item in canonical if item.get("entity_type") == "work"},
         )
         from app.pipeline.wikidata_gila_gnd_evidence import cited_gnd_ids, read_gnd_sources
@@ -524,6 +539,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             repair_viaf_sources=viaf_sources,
             repair_gnd_sources=gnd_sources,
             people_marc=people_marc,
+            repair_lc_headings=lc_headings,
         )
         packet = await asyncio.to_thread(
             build_gila_completion_packet,

@@ -4450,3 +4450,11 @@ alignment warning when the full fields are unavailable. The prior audit
 counted 287 flat alignment warnings twice. Bind evidence and Publication
 preparation to the source copy from that repair cycle. Keep the first-creator
 guard for every write. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).
+
+## Rule W-371 — Verify a published scribe through an independent authority
+
+Honor the VIAF retry delay. If VIAF is unavailable, a linked Library of
+Congress personal authority can verify a published scribe. Require the
+exact VIAF citation, catalogue reference, MARC name, and both life dates.
+This check grants no permission to write. Production v843 omitted a verified
+scribe when VIAF returned HTTP 429. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).

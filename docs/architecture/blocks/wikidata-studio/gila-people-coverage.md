@@ -22,6 +22,15 @@ needs an exact source ID or independent authority evidence. An uncertain
 source name can have a verified unknown-value claim. Other identities stay
 open for review. Manuscript notes remain in the source passage report.
 
+The audit honors the VIAF retry delay. It retries once within an eight-second
+wait budget. It defers further VIAF requests after a second HTTP 429 or a
+longer delay. For an existing scribe claim with an exact VIAF citation, the
+audit can then use the linked Library of Congress personal authority. The
+authority heading must match the MARC name and both life dates. The fallback
+applies to published claims with the exact catalogue reference. It grants no
+permission to write. Tests exercise both retry paths and reject conflicting
+evidence. The code lives in wikidata_gila_authority_reads.py.
+
 The page displays counts for the full MARC records, verified roles, verified
 authority links, and preserved uncertainties. The new point 5 denominator
 counts source roles, so it differs from the old projection count.

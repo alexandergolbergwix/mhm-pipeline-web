@@ -213,7 +213,7 @@ def _exact_life_dates(variants):
     return match[1], match[2]
 
 
-def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf_sources=None, gnd_sources=None):
+def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf_sources=None, gnd_sources=None, lc_headings=None):
     """Report one check per MARC occurrence and role."""
     record = prepare_record_for_pipeline(dict(raw))
     cn = canonical_control_number(record["_control_number"])
@@ -284,6 +284,7 @@ def people_role_cases(raw, manuscript, live_entities, *, authority_rows=(), viaf
                     verified_link = live_source_match(
                         raw, manuscript, entities, cn, scribe=True, name=display,
                         authority_rows=authority_rows, viaf_sources=viaf_sources, gnd_sources=gnd_sources,
+                        lc_headings=lc_headings,
                     )
             reason = (
                 "recorded_person_uncertainty" if preserved_uncertainty else
