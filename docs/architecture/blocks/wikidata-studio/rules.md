@@ -1416,3 +1416,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 234. **R234 — Keep the evidence for each verified scribe (W-377).** Check the exact MARC role, the authority, and each required citation. Bind a reviewed date case to the exact manuscript and person.
 
 235. **R235 — Bind a reviewed colophon to the exact scribe and manuscript (W-378).** Require the exact MARC source and the cited identity. Keep the correction on a deprecated exemplar attribution.
+
+236. **R236 — Bind an external scribe item to its reviewed authority (W-379).** Check the live person record, the name authority, and the exact MARC scribe note before a link.

@@ -4529,3 +4529,11 @@ The manuscript claim must cite its own source and the confirmed identity.
 A reviewed exemplar attribution requires the exact copy and provenance
 notes. Verify the deprecated claim and the cited correction. Keep the
 scribe of the physical copy. Count the correction as a verified case.
+
+## Rule W-379 — Bind an external scribe item to its reviewed authority
+
+For Immanuel ben Gad de Milhaud, require the live Wikidata person to cite
+the Columbia record and link to the exact Digital Scriptorium name authority.
+Match the reviewed MARC colophon or title-page note to the exact occurrence.
+Link only the manuscript. For the Columbia volume 28 correction, keep the
+verified Delfogit claim and cite the holding catalogue on the deprecated claim.

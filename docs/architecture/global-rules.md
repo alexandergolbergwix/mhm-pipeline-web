@@ -40,7 +40,7 @@ Block-specific rules live in each block's `rules.md`. These apply everywhere:
   behaviour extends its pinning test suite. *Why:* tests are the regression
   contract; docs describe, tests enforce.
 
-Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-378).
+Full incident history: repo root [CLAUDE.md](../../CLAUDE.md) (W-1…W-379).
 
 The [loopback reference-repair control](blocks/wikidata-studio/local-reference-repair-ui.md) retains the exact reviewed queue and all downstream access checks. Its local operator key cannot grant a Studio or foreground exception.
 

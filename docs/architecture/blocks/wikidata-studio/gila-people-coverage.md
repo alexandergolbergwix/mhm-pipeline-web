@@ -71,6 +71,8 @@ The audit can verify a reviewed colophon with no external person ID.
 It checks the exact MARC note and the references on both live items.
 For a verified exemplar, it checks the deprecated claim and its holding
 catalogue citation. See the [Delfogit evidence](../../../audits/2026-11-22-delfogit-authority.md).
+For a reviewed external person, the audit checks the authority ID and its
+holding catalogue. See the [Milhaud evidence](../../../audits/2026-11-22-milhaud-immanuel-authority.md).
 
 The role planner in `wikidata_gila_people.py` supports scribes, authors, and
 former owners. An author repair requires a unique work for the exact MARC

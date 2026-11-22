@@ -562,3 +562,79 @@ def test_reviewed_exemplar_requires_the_cited_deprecation_and_preserves_other_sc
     assert not case()["authority_verified"] and not case()["role_verified"]
     manuscript["claims"]["P11603"].remove(keeper)
     assert not case()["verified"]
+
+
+def test_milhaud_title_page_requires_the_exact_person_and_both_citations(monkeypatch):
+    from hashlib import sha256
+
+    from app.pipeline import wikidata_gila_scribe_colophons as reviewed
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    note = "Title page signed by the scribe."
+    digest = sha256(sha256(note.encode()).hexdigest().encode()).hexdigest()
+    record = parse_nli_records(_response(_record(
+        _field("700", ("a", reviewed.MILHAUD_HEADING), ("4", "scr"))
+        + _field("500", ("a", note)),
+    )), {CONTROL})[CONTROL]
+    unknown = _claim(None, qualifiers={"P1932": reviewed.MILHAUD_HEADING})
+    unknown["id"] = "Q10$milhaud"
+    unknown["mainsnak"] = {"snaktype": "somevalue"}
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P11603": [unknown]}}
+    case = {**people_role_cases(record, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
+    monkeypatch.setitem(reviewed._MILHAUD_COLOPHONS, CONTROL, (case["occurrence"], "500", digest))
+    person = {"id": reviewed.MILHAUD_QID, "claims": {
+        "P31": [_claim({"id": "Q5"})], "P13311": [_claim(reviewed.MILHAUD_DS_ID)],
+        "P973": [_claim(reviewed.MILHAUD_COLUMBIA)],
+    }}
+
+    def plan():
+        return plan_person_role_repair(record, case, manuscript, {}, person, {})
+
+    _, statement, claim_id = plan()
+    assert claim_id == unknown["id"]
+    assert [block[0]["value"] for block in statement.reference_blocks] == [
+        reviewed.MILHAUD_COLUMBIA, reviewed.MILHAUD_DS_URL,
+    ]
+    person["id"] = "Q99"
+    assert plan() is None
+    person["id"] = reviewed.MILHAUD_QID
+    wrong_authority = [_claim("Q1")]
+    person["claims"]["P13311"] = wrong_authority
+    assert plan() is None
+    person["claims"]["P13311"] = [_claim(reviewed.MILHAUD_DS_ID)]
+    unknown["mainsnak"] = _snak({"id": person["id"]})
+    unknown["references"].append({"snaks": {"P854": [_snak(reviewed.MILHAUD_COLUMBIA)]}})
+    assert not people_role_cases(record, manuscript, {person["id"]: person})[0]["verified"]
+    unknown["references"].append({"snaks": {"P854": [_snak(reviewed.MILHAUD_DS_URL)]}})
+    assert people_role_cases(record, manuscript, {person["id"]: person})[0]["authority_verified"]
+
+
+def test_milhaud_misattribution_preserves_the_verified_delfogit_link(monkeypatch):
+    from hashlib import sha256
+
+    from app.pipeline import wikidata_gila_scribe_colophons as reviewed
+
+    note = "Delpuget signed this colophon."
+    digest = sha256(sha256(note.encode()).hexdigest().encode()).hexdigest()
+    fields = (
+        _field("700", ("a", reviewed.MILHAUD_HEADING), ("4", "scr"))
+        + _field("700", ("a", reviewed.DELFOGIT_HEADING), ("4", "scr"))
+        + _field("957", ("a", note))
+    )
+    record = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    old = _claim(None, qualifiers={"P1932": reviewed.MILHAUD_HEADING, "P2241": {"id": reviewed.MISATTRIBUTION}})
+    old["mainsnak"] = {"snaktype": "somevalue"}
+    old["rank"] = "deprecated"
+    old["references"].append({"snaks": {"P854": [_snak(reviewed.COLUMBIA_DELFOGIT_URL)]}})
+    keeper = _claim({"id": "Q99"}, qualifiers={"P1932": reviewed.DELFOGIT_HEADING})
+    manuscript = {"claims": {"P3959": [_claim(CONTROL)], "P11603": [old, keeper]}}
+
+    def case():
+        return next(row for row in people_role_cases(record, manuscript, {}) if row["source_value"] == reviewed.MILHAUD_HEADING)
+
+    monkeypatch.setattr(reviewed, "COLUMBIA_DELFOGIT", CONTROL)
+    monkeypatch.setitem(reviewed._MILHAUD_COLOPHONS, CONTROL, (case()["occurrence"], "957", digest))
+    assert not case()["verified"]
+    keeper["mainsnak"] = _snak({"id": reviewed.DELFOGIT_QID})
+    assert case()["verified"] and case()["reason"] == "verified_scribe_misattribution"
+    assert not case()["authority_verified"] and not case()["role_verified"]

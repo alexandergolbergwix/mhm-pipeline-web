@@ -1,6 +1,7 @@
-"""Reviewed catalogue evidence for the Delpuget manuscript scribe cases."""
+"""Reviewed catalogue evidence for named manuscript scribes."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from hashlib import sha256
 
 from app.pipeline import marc_occurrences as marc
@@ -14,9 +15,26 @@ DELFOGIT_PARMA = (
 )
 DELFOGIT_WRONG_IDS = {"P8189": "987007453092705171", "P214": "33148874584149621414"}
 
+MILHAUD_QID = "Q132798628"
+MILHAUD_HEADING = "מיליאב, עמנואל בן גד"
+MILHAUD_DS_ID = "Q75810"
+MILHAUD_DS_URL = "https://catalog.digital-scriptorium.org/wiki/Item:Q75810"
+MILHAUD_COLUMBIA = "https://exhibitions.library.columbia.edu/exhibits/show/hebrew_mss/item/7261"
+
 COLUMBIA_EXEMPLAR = "990001371830205171"
 COLUMBIA_EXEMPLAR_URL = "https://clio.columbia.edu/catalog/17229167/librarian_view"
+COLUMBIA_DELFOGIT = "990001372150205171"
+COLUMBIA_DELFOGIT_URL = "https://clio.columbia.edu/catalog/17327314/librarian_view"
 MISATTRIBUTION = "Q105675146"
+
+
+@dataclass(frozen=True)
+class ReviewedScribeExclusion:
+    person_qid: str
+    retained_heading: str
+    reference_url: str
+    retained_qid: str | None = None
+
 
 # The review binds the MARC occurrence to the exact text of field 957.
 _COLOPHONS = {
@@ -50,6 +68,40 @@ _HOLDING_CATALOGUES = {
 }
 
 
+# The review also uses the title-page note in field 500 for Columbia volume 37.
+_MILHAUD_COLOPHONS = {
+    "990000538270205171": ("700:1", "957", "4cb91de3d3c01aa2a8fc262fb26c3b7da25c53b5643425e415de314154f3a156"),
+    "990000927450205171": ("700:1", "957", "be4917268893894bf105b3e84986e3bc61fc0cddbc876196c2c3bcc976a7c263"),
+    "990000998970205171": ("700:1", "957", "6ff265d7de7a09754db7658120e0c6988e775a159af00c5b30501b20f26358c0"),
+    "990001065130205171": ("700:1", "957", "d263efc59109f120633b4c2f7260e73d875b928320d8145f992a0690cefd0f58"),
+    "990001065660205171": ("700:1", "957", "fd8280cb6ec2c9ff201992cfd8b324e5fadc51082cace29a44aca73b5ad9d5ae"),
+    "990001079140205171": ("700:1", "957", "24497ce8b3604f636ea7d81c2a97e0ed9e6f774e3de929a2c7190b4ffdeafc9d"),
+    "990001079640205171": ("700:1", "957", "e72a6e046c7aa258ba803410cfdbbb58c936c17632b2bb1307d196a17acd02b8"),
+    "990001084010205171": ("700:1", "957", "ab271bcda2ec3b4b2445dfff449852192ec9de89e0d7fe77712858d6f919c299"),
+    "990001087630205171": ("700:1", "957", "545f59288e7881a936fdb0b86fe0ca0e5bc8326568ffde2c085acee11b0aed27"),
+    "990001111570205171": ("700:1", "957", "6df6320fa79ac70fbe0b2daf2b837ee7a5722f87302f0a9aab1cb18eb7dda93f"),
+    "990001117480205171": ("700:1", "957", "c3fde2177b6eef600eee17db03926ca6df711c43a58b1d80c242a1d5160ba467"),
+    "990001117500205171": ("700:1", "957", "5f177064b7983aac40745ae6fd44ace8dac4fa05a781e03fcfa7d23e67ffcf93"),
+    "990001141100205171": ("700:1", "957", "2e5ab7f5286175c4649e8a663402d8a61a92340bbddb98f01e878e38aca1d399"),
+    "990001167280205171": ("700:1", "957", "44d3461d012317596dc3cbb30f09493b17d7ffc7d566e12cbeb6c362b6ed789e"),
+    "990001219330205171": ("700:1", "957", "13d7e6f334f0a960f51d132c9c30a399ae943f937af5ed2df1fbaf00c58c4c0c"),
+    "990001333740205171": ("700:1", "957", "1e23cef049b57c6592be0b1a520158cfd3440b9ef1d46a4397591115b9406256"),
+    "990001343980205171": ("700:1", "957", "968975972f63333e7778e60d1fcd8ec01a072eec1a427c8c8fd2b186fe7442c5"),
+    "990001371830205171": ("700:1", "957", "6cc5c6862b6bc9da1eb91b1eaeaeaba09836277264b4d7534fc0849f2be59852"),
+    "990001371930205171": ("700:1", "957", "ad1817af4c70608075e8c9545edbcacc263d61717102a40593fdbe9a3747a486"),
+    "990001372120205171": ("700:1", "957", "3fab4c77c1fe5dd3bcaa606854602dd1b58b92d237a2136388d222b5b2e4b7e0"),
+    "990001372150205171": ("700:1", "957", "06ab6d897ab842a0fbb4881555b2cc89652cb1db1e26eae02340b27d88888cd7"),
+    "990001510630205171": ("700:1", "957", "9f92f11fde95546bc47e13e099e7059e60c40087eaa0f81f0870d281ea819b4d"),
+    "990001738610205171": ("700:1", "957", "8bf9e4f653618c31fbe92f1955aa1f9c575c7379c4bd0d2eb12bc66309774397"),
+    "990001831030205171": ("700:1", "957", "b22859affdccca4b51c98adc5fb3facfd2cadcf3068c94a66cab8b67671098f4"),
+    "990001831070205171": ("700:1", "957", "8b21be87163426e97b258554487895bf8af2e2bae1e8be953a0e1e28e7a4a598"),
+    "990001855990205171": ("700:1", "957", "ee8733ecc79b285b6b0556bda885ba9d4ff7ce2a98981cd429c5708f460c369c"),
+    "990001856020205171": ("700:1", "957", "d630777bf49df494ed7ef08d16c8dd3c551bb3238b8c179d11f2662e469f3052"),
+    "990001989170205171": ("700:2", "957", "21cdf3194c2b3f4c83f6c42739f8a4a0980b1405c682f10721e9cc1c46eae4fe"),
+    "990034170610205171": ("700:1", "500", "b6aa38f13732994615f12d72d9d7b8f96c22657f2b42dd83a81c926e157cde09"),
+}
+
+
 def _note_digests(record: Mapping, tag: str) -> list[str]:
     return [
         sha256(value.encode()).hexdigest()
@@ -66,7 +118,19 @@ def matches_reviewed_colophon(record: Mapping, cn: str, occurrence: str, heading
     )
 
 
+def matches_reviewed_milhaud(record: Mapping, cn: str, occurrence: str, heading: str) -> bool:
+    proof = _MILHAUD_COLOPHONS.get(cn)
+    if not proof or heading != MILHAUD_HEADING or occurrence != proof[0]:
+        return False
+    notes = _note_digests(record, proof[1])
+    return sha256(" ".join(notes).encode()).hexdigest() == proof[2]
+
+
 def reviewed_colophon_urls(record: Mapping, cn: str, occurrence: str, heading: str) -> tuple[str, ...]:
+    if heading == MILHAUD_HEADING:
+        if cn == COLUMBIA_DELFOGIT or not matches_reviewed_milhaud(record, cn, occurrence, heading):
+            return ()
+        return (MILHAUD_COLUMBIA, MILHAUD_DS_URL)
     if cn == COLUMBIA_EXEMPLAR or not matches_reviewed_colophon(record, cn, occurrence, heading):
         return ()
     holding_catalogue = _HOLDING_CATALOGUES.get(cn)
@@ -78,3 +142,13 @@ def matches_reviewed_exemplar(record: Mapping, cn: str, occurrence: str, heading
         cn == COLUMBIA_EXEMPLAR and matches_reviewed_colophon(record, cn, occurrence, heading)
         and _note_digests(record, "561").count(_EXEMPLAR_PROVENANCE) == 1
     )
+
+
+def reviewed_scribe_exclusion(
+    record: Mapping, cn: str, occurrence: str, heading: str,
+) -> ReviewedScribeExclusion | None:
+    if matches_reviewed_exemplar(record, cn, occurrence, heading):
+        return ReviewedScribeExclusion(DELFOGIT_QID, MILHAUD_HEADING, COLUMBIA_EXEMPLAR_URL)
+    if cn == COLUMBIA_DELFOGIT and matches_reviewed_milhaud(record, cn, occurrence, heading):
+        return ReviewedScribeExclusion(MILHAUD_QID, DELFOGIT_HEADING, COLUMBIA_DELFOGIT_URL, DELFOGIT_QID)
+    return None

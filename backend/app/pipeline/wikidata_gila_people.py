@@ -22,8 +22,9 @@ from app.pipeline.wikidata_gila_identity_evidence import (
     _viaf_identifier, _viaf_reference_ids, live_source_match, viaf_proves_person,
 )
 from app.pipeline.wikidata_gila_scribe_colophons import (
-    COLUMBIA_EXEMPLAR_URL, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS, MISATTRIBUTION,
-    matches_reviewed_exemplar, reviewed_colophon_urls,
+    DELFOGIT_HEADING, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS,
+    MILHAUD_COLUMBIA, MILHAUD_DS_ID, MILHAUD_HEADING, MILHAUD_QID, MISATTRIBUTION,
+    reviewed_colophon_urls, reviewed_scribe_exclusion,
 )
 from app.pipeline.wikidata_source_choices import _claim_values
 from converter.authority.mazal_index import MazalIndex
@@ -294,7 +295,15 @@ def _cites_authority(claim, urls):
 
 def _colophon_scribe_urls(candidate, record, cn, occurrence, display):
     urls = reviewed_colophon_urls(record, cn, occurrence, display)
-    if not urls or candidate.get("id") != DELFOGIT_QID or "Q5" not in _links(candidate, "P31"):
+    if not urls or "Q5" not in _links(candidate, "P31"):
+        return ()
+    if display == MILHAUD_HEADING:
+        return urls if (
+            candidate.get("id") == MILHAUD_QID
+            and _claim_values(candidate, "P13311") == [MILHAUD_DS_ID]
+            and MILHAUD_COLUMBIA in _claim_values(candidate, "P973")
+        ) else ()
+    if display != DELFOGIT_HEADING or candidate.get("id") != DELFOGIT_QID:
         return ()
     if any(value in _claim_values(candidate, pid) for pid, value in DELFOGIT_WRONG_IDS.items()):
         return ()
@@ -306,13 +315,14 @@ def _colophon_scribe_urls(candidate, record, cn, occurrence, display):
     return urls
 
 
-def _confirmed_scribe_exclusion(manuscript, cn, display):
+def _confirmed_scribe_exclusion(manuscript, cn, display, exclusion):
     active = _live_claims(manuscript, "P11603")
     if any(
-        claim["value"] == DELFOGIT_QID or display in _qualifier_values(claim, "P1932")
+        claim["value"] == exclusion.person_qid or display in _qualifier_values(claim, "P1932")
         for claim in active
     ) or not any(
-        _qualifier_values(claim, "P1932") == ["מיליאב, עמנואל בן גד"]
+        _qualifier_values(claim, "P1932") == [exclusion.retained_heading]
+        and (exclusion.retained_qid is None or claim["value"] == exclusion.retained_qid)
         and _reference_status([claim], cn, live=True) == "source_bound"
         for claim in active
     ):
@@ -322,7 +332,7 @@ def _confirmed_scribe_exclusion(manuscript, cn, display):
         and [_snak_value(snak) for snak in claim.get("qualifiers", {}).get("P1932", [])] == [display]
         and any(_snak_value(snak) == MISATTRIBUTION for snak in claim.get("qualifiers", {}).get("P2241", []))
         and _reference_status([claim], cn, live=True) == "source_bound"
-        and _cites_authority({"references": claim.get("references", [])}, (COLUMBIA_EXEMPLAR_URL,))
+        and _cites_authority({"references": claim.get("references", [])}, (exclusion.reference_url,))
         for claim in manuscript.get("claims", {}).get("P11603", [])
     )
 
@@ -509,7 +519,7 @@ def plan_person_role_repair(
     if not display or display != case["source_value"]:
         return None
     occurrence = marc.source_key(row)
-    if role == "scribe" and matches_reviewed_exemplar(record, cn, occurrence, display):
+    if role == "scribe" and reviewed_scribe_exclusion(record, cn, occurrence, display):
         return None
     dates = _exact_life_dates(variants)
     urls = _dated_authority_urls(candidate, source_names, dates, lc_headings, mazal_headings)
@@ -689,8 +699,9 @@ def people_role_cases(
                         authority_rows=authority_rows, viaf_sources=viaf_sources, gnd_sources=gnd_sources,
                         lc_headings=lc_headings,
                     )
-            exclusion = role == "scribe" and exact_manuscript and (
-                matches_reviewed_exemplar(record, cn, occurrence, display) and _confirmed_scribe_exclusion(target, cn, display)
+            exclusion_proof = reviewed_scribe_exclusion(record, cn, occurrence, display) if role == "scribe" else None
+            exclusion = bool(
+                exact_manuscript and exclusion_proof and _confirmed_scribe_exclusion(target, cn, display, exclusion_proof)
             )
             reason = (
                 "verified_scribe_misattribution" if exclusion else
