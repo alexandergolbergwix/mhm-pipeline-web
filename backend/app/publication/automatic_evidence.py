@@ -10,6 +10,7 @@ from sqlalchemy import text
 from app.pipeline.inference_cache import cache_lookup_or_call
 from app.publication.digests import canonical_digest
 from app.pipeline.marc_verify_context import load_run_marc_records_scoped
+from app.pipeline.wikidata_evidence_reads import wikidata_evidence_get
 from app.pipeline.wikidata_reference_reader import WIKIDATA_PUBLIC_USER_AGENT
 from app.pipeline.wikidata_verdict_cache import record_ids_for_wikidata_item
 
@@ -85,7 +86,7 @@ async def search_candidates(db, site, label, actor_id, force_refresh=False, *, l
             timeout=12, follow_redirects=False, trust_env=False,
             headers={"User-Agent": WIKIDATA_PUBLIC_USER_AGENT},
         ) as client:
-            response = await client.get(f'https://{site}/w/api.php', params={'action': 'wbsearchentities',
+            response = await wikidata_evidence_get(client, f'https://{site}/w/api.php', params={'action': 'wbsearchentities',
                 'format': 'json', 'language': language, 'search': label[:250], 'type': 'item', 'limit': limit})
             response.raise_for_status()
             if len(response.content) > 262144:

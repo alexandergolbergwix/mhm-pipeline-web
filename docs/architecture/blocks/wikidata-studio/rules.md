@@ -1394,3 +1394,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 223. **R223 — Keep exact source proof independent of Kimi (W-366).** Retry invalid model responses within a fixed limit. Require one exact catalogue and authority match before an automatic edit. *Why:* Invalid model responses stopped evidence checks, and the place parser missed source records that name a place and one jurisdiction.
 
 224. **R224 — Check the exact source occurrence before an automatic link (W-367).** Match a missing work link to one Ktiv-qualified public title with compatible source authorship. Use GND only when it confirms both MARC life years. Repeat the checks before publication and during audit.
+
+225. **R225 — Pace public evidence reads (W-368).** Share the request schedule across the batch. Wait for the server retry delay before the next read.

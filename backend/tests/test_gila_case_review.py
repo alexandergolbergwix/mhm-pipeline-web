@@ -340,3 +340,49 @@ def test_scribe_gnd_proof_requires_both_dates_and_the_exact_source_heading():
     assert not identity.verified_candidate(
         {**raw, "700$a": "Another David Scribe"}, candidate, {}, scribe=True, gnd_sources=sources,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [429, 503])
+async def test_batch_evidence_recovers_from_wikidata_read_delay(monkeypatch, status):
+    from contextlib import asynccontextmanager
+
+    import httpx
+
+    case = {
+        "qid": "Q10", "local_id": "manuscript:one", "control_number": CN,
+        "case_id": "source:scribe:one", "reason": "named_scribe_identity_unresolved",
+        "disposition": "manual_review",
+    }
+    calls = 0
+
+    def wikimedia(request):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(status, headers={"Retry-After": "0"})
+        return httpx.Response(200, json={"query": {}})
+
+    async def batch_case(*_):
+        async with httpx.AsyncClient(transport=httpx.MockTransport(wikimedia)) as client:
+            await worker.ReferenceItemReader._get(
+                client, "https://www.wikidata.org/w/api.php", {"action": "query"},
+            )
+        return "supported", {"case_id": case["case_id"]}
+
+    @asynccontextmanager
+    async def session_scope():
+        yield SimpleNamespace(get=AsyncMock())
+
+    finish = AsyncMock()
+    monkeypatch.setattr(worker, "session_scope", session_scope)
+    monkeypatch.setattr(worker, "gila_cases", lambda _: [case])
+    monkeypatch.setattr(worker, "_authorize", AsyncMock())
+    monkeypatch.setattr(worker, "_require_current_audit", AsyncMock())
+    monkeypatch.setattr(worker, "update_job_progress", AsyncMock())
+    monkeypatch.setattr(worker, "_batch_case", batch_case)
+    monkeypatch.setattr(worker, "finish_job", finish)
+
+    await worker._batch_review(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), object())
+    result = finish.await_args.kwargs["result"]
+    assert (result["supported"], result["unavailable"], calls) == (1, 0, 2)

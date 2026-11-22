@@ -1,11 +1,11 @@
 """Read exact Wikidata item snapshots without an edit session."""
 
-import asyncio
 import re
 from collections.abc import Callable
 
 import httpx
 
+from app.pipeline.wikidata_evidence_reads import wikidata_evidence_get
 from app.pipeline.wikidata_mirror import validate_entity
 
 _ORIGIN = "https://www.wikidata.org"
@@ -127,9 +127,10 @@ class ReferenceItemReader:
     @staticmethod
     async def _get(client: httpx.AsyncClient, url: str, params: dict[str, str]) -> dict:
         try:
-            async with asyncio.timeout(_READ_TIMEOUT):
-                client.cookies.clear()
-                response = await client.get(url, params=params)
+            client.cookies.clear()
+            response = await wikidata_evidence_get(
+                client, url, params=params, timeout=_READ_TIMEOUT,
+            )
         except (httpx.TransportError, TimeoutError) as error:
             raise _ReadUnavailableError("The Wikidata read is temporarily unavailable.") from error
         if response.status_code == 429 or "Retry-After" in response.headers:

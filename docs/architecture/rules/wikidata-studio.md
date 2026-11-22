@@ -4423,3 +4423,12 @@ The job checks the first-revision creator of each manuscript it will edit.
 The release validator permits the source-qualified work link on that manuscript at the audited revision.
 The final audit checks source-qualified live links and the cited authority record.
 See [case review](../blocks/wikidata-studio/gila-case-review.md).
+
+
+## Rule W-368 — Pace the public reads in the manuscript evidence batch
+
+Use one shared request schedule for evidence searches and exact Wikidata item reads.
+Wait for the server's retry delay before the next public request in the batch.
+Keep each read within its retry budget. Preserve the creator, revision, and source checks.
+Production v840 lost 25 evidence checks after a burst of public read failures.
+See [the evidence worker](../blocks/wikidata-studio/gila-case-review.md).

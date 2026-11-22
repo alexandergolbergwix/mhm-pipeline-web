@@ -18,6 +18,10 @@ from app.db import session_scope
 from app.models.run import AuthorityMatch, RunRecord
 from app.models.run_job import RunJob
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
+from app.pipeline.wikidata_evidence_reads import (
+    paced_wikidata_evidence_reads,
+    wikidata_evidence_get,
+)
 from app.pipeline.wikidata_gila_audit_job import KIND, AuditCancelledError, _authorize, gila_cases
 from app.pipeline.wikidata_gila_gnd_evidence import gnd_identifier, read_gnd_sources
 from app.pipeline.wikidata_gila_identity_evidence import (
@@ -228,7 +232,7 @@ async def load_authority_evidence(db, run_id, cn=None):
 async def _search_authority(client, identifiers):
     qids = set()
     for pid, identifier in sorted(identifiers):
-        response = await client.get("https://www.wikidata.org/w/api.php", params={
+        response = await wikidata_evidence_get(client, "https://www.wikidata.org/w/api.php", params={
             "action": "query", "list": "search", "format": "json", "srnamespace": "0",
             "srsearch": f"haswbstatement:{pid}={identifier}", "srlimit": "4",
         }, timeout=8)
@@ -289,7 +293,7 @@ async def inspect_case(raw, case, actor, *, progress=None, authority_rows=(), au
     )
     lookup_ids = identifiers | {("P214", identifier) for identifier in viaf_sources}
     reader = ReferenceItemReader()
-    async with asyncio.timeout(30):
+    async with asyncio.timeout(110 if automatic else 30):
         async with session_scope() as db:
             authority_places = await _kima_place_candidates(db, label) if parts else set()
             candidates = (
@@ -495,17 +499,18 @@ async def _batch_review(job_id, run_id, actor, audit_id, audit):
             return "unavailable", None
 
     queue = list(cases.values())
-    for offset in range(0, len(queue), 4):
-        async with session_scope() as db:
-            await _authorize(db, await db.get(RunJob, job_id))
-        await update_job_progress(job_id, {
-            "phase": "find_evidence", "message": "Check the MARC source, authority records, and Wikidata candidates.",
-            "processed": offset, "total": len(queue), "unit": "source cases",
-        })
-        for result, proof in await asyncio.gather(*(check(case) for case in queue[offset:offset + 4])):
-            outcomes[result] += 1
-            if proof:
-                repairs.append(proof)
+    with paced_wikidata_evidence_reads():
+        for offset in range(0, len(queue), 4):
+            async with session_scope() as db:
+                await _authorize(db, await db.get(RunJob, job_id))
+            await update_job_progress(job_id, {
+                "phase": "find_evidence", "message": "Check the MARC source, authority records, and Wikidata candidates.",
+                "processed": offset, "total": len(queue), "unit": "source cases",
+            })
+            for result, proof in await asyncio.gather(*(check(case) for case in queue[offset:offset + 4])):
+                outcomes[result] += 1
+                if proof:
+                    repairs.append(proof)
     async with session_scope() as db:
         await _authorize(db, await db.get(RunJob, job_id))
         await _require_current_audit(db, run_id, audit_id)

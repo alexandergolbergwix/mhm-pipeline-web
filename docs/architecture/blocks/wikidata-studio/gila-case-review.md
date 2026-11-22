@@ -46,7 +46,10 @@ The first-revision creator check excludes other items before the batch requests 
 A unique candidate with independent source proof can proceed without a model response.
 Kimi can review cases with a source identifier or another exact comparison field.
 The model response cannot authorize publication. Code checks the source and candidate independently.
-The job records unavailable evidence checks and continues with the proven cases.
+The batch shares one request schedule for Wikidata candidate searches, authority searches, and exact item reads.
+It starts at most one request per second. It waits for `Retry-After` before any new request in the batch.
+It retries temporary failures up to three total attempts. It records unavailable checks when the wait exceeds the time budget.
+The creator check and the MARC and authority proof still control which cases can proceed.
 The preparation worker repeats the checks with the same MARC hash, authority IDs, and public revisions.
 The release adds only the supported claim, with a reference to the Ktiv record.
 It adds a separate reference for a live VIAF match. The final audit checks this authority record again.
