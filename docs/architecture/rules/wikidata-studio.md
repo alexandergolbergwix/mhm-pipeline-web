@@ -4420,5 +4420,6 @@ The public title must cite the same Ktiv record. Keep the original MARC title an
 Skip an existing link for that work or source scope.
 A GND scribe match requires both MARC life years and the exact person heading.
 The job checks the first-revision creator of each manuscript it will edit.
+The release validator permits the source-qualified work link on that manuscript at the audited revision.
 The final audit checks source-qualified live links and the cited authority record.
 See [case review](../blocks/wikidata-studio/gila-case-review.md).

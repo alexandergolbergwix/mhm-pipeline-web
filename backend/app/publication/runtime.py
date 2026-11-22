@@ -437,7 +437,7 @@ class StudioCacheProjectionSource(ProjectionSource):
                 if additions and (
                     not self.selected_existing or _item_entity_type(item) != "manuscript"
                     or _item_entity_key(item) not in self.repair_revisions
-                    or any(row.get("property") not in {"P11603", "P1071"} for row in additions)
+                    or any(row.get("property") not in {"P11603", "P1071", "P1574"} for row in additions)
                 ):
                     raise PublicationSourceError("The evidence repair requires an exact manuscript and revision")
                 scoped = list(exact_statements)

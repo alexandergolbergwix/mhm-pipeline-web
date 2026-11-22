@@ -134,3 +134,72 @@ async def test_release_persists_source_evidence(sample_run, db_session):
     assert row.document["records"] == original["records"]
     assert row.document["work_candidate_evidence"] == original["work_candidate_evidence"]
     assert row.entity_digest
+
+
+@pytest.mark.asyncio
+async def test_release_seals_source_qualified_work_link(sample_run, db_session):
+    from sqlalchemy import select
+
+    from app.models.publication import PublicationEntityRow
+    from app.pipeline.wikidata_gila_work_evidence import work_source, work_statement
+    from app.publication.credentials import configured_publication_gateway_factory
+    from app.publication.runtime import PublicationRuntime
+    from app.schemas.publication import PreparePublicationRequest
+
+    cn = "990000000000000001"
+    local_id, manuscript_qid, work_qid = "QDraft_MS_" + cn, "Q42", "Q43"
+    source_case = {
+        "qid": manuscript_qid,
+        "control_number": cn,
+        "source_field": "505",
+        "expected_qualifiers": {"P1932": "Work title", "P958": "1r–2v"},
+    }
+    raw = {"001": cn, "contents": [{
+        "title": "Work title", "folio_range": "1r–2v", "source_field": "505",
+    }]}
+
+    def snak(value):
+        return {"snaktype": "value", "datavalue": {"value": value}}
+
+    manuscript = {
+        "id": manuscript_qid,
+        "claims": {"P3959": [{"mainsnak": snak(cn)}]},
+    }
+    work = {"id": work_qid, "claims": {
+        "P31": [{"mainsnak": snak({"id": "Q47461344"})}],
+        "P1476": [{
+            "mainsnak": snak({"text": "Work title"}),
+            "references": [{"snaks": {"P3959": [snak(cn)]}}],
+        }],
+    }}
+    occurrence = work_source(raw, source_case)
+    assert occurrence
+    statement = work_statement(manuscript, work, source_case, occurrence)
+    assert statement
+    item = _canonical_item(local_id, "Manuscript")
+    item.update(entity_type="manuscript", existing_qid=manuscript_qid, records=[cn])
+    await _add_canonical_cache(db_session, sample_run["run_id"], items=[item])
+    runtime = PublicationRuntime(
+        session=db_session, gateway_factory=configured_publication_gateway_factory,
+    )
+    response = await runtime.prepare(
+        run_id=sample_run["run_id"],
+        actor_id=str(sample_run["user_id"]),
+        request=PreparePublicationRequest.model_validate({
+            "profile_id": "mhm-wikidata", "profile_version": "1-nodes", "target": "live",
+            "source": {"kind": "run", "projection_source": "canonical", "approved_only": True},
+        }),
+        selected_existing={local_id: manuscript_qid},
+        repair_statements={local_id: []},
+        repair_revisions={local_id: 1234},
+        repair_evidence_statements={local_id: [statement]},
+    )
+    assert response.publication is not None
+    row = await db_session.scalar(select(PublicationEntityRow).where(
+        PublicationEntityRow.entity_key == local_id,
+    ))
+    assert row is not None
+    assert row.document["publication_gila_repair_qid"] == manuscript_qid
+    assert row.document["publication_gila_audited_revision"] == 1234
+    assert row.document["statements"] == [statement]
+    assert row.document["deferred_statements"] == []
