@@ -19,11 +19,13 @@ from app.models.run import AuthorityMatch, RunRecord
 from app.models.run_job import RunJob
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
 from app.pipeline.wikidata_gila_audit_job import KIND, AuditCancelledError, _authorize, gila_cases
+from app.pipeline.wikidata_gila_gnd_evidence import gnd_identifier, read_gnd_sources
 from app.pipeline.wikidata_gila_identity_evidence import (
     REVIEW_REASONS,
     SCRIBE_REASONS,
     _approved_authority_ids,
     _authority_ids,
+    _gnd_proves_scribe,
     _place_parts,
     _proven_candidates,
     _repair_statement,
@@ -33,6 +35,7 @@ from app.pipeline.wikidata_gila_identity_evidence import (
     _source_evidence,
     _wikidata_links,
 )
+from app.pipeline.wikidata_gila_work_evidence import work_case, work_source, work_statement, work_target
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.pipeline.wikidata_source_choices import _claim_values, digest, source_hash
 from app.publication.automatic_evidence import search_candidates
@@ -269,9 +272,8 @@ async def inspect_case(raw, case, actor, *, progress=None, authority_rows=(), au
     parts = None if scribe else _place_parts(raw)
     if parts:
         label = parts[0]
-    elif scribe and "," in label:
-        family, given = label.split(",", 1)
-        label = f"{given.strip()} {family.strip()}"
+    elif scribe:
+        label = label.rstrip(",").strip()
     identifiers = _authority_ids(raw) | _approved_authority_ids(raw, authority_rows) if scribe else set()
     scribe_dates = _scribe_life_dates(raw) if scribe else None
     has_source_discriminator = bool(source_qid or identifiers or parts or scribe_dates)
@@ -302,6 +304,7 @@ async def inspect_case(raw, case, actor, *, progress=None, authority_rows=(), au
             qids = sorted((set(candidates) | authority_qids | authority_places | explicit) - {case["qid"]})
             entities = await reader.fetch_batch(client, qids) if qids else {}
             context = await _place_context(reader, client, entities) if parts else {}
+    gnd_sources = {}
     if scribe_dates and not (identifiers or source_qid):
         linked_viaf_ids = {
             identifier for entity in entities.values()
@@ -309,9 +312,16 @@ async def inspect_case(raw, case, actor, *, progress=None, authority_rows=(), au
         }
         if linked_viaf_ids:
             viaf_sources.update(await asyncio.to_thread(_read_candidate_viaf, raw, linked_viaf_ids))
+        gnd_ids = {
+            identifier for entity in entities.values()
+            if _viaf_identifier(entity) not in viaf_sources
+            and (identifier := gnd_identifier(entity))
+        }
+        if gnd_ids:
+            gnd_sources = await read_gnd_sources(gnd_ids)
     proven = _proven_candidates(
         raw, entities, context, scribe=scribe, source_qid=source_qid, parts=parts,
-        authority_rows=authority_rows, viaf_sources=viaf_sources,
+        authority_rows=authority_rows, viaf_sources=viaf_sources, gnd_sources=gnd_sources,
     )
     confirmed_qid = next(iter(proven)) if len(proven) == 1 else None
     model_used = None
@@ -340,19 +350,52 @@ async def inspect_case(raw, case, actor, *, progress=None, authority_rows=(), au
         })
     decision = _decision(review, entities, confirmed_qid, scribe=scribe)
     candidate = entities.get(review.candidate_qid) if review.candidate_qid else None
+    viaf_id = _viaf_identifier(candidate) if candidate else None
+    gnd_id = gnd_identifier(candidate) if candidate else None
     return {
         "model": model_used, "decision": decision, "explanation": review.explanation,
         "candidate_qid": review.candidate_qid,
         "candidate_revision": candidate["lastrevid"] if candidate else None,
         "source_hash": source_hash(raw), "source_excerpts": excerpts,
-        "_viaf_id": _viaf_identifier(candidate) if candidate and viaf_sources else None,
+        "_viaf_id": viaf_id if viaf_id in viaf_sources else None,
+        "_gnd_id": gnd_id if candidate and _gnd_proves_scribe(raw, candidate, gnd_sources.get(gnd_id)) else None,
+    }
+
+
+async def _find_work_repair(raw, case, actor, reader):
+    occurrence = work_source(raw, case)
+    if not occurrence:
+        return None
+    cn, qid = case["control_number"], case["qid"]
+    async with session_scope() as db:
+        found = await search_candidates(
+            db, "www.wikidata.org", occurrence["title"], actor, force_refresh=True, limit=12,
+        )
+    async with reader._public_client() as client:
+        entities = await reader.fetch_batch(client, sorted(set(found) | {qid}))
+    manuscript = entities.pop(qid, None)
+    targets = [
+        target for target in entities.values()
+        if work_target(target, cn, occurrence["title"], occurrence["author"])
+    ]
+    if not manuscript or len(targets) != 1:
+        return None
+    target = targets[0]
+    if work_statement(manuscript, target, case, occurrence) is None:
+        return None
+    return {
+        "case_id": case["case_id"], "base_revision": manuscript["lastrevid"],
+        "candidate_qid": target["id"], "candidate_revision": target["lastrevid"],
+        "source_hash": source_hash(raw),
     }
 
 
 async def prepare_evidence_statement(raw, case, evidence, *, authority_rows=()):
     if (
-        evidence.get("source_hash") != source_hash(raw) or not reviewable(case)
-        or evidence.get("authority_digest") != digest(sorted(_approved_authority_ids(raw, authority_rows)))
+        evidence.get("source_hash") != source_hash(raw)
+        or not (reviewable(case) or work_case(case))
+        or (not work_case(case) and evidence.get("authority_digest")
+            != digest(sorted(_approved_authority_ids(raw, authority_rows))))
     ):
         return None
     reader = ReferenceItemReader()
@@ -367,6 +410,9 @@ async def prepare_evidence_statement(raw, case, evidence, *, authority_rows=()):
             or candidate["lastrevid"] != evidence.get("candidate_revision")
         ):
             return None
+        if work_case(case):
+            occurrence = work_source(raw, case)
+            return work_statement(manuscript, candidate, case, occurrence) if occurrence else None
         context = (
             await _place_context(reader, client, {qid: candidate})
             if case["reason"] == "production_place_not_resolved" else {}
@@ -379,9 +425,16 @@ async def prepare_evidence_statement(raw, case, evidence, *, authority_rows=()):
         if not _viaf_proves_scribe(raw, identifier, cluster):
             return None
         viaf_sources[identifier] = cluster
+    gnd_sources = {}
+    if identifier := evidence.get("_gnd_id"):
+        if identifier != gnd_identifier(candidate):
+            return None
+        gnd_sources = await read_gnd_sources({identifier})
+        if not _gnd_proves_scribe(raw, candidate, gnd_sources.get(identifier)):
+            return None
     return _repair_statement(
         raw, case, manuscript, candidate, context,
-        authority_rows=authority_rows, viaf_sources=viaf_sources,
+        authority_rows=authority_rows, viaf_sources=viaf_sources, gnd_sources=gnd_sources,
     )
 
 
@@ -395,6 +448,9 @@ async def _batch_case(case, run_id, actor):
             (await load_authority_evidence(db, run_id, case["control_number"])).get(case["control_number"], [])
             if case["reason"] in SCRIBE_REASONS else []
         )
+    if work_case(case):
+        proof = await _find_work_repair(raw, case, actor, reader)
+        return ("supported", proof) if proof else ("needs_evidence", None)
     review = await inspect_case(raw, case, actor, authority_rows=authority_rows, automatic=True)
     if review["decision"] != "verified_match":
         return "needs_evidence", None
@@ -404,7 +460,9 @@ async def _batch_case(case, run_id, actor):
         "authority_digest": digest(sorted(_approved_authority_ids(raw, authority_rows))),
         "explanation": review["explanation"],
         "source_excerpts": review["source_excerpts"],
-        **{key: review[key] for key in ("source_hash", "candidate_qid", "candidate_revision", "_viaf_id")},
+        **{key: review.get(key) for key in (
+            "source_hash", "candidate_qid", "candidate_revision", "_viaf_id", "_gnd_id",
+        )},
     }
     if await prepare_evidence_statement(raw, case, evidence, authority_rows=authority_rows) is None:
         return "needs_evidence", None
@@ -415,7 +473,11 @@ async def _batch_review(job_id, run_id, actor, audit_id, audit):
     # Source cases can repeat for one record. Resolve each role on that record once.
     cases = {}
     for case in gila_cases(audit):
-        if case.get("local_id") and reviewable(case):
+        if not case.get("local_id") or not case.get("qid") or not case.get("control_number"):
+            continue
+        if work_case(case):
+            cases[case["case_id"]] = case
+        elif reviewable(case):
             key = (case["qid"], case["control_number"], case["reason"] in SCRIBE_REASONS)
             cases.setdefault(key, case)
     outcomes = {"supported": 0, "needs_evidence": 0, "excluded_creator": 0, "unavailable": 0}
@@ -429,7 +491,7 @@ async def _batch_review(job_id, run_id, actor, audit_id, audit):
             logger.warning("Kimi review unavailable for %s: %s", case["qid"], exc)
             return "unavailable", None
         except (ValueError, httpx.HTTPError, TimeoutError) as exc:
-            logger.warning("Kimi evidence for %s failed (%s)", case["qid"], type(exc).__name__)
+            logger.warning("Repair evidence for %s failed (%s)", case["qid"], type(exc).__name__)
             return "unavailable", None
 
     queue = list(cases.values())

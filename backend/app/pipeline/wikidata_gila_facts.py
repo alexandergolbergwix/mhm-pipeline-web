@@ -610,6 +610,9 @@ def compare_gila_source_facts(
     rows = []
     counts: Counter[str] = Counter()
     for raw in marc_records:
+        from app.pipeline.wikidata_gila_work_evidence import (
+            exact_occurrence, same_occurrence, work_source, work_target,
+        )
         from app.pipeline.wikidata_source_choices import (
             reviewed_catalog_map,
             source_record_for_audit,
@@ -834,6 +837,21 @@ def compare_gila_source_facts(
                     str(row.get("value")) for row in live_candidates if _matches(scope_fact, row)
                 } != {fact.value}:
                     live_status = "identity_review"
+            if (
+                fact.property_id == "P1574" and not fact.evidence_only
+                and not fact.reviewed_identity_current and fact.value is None and live
+            ):
+                scoped = [claim for claim in live_candidates if same_occurrence(claim, fact.qualifiers)]
+                if len(scoped) == 1 and exact_occurrence(scoped[0], fact.qualifiers):
+                    target = (live_entities or {}).get(str(scoped[0]["value"]))
+                    occurrence = work_source(raw, {
+                        "expected_qualifiers": fact.qualifiers, "source_field": fact.source_field,
+                        "expected_author": fact.author_name,
+                    })
+                    if occurrence and target and work_target(
+                        target, cn, occurrence["title"], occurrence["author"],
+                    ):
+                        live_status = "present"
             live_target_missing = live_entities is not None and (
                 not qid or qid not in live_entities
             )

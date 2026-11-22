@@ -22,6 +22,9 @@ The ID can come from the occurrence or a high-confidence approved authority matc
 The batch also searches live VIAF when the record ties a name and both life dates to one scribe.
 The VIAF record must match all three values. Wikidata must link to that exact VIAF ID.
 The worker checks VIAF identifiers on the Wikidata candidates as well as the result of the VIAF name search.
+If VIAF cannot confirm a dated scribe, the worker checks the GND ID of the candidate through lobid-gnd.
+Both life years must match the MARC occurrence. The full MARC heading and a GND heading must also match the public names.
+The release cites the GND record. The final audit checks the cited record again.
 A name match alone leaves the identity open.
 For a place, MARC 751 must tie one place name to the production role and name at least one jurisdiction.
 The worker uses aligned flat slots or one structured occurrence to verify the role.
@@ -31,6 +34,12 @@ The preparation worker checks the same evidence again.
 An item for the holding library or a related place cannot supply the production role.
 
 **Repair all eligible items** checks supported open cases after the audit and reference queues.
+For a missing work link, the worker reconstructs one MARC occurrence with its title and folios.
+The public work must have the exact title with a reference to the same Ktiv record.
+If MARC names an author, the public literal author must also match.
+The worker skips an existing link for the same work or source scope.
+The release adds a `P1574` claim with the MARC title and folio qualifiers and the Ktiv citation.
+The final audit checks the same source, work, and live link for points 3 and 6.
 The first-revision creator check excludes other items before the batch requests evidence.
 A unique candidate with independent source proof can proceed without a model response.
 Kimi can review cases with a source identifier or another exact comparison field.
@@ -49,6 +58,8 @@ An unresolved identity, missing source passage, or corpus model decision stays o
 - `admin_gila_repairs.py` provides `POST /api/admin/wikidata-gila-repairs/case-review` and `GET` on the same path.
 - `wikidata_gila_case_review.py` owns the provider call and the single and batch results for `wikidata_gila_case_review`.
 - `wikidata_gila_identity_evidence.py` proves the source identity and constructs exact statements.
+- `wikidata_gila_gnd_evidence.py` reads cited person records and checks their IDs.
+- `wikidata_gila_work_evidence.py` checks the work occurrence and constructs its scoped claim.
 - `wikidata_publication_prepare_job.py` rechecks the private result against the same audit and repair cycle.
 - The job service excludes private proof details from the public job result.
 - `run_jobs.py` restricts job access to administrators. `run_job_params.py` restricts job start to the audit route.

@@ -473,6 +473,11 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             },
         )
         viaf_sources = await asyncio.to_thread(_read_cited_viaf_sources, entities, mappings.values())
+        from app.pipeline.wikidata_gila_gnd_evidence import cited_gnd_ids, read_gnd_sources
+
+        gnd_ids = {identifier for qid in mappings.values() if qid in entities
+                   for identifier in cited_gnd_ids(entities[qid])}
+        gnd_sources = await read_gnd_sources(gnd_ids) if gnd_ids else {}
         audit = await asyncio.to_thread(
             build_gila_audit_report,
             records,
@@ -482,6 +487,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             include_repair_payloads=False,
             repair_authority_by_cn=proof_authority,
             repair_viaf_sources=viaf_sources,
+            repair_gnd_sources=gnd_sources,
         )
         packet = await asyncio.to_thread(
             build_gila_completion_packet,

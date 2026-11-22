@@ -303,3 +303,40 @@ async def test_batch_leaves_a_scribe_with_only_a_name_open(monkeypatch):
     )
     assert result["decision"] == "needs_evidence"
     search.assert_not_awaited()
+
+
+def test_scribe_gnd_proof_requires_both_dates_and_the_exact_source_heading():
+    raw = {
+        "001": CN, "700$a": "Scribe, David son of Samuel,",
+        "700$e": "scribe", "700$d": "1600-1660",
+    }
+    candidate = _human()[QID]
+    candidate["labels"] = {"en": {"value": "Scribe, David son of Samuel, 1600-1660"}}
+    candidate["claims"]["P227"] = [{"mainsnak": {"snaktype": "value", "datavalue": {"value": "1194270336"}}}]
+    record = {
+        "gndIdentifier": "1194270336", "preferredName": "Scribe, David son of Samuel",
+        "dateOfBirth": ["1600"], "dateOfDeath": ["1660"],
+    }
+    sources = {"1194270336": record}
+    assert identity.verified_candidate(raw, candidate, {}, scribe=True, gnd_sources=sources)
+    manuscript = {"id": "Q100", "claims": {
+        "P3959": [{"mainsnak": {"snaktype": "value", "datavalue": {"value": CN}}}],
+        "P11603": [{
+            "mainsnak": {"snaktype": "somevalue"},
+            "qualifiers": {"P1932": [{"datavalue": {"value": "Scribe, David son of Samuel"}}]},
+        }],
+    }}
+    statement = identity._repair_statement(
+        raw, {"qid": "Q100", "control_number": CN, "reason": "named_scribe_identity_unresolved"},
+        manuscript, candidate, {}, gnd_sources=sources,
+    )
+    assert statement["value"] == QID
+    assert "https://d-nb.info/gnd/1194270336" in {
+        snak["value"] for block in statement["reference_blocks"] for snak in block
+    }
+    assert not identity.verified_candidate(
+        {**raw, "700$d": "1600-1661"}, candidate, {}, scribe=True, gnd_sources=sources,
+    )
+    assert not identity.verified_candidate(
+        {**raw, "700$a": "Another David Scribe"}, candidate, {}, scribe=True, gnd_sources=sources,
+    )

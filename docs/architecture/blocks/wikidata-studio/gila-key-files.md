@@ -32,6 +32,7 @@
 | `backend/converter/wikidata/work_author_claims.py` | Compatible peer author claims before an optional credited name |
 | `backend/app/pipeline/wikidata_canonical_enrichment.py` | Source-preserving author normalization around the merge |
 | `backend/app/pipeline/wikidata_gila_audit.py`, `wikidata_gila_completion.py` | Passage inventory and honest requirement counts |
+| `backend/app/pipeline/wikidata_gila_work_evidence.py`, `wikidata_gila_gnd_evidence.py` | Source-qualified work links and dated GND scribe evidence |
 | `backend/scripts/export_gila_completion.py` | Source passage CSV and completion manifest |
 | `backend/scripts/local_measure_verify.py` | Read-only canonical measurement with full curator state and bounded, consistent snapshot pages |
 | `backend/converter/wikidata/retry_policy.py` | Bulk maxlag and Retry-After parser |

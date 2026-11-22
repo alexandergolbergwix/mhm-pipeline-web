@@ -990,6 +990,16 @@ def viaf_reference(viaf_id: str) -> FreshSourceReference:
     ], _token=_FRESH_SOURCE_TOKEN)
 
 
+def gnd_reference(identifier: str) -> FreshSourceReference:
+    """Build a reference for a German National Library authority record."""
+    today = datetime.now(tz=UTC).strftime("+%Y-%m-%dT00:00:00Z")
+    return FreshSourceReference([
+        {"property": "P227", "value": identifier, "type": "external-id"},
+        {"property": P_REFERENCE_URL, "value": f"https://d-nb.info/gnd/{identifier}", "type": "url"},
+        {"property": P_RETRIEVED, "value": today, "type": "time", "precision": PRECISION_DAY},
+    ], _token=_FRESH_SOURCE_TOKEN)
+
+
 # ── Identifier-format normalisers ────────────────────────────────────
 # Wikidata enforces strict format constraints on external identifiers.
 # These helpers normalise raw values from VIAF clusters to the canonical

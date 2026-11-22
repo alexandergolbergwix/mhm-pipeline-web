@@ -340,3 +340,48 @@ def test_native_time_uses_the_uploader_calendar_default_and_keeps_precision() ->
         next(row for row in report["facts"] if row["property"] == "P571")["proposal_status"]
         == "missing"
     )
+
+
+def test_source_qualified_work_repair_preserves_the_occurrence_and_requires_current_title():
+    from app.pipeline.wikidata_gila_work_evidence import work_source, work_statement
+
+    cn = "990000000000000001"
+    title = "ספר הדרושים"
+    raw = {"001": cn, "contents": [{"title": title, "folio_range": "א-ב", "source_field": "505"}]}
+    case = {
+        "control_number": cn, "qid": "Q100", "source_field": "505",
+        "expected_qualifiers": {"P1932": title, "P958": "א-ב"},
+    }
+
+    def snak(value):
+        return {"snaktype": "value", "datavalue": {"value": value}}
+
+    def claim(value, **extra):
+        return {"mainsnak": snak(value), **extra}
+
+    reference = {"snaks": {"P3959": [snak(cn)]}}
+    work = {"id": "Q200", "claims": {
+        "P31": [claim({"id": "Q47461344"})],
+        "P1476": [claim({"text": title}, references=[reference])],
+    }}
+    manuscript = {"id": "Q100", "claims": {"P3959": [claim(cn)]}}
+    occurrence = work_source(raw, case)
+    assert occurrence
+    statement = work_statement(manuscript, work, case, occurrence)
+    assert statement["value"] == "Q200"
+    assert {q["property"]: q["value"] for q in statement["qualifiers"]} == case["expected_qualifiers"]
+    manuscript["claims"]["P1574"] = [claim(
+        {"id": "Q200"}, qualifiers={pid: [snak(value)] for pid, value in case["expected_qualifiers"].items()},
+        references=[reference],
+    )]
+    assert work_statement(manuscript, work, case, occurrence) is None
+
+    def live_status():
+        facts = compare_gila_source_facts(
+            [raw], [], qids_by_cn={cn: "Q100"}, live_entities={"Q100": manuscript, "Q200": work},
+        )["facts"]
+        return next(row for row in facts if row["property"] == "P1574")["live_status"]
+
+    assert live_status() == "present"
+    work["claims"]["P1476"][0]["references"] = [{"snaks": {"P3959": [snak("99002")]}}]
+    assert live_status() == "identity_review"

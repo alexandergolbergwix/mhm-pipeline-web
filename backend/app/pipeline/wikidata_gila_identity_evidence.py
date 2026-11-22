@@ -8,9 +8,10 @@ from dataclasses import asdict
 
 from app.pipeline import marc_occurrences
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
+from app.pipeline.wikidata_gila_gnd_evidence import gnd_identifier
 from app.pipeline.wikidata_source_choices import _claim_values
-from converter.wikidata.item_models import WikidataStatement
-from converter.wikidata.property_mapping import nli_reference, viaf_reference
+from converter.wikidata.item_models import WikidataStatement, merge_statement_references
+from converter.wikidata.property_mapping import gnd_reference, nli_reference, viaf_reference
 
 SCRIBE_REASONS = frozenset({
     "named_scribe_identity_unresolved", "source_scribe_claim_absent", "verify_scribe_target_identity",
@@ -241,6 +242,28 @@ def _viaf_proves_scribe(raw, identifier, cluster):
     )
 
 
+def _gnd_heading(value):
+    return _heading_key(unicodedata.normalize("NFC", value))
+
+
+def _gnd_proves_scribe(raw, entity, record):
+    source = _scribe_life_dates(raw)
+    if not source or not record or record["gndIdentifier"] != gnd_identifier(entity):
+        return False
+    name, birth, death = source
+    if (
+        record.get("dateOfBirth") != [birth] or record.get("dateOfDeath") != [death]
+        or len(_gnd_heading(name).split()) < 3
+    ):
+        return False
+    labels = {_gnd_heading(value) for value in _names(entity)}
+    headings = {
+        _gnd_heading(value) for value in [record.get("preferredName"), *record.get("variantName", [])]
+        if isinstance(value, str)
+    } - {""}
+    return _gnd_heading(name) in labels and bool(headings & labels)
+
+
 def _viaf_identifier(entity):
     values = _claim_values(entity, "P214")
     if len(values) == 1 and isinstance(values[0], str) and re.fullmatch(r"[0-9]{1,20}", values[0]):
@@ -261,7 +284,8 @@ def _viaf_citation_ids(entity):
 
 
 def _proven_candidates(
-    raw, entities, context, *, scribe, source_qid, parts, authority_rows=(), viaf_sources=None,
+    raw, entities, context, *, scribe, source_qid, parts,
+    authority_rows=(), viaf_sources=None, gnd_sources=None,
 ):
     if scribe:
         authorities = _authority_ids(raw) | _approved_authority_ids(raw, authority_rows)
@@ -270,7 +294,7 @@ def _proven_candidates(
             if (qid == source_qid if source_qid else bool(authorities) or (
                 (identifier := _viaf_identifier(entity))
                 and _viaf_proves_scribe(raw, identifier, (viaf_sources or {}).get(identifier))
-            ))
+            ) or _gnd_proves_scribe(raw, entity, (gnd_sources or {}).get(gnd_identifier(entity))))
             and all(value in _claim_values(entity, pid) for pid, value in authorities)
         }
     if source_qid:
@@ -281,13 +305,15 @@ def _proven_candidates(
     }
 
 
-def verified_candidate(raw, entity, context, *, scribe, authority_rows=(), viaf_sources=None):
+def verified_candidate(
+    raw, entity, context, *, scribe, authority_rows=(), viaf_sources=None, gnd_sources=None,
+):
     _, _, source_qid = _source_evidence(raw, scribe=scribe)
     qid = entity["id"]
     proven = _proven_candidates(
         raw, {qid: entity}, context, scribe=scribe, source_qid=source_qid,
         parts=None if scribe else _place_parts(raw), authority_rows=authority_rows,
-        viaf_sources=viaf_sources,
+        viaf_sources=viaf_sources, gnd_sources=gnd_sources,
     )
     if not proven:
         return False
@@ -296,7 +322,8 @@ def verified_candidate(raw, entity, context, *, scribe, authority_rows=(), viaf_
 
 
 def live_source_match(
-    raw, manuscript, entities, cn, *, scribe, name="", authority_rows=(), viaf_sources=None,
+    raw, manuscript, entities, cn, *, scribe, name="",
+    authority_rows=(), viaf_sources=None, gnd_sources=None,
 ):
     from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status
 
@@ -316,13 +343,14 @@ def live_source_match(
         candidate and _reference_status(claims, cn, live=True) == "source_bound"
         and verified_candidate(
             raw, candidate, entities, scribe=scribe, authority_rows=authority_rows,
-            viaf_sources=viaf_sources,
+            viaf_sources=viaf_sources, gnd_sources=gnd_sources,
         )
     )
 
 
 def _repair_statement(
-    raw, case, manuscript, candidate, context, *, authority_rows=(), viaf_sources=None,
+    raw, case, manuscript, candidate, context, *,
+    authority_rows=(), viaf_sources=None, gnd_sources=None,
 ):
     """Build an additive statement only from exact catalogue and public evidence."""
     scribe = case["reason"] in SCRIBE_REASONS
@@ -332,7 +360,7 @@ def _repair_statement(
         or set(_claim_values(manuscript, "P3959")) != {cn}
         or not verified_candidate(
             raw, candidate, context, scribe=scribe, authority_rows=authority_rows,
-            viaf_sources=viaf_sources,
+            viaf_sources=viaf_sources, gnd_sources=gnd_sources,
         )
     ):
         return None
@@ -344,6 +372,7 @@ def _repair_statement(
     ]
     if scribe:
         _, name, _ = _source_evidence(raw, scribe=True)
+        name = name.rstrip(",").strip()
         if not name or "?" in name or "？" in name:
             return None
         qualifiers = [{"property": "P1932", "value": name, "type": "string"}]
@@ -362,10 +391,12 @@ def _repair_statement(
         qualifiers=qualifiers, references=nli_reference(cn),
     )
     if scribe and (identifier := _viaf_identifier(candidate)) and identifier in (viaf_sources or {}):
-        from converter.wikidata.item_models import merge_statement_references
-
         merge_statement_references(claim, WikidataStatement(
             pid, candidate["id"], "item", references=viaf_reference(identifier),
+        ))
+    elif scribe and (identifier := gnd_identifier(candidate)) and identifier in (gnd_sources or {}):
+        merge_statement_references(claim, WikidataStatement(
+            pid, candidate["id"], "item", references=gnd_reference(identifier),
         ))
     statement = asdict(claim)
     statement["property"] = statement.pop("property_id")

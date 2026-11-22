@@ -4412,3 +4412,13 @@ A creator-verified repair can proceed when the current source and authority evid
 Use one explicit production role and verify every jurisdiction named in MARC 751.
 KIMA adds exact name candidates. Current Wikidata links must confirm the stated place.
 A name without a source condition or conflicting candidates requires further evidence.
+
+## Rule W-367 — Require current source evidence for work and scribe links
+
+Add a missing work link only when one MARC occurrence matches one public work.
+The public title must cite the same Ktiv record. Keep the original MARC title and folio qualifiers.
+Skip an existing link for that work or source scope.
+A GND scribe match requires both MARC life years and the exact person heading.
+The job checks the first-revision creator of each manuscript it will edit.
+The final audit checks source-qualified live links and the cited authority record.
+See [case review](../blocks/wikidata-studio/gila-case-review.md).
