@@ -60,9 +60,11 @@ def build_gila_audit_report(
     repair_authority_by_cn: Mapping[str, list] | None = None,
     repair_viaf_sources: Mapping[str, dict] | None = None,
     repair_gnd_sources: Mapping[str, dict] | None = None,
+    people_marc: Mapping[str, dict] | None = None,
 ) -> dict[str, object]:
     """Compare local proposals with sources; never report a live correction."""
     from app.pipeline.wikidata_gila_identity_evidence import live_source_match
+    from app.pipeline.wikidata_gila_people import people_role_cases
     from converter.wikidata.content_projection import _work_title_key  # noqa: PLC0415
 
     sources = list(marc_records)
@@ -162,58 +164,62 @@ def build_gila_audit_report(
         ):
             case(4, "present_not_transferred", "001", "qualified_ktiv_membership_absent")
 
-        scribes = [
-            row
-            for row in _rows(record.get("contributors"))
-            if str(row.get("role") or "").casefold() in {"scribe", "transcriber"}
-        ]
-        projected_scribes = _claims(item, "P11603")
-        for scribe in scribes:
-            name = _text(scribe.get("name"))
-            named = [
-                s
-                for s in projected_scribes
-                if any(
-                    (q.get("property") or q.get("property_id")) == "P1932"
-                    and _text(q.get("value")) == name
-                    for q in _rows(s.get("qualifiers"))
-                )
+        full_people_source = (people_marc or {}).get(cn)
+        if full_people_source is not None:
+            cases.extend(people_role_cases(
+                full_people_source, public_item, live_entities,
+                authority_rows=(repair_authority_by_cn or {}).get(cn, ()),
+                viaf_sources=repair_viaf_sources, gnd_sources=repair_gnd_sources,
+            ))
+        else:
+            if people_marc is not None:
+                case(5, "absent_in_source", "001", "full_marc_unavailable")
+            scribes = [
+                row
+                for row in _rows(record.get("contributors"))
+                if str(row.get("role") or "").casefold() in {"scribe", "transcriber"}
             ]
-            reason = (
-                "named_scribe_identity_unresolved" if any(
-                    s.get("value_type") == "somevalue" for s in named
-                ) else "source_scribe_claim_absent" if not named and not projected_scribes
-                else "verify_scribe_target_identity" if not named else ""
-            )
-            if reason:
-                case(
-                    5, "present_not_transferred" if reason == "source_scribe_claim_absent"
-                    else "identity_or_scope_uncertain", "700", reason,
-                    verified=live_source_match(
-                        raw, public_item, live_entities, cn, scribe=True, name=name,
-                        authority_rows=(repair_authority_by_cn or {}).get(cn, ()),
-                        viaf_sources=repair_viaf_sources,
-                        gnd_sources=repair_gnd_sources,
-                    ),
+            projected_scribes = _claims(item, "P11603")
+            for scribe in scribes:
+                name = _text(scribe.get("name"))
+                named = [
+                    s
+                    for s in projected_scribes
+                    if any(
+                        (q.get("property") or q.get("property_id")) == "P1932"
+                        and _text(q.get("value")) == name
+                        for q in _rows(s.get("qualifiers"))
+                    )
+                ]
+                reason = (
+                    "named_scribe_identity_unresolved" if any(
+                        s.get("value_type") == "somevalue" for s in named
+                    ) else "source_scribe_claim_absent" if not named and not projected_scribes
+                    else "verify_scribe_target_identity" if not named else ""
                 )
+                if reason:
+                    case(
+                        5, "present_not_transferred" if reason == "source_scribe_claim_absent"
+                        else "identity_or_scope_uncertain", "700", reason,
+                        verified=live_source_match(
+                            raw, public_item, live_entities, cn, scribe=True, name=name,
+                            authority_rows=(repair_authority_by_cn or {}).get(cn, ()),
+                            viaf_sources=repair_viaf_sources,
+                            gnd_sources=repair_gnd_sources,
+                        ),
+                    )
+            for work in works_by_cn.get(cn, []):
+                if (
+                    any(
+                        _work_title_key(s.get("value")) == _work_title_key(record.get("title"))
+                        for s in _claims(work, "P1476")
+                    )
+                    and _claims(work, "P2093")
+                    and not _claims(work, "P50")
+                ):
+                    case(5, "identity_or_scope_uncertain", "100", "author_identity_not_linked")
+
         source_authors[cn] = [_text(row.get("name")) for row in _rows(record.get("authors"))]
-        for review in _rows(record.get("person_subfield_reviews")):
-            case(
-                5,
-                "identity_or_scope_uncertain",
-                str(review.get("source_field") or "100/700$d"),
-                str(review.get("reason") or "person_subfield_alignment_unproven"),
-            )
-        for work in works_by_cn.get(cn, []):
-            if (
-                any(
-                    _work_title_key(s.get("value")) == _work_title_key(record.get("title"))
-                    for s in _claims(work, "P1476")
-                )
-                and _claims(work, "P2093")
-                and not _claims(work, "P50")
-            ):
-                case(5, "identity_or_scope_uncertain", "100", "author_identity_not_linked")
 
         evidence = _rows(item.get("work_candidate_evidence"))
         for candidate in evidence:
@@ -306,6 +312,7 @@ def build_gila_audit_report(
                     dict(reference) for reference in _rows(record.get("catalog_references"))
                 ],
                 "cases": cases,
+                "full_people_source": full_people_source is not None,
                 "source_passages": source_passages(raw),
                 "source_review_choices": reviewed_choices,
             }

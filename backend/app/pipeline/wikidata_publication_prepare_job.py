@@ -32,21 +32,25 @@ from app.schemas.publication import PreparePublicationRequest, RunPublicationSou
 logger = logging.getLogger(__name__)
 
 
-def audited_batch_params(report, actor_id, *, evidence=None):
+def audited_batch_params(report, actor_id, *, evidence=None, people_links=None):
     from app.pipeline.wikidata_gila_audit_job import gila_cases
 
     rows = gila_cases(report)
     eligible = {
         (case["local_id"], case["qid"], case.get("repair_kind") == "troki_author")
         for case in rows
-        if case.get("can_prepare") and case.get("local_id") and case.get("qid")
+        if not people_links and case.get("can_prepare") and case.get("local_id") and case.get("qid")
     }
-    evidence_ids = {
-        proof["case_id"] for proof in (evidence.result or {}).get("_repairs", [])
-    } if evidence and evidence.status == JOB_STATUS_SUCCEEDED else set()
+    proofs = {
+        proof["case_id"]: proof for proof in (evidence.result or {}).get("_repairs", [])
+    } if evidence and evidence.status == JOB_STATUS_SUCCEEDED else {}
     eligible.update(
         (case["local_id"], case["qid"], False) for case in rows
-        if case["case_id"] in evidence_ids and case.get("local_id") and case.get("qid")
+        if case["case_id"] in proofs and case.get("local_id") and case.get("qid")
+        and (not people_links or (
+            case["points"] == [5] and case["qid"] in people_links
+            and proofs[case["case_id"]].get("candidate_qid") == people_links[case["qid"]]
+        ))
     )
     if not eligible:
         return None
@@ -66,7 +70,8 @@ def audited_batch_params(report, actor_id, *, evidence=None):
         "request": request.model_dump(mode="json"),
         "_gila_batch": sorted(eligible),
         "_gila_audit_id": str(report.id),
-        **({"_gila_evidence_job": str(evidence.id)} if evidence_ids else {}),
+        **({"_gila_evidence_job": str(evidence.id)} if proofs else {}),
+        **({"_gila_people_links": dict(people_links)} if people_links else {}),
         "_gila_build_snapshot": [revision, digest],
         "_gila_source_fingerprint": fingerprint,
         "_gila_open_case_counts": {
@@ -217,7 +222,7 @@ async def _read_evidence(db, job, latest):
     return {proof["case_id"]: proof for proof in (evidence.result or {}).get("_repairs", [])}
 
 
-async def _evidence_statements(db, run_id, item, cases):
+async def _evidence_statements(db, run_id, item, cases, *, people=None):
     from app.pipeline.wikidata_gila_case_review import (
         SCRIBE_REASONS, _case_record, load_authority_evidence, prepare_evidence_statement,
     )
@@ -233,7 +238,8 @@ async def _evidence_statements(db, run_id, item, cases):
             continue
         try:
             cn = case["control_number"]
-            raw = await _case_record(db, run_id, cn)
+            source = (people or {}).get(cn) if case["reason"] in SCRIBE_REASONS else None
+            raw = source if source is not None else await _case_record(db, run_id, cn)
             authority_rows = (
                 (await load_authority_evidence(db, run_id, cn)).get(cn, [])
                 if case["reason"] in SCRIBE_REASONS else []
@@ -312,8 +318,9 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
                     )
                     return
                 if selected and params.get("_gila_cycle_parent"):
-                    from app.pipeline.wikidata_gila_audit_job import gila_cases
+                    from app.pipeline.wikidata_gila_audit_job import gila_cases, gila_people_marc
 
+                    people = gila_people_marc(latest)
                     proofs = await _read_evidence(db, job, latest)
                     cases = {}
                     source_cases = {}
@@ -321,10 +328,12 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
                         local_id = row.get("local_id")
                         if local_id not in selected or row.get("qid") != selected[local_id]:
                             continue
-                        if row.get("can_prepare"):
+                        if row.get("can_prepare") and not params.get("_gila_people_links"):
                             cases.setdefault(local_id, []).append(row)
                         if proof := proofs.get(row["case_id"]):
-                            source_cases.setdefault(local_id, []).append((row, proof))
+                            links = params.get("_gila_people_links")
+                            if not links or (row["points"] == [5] and proof.get("candidate_qid") == links.get(row["qid"])):
+                                source_cases.setdefault(local_id, []).append((row, proof))
                     for local_id, qid in list(selected.items()):
                         if troki_author_only and local_id == troki.WORK_LOCAL_ID:
                             continue
@@ -334,7 +343,7 @@ async def run_wikidata_publication_prepare_job(job_id: uuid.UUID) -> None:
                         audited_cases = cases.get(local_id, [])
                         statements = audited_statements(item or {}, audited_cases)
                         additions, revisions = await _evidence_statements(
-                            db, job.run_id, item, source_cases.get(local_id, []),
+                            db, job.run_id, item, source_cases.get(local_id, []), people=people,
                         )
                         if statements:
                             revisions.update(case.get("live_revision") for case in audited_cases)

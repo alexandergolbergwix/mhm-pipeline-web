@@ -13,6 +13,8 @@ export interface GilaCase {
   qids?: string[];
   control_number?: string;
   source_field?: string;
+  person_role?: string;
+  occurrence?: string;
   source_value?: string;
   expected_author?: string;
   expected_value?: string;
@@ -58,6 +60,13 @@ export interface GilaReport {
   reference_items: number;
   reference_blocks: number;
   case_count: number;
+  people_coverage?: {
+    records_with_full_marc: number;
+    source_roles: number;
+    roles_verified: number;
+    authority_links_verified: number;
+    uncertainty_preserved: number;
+  };
   all_requirements_verified: boolean;
   requirement_coverage: {
     public_reads: number;

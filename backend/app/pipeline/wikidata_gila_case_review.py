@@ -442,12 +442,12 @@ async def prepare_evidence_statement(raw, case, evidence, *, authority_rows=()):
     )
 
 
-async def _batch_case(case, run_id, actor):
+async def _batch_case(case, run_id, actor, *, people_source=None):
     reader = ReferenceItemReader()
     if await reader.creator_uid(case["qid"]) != GILA_CREATOR_UID:
         return "excluded_creator", None
     async with session_scope() as db:
-        raw = await _case_record(db, run_id, case["control_number"])
+        raw = people_source if people_source is not None else await _case_record(db, run_id, case["control_number"])
         authority_rows = (
             (await load_authority_evidence(db, run_id, case["control_number"])).get(case["control_number"], [])
             if case["reason"] in SCRIBE_REASONS else []
@@ -473,10 +473,15 @@ async def _batch_case(case, run_id, actor):
     return "supported", evidence
 
 
-async def _batch_review(job_id, run_id, actor, audit_id, audit):
+async def _batch_review(job_id, run_id, actor, audit_id, audit, *, people_links=None):
+    from app.pipeline.wikidata_gila_audit_job import gila_people_marc
+
+    people = gila_people_marc(audit)
     # Source cases can repeat for one record. Resolve each role on that record once.
     cases = {}
     for case in gila_cases(audit):
+        if people_links and (case.get("qid") not in people_links or case.get("reason") not in SCRIBE_REASONS):
+            continue
         if not case.get("local_id") or not case.get("qid") or not case.get("control_number"):
             continue
         if work_case(case):
@@ -490,6 +495,9 @@ async def _batch_review(job_id, run_id, actor, audit_id, audit):
     async def check(case):
         try:
             async with asyncio.timeout(120):
+                source = people.get(case["control_number"]) if case["reason"] in SCRIBE_REASONS else None
+                if source is not None:
+                    return await _batch_case(case, run_id, actor, people_source=source)
                 return await _batch_case(case, run_id, actor)
         except ReviewUnavailable as exc:
             logger.warning("Kimi review unavailable for %s: %s", case["qid"], exc)
@@ -507,7 +515,10 @@ async def _batch_review(job_id, run_id, actor, audit_id, audit):
                 "phase": "find_evidence", "message": "Check the MARC source, authority records, and Wikidata candidates.",
                 "processed": offset, "total": len(queue), "unit": "source cases",
             })
-            for result, proof in await asyncio.gather(*(check(case) for case in queue[offset:offset + 4])):
+            batch = queue[offset:offset + 4]
+            for case, (result, proof) in zip(batch, await asyncio.gather(*(check(case) for case in batch)), strict=True):
+                if proof and people_links and proof["candidate_qid"] != people_links[case["qid"]]:
+                    result, proof = "needs_evidence", None
                 outcomes[result] += 1
                 if proof:
                     repairs.append(proof)
@@ -528,6 +539,7 @@ async def run_gila_case_review(job_id: uuid.UUID) -> None:
             audit_id = uuid.UUID(job.params["_audit_id"])
             audit = await _require_current_audit(db, run_id, audit_id)
             batch = bool(job.params.get("_gila_cycle_parent") and job.params.get("_gila_cycle_step") == "find_evidence")
+            people_links = job.params.get("_gila_people_links")
             if not batch:
                 case = next(
                     (row for row in gila_cases(audit) if row["case_id"] == job.params["_case_id"]), {},
@@ -535,13 +547,16 @@ async def run_gila_case_review(job_id: uuid.UUID) -> None:
                 if not reviewable(case):
                     raise ValueError("This case does not have a supported source check.")
                 cn = case["control_number"]
-                raw = await _case_record(db, run_id, cn)
+                from app.pipeline.wikidata_gila_audit_job import gila_people_marc
+
+                people_source = gila_people_marc(audit).get(cn) if case["reason"] in SCRIBE_REASONS else None
+                raw = people_source if people_source is not None else await _case_record(db, run_id, cn)
                 authority_rows = (
                     (await load_authority_evidence(db, run_id, cn)).get(cn, [])
                     if case["reason"] in SCRIBE_REASONS else []
                 )
         if batch:
-            await _batch_review(job_id, run_id, actor, audit_id, audit)
+            await _batch_review(job_id, run_id, actor, audit_id, audit, people_links=people_links)
             return
         if await is_cancel_requested(job_id):
             raise AuditCancelledError()
@@ -562,7 +577,7 @@ async def run_gila_case_review(job_id: uuid.UUID) -> None:
         async with session_scope() as db:
             await _authorize(db, await db.get(RunJob, job_id))
             await _require_current_audit(db, run_id, audit_id)
-            if source_hash(await _case_record(db, run_id, cn)) != source_hash(raw):
+            if people_source is None and source_hash(await _case_record(db, run_id, cn)) != source_hash(raw):
                 raise ValueError("The MARC record changed. Review the current source.")
         await finish_job(job_id, status="succeeded", result=result,
                          progress={"phase": "succeeded", "message": "The case review is ready."})

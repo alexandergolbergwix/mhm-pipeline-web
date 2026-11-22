@@ -1398,3 +1398,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 225. **R225 — Pace public evidence reads (W-368).** Share the request schedule across the batch. Wait for the server retry delay before the next read.
 
 226. **R226 — Preserve other claims during scoped manuscript publication (W-369).** Use the scoped update even when the repair includes P31 or a deferred-link property.
+
+227. **R227 — Count each MARC role once (W-370).** Bind scribe evidence to the same full MARC fields used in both audits. Keep the release and creator checks.

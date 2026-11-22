@@ -261,6 +261,7 @@ function CaseDetails({item, report, runId, expanded, actions}: {
     {item.source_value && <blockquote className="whitespace-pre-wrap rounded-lg bg-[var(--surface-inset)] p-3" dir="auto">{item.source_value}</blockquote>}
     <dl className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
       {item.source_field && <div><dt className="muted">MARC field</dt><dd>{item.source_field}</dd></div>}
+      {item.person_role && <div><dt className="muted">Source role</dt><dd>{item.person_role}</dd></div>}
       {item.control_number && <div><dt className="muted">Ktiv record</dt>
         <dd><a className="link-accent underline" href={`https://www.nli.org.il/en/manuscripts/NNL_ALEPH${encodeURIComponent(item.control_number)}/NLI`} target="_blank" rel="noreferrer">{item.control_number}</a></dd>
       </div>}
@@ -707,6 +708,17 @@ export default function AdminGilaRepairs() {
       <Glass as="section" contentClassName="space-y-3">
         <h2 className="text-lg font-semibold">Manuscript audit checks</h2>
         <p className="text-sm muted">{report.public_read.toLocaleString()} public items read</p>
+        {report.people_coverage && <section className="rounded-xl border border-soft p-4" aria-label="People, roles, and authority links">
+          <h3 className="text-base font-semibold">People, roles, and authority links</h3>
+          <p className="text-sm muted">
+            {report.people_coverage.records_with_full_marc.toLocaleString()} of {report.record_count.toLocaleString()} records have full MARC fields.
+          </p>
+          <p className="text-sm muted">
+            {report.people_coverage.roles_verified.toLocaleString()} of {report.people_coverage.source_roles.toLocaleString()} source roles match Wikidata.
+            {" "}{report.people_coverage.authority_links_verified.toLocaleString()} have verified authority links.
+            {" "}{report.people_coverage.uncertainty_preserved.toLocaleString()} retain uncertainty from the source.
+          </p>
+        </section>}
         {report.requirement_coverage.model_decision && <p className="text-sm muted">{report.requirement_coverage.model_decision}</p>}
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {report.email_points.map(row => {

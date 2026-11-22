@@ -221,9 +221,12 @@ def _heading_key(value: str) -> str:
 
 
 def _viaf_proves_scribe(raw, identifier, cluster):
+    return viaf_proves_person(_scribe_life_dates(raw), identifier, cluster)
+
+
+def viaf_proves_person(source, identifier, cluster):
     from converter.authority.biodata import extract_viaf_biodata
 
-    source = _scribe_life_dates(raw)
     if not source or not cluster:
         return False
     name, birth, death = source
@@ -271,10 +274,11 @@ def _viaf_identifier(entity):
     return None
 
 
-def _viaf_citation_ids(entity):
+def _viaf_citation_ids(entity, properties=("P11603",)):
     return {
         match[1]
-        for claim in entity.get("claims", {}).get("P11603", [])
+        for pid in properties
+        for claim in entity.get("claims", {}).get(pid, [])
         if claim.get("rank") != "deprecated"
         for ref in claim.get("references", [])
         for snak in ref.get("snaks", {}).get("P854", [])

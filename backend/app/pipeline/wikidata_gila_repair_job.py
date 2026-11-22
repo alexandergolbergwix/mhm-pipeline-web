@@ -120,6 +120,7 @@ class RepairCycle:
         self.actor = job.created_by
         self.run_id = job.run_id
         self.project_id = job.project_id
+        self.people_links = dict(job.params.get("_gila_people_links") or {})
         self.resolver = ExecutionCredentialResolver(
             job.params["_publication_credential"], publication_id=str(self.run_id),
             execution_id=job.params["_cycle"], actor_id=str(self.actor),
@@ -226,7 +227,8 @@ class RepairCycle:
         })
 
     async def publication(self, audit, evidence):
-        params = audited_batch_params(audit, self.actor, evidence=evidence)
+        params = (audited_batch_params(audit, self.actor, evidence=evidence, people_links=self.people_links)
+                  if self.people_links else audited_batch_params(audit, self.actor, evidence=evidence))
         if params is None:
             return
         async with session_scope() as db:
@@ -393,13 +395,14 @@ class RepairCycle:
             )
         if audit.status != "succeeded":
             raise ValueError(audit.error or "The initial audit did not finish.")
-        for scope in ("original", "remaining"):
+        for scope in (() if self.people_links else ("original", "remaining")):
             await self.references(scope, audit)
         repair_audit = audit
         if self.result["reference_items_corrected"]:
             refreshed = await self.stage(
                 JOB_KIND_WIKIDATA_GILA_AUDIT, "audit_after_references",
-                "Check current revisions after reference repairs.", full=True,
+                "Check current revisions after reference repairs.",
+                {"_gila_people_source_audit": str(audit.id)}, full=True,
             )
             if refreshed.status == "succeeded":
                 repair_audit = refreshed
@@ -407,7 +410,10 @@ class RepairCycle:
                 self.attention("audit_after_references", refreshed.error)
         evidence = await self.stage(
             JOB_KIND_WIKIDATA_GILA_CASE_REVIEW, "find_evidence",
-            "Find evidence in MARC and Wikidata with Kimi.", {"_audit_id": str(repair_audit.id)},
+            "Find evidence in MARC and Wikidata with Kimi.", {
+                "_audit_id": str(repair_audit.id),
+                **({"_gila_people_links": self.people_links} if self.people_links else {}),
+            },
         )
         if evidence.status == "succeeded":
             self.result["evidence_review"] = {
@@ -424,6 +430,7 @@ class RepairCycle:
             self.attention("publication", str(exc))
         final = await self.stage(
             JOB_KIND_WIKIDATA_GILA_AUDIT, "verify", "Recheck all nine requests against live Wikidata.",
+            {"_gila_people_source_audit": str(audit.id)},
         )
         if final.status != "succeeded":
             raise ValueError(final.error or "The verification audit did not finish.")

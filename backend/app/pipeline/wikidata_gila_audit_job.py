@@ -97,6 +97,11 @@ def gila_cases(job: RunJob) -> list[dict]:
     return json.loads(zlib.decompress(b64decode(job.params["_gila_cases"])))
 
 
+def gila_people_marc(job: RunJob) -> dict[str, dict]:
+    encoded = job.params.get("_gila_people_marc")
+    return json.loads(zlib.decompress(b64decode(encoded))) if encoded else {}
+
+
 def _catalogue_mappings(records, ledger):
     mappings = {}
     for record in records:
@@ -163,7 +168,7 @@ def _geographic_context(entities, qids, properties):
     }
 
 
-def _read_cited_viaf_sources(entities, manuscript_qids):
+def _read_cited_viaf_sources(entities, manuscript_qids, work_qids=()):
     from app.pipeline.wikidata_gila_identity_evidence import _viaf_citation_ids
     from converter.authority.viaf_matcher import VIAFMatcher
 
@@ -171,6 +176,10 @@ def _read_cited_viaf_sources(entities, manuscript_qids):
         identifier for qid in manuscript_qids if qid in entities
         for identifier in _viaf_citation_ids(entities[qid])
     }
+    ids.update(
+        identifier for qid in work_qids if qid in entities
+        for identifier in _viaf_citation_ids(entities[qid], ("P50",))
+    )
     matcher = VIAFMatcher()
     return {identifier: matcher.get_cluster_raw(identifier) for identifier in sorted(ids)}
 
@@ -241,6 +250,8 @@ def _case_inventory(packet, audit):
         "qids",
         "control_number",
         "source_field",
+        "occurrence",
+        "person_role",
         "property",
         "source_value",
         "expected_author",
@@ -409,6 +420,7 @@ async def run_gila_audit_job(job_id: uuid.UUID) -> None:
 async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
     from app.routers.wikidata_studio import STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS
     from app.pipeline.wikidata_gila_case_review import load_authority_evidence
+    from app.pipeline.wikidata_gila_people import import_nli_people_marc
 
     try:
         await update_job_progress(
@@ -438,6 +450,26 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             ledger = await load_global_ledger(db, is_test=False)
             canonical = await _canonical_items(projection, run_id, snapshot, ledger)
             proof_authority = await load_authority_evidence(db, run_id)
+            source_job_id = job.params.get("_gila_people_source_audit")
+            people_marc = None
+            if source_job_id:
+                source_job = await db.get(RunJob, uuid.UUID(source_job_id))
+                if (source_job is None or source_job.run_id != run_id or source_job.kind != KIND
+                    or source_job.status != "succeeded"
+                    or source_job.params.get("_gila_cycle_parent") != job.params.get("_gila_cycle_parent")
+                    or source_job.params.get("_gila_source_fingerprint") != gila_record_fingerprint(records)):
+                    raise ValueError("The MARC source changed since the first audit.")
+                people_marc = gila_people_marc(source_job)
+        if people_marc is None:
+            async def import_progress(processed, total):
+                if await is_cancel_requested(job_id):
+                    raise AuditCancelledError()
+                await update_job_progress(job_id, {
+                    "phase": "people_marc", "processed": processed, "total": total, "unit": "records",
+                    "message": "Import the full MARC fields for people and roles from NLI.",
+                })
+
+            people_marc = await import_nli_people_marc(records, import_progress)
         mappings = _catalogue_mappings(records, ledger)
         seed, _ = load_seed()
         inventory = remaining_reference_inventory()["items"]
@@ -472,7 +504,10 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
                 "message": "Compare the nine requirements against the source and live statements.",
             },
         )
-        viaf_sources = await asyncio.to_thread(_read_cited_viaf_sources, entities, mappings.values())
+        viaf_sources = await asyncio.to_thread(
+            _read_cited_viaf_sources, entities, mappings.values(),
+            {item.get("existing_qid") for item in canonical if item.get("entity_type") == "work"},
+        )
         from app.pipeline.wikidata_gila_gnd_evidence import cited_gnd_ids, read_gnd_sources
 
         gnd_ids = {identifier for qid in mappings.values() if qid in entities
@@ -488,6 +523,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             repair_authority_by_cn=proof_authority,
             repair_viaf_sources=viaf_sources,
             repair_gnd_sources=gnd_sources,
+            people_marc=people_marc,
         )
         packet = await asyncio.to_thread(
             build_gila_completion_packet,
@@ -496,6 +532,14 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             read_only_qids=frozenset(row["qid"] for row in inventory if not row["creator_matches"]),
         )
         cases = _case_inventory(packet, audit)
+        person_cases = [row for record in audit["records"] for row in record["cases"] if row.get("person_role")]
+        people_summary = {
+            "records_with_full_marc": len(people_marc),
+            "source_roles": len(person_cases),
+            "roles_verified": sum(bool(row.get("role_verified")) for row in person_cases),
+            "authority_links_verified": sum(bool(row.get("authority_verified")) for row in person_cases),
+            "uncertainty_preserved": sum(row["reason"] == "recorded_person_uncertainty" for row in person_cases),
+        }
         additional_cases = [
             *_work_author_cases(canonical, entities),
             *_stale_catalogue_edit_cases(canonical),
@@ -557,6 +601,9 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             job.params = {
                 **job.params,
                 "_gila_cases": compressed.decode(),
+                "_gila_people_marc": b64encode(zlib.compress(json.dumps(
+                    people_marc, ensure_ascii=False, separators=(",", ":"),
+                ).encode())).decode(),
                 "_gila_checked_manuscripts": packet["checked_manuscripts"],
                 "_gila_source_fingerprint": digest,
                 "_gila_build_revision": snapshot.revision,
@@ -578,6 +625,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
                 )
             }
             | {
+                "people_coverage": people_summary,
                 "public_requested": len(seen),
                 "public_read": len(entities),
                 "reference_items": len(duplicates),

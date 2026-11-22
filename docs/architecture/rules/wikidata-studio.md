@@ -4442,3 +4442,11 @@ The write also keeps other claims when the scoped repair contains P31.
 Production v840 and v841 removed existing P1574 and P11603 claims when the uploader applied its complete-source replacement rules.
 The release uses the creator and revision guards before it writes.
 See [the case review workflow](../blocks/wikidata-studio/gila-case-review.md).
+
+## Rule W-370 — Verify each person role against the full MARC fields
+
+Keep one audit check for each source occurrence and role. Keep one legacy
+alignment warning when the full fields are unavailable. The prior audit
+counted 287 flat alignment warnings twice. Bind evidence and Publication
+preparation to the source copy from that repair cycle. Keep the first-creator
+guard for every write. See [people coverage](../blocks/wikidata-studio/gila-people-coverage.md).

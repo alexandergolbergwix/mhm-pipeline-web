@@ -132,12 +132,15 @@ def build_gila_completion_packet(
     checked = []
     controls: set[str] = set()
     fact_ids: set[str] = set()
+    full_people_controls: set[str] = set()
     complete_reads = True
     for record in records:
         cn = str(record.get("control_number") or "")
         if not cn or cn in controls:
             raise ValueError("Every source record needs one unique control number.")
         controls.add(cn)
+        if record.get("full_people_source"):
+            full_people_controls.add(cn)
         qid = str(record.get("qid") or "")
         raw = live_entities.get(qid)
         entity = _object(raw, "Public entity") if raw is not None else {}
@@ -208,6 +211,10 @@ def build_gila_completion_packet(
         if not fact_id or fact_id in fact_ids or fact.get("control_number") not in controls:
             raise ValueError("Each fact needs a unique ID and a checked source record.")
         fact_ids.add(fact_id)
+        if fact.get("control_number") in full_people_controls and fact.get("scope") in {
+            "named_scribe", "person_date_alignment",
+        }:
+            continue
         raw_fact_entity = live_entities.get(str(fact.get("qid") or ""))
         current = _object(raw_fact_entity, "Fact target") if raw_fact_entity is not None else {}
         revision_matches = (

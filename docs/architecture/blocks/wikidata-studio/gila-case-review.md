@@ -73,3 +73,5 @@ An unresolved identity, missing source passage, or corpus model decision stays o
 - `AdminGilaRepairs.tsx`, `api/gilaRepairs.ts`, and `api/runJobs.ts` show the case review and its progress.
 - `test_gila_case_review.py` checks role and place proof, exact candidate limits, and the route and worker.
 - `admin-gila-repairs.spec.ts` checks progress, candidate evidence, and recovery after reload.
+
+See [people coverage](gila-people-coverage.md) for the full MARC source copy, role audits, and scoped scribe selection.

@@ -51,6 +51,14 @@ class AuditSelection(BaseModel):
     audit_id: uuid.UUID
 
 
+RepairQid = Annotated[str, Field(pattern=r"^Q[1-9][0-9]*$")]
+
+
+class RepairAllRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    people_links: dict[RepairQid, RepairQid] = Field(min_length=1, max_length=50)
+
+
 class PrepareRepair(AuditSelection):
     case_id: str = Field(min_length=1, max_length=256)
 
@@ -105,7 +113,7 @@ async def status(auth: Admin, db: Database):
 
 
 @router.post("/repair-all")
-async def repair_all(auth: Admin, db: Database):
+async def repair_all(auth: Admin, db: Database, body: RepairAllRequest | None = None):
     run = await _lookup_run_with_access(db, _run_id(), auth, write=True)
     cycle = f"gila-repair:{uuid.uuid4()}"
     try:
@@ -120,6 +128,7 @@ async def repair_all(auth: Admin, db: Database):
             kind=JOB_KIND_WIKIDATA_GILA_REPAIR, created_by=auth.user.id,
             params={
                 "_cycle": cycle,
+                **({"_gila_people_links": body.people_links} if body else {}),
                 "_publication_credential": seal_execution_credential(
                     credential, publication_id=str(run.id), execution_id=cycle,
                 ),

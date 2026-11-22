@@ -383,6 +383,6 @@ async def test_batch_evidence_recovers_from_wikidata_read_delay(monkeypatch, sta
     monkeypatch.setattr(worker, "_batch_case", batch_case)
     monkeypatch.setattr(worker, "finish_job", finish)
 
-    await worker._batch_review(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), object())
+    await worker._batch_review(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), SimpleNamespace(params={}))
     result = finish.await_args.kwargs["result"]
     assert (result["supported"], result["unavailable"], calls) == (1, 0, 2)
