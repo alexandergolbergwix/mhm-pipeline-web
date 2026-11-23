@@ -1424,3 +1424,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 238. **R238 — Preserve the signed name and folio scope (W-381).** For a reviewed discrepancy, require the signed name or documented folio in the exact qualifier. Check all reviewed citations before the audit verifies the case.
 
 239. **R239 — Check person names before public CREATE (W-382).** Search each proposed label and alias in its language after the authority checks. A match or an invalid result blocks CREATE. This catches people without the proposed authority IDs.
+
+240. **R240 — Require the exact reviewed person entry (W-383).** For the approved catalogue route, require the reviewed URL, Hebrew name, and manuscript scope. Hold CREATE when any duplicate check returns a match or fails.

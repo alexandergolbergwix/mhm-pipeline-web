@@ -4556,3 +4556,11 @@ After the fresh authority checks, search for each proposed label and alias in it
 Search existing labels and aliases. A match requires identity review before CREATE.
 If the query fails or returns an invalid result, block CREATE.
 A name match alone cannot authorize an update or a new link.
+
+## Rule W-383 — Check reviewed person catalogue entries before CREATE
+
+A person with an exact reviewed scholarly entry can use its canonical URL in `P973`.
+Require the approved Hebrew label, exact manuscript control numbers, human class, and scribe role.
+Check the catalogue URL variants on existing items before CREATE.
+Check labels and aliases before the write.
+A name or entry match requires review. A failed query stops CREATE.

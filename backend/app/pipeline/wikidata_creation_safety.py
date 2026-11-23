@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from converter.wikidata.item_models import WikidataItem
+from converter.wikidata.reviewed_scribe_authority import reviewed_scribe_authority_urls
 
 if TYPE_CHECKING:
     from converter.wikidata.reconciler import WikidataReconciler
@@ -62,9 +63,10 @@ def reconcile_creation_identity(
         for statement in item.statements
         if statement.rank != "deprecated" and statement.value
     }
+    sources = reviewed_scribe_authority_urls(item)
     probeable = (
         item.entity_type == "person"
-        and bool(properties & {"P214", "P8189", "P244", "P227", "P213"})
+        and bool(sources or properties & {"P214", "P8189", "P244", "P227", "P213"})
         or item.entity_type == "manuscript"
         and bool(properties & {"P3959", "P217"})
         or item.entity_type == "work"
@@ -80,6 +82,10 @@ def reconcile_creation_identity(
     if not qid and item.entity_type == "person":
         from converter.wikidata.reconciler import PersonIdentityUncertainError
 
+        if sources and (candidates := reconciler.person_creation_source_candidates(sources)):
+            raise PersonIdentityUncertainError(
+                f"Catalogue entries require identity review before CREATE: {', '.join(candidates)}."
+            )
         candidates = reconciler.person_creation_name_candidates(item.labels, item.aliases)
         if candidates:
             raise PersonIdentityUncertainError(

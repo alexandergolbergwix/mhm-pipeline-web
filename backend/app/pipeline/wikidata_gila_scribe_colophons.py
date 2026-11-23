@@ -164,8 +164,303 @@ _ISRAEL_TUVIA_LINGI = ReviewedScribePerson(
 )
 
 
+_REVIEWED_SCRIBE_QAYSI = ReviewedScribePerson(
+    "Q142258799", "סעדיה בן שלמה בן סעדיה אלקיסי",
+    (
+        "https://teman.org.il/content/13042",
+    ),
+    identifier=("P973", "https://teman.org.il/content/13042"),
+)
+
+_REVIEWED_SCRIBE_MAABARI = ReviewedScribePerson(
+    "Q142258800", "סעדיה בן מעודד אלמעברי",
+    (
+        "https://teman.org.il/content/12251",
+    ),
+    identifier=("P973", "https://teman.org.il/content/12251"),
+)
+
+_REVIEWED_SCRIBE_TAWILI = ReviewedScribePerson(
+    "Q142258802", "שלום בן יהודה אלטוילי",
+    (
+        "https://teman.org.il/content/11620",
+    ),
+    identifier=("P973", "https://teman.org.il/content/11620"),
+)
+
+_REVIEWED_SCRIBE_MALIAH = ReviewedScribePerson(
+    "Q142258805", "יהודה בן אברהם בן נחום אלמליח",
+    (
+        "https://teman.org.il/content/12181",
+    ),
+    identifier=("P973", "https://teman.org.il/content/12181"),
+)
+
+_REVIEWED_SCRIBE_SHARARA = ReviewedScribePerson(
+    "Q142258808", "עמרם בן שלום בן יתר שרארה",
+    (
+        "https://teman.org.il/content/13290",
+    ),
+    identifier=("P973", "https://teman.org.il/content/13290"),
+)
+
+_REVIEWED_SCRIBE_UZANI = ReviewedScribePerson(
+    "Q142258810", "זכריה בן יוסף אלעזאני",
+    (
+        "https://teman.org.il/content/12670",
+    ),
+    identifier=("P973", "https://teman.org.il/content/12670"),
+)
+
+_REVIEWED_SCRIBE_KALUFI = ReviewedScribePerson(
+    "Q142258812", "זכריה בן נתן בן יהודה כלופי",
+    (
+        "https://searcharchives.bl.uk/catalog/032-003354975",
+        "https://teman.org.il/content/10994",
+    ),
+    identifier=("P973", "https://teman.org.il/content/10994"),
+)
+
+_REVIEWED_SCRIBE_SAADIA_SANHANI = ReviewedScribePerson(
+    "Q142258898", "סעדיה בן מעודד בן סעדיה בן יוסף",
+    (
+        "https://teman.org.il/content/12524",
+    ),
+    identifier=("P973", "https://teman.org.il/content/12524"),
+)
+
+
 # Bind each identification to the full set of notes in the reviewed MARC field.
 _EXTRA_SCRIBE_NOTES = {
+    "990000448060205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_QAYSI,
+        "700:1", "אלקיסי, סעדיה בן שלמה",
+        "e8d59c11ac19b838569523d1f5d6541100c32b83ca45e6e568dae385f9fe2787",
+    ),
+    "990000550960205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_UZANI,
+        "700:1", "זכריה בן יוסף בן סעדיה",
+        "db680251c533e67c69b46d573514f5a0b2bd5340c677702fff21653fd35f6a63",
+    ),
+    "990000554010205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_UZANI,
+        "700:1", "זכריה בן יוסף",
+        "21c6b2cb4819cc9535785b4121f88aa8d870065f79360d5a4d2124da9724fb7b",
+    ),
+    "990000598840205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_TAWILI,
+        "700:1", "אלטוילי, שלום בן יהודה",
+        "ed3730a1feb9ec1ff627e534bde04d32258b49a7678ed8267b9bd1433a0671a1",
+    ),
+    "990000898590205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_TAWILI,
+        "700:1", "אלטוילי, שלום בן יהודה",
+        "4dc5b3003108a9f9e21893041921d2ab978ef7d44764199618c4ab1222defa8a",
+    ),
+    "990000914680205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258890", "מימון בן משה בן סעדיה בן מעודד אלמוסאי",
+            (
+                "https://teman.org.il/content/12140",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12140"),
+        ),
+        "700:1", "אלמוסאי, מימון בן משה",
+        "6ea008c8559b5f3c22dec68a23ddf28eca31d16ede1b36b3984623cd2e6e23b4",
+    ),
+    "990000990320205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258892", "אהרן בן שלמה בן חלפון בן אביגד אלטוילי",
+            (
+                "https://teman.org.il/content/11611",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11611"),
+        ),
+        "700:1", "אלטוילי, אהרן בן שלמה",
+        "fad77b9ea230d524d3329af8d88da2583cb60e967480a56c82a32abd905cf9a0",
+    ),
+    "990001022890205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258894", "זכריה בן אביגד בן אברהם אלטוילי",
+            (
+                "https://teman.org.il/content/11613",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11613"),
+        ),
+        "700:1", "אלטוילי, זכרי אבן אביגד בן אברהם",
+        "3e7fef0ce3d2e85f31fdc59c96de8b03338efbc1095832aba499bc99dc793282",
+        folio="Genesis–Exodus (first volume)",
+    ),
+    "990001121850205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_UZANI,
+        "700:1", "זכריה בן יוסף",
+        "af3049962f1eff7774466258eb1344c48b717d86d2a4d1a87f4b7bfb76d620bf",
+    ),
+    "990001137910205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_UZANI,
+        "700:1", "עזאני, זכריה בן יוסף",
+        "7d04ee11d2d169496cabf0748a5625cc63069143c52f21c45623469a3807165a",
+    ),
+    "990001153290205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_SHARARA,
+        "700:1", "שרארה, עמרם בן שלום בן יתר",
+        "c33fcfcaa6c2e87f9f5d3d2b92613d3fe3a635cd9a18dc98bbb98f3f384a45f7",
+    ),
+    "990001162290205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_QAYSI,
+        "700:1", "אלקיסי, סעדיה בן שלמה בן סעדיה",
+        "0e67e74a19f4c7f8ac72fdde5507fefde1be079e2ef2a4ad37b9b53dcf1f65ed",
+    ),
+    "990001191160205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_SHARARA,
+        "700:1", "שרארה, עמרם בן שלום בן יתר",
+        "39c4fafdc3d346805ca973ace837f1c0413d2e9eab35e2d9612c4f07aa561320",
+    ),
+    "990001192190205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258891", "יעקב בן יצחק בן עודד אלעדוי",
+            (
+                "https://teman.org.il/content/12568",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12568"),
+        ),
+        "700:1", "אלעדוי, יעקב בן יצחק בן עודד",
+        "db365b2bee5b7e10f8061629536a87d858a3e7b087e42c92efb7752f4d3271e1",
+    ),
+    "990001205430205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258895", "אברהם בן יוסף בן סעדיה ונה",
+            (
+                "https://teman.org.il/content/11334",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11334"),
+        ),
+        "700:1", "ונה, אברהם בן יוסף בן סעדיה",
+        "b40df620820d62f22a9f5c8b95a937b069d3958c567508e20acb03bf3e0bc3c5",
+    ),
+    "990001209890205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258880", "זכריה בן אברהם בן זכריה אלמסורי",
+            (
+                "https://teman.org.il/content/12236",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12236"),
+        ),
+        "700:1", "אלמסורי, זכריה בן אברהם בן זכריה",
+        "6918a2bdf7d865a304f55b2d6139dd97394fdf25050e6e2d778de80a9122834d",
+    ),
+    "990001239200205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_KALUFI,
+        "700:1", "כלופי, זכריה בן נתן בן יהודה",
+        "f9ab2502a1c35fea47290a75e075ad7193185d8177efa17534eae56441ce8028",
+    ),
+    "990001324600205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_SAADIA_SANHANI,
+        "700:1", "סעדיה בן מעודד בן סעדיה",
+        "e6d425adc56baa80436f1b2d6c9dcdc9b7dc6418f50d01baf1296a03e00af46b",
+    ),
+    "990001338390205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_MAABARI,
+        "700:1", "אלמעברי, סעדיה בן מעודד",
+        "a2464a6ffe4cc1a6b6e5cc1b44b09e496752581bfe4a194a6a9a751ad353e720",
+    ),
+    "990001689710205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258814", "אברהם בן שלמה בן יונה אלכלפי",
+            (
+                "https://teman.org.il/content/11972",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11972"),
+        ),
+        "700:1", "אלכלפי, אברהם בן שלמה בן יונה",
+        "39a955050cd191fc6e0fca6b863bfcbaf5ca81220673173e658b3af0b9a5d63b",
+    ),
+    "990001689730205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258887", "יוסף בן שלום בן סעדיה אלשיחאני",
+            (
+                "https://teman.org.il/content/13153",
+            ),
+            identifier=("P973", "https://teman.org.il/content/13153"),
+        ),
+        "700:1", "אלשיחאני, יוסף בן שלום",
+        "37789e6d8b0c072ef3ac14d0a35a04e385f3efea6dae3d808b822a4140022c41",
+    ),
+    "990001689780205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258885", "זכריה בן דוד בן זכריה אלפהים",
+            (
+                "https://teman.org.il/content/12778",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12778"),
+        ),
+        "700:1", "אלפהים, זכריה בן דוד בן זכריה",
+        "ac69ba3cb562d58a44cd9f71204f929c60c5e70ef6f02bc4e87383d7bca0f10e",
+    ),
+    "990001797580205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q6760960", "שלמה חראזי",
+            (
+                "https://teman.org.il/content/11570",
+            ),
+            sitelink=("hewiki", "שלמה חראזי"),
+        ),
+        "700:1", "אלחראזי, שלמה בן סעדיה",
+        "f134ef299162e444647a1349e0001974a6f128b66280c409d6c9d182aafb9e0f",
+        folio="Exodus section",
+    ),
+    "990001799180205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258816", "שלמה בן ישראל בן יוסף בן ישראל",
+            (
+                "https://teman.org.il/content/13241",
+            ),
+            identifier=("P973", "https://teman.org.il/content/13241"),
+        ),
+        "700:1", "שלמה בן ישראל בן יוסף",
+        "d95ac204e36dde231db84b927836ce3c8b9a076806f9bc22bb2c4e530e31ae00",
+    ),
+    "990001827110205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_MALIAH,
+        "700:1", "אלמליח, יהודה בן אברהם בן נחום",
+        "78c31a49be3a4f2f2159aeb94df5474f0332295fefa558a21fae5363cfc0774b",
+    ),
+    "990001827620205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_SAADIA_SANHANI,
+        "700:1", "סעדיה בן מעודד בן סעדיה",
+        "3bdae8cbf3d7c34e519063c79d16e66b5e41d86511f8f7cb60008ad2706927c4",
+    ),
+    "990001875220205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_QAYSI,
+        "700:1", "אלקיסי, סעדיה בן שלמה",
+        "c3a3e47d6df0ad3bda7058f686215dbae78f36f372d62311f0fc8d99293c8953",
+    ),
+    "990001878160205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_KALUFI,
+        "700:1", "כלופי, זכריה בן נתן בן יהודה",
+        "b020596d7d70c46175bc24474efd453a162dc7bc58413a447cfa4870009467be",
+    ),
+    "990001921540205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_MAABARI,
+        "700:1", "אלמעברי, סעדיה בן מעודד",
+        "e126389ce1d57a3071d3266d7fe7bdb7020514c0dd485885c92ac0050d8896e8",
+    ),
+    "990001952110205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258882", "יהודה בן דוד בן שלמה אלפתיחי",
+            (
+                "https://teman.org.il/content/12800",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12800"),
+        ),
+        "700:1", "אלפתיחי, יהודה בן דוד בן שלמה",
+        "e4153c9e5b9d078efee111b929dbcbc30a92483106fa499f34970d8c40532b65",
+    ),
+    "990001979390205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_MALIAH,
+        "700:1", "אלמליח, יהודה בן אברהם בן נחום",
+        "ee905d401c5c5af958935987ae197f54ac104bc8ac3b7455607bbdb59494316a",
+    ),
     "990000564000205171": ReviewedScribeNote(
         _PINHAS_BEN_GAD,
         "700:1", "פינחס בן גד",

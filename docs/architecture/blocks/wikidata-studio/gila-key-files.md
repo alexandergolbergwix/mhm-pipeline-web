@@ -63,3 +63,4 @@
 | `frontend/src/routes/ProjectDetail.tsx` | MARCXML source option |
 
 The `wikidata_gila_scribe_colophons.py` module binds reviewed colophons to exact MARC records.
+The `backend/converter/wikidata/reviewed_scribe_authority.py` registry binds reviewed person entries to the exact manuscript controls.

@@ -24,6 +24,71 @@ def _person() -> WikidataItem:
     )
 
 
+def _catalogue_scribe() -> WikidataItem:
+    return WikidataItem(
+        local_id="person:al-tawili",
+        entity_type="person",
+        records=["990000598840205171", "990000898590205171"],
+        labels={"he": "שלום בן יהודה אלטוילי", "en": "Shalom ben Judah al-Tawili"},
+        aliases={"he": ["שלום בן יהודה בן שלום בן יהודה אלטוילי"]},
+        descriptions={"en": "17th-century Hebrew scribe"},
+        statements=[
+            WikidataStatement("P31", "Q5", "item"),
+            WikidataStatement("P106", "Q916292", "item"),
+            WikidataStatement("P973", "https://teman.org.il/content/11620", "url"),
+        ],
+    )
+
+
+@pytest.mark.parametrize("defect", ["unreviewed_url", "wrong_records", "wrong_name", "deprecated"])
+def test_a_person_url_requires_the_exact_reviewed_scope(defect: str) -> None:
+    item = _catalogue_scribe()
+    if defect == "unreviewed_url":
+        item.statements[-1].value = "https://teman.org.il/content/123"
+    elif defect == "wrong_records":
+        item.records.pop()
+    elif defect == "wrong_name":
+        item.labels["he"] = "שלום בן דוד"
+    else:
+        item.statements[-1].rank = "deprecated"
+
+    assert any(issue.code == "NO_IDENTIFIER" for issue in validate_item(item))
+
+
+@pytest.mark.parametrize("source_match", [(), ("Q456",), "unavailable"])
+def test_create_checks_the_reviewed_catalogue_url_at_the_final_write(
+    boundary, monkeypatch: pytest.MonkeyPatch, source_match: tuple[str, ...] | str,
+) -> None:
+    uploader, writes = boundary
+    item = _catalogue_scribe()
+    source = Mock(return_value=source_match)
+    if source_match == "unavailable":
+        source.side_effect = ReconciliationUnavailableError("The source check is unavailable.")
+    names = Mock(return_value=())
+    monkeypatch.setattr("app.pipeline.wikidata_upload._reconcile_for_upload", lambda *args: (None, "none"))
+    monkeypatch.setattr(
+        "converter.wikidata.reconciler.WikidataReconciler",
+        lambda: SimpleNamespace(
+            person_creation_source_candidates=source,
+            person_creation_name_candidates=names,
+        ),
+    )
+
+    result = uploader.upload_item(item)
+
+    urls = source.call_args.args[0]
+    assert "https://teman.org.il/content/11620" in urls
+    assert "https://www.teman.org.il/ar/node/11620" in urls
+    if source_match:
+        assert result.status == "blocked"
+        names.assert_not_called()
+        writes.assert_not_called()
+    else:
+        assert result.status == "success"
+        names.assert_called_once_with(item.labels, item.aliases)
+        writes.assert_called_once()
+
+
 @pytest.fixture
 def boundary(monkeypatch: pytest.MonkeyPatch):
     uploader = WikidataUploader(token="", allow_live=True)

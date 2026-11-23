@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from converter.wikidata.catalog_references import STALE_CATALOGUE_EDIT, STALE_CATALOGUE_EDIT_MESSAGE
+from converter.wikidata.reviewed_scribe_authority import reviewed_scribe_authority_urls
 
 
 @dataclass
@@ -350,12 +351,11 @@ def validate_item(item: Any) -> list[ValidationIssue]:
             _stmt_values(item, pid)
             for pid in ("P214", "P8189", "P244", "P227", "P213", "P268")
         )
-        if not identifiers:
+        if not identifiers and not reviewed_scribe_authority_urls(item):
             issues.append(ValidationIssue(
                 "error", "NO_IDENTIFIER",
-                "Person item has no VIAF / NLI / LCCN / GND / ISNI / "
-                "BnF identifier. Items without any external reference "
-                "fail Wikidata:Notability and create duplicates.",
+                "Person item needs a supported authority identifier or a reviewed scholarly entry "
+                "for its exact manuscript scope.",
                 _REF_NOTABILITY,
             ))
 

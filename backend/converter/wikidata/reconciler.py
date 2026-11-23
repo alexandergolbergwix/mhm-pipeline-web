@@ -872,15 +872,37 @@ class WikidataReconciler:
           FILTER(STRSTARTS(STR(?item), STR(wd:Q)))
         }} LIMIT 2
         """)
+        return self._creation_candidate_qids(rows)
+
+    def person_creation_source_candidates(self, urls: tuple[str, ...]) -> tuple[str, ...]:
+        """Find items that already use an approved person entry."""
+        if not urls or any(not re.fullmatch(r"https?://[A-Za-z0-9.-]+/[A-Za-z0-9./:-]+", url) for url in urls):
+            raise PersonIdentityUncertainError("The creation check needs valid catalogue entry URLs.")
+        values = " ".join(f"<{url}>" for url in urls)
+        rows = self._query(f"""
+        SELECT DISTINCT ?item WHERE {{
+          VALUES ?url {{ {values} }}
+          {{ ?item (p:P973/ps:P973|p:P2888/ps:P2888) ?url . }}
+          UNION {{
+            ?item wdt:P31 wd:Q5; ?property ?statement .
+            ?statement prov:wasDerivedFrom/pr:P854 ?url .
+          }}
+          FILTER(STRSTARTS(STR(?item), STR(wd:Q)))
+        }} LIMIT 2
+        """)
+        return self._creation_candidate_qids(rows)
+
+    @staticmethod
+    def _creation_candidate_qids(rows: Iterable[Mapping[str, object]]) -> tuple[str, ...]:
         qids: list[str] = []
         for row in rows:
             item = row.get("item")
             uri = item.get("value") if isinstance(item, dict) else None
             if not isinstance(uri, str):
-                raise ReconciliationUnavailableError("The name search did not return valid item identifiers.")
+                raise ReconciliationUnavailableError("The duplicate search did not return valid item identifiers.")
             match = re.fullmatch(r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)", uri)
             if not match:
-                raise ReconciliationUnavailableError("The name search did not return valid item identifiers.")
+                raise ReconciliationUnavailableError("The duplicate search did not return valid item identifiers.")
             qids.append(match[1])
         return tuple(qids)
 
