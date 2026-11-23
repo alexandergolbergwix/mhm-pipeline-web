@@ -16,6 +16,8 @@ The audit retains other passages in the evidence inventory.
 The job checks person identities through MARC, NLI Alma, BIBFRAME, and exact authority IDs.
 The source checks require an exact quotation, controlled term, reviewed publication, or already identified scan URL.
 A work claim needs one source-bound work with a matching title and no evidence of analytic scope.
+The job keeps different inscription texts for the same role and folio open for review.
+An unknown role or folio can overlap a known one.
 The job keeps catalogue status notes as evidence.
 The job keeps unresolved edition identities and uncertain access links open.
 

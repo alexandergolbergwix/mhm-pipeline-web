@@ -55,6 +55,16 @@ def matching_claims(entity, pid, value, qualifiers, *, language=None):
     return matches
 
 
+def _same_inscription_scope(left, right):
+    left_role = left.get("P3831", [])
+    right_role = right.get("P3831", [])
+    if left_role and right_role and not set(left_role).intersection(right_role):
+        return False
+    left_folio = left.get("P7416", [])
+    right_folio = right.get("P7416", [])
+    return not left_folio or not right_folio or bool(set(left_folio).intersection(right_folio))
+
+
 def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=None,
                 qualifiers=None, kind=None, language=None, dependencies=()):
     """Retain every source occurrence and the exact evidence for eligible cases."""
@@ -79,6 +89,12 @@ def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=
         return case
     if existing and _source_reference(existing[0], cn):
         case.update(verified=True, reason="verified_source_assertion")
+        return case
+    if pid == "P1684" and not existing and any(
+        _same_inscription_scope({p: [v] for p, v in qualifiers.items()}, _qualifiers(claim))
+        for claim in _live_claims(entity, pid)
+    ):
+        case["reason"] = "inscription_text_overlap"
         return case
     case.update(
         reason="source_reference_missing" if existing else "source_statement_missing",
@@ -178,6 +194,11 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
     source_entity = entity if entity and set(_claim_values(entity, "P3959")) == {cn} else None
     work = _single_source_work(record, source_entity, entities, cn)
     source_rows = marc.occurrences(raw)
+    quotations = [
+        quotation for row in source_rows if row["tag"] in {"500", "957"}
+        for source in marc.values(row, "a")
+        if (quotation := _quoted_inscription(row, source.strip()))
+    ]
     full_citations = Counter()
     codes = Counter(
         " ".join(catalog_reference_text(ref).split())
@@ -229,8 +250,15 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
                         yield source_case(cn, occurrence, source, "inscription_requires_transcription_proof")
                     continue
                 text, qualifiers = inscription
-                yield source_case(cn, occurrence, source, "inscription_requires_transcription_proof",
-                                  entity=source_entity, pid="P1684", value=text, qualifiers=qualifiers,
+                overlapping = any(
+                    other_text != text and _same_inscription_scope(
+                        {p: [v] for p, v in qualifiers.items()}, {p: [v] for p, v in other_scope.items()},
+                    )
+                    for other_text, other_scope in quotations
+                )
+                yield source_case(cn, occurrence, source,
+                                  "inscription_text_overlap" if overlapping else "inscription_requires_transcription_proof",
+                                  entity=None if overlapping else source_entity, pid="P1684", value=text, qualifiers=qualifiers,
                                   kind="monolingualtext", language="he")
             elif tag == "856":
                 pid = _scan_property(row, source, source_entity)

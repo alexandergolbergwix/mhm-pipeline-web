@@ -75,3 +75,26 @@ async def test_corpus_preflight_blocks_other_creators_and_merges_the_same_source
     assert confirmed[0].case_ids == ["Q1", "extra"]
     assert inventory["Q2"]["status"] == "other_creator"
     assert inventory["Q1"]["status"] == "eligible"
+
+
+def test_inscription_variant_with_the_same_scope_does_not_make_another_claim():
+    target = item()
+    quotation = inscription(target)
+    patch = corpus._source_patch(quotation, target, repair_claim_builder())
+    patch["id"] = "Q1$earlier"
+    patch["mainsnak"]["datavalue"]["value"]["text"] = "ונשלמה המלאכה בשבת"
+    target["claims"]["P1684"] = [patch]
+    review = inscription(target)
+    assert review["reason"] == "inscription_text_overlap"
+    assert "source_repair" not in review
+
+
+def test_distinct_source_transcriptions_without_separate_folios_require_review():
+    record = source()
+    record["marc_occurrences"].append({
+        "tag": "957", "subfields": [{"code": "a", "value": 'קולופון: "כאן נשלמה המלאכה"'}],
+    })
+    rows = list(full_source_cases(CN, record, {}, item(), {}, {}))
+    reviews = [row for row in rows if row["occurrence"].startswith("957:")]
+    assert len(reviews) == 2
+    assert all(row["reason"] == "inscription_text_overlap" and "source_repair" not in row for row in reviews)
