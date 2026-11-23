@@ -1,6 +1,6 @@
 # Public CREATE guards
 
-> Up: [Wikidata Studio](README.md) · W-335–W-337, W-382–W-383 · R185–R187, R239–R240
+> Up: [Wikidata Studio](README.md) · W-335–W-337, W-382–W-384 · R185–R187, R239–R241
 
 ## Final boundary
 
@@ -77,6 +77,9 @@ The existing citation code already coalesces repeated retrieval dates on new cla
 It preserves distinct pages, quotes, and source metadata.
 This change retains that behavior.
 Historical public repairs still require exact source proof and durable receipts.
+
+The registry can approve an exact entry from the Center for Jewish Art, an encyclopedia, or a scholarly reference.
+The duplicate check accepts safe URL queries and fragments. It checks at most 64 variants in one Wikidata query.
 
 ## Tests
 

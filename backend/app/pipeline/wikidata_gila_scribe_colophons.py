@@ -230,8 +230,318 @@ _REVIEWED_SCRIBE_SAADIA_SANHANI = ReviewedScribePerson(
 )
 
 
+_REVIEWED_SCRIBE_JOSEPH_SHARAFAH = ReviewedScribePerson(
+    "Q142259361", "יוסף בן שלמה בן יוסף הלוי",
+    (
+        "https://teman.org.il/content/12047",
+    ),
+    identifier=("P973", "https://teman.org.il/content/12047"),
+)
+
+
 # Bind each identification to the full set of notes in the reviewed MARC field.
 _EXTRA_SCRIBE_NOTES = {
+    "990000550940205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259360", "חיים בן סעדיה",
+            (
+                "https://teman.org.il/content/11489",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11489"),
+        ),
+        "700:1", "חיים בן סעדיה",
+        "4e93740956710d7d871d9ba99dc79f96c5fdb620d1ba36ecb4e77d09b60bd346",
+    ),
+    "990000558280205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_JOSEPH_SHARAFAH,
+        "700:1", "יוסף בן שלמה",
+        "89e5cf44bd48486eab2f3b026c2f6b06530af531df2149aa6e9b186dfa66602b",
+        former_heading="יוסף בן שלמה הלוי",
+        corrected_heading="יוסף בן שלמה הלוי",
+    ),
+    "990000563810205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258810", "זכריה בן יוסף אלעזאני",
+            (
+                "https://teman.org.il/content/11362",
+                "https://teman.org.il/content/12670",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12670"),
+        ),
+        "700:1", "זכריה בן סעדיה בן שלמה",
+        "4c84ec6f1323318b6a9d93c89f73db2ac31ad66ce97960f7c247634ee06feb99",
+    ),
+    "990000594010205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259363", "סעדיה בן שלום בן שלמה בן בניה הלוי",
+            (
+                "https://teman.org.il/content/12080",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12080"),
+        ),
+        "700:1", "סעדיה בן שלום בן שלמה בן בניה לוי",
+        "3e834e63a2dd4e784e2486dccea43d6781468f6e3e71dfebf7b32f34d19294e4",
+    ),
+    "990000856190205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259379", "שאול בן יוסף מררי",
+            (
+                "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/6117251",
+                "https://searcharchives.bl.uk/catalog/032-003313863",
+            ),
+            identifier=("P973", "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/6117251"),
+        ),
+        "700:1", "מררי, שאול בן יוסף",
+        "812c4c7b7a345beb7a7f39c8e6db36e2c31e692c4e3bd976476488af93a36962",
+        tag="500",
+    ),
+    "990000928800205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q3460419", "סעדיה אזנקוט",
+            (
+                "https://dbs.anumuseum.org.il/skn/e24520398",
+            ),
+            sitelink=("enwiki", "Saadia Azankot"),
+        ),
+        "700:1", "אזנקוט, סעדיה בן לוי",
+        "fbb7d64c6a5e2627bfe831be24b0ee79e95dbf0a858f7b6572b44d2db77ca0e0",
+    ),
+    "990000942930205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259306", "מעודד בן שמריה בן נחום בניחגאג",
+            (
+                "https://teman.org.il/content/12264",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12264"),
+        ),
+        "700:1", "בניחגאג, מעודד בן שמריה בן נחום",
+        "bf32e43adb9f6c6911ba54ff58e3c72b236fd5a7ea921fc136f365c6ed486f34",
+        folio="pages 31–38",
+    ),
+    "990001011990205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259355", "שמואל בן סעדיה",
+            (
+                "https://teman.org.il/content/13270",
+            ),
+            identifier=("P973", "https://teman.org.il/content/13270"),
+        ),
+        "700:1", "שמואל בן סעדיה",
+        "443a4eb707a87892f11c24699ecd7faf7a2c7debec967872a95d45bbcd128cdb",
+    ),
+    "990001022840205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259303", "טוב בן אברהם מדנואר",
+            (
+                "https://teman.org.il/content/11602",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11602"),
+        ),
+        "700:1", "טוב בן אברהם",
+        "d9e0f51b699a26b4bd5424e7fd170c0c5079264f17a1d44bfdb89e8ec02ccbd7",
+    ),
+    "990001022860205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259311", "אברהם בן סעדיה בן עמרם בן דוד",
+            (
+                "https://teman.org.il/content/10967",
+            ),
+            identifier=("P973", "https://teman.org.il/content/10967"),
+        ),
+        "700:1", "אברהם בן סעדיה בן עמרם בן דוד",
+        "b28982b1d243084d39032fc025e7dbacd30f399c53e651b004ace128fcce262b",
+    ),
+    "990001022870205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259304", "אברהם בן זכריה מאלבאקלי",
+            (
+                "https://teman.org.il/content/10953",
+            ),
+            identifier=("P973", "https://teman.org.il/content/10953"),
+        ),
+        "700:1", "אברהם בן זכריה",
+        "b40d1a02ce27ef8b6aa76c9c613e45dfb5137f2acd183ff5c0c554419e0a4c2a",
+    ),
+    "990001022880205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259366", "משה בן יוסף בן מעודד אלאשרסי",
+            (
+                "https://teman.org.il/content/11029",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11029"),
+        ),
+        "700:1", "אלאשרסי, משה בן יוסף בן מעודד",
+        "3488a627aad1fb2da6793ad524a488093c4dd78c81b299349bbe84916704e005",
+    ),
+    "990001062450205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259336", "ישע בן דוד בן נחום הלוי",
+            (
+                "https://teman.org.il/content/12061",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12061"),
+        ),
+        "700:2", "ישע בן דוד בן נחום",
+        "07d0d92600bbd18075efa8d122ea23cccf228dc27c90bb560b65271f1c8112de",
+        folio="through folio 104r",
+    ),
+    "990001084150205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258814", "אברהם בן שלמה בן יונה אלכלפי",
+            (
+                "https://teman.org.il/content/11972",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11972"),
+        ),
+        "700:1", "אלכלפי, אברהם בן שלמה בן יונה",
+        "ecc8288f0626007afd18ebc32fc778845dc7282b7d02f31c5a3f775d0c821e6c",
+    ),
+    "990001136420205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_JOSEPH_SHARAFAH,
+        "700:1", "יוסף בן שלמה",
+        "5e37041d394e56a4a3f1952c7117626b9766734e1bb702470fd4d47d778b4c66",
+    ),
+    "990001136560205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259364", "סעדיה בן נחום מאלכלה",
+            (
+                "https://teman.org.il/content/12529",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12529"),
+        ),
+        "700:1", "סעדיה בן נחום",
+        "b5f3f9dbb3ea8353e42b6282254b02c57395cee14d8f05e13af7f72f3f65bebc",
+    ),
+    "990001219500205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259325", "זכריה בן סעדיה מעלם",
+            (
+                "https://teman.org.il/content/12279",
+                "https://searcharchives.bl.uk/catalog/032-003314038",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12279"),
+        ),
+        "700:1", "מעלם, זכריה בן סעדיה",
+        "3efc663eabe2b63ad14f903f390896850926a3744090c27fe657a8f9c53f64ee",
+    ),
+    "990001239240205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259357", "דוד בן סעדיה בן דוד אלטיאני",
+            (
+                "https://teman.org.il/content/11624",
+                "https://searcharchives.bl.uk/catalog/032-003314139",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11624"),
+        ),
+        "700:1", "אלטיאני, דוד בן סעדיה",
+        "c828aa48632996e5146571d9c67988bef6c4ae09eaa411c3a93c70205e2e8e89",
+    ),
+    "990001285000205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259340", "נתן נטע בן משה נפתלי הירש המרשלק",
+            (
+                "https://cja.huji.ac.il/?f=maker_name&id=660&mode=treefriend",
+                "https://cja.huji.ac.il/browser.php?id=191010&mode=alone",
+                "https://ilanot.org/diagrams/diagram-00518",
+            ),
+            identifier=("P973", "https://cja.huji.ac.il/?f=maker_name&id=660&mode=treefriend"),
+        ),
+        "700:1", "המרשלק, נתן נטע בן משה נפתלי הירש",
+        "287e1e2b0e28c45f5669751b50f62474dd8a410120b0e8a9888fd0f72d84edd6",
+    ),
+    "990001313900205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259339", "זכריה בן יוסף אלכלפי",
+            (
+                "https://teman.org.il/content/11973",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11973"),
+        ),
+        "700:1", "אלכלפי, זכריה בן יוסף",
+        "66d378fac0e63335c5ed044993e2d6691e2daaa67497acc45aebc1eccdd6245f",
+    ),
+    "990001350000205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259367", "תם בן גדליה אבן יחיא",
+            (
+                "https://www.jewishencyclopedia.com/articles/15051-yahya#anchor25",
+                "https://files.ybz.org.il/periodicals/peamim/26/Article_26.3.pdf",
+            ),
+            identifier=("P973", "https://www.jewishencyclopedia.com/articles/15051-yahya#anchor25"),
+        ),
+        "700:1", "יחיא, תם בן גדליה אבן",
+        "c2d8d4c8104167dd54026560f84040d56640f7eebe03e0a1e0a4afa853ef9d59",
+    ),
+    "990001361140205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258898", "סעדיה בן מעודד בן סעדיה בן יוסף",
+            (
+                "https://teman.org.il/content/12524",
+            ),
+            identifier=("P973", "https://teman.org.il/content/12524"),
+        ),
+        "700:1", "סעיד בן מעודד",
+        "d9fce5330a4abb9b030ded2f0882c769811829a6ca911b56feec0f81c8b9fe2c",
+    ),
+    "990001689720205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259359", "יהודה בן אברהם בן יוסף בן זכריה",
+            (
+                "https://teman.org.il/content/11633",
+            ),
+            identifier=("P973", "https://teman.org.il/content/11633"),
+        ),
+        "700:1", "יהודה בן אברהם בן יוסף בן זכריה",
+        "75a7fb2817aef6c00e2314554685745b84848b7bf4492acd841fae31328d0d49",
+    ),
+    "990001762200205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259384", "דניאל בן משה בן ישעיה פירוז",
+            (
+                "https://www.orientalstudies.ru/rus/images/pdf/belkina_2024.pdf#page=12",
+                "https://searcharchives.bl.uk/catalog/032-003372139",
+                "https://sammlungen.ub.uni-frankfurt.de/cm/periodical/pageview/2847305",
+            ),
+            identifier=("P973", "https://www.orientalstudies.ru/rus/images/pdf/belkina_2024.pdf#page=12"),
+        ),
+        "700:1", "פירוז, דניאל בן משה בן ישעיה",
+        "2ed56d9c08f9c8bfb804b7a2ec1608f0d126134279dc852f3956a493023694ac",
+    ),
+    "990001860230205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259385", "יהודה אריה בן יעקב פוג׳טי",
+            (
+                "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/6117264",
+                "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf",
+            ),
+            identifier=("P973", "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/6117264"),
+        ),
+        "700:1", "פוג'טי, יהודה אריה בן יעקב",
+        "f97b0d77173f544c64ee53a5259d859206975f51ca1f535d689f10f12bea5af8",
+        tag="500",
+    ),
+    "990001901520205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259358", "יוסף בן שלום בן דוד בן שלמה אלאחמר",
+            (
+                "https://teman.org.il/content/10987",
+            ),
+            identifier=("P973", "https://teman.org.il/content/10987"),
+        ),
+        "700:1", "אלאחמר, יוסף בן שלום בן דוד",
+        "eb643d8a3f199e202d545a5982128bacd479fc21e31e89c1d47b79ea5d6bfe25",
+    ),
+    "990035802410205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142259305", "ישראל בן יוסף בן ישראל משתא",
+            (
+                "https://teman.org.il/content/13136",
+            ),
+            identifier=("P973", "https://teman.org.il/content/13136"),
+        ),
+        "700:1", "ישראל בן יוסף",
+        "433b08c7c0f30f53832d8a75070976c68cc36a7804b9e093433ec5bbb2696899",
+    ),
     "990000448060205171": ReviewedScribeNote(
         _REVIEWED_SCRIBE_QAYSI,
         "700:1", "אלקיסי, סעדיה בן שלמה",

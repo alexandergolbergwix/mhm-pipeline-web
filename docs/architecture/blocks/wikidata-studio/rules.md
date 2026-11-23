@@ -1426,3 +1426,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 239. **R239 — Check person names before public CREATE (W-382).** Search each proposed label and alias in its language after the authority checks. A match or an invalid result blocks CREATE. This catches people without the proposed authority IDs.
 
 240. **R240 — Require the exact reviewed person entry (W-383).** For the approved catalogue route, require the reviewed URL, Hebrew name, and manuscript scope. Hold CREATE when any duplicate check returns a match or fails.
+
+241. **R241 — Check reviewed variants of a catalogue entry (W-384).** Keep the exact URL and source scope. Check aliases, query variants, and biography fragments in batches of at most 64. Stop CREATE when any check finds a candidate or fails.

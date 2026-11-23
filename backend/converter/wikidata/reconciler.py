@@ -876,21 +876,25 @@ class WikidataReconciler:
 
     def person_creation_source_candidates(self, urls: tuple[str, ...]) -> tuple[str, ...]:
         """Find items that already use an approved person entry."""
-        if not urls or any(not re.fullmatch(r"https?://[A-Za-z0-9.-]+/[A-Za-z0-9./:-]+", url) for url in urls):
+        url_pattern = r"https?://[A-Za-z0-9.-]+/[A-Za-z0-9_./:-]*(?:\?[A-Za-z0-9._=&%-]+)?(?:#[A-Za-z0-9._=-]+)?"
+        if not urls or any(not re.fullmatch(url_pattern, url) for url in urls):
             raise PersonIdentityUncertainError("The creation check needs valid catalogue entry URLs.")
-        values = " ".join(f"<{url}>" for url in urls)
-        rows = self._query(f"""
-        SELECT DISTINCT ?item WHERE {{
-          VALUES ?url {{ {values} }}
-          {{ ?item (p:P973/ps:P973|p:P2888/ps:P2888) ?url . }}
-          UNION {{
-            ?item wdt:P31 wd:Q5; ?property ?statement .
-            ?statement prov:wasDerivedFrom/pr:P854 ?url .
-          }}
-          FILTER(STRSTARTS(STR(?item), STR(wd:Q)))
-        }} LIMIT 2
-        """)
-        return self._creation_candidate_qids(rows)
+        for start in range(0, len(urls), 64):
+            values = " ".join(f"<{url}>" for url in urls[start : start + 64])
+            rows = self._query(f"""
+            SELECT DISTINCT ?item WHERE {{
+              VALUES ?url {{ {values} }}
+              {{ ?item (p:P973/ps:P973|p:P2888/ps:P2888) ?url . }}
+              UNION {{
+                ?item wdt:P31 wd:Q5; ?property ?statement .
+                ?statement prov:wasDerivedFrom/pr:P854 ?url .
+              }}
+              FILTER(STRSTARTS(STR(?item), STR(wd:Q)))
+            }} LIMIT 2
+            """)
+            if candidates := self._creation_candidate_qids(rows):
+                return candidates
+        return ()
 
     @staticmethod
     def _creation_candidate_qids(rows: Iterable[Mapping[str, object]]) -> tuple[str, ...]:

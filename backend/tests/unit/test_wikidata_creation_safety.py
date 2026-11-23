@@ -369,3 +369,39 @@ def test_microfilm_without_942_cannot_supply_a_current_shelfmark() -> None:
     assert not [statement for statement in item.statements if statement.property_id == "P217"]
     assert all("F 39896" not in label for label in item.labels.values())
     assert record["090$a"] == "F 39896"
+
+
+def test_index_person_url_requires_the_reviewed_id_and_manuscript() -> None:
+    from converter.wikidata.reviewed_scribe_authority import reviewed_scribe_authority_urls
+
+    item = _catalogue_scribe()
+    item.records = ["990001285000205171"]
+    item.labels["he"] = "נתן נטע בן משה נפתלי הירש המרשלק"
+    item.statements[-1].value = "https://cja.huji.ac.il/?f=maker_name&id=660&mode=treefriend"
+
+    urls = reviewed_scribe_authority_urls(item)
+    assert "https://cja.huji.ac.il/browser.php?id=660&f=maker_name&mode=treefriend" in urls
+    assert item.statements[-1].value in urls
+    assert not any(issue.code == "NO_IDENTIFIER" for issue in validate_item(item))
+
+    item.statements[-1].value = "https://cja.huji.ac.il/?f=maker_name&id=661&mode=treefriend"
+    assert not reviewed_scribe_authority_urls(item)
+    assert any(issue.code == "NO_IDENTIFIER" for issue in validate_item(item))
+
+
+def test_catalogue_duplicate_lookup_checks_variants_in_bounded_batches() -> None:
+    from converter.wikidata.reconciler import PersonIdentityUncertainError, WikidataReconciler
+
+    reconciler = WikidataReconciler()
+    item_url = "http://www.wikidata.org/entity/Q456"
+    lookup = Mock(side_effect=[[], [{"item": {"value": item_url}}]])
+    reconciler._query = lookup
+    urls = tuple(f"https://teman.org.il/content/{value}" for value in range(1000, 1065))
+    cja = "https://cja.huji.ac.il/?f=maker_name&id=660&mode=treefriend"
+
+    assert reconciler.person_creation_source_candidates((*urls, cja)) == ("Q456",)
+    assert lookup.call_count == 2
+    assert cja in lookup.call_args_list[1].args[0]
+    assert urls[64] not in lookup.call_args_list[0].args[0]
+    with pytest.raises(PersonIdentityUncertainError):
+        reconciler.person_creation_source_candidates((cja + "> }",))

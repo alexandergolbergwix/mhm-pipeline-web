@@ -126,3 +126,7 @@ See the [second source review](../../../audits/2026-11-23-scribe-authority-batch
 The Yemenite scribe review uses named entries from the scholarly catalogue.
 The audit checks the recorded `P973` person entry and the exact manuscript note.
 See the [catalogue evidence](../../../audits/2026-11-23-yemenite-scribe-authority.md).
+
+The second scribe review reuses existing person items and exact signed copies.
+It records the folio or page range when a manuscript has work by more than one scribe.
+See the [second scribe authority review](../../../audits/2026-11-23-scribe-authority-followup.md).

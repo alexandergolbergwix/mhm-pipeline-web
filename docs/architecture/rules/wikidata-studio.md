@@ -4564,3 +4564,10 @@ Require the approved Hebrew label, exact manuscript control numbers, human class
 Check the catalogue URL variants on existing items before CREATE.
 Check labels and aliases before the write.
 A name or entry match requires review. A failed query stops CREATE.
+
+## Rule W-384 — Check aliases of a reviewed person entry in bounded batches
+
+A reviewed person entry can use a stable query or a fragment that locates the exact passage.
+The review records the exact URL, person name, and manuscript scope before CREATE.
+The duplicate check reads all reviewed URL variants in batches of at most 64.
+A candidate or an unavailable check stops CREATE.
