@@ -23,6 +23,8 @@ The job keeps unresolved edition identities and uncertain access links open.
 
 `wikidata_gila_corpus_repair.py` prepares both plans with current item revisions.
 It checks the first creator of every proposed target.
+The worker uses the shared Wikidata read window for creator checks and verification.
+The window respects temporary rate limits and retries within its time limit.
 It combines compatible patches for the same target and claim.
 A conflicting patch or a source revision change requires review.
 The job saves the complete preflight before the first edit.

@@ -6,6 +6,7 @@ import asyncio
 import logging
 import uuid
 from collections import Counter
+from contextlib import nullcontext
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
@@ -37,6 +38,7 @@ from app.pipeline.run_job_service import (
     update_job_progress,
 )
 from app.pipeline.wikidata_publication_prepare_job import audited_batch_params
+from app.pipeline.wikidata_evidence_reads import paced_wikidata_evidence_reads
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.pipeline.wikidata_reference_repair_job import load_remaining_seed, load_seed
 from app.publication.credentials import (
@@ -455,9 +457,10 @@ class RepairCycle:
 
             inventory = corpus_inventory(cases)
             source_plans = await plan_sources(cases, records, check=check, progress=progress, inventory=inventory)
-            plans = await confirm_corpus_plans(
-                [*people_plans, *source_plans], inventory, check=check, progress=progress, uncertain=uncertain,
-            )
+            with paced_wikidata_evidence_reads():
+                plans = await confirm_corpus_plans(
+                    [*people_plans, *source_plans], inventory, check=check, progress=progress, uncertain=uncertain,
+                )
             await check_source()
             self.result["corpus_preflight"] = {
                 "records": len(records), "eligible_items": len(plans),
@@ -474,10 +477,11 @@ class RepairCycle:
                 job.result = dict(self.result)
                 await db.commit()
             logger.info("Corpus preflight %s completed: %s.", self.id, self.result["corpus_preflight"])
-        verified = await apply_planned_edits(
-            plans, credential=credential, check=check, check_source=check_source,
-            progress=progress, journal=journal, counts=counts, uncertain_qids=uncertain,
-        )
+        with paced_wikidata_evidence_reads() if self.corpus else nullcontext():
+            verified = await apply_planned_edits(
+                plans, credential=credential, check=check, check_source=check_source,
+                progress=progress, journal=journal, counts=counts, uncertain_qids=uncertain,
+            )
         logger.info("Manuscript repair batch %s completed with %s.", self.id, dict(counts))
         if counts["uncertain"]:
             self.attention("people_apply", "A Wikidata edit needs recovery from its saved receipt.")
