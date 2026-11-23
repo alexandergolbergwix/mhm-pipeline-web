@@ -814,3 +814,97 @@ def test_complete_readback_accepts_only_the_generated_claim_id():
     assert verify_claims(before, after, 22, [claim])
     after["claims"]["P50"].append({**claim, "id": "Q10$duplicate"})
     assert not verify_claims(before, after, 22, [claim])
+
+
+def test_bibframe_exact_owner_role_and_viaf_authority_close_the_audit_case():
+    from collections import Counter
+    from copy import deepcopy
+
+    from app.pipeline.wikidata_gila_bibframe_people import frame_url, parse_frame
+    from app.pipeline.wikidata_gila_linked_people import ALMA
+    from app.pipeline.wikidata_gila_mazal_viaf import cluster_keys, viaf_mazal_url
+    from app.pipeline.wikidata_gila_people_batch import patches_for_group, plan_groups, source_cases
+    from converter.wikidata.uploader import WikidataUploader
+
+    aid = "987007265745205171"
+    heading = "Source Owner"
+    raw = parse_nli_records(_response(_record(_field("700", ("a", heading), ("e", "former owner")))), {CONTROL})[CONTROL]
+    catalogue = f"https://eu01.alma.exlibrisgroup.com/bf"
+    work = f"{catalogue}/works/{CONTROL}?institute=972NNL_INST"
+    instance = f"{catalogue}/instances/{CONTROL}?institute=972NNL_INST"
+    authority = f"{ALMA}/authorities/{aid}.jsonld"
+    xml = f"""
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+        xmlns:bf="http://id.loc.gov/ontologies/bibframe/"
+        xmlns:bflc="http://id.loc.gov/ontologies/bflc/"
+        xmlns:mads="http://www.loc.gov/mads/rdf/v1#">
+      <bf:Work rdf:about="{work}">
+        <bf:hasInstance rdf:resource="{instance}" />
+        <bf:contribution><bf:Contribution><bf:agent><bf:Agent rdf:about="{authority}">
+          <rdf:type rdf:resource="http://id.loc.gov/ontologies/bibframe/Person" />
+          <bflc:marcKey>700  $a{heading}$eformer owner</bflc:marcKey>
+          <mads:isIdentifiedByAuthority rdf:resource="{authority}" />
+        </bf:Agent></bf:agent></bf:Contribution></bf:contribution>
+      </bf:Work>
+      <bf:Instance rdf:about="{instance}" />
+    </rdf:RDF>
+    """.encode()
+    frames = {CONTROL: parse_frame(CONTROL, xml)}
+    entity = {"id": "Q10", "lastrevid": 1, "claims": {"P3959": [_claim(CONTROL)]}}
+    before = people_role_cases(raw, entity, {})
+    case = {**before[0], "case_id": "owner", "qid": "Q10", "control_number": CONTROL}
+    assert not list(source_cases([case], {CONTROL: raw}, {}))
+    changed = xml.replace(b"$eformer owner", b"$escribe")
+    assert not list(source_cases([case], {CONTROL: raw}, {}, {CONTROL: parse_frame(CONTROL, changed)}))
+    assert not parse_frame("990000403370205171", xml)
+    proof, = source_cases([case], {CONTROL: raw}, {}, frames)
+    assert proof.source_url == frame_url(CONTROL)
+
+    cluster = {
+        "ns1:nameType": "Personal", "ns1:viafID": "123456",
+        "ns1:sources": {"ns1:source": [{"content": f"J9U|{aid}"}, {"content": "LC|n  12345678"}]},
+    }
+    keys = cluster_keys(aid, cluster)
+    assert keys == {("P214", "123456"), ("P244", "n 12345678")}
+    assert not cluster_keys("987007265745905171", cluster)
+    person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P244": [_claim("n12345678")]}}
+    people = {"Q42": person}
+    counts = Counter()
+    groups = plan_groups([proof], {aid: "Q42"}, {"Q10": entity, **people}, counts, {aid: keys})
+    builder = WikidataUploader.__new__(WikidataUploader)
+    builder._is_test = False
+    patches, ids = patches_for_group(groups["Q10"], entity, lambda st: builder._build_claim(st).get_json(), counts)
+    assert ids == ["owner"]
+    urls = [v["datavalue"]["value"] for v in patches[0]["references"][0]["snaks"]["P854"]]
+    assert set(urls) == {frame_url(CONTROL), viaf_mazal_url(aid)}
+    final = deepcopy(entity)
+    final["claims"]["P3342"] = patches
+    assert people_role_cases(raw, final, people, linked_frames=frames, linked_viaf={aid: keys})[0]["verified"]
+    assert not people_role_cases(raw, final, people, linked_frames=frames)[0]["verified"]
+    person["claims"]["P8189"] = [_claim("987007265745905171")]
+    assert not people_role_cases(raw, final, people, linked_frames=frames, linked_viaf={aid: keys})[0]["verified"]
+
+
+@pytest.mark.asyncio
+async def test_dated_mazal_batch_requires_one_preferred_name_and_exact_years(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app.pipeline import wikidata_gila_people_batch as batch
+    from app.pipeline.wikidata_gila_authority_reads import mazal_authority_url
+
+    raw = parse_nli_records(_response(_record(_field(
+        "700", ("a", "Qualified Scribe"), ("d", "1612-1678"), ("e", "scribe"),
+    ))), {CONTROL})[CONTROL]
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)]}}
+    role = people_role_cases(raw, manuscript, {})[0]
+    case = {**role, "case_id": "scribe", "qid": "Q10", "control_number": CONTROL}
+    aid = "987007265745205171"
+    index = AsyncMock(return_value={("qualified scribe", "1612", "1678"): {aid}})
+    monkeypatch.setattr(batch, "read_named_mazal_people", index)
+    proof, = await batch.dated_source_cases([case], {CONTROL: raw}, {}, {})
+    assert proof.dated_authority and proof.source_url == mazal_authority_url(aid)
+    index.assert_awaited_once_with({"qualified scribe"})
+    index.return_value = {("qualified scribe", "1612", "1678"): {aid, "987000265745205171"}}
+    assert not await batch.dated_source_cases([case], {CONTROL: raw}, {}, {})
+    index.return_value = {("qualified scribe", "1612", "1679"): {aid}}
+    assert not await batch.dated_source_cases([case], {CONTROL: raw}, {}, {})

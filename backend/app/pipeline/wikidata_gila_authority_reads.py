@@ -119,6 +119,41 @@ async def read_mazal_people(
         return {}
 
 
+async def read_named_mazal_people(names: set[str]) -> dict[tuple[str, str, str], set[str]]:
+    """Index preferred names with two exact years for this source batch."""
+    from sqlalchemy import text
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from app.db import session_scope
+    from app.pipeline.wikidata_gila_people import _heading, exact_person_years
+    from converter.authority.mazal_index import MazalIndex
+
+    if not names:
+        return {}
+    found = {}
+    try:
+        async with session_scope() as db:
+            rows = await db.execute(text("""
+                SELECT DISTINCT a.nli_id, a.preferred_name_heb, a.preferred_name_lat, a.dates
+                FROM mazal_name_index n
+                JOIN mazal_authorities a ON a.nli_id = n.nli_id
+                WHERE n.normalized_name = ANY(CAST(:names AS text[]))
+                  AND n.entity_type = 'person' AND a.entity_type = 'person'
+                  AND a.main_marc_tag = '100' AND a.dates IS NOT NULL
+            """), {"names": sorted({MazalIndex.normalize_name(name) for name in names})})
+            for aid, hebrew, latin, source_dates in rows:
+                years = exact_person_years(source_dates.strip())
+                if not years or not _MAZAL_ID.fullmatch(aid):
+                    continue
+                for name in (hebrew, latin):
+                    if name and (heading := _heading(name)) in names:
+                        found.setdefault((heading, *years), set()).add(aid)
+    except SQLAlchemyError as exc:
+        logger.warning("MAZAL name and year index is unavailable (%s).", type(exc).__name__)
+        return {}
+    return found
+
+
 def dated_mazal_headings(people: dict[str, MazalPersonAuthority]) -> dict[str, frozenset[str]]:
     return {
         identifier: frozenset(f"{name} {profile.dates}" for name in profile.preferred_names)

@@ -60,6 +60,8 @@ const repairPhases: Record<string, string> = {
   references_remaining: "Check the remaining reference queue",
   audit_after_references: "Check revisions after reference repairs",
   people_evidence: "Read NLI authority links for people and roles",
+  people_bibframe: "Check original MARC fields against NLI BIBFRAME",
+  people_viaf: "Check VIAF authority cross-references",
   people_plan: "Match people and check the edit targets",
   people_apply: "Apply and verify person repairs",
   find_evidence: "Check source evidence with Kimi",

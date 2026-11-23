@@ -15,6 +15,7 @@ from app.pipeline import marc_occurrences as marc
 from app.pipeline.marc_ingest import _parse_marcxml, prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
 from app.pipeline.wikidata_gila_authority_reads import library_of_congress_identifier, mazal_authority_url, mazal_identifier
+from app.pipeline.wikidata_gila_bibframe_people import cited_frame_controls
 from app.pipeline.wikidata_gila_catalogue_authority import NLI_SRU, REVIEWED_SCRIBE_SOURCES, catalogue_authority_url
 from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status, _snak_value
 from app.pipeline.wikidata_gila_gnd_evidence import gnd_identifier
@@ -22,8 +23,9 @@ from app.pipeline.wikidata_gila_identity_evidence import (
     _viaf_identifier, _viaf_reference_ids, live_source_match, viaf_proves_person,
 )
 from app.pipeline.wikidata_gila_linked_people import (
-    ROLE_PROPERTIES, has_linked_source, linked_person_matches, linked_role_id,
+    ROLE_PROPERTIES, cited_bib_controls, has_linked_source, linked_person_matches, role_authority,
 )
+from app.pipeline.wikidata_gila_mazal_viaf import viaf_matches, viaf_mazal_url
 from app.pipeline.wikidata_gila_scribe_colophons import (
     DELFOGIT_HEADING, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS,
     MILHAUD_COLUMBIA, MILHAUD_DS_ID, MILHAUD_HEADING, MILHAUD_QID, MISATTRIBUTION,
@@ -245,7 +247,10 @@ def _exact_life_dates(variants):
     dates = {value.strip() for variant in variants for value in marc.values(variant, "d")}
     if len(dates) != 1:
         return None
-    value = next(iter(dates))
+    return exact_person_years(next(iter(dates)))
+
+
+def exact_person_years(value: str) -> tuple[str, str] | None:
     match = re.fullmatch(r"([12][0-9]{3})\s*[-–]\s*([12][0-9]{3})\.?", value)
     if not match or not 0 < int(match[2]) - int(match[1]) < 120:
         return None
@@ -639,7 +644,7 @@ def plan_person_role_repair(
 def people_role_cases(
     raw, manuscript, live_entities, *, authority_rows=(), viaf_sources=None, gnd_sources=None,
     lc_headings=None, lc_death_years=None, mazal_headings=None, mazal_people=None, catalogue_records=None,
-    linked_bibs=None,
+    linked_bibs=None, linked_frames=None, linked_viaf=None,
 ):
     """Report one check per MARC occurrence and role."""
     record = prepare_record_for_pipeline(dict(raw))
@@ -693,14 +698,26 @@ def people_role_cases(
                 })
                 continue
             linked_proven = set()
-            if linked_bibs and cn in linked_bibs and role in ROLE_PROPERTIES and not uncertain:
-                linked_id = linked_role_id(cn, row, variants, occurrences, role, linked_bibs, record=record)
-                if linked_id:
-                    linked_proven = {
-                        claim["value"] for claim in _live_claims(target, ROLE_PROPERTIES[role])
-                        if has_linked_source(claim, cn)
-                        and linked_person_matches(entities.get(claim["value"], {}), linked_id)
-                    }
+            if role in ROLE_PROPERTIES and not uncertain and (
+                cn in (linked_bibs or {}) or cn in (linked_frames or {})
+            ):
+                for claim in _live_claims(target, ROLE_PROPERTIES[role]):
+                    bibs = linked_bibs if cn in cited_bib_controls(claim) else {}
+                    frames = linked_frames if cn in cited_frame_controls(claim) else {}
+                    proof = role_authority(
+                        cn, row, variants, occurrences, role, record=record,
+                        bibs=bibs or {}, frames=frames or {},
+                    )
+                    if proof is None:
+                        continue
+                    linked_id, source_url = proof
+                    candidate = entities.get(claim["value"], {})
+                    if linked_person_matches(candidate, linked_id) and has_linked_source(claim, cn, source_url):
+                        linked_proven.add(claim["value"])
+                    elif viaf_matches(candidate, linked_id, (linked_viaf or {}).get(linked_id)) and has_linked_source(
+                        claim, cn, source_url, viaf_mazal_url(linked_id),
+                    ):
+                        linked_proven.add(claim["value"])
             authority_proven = set(linked_proven)
             if role in _DATED_AUTHORITY_ROLES and not uncertain and not source_ids and not source_qids:
                 pid = "P50" if role == "author" else "P11603" if role == "scribe" else "P3342"
@@ -727,8 +744,7 @@ def people_role_cases(
             matches = [
                 (claim, candidate) for claim, candidate in
                 _matching_role_claims(role, names, source_qid, target, entities, authority_proven)
-                if _reference_status([claim], cn, live=True) == "source_bound"
-                or (claim["value"] in linked_proven and has_linked_source(claim, cn))
+                if _reference_status([claim], cn, live=True) == "source_bound" or claim["value"] in linked_proven
             ]
             concrete = [pair for pair in matches if pair[0]["value"] not in {"somevalue", "novalue"}]
             if concrete and not uncertain:

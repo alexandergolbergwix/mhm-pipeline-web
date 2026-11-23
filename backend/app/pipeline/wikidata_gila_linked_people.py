@@ -5,13 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections import defaultdict
 from collections.abc import Mapping
 
 import httpx
 
 from app.pipeline import marc_occurrences as marc
 from app.pipeline.wikidata_gila_authority_reads import mazal_identifier
+from app.pipeline.wikidata_gila_bibframe_people import frame_person_id, frame_url
 from app.pipeline.wikidata_gila_facts import _reference_status, _snak_value
 from converter.wikidata.property_mapping import ROLE_TO_PID
 
@@ -28,6 +28,7 @@ ROLE_PROPERTIES = {
     "author": "P50",
     "scribe": "P11603",
     "mentioned": "P3342",
+    "מאייר": "P110",
     "former owner": "P3342",
     **{role: ROLE_TO_PID[role] for role in ("מעיר", "annotator", "חותם", "signatory", "illuminator")},
 }
@@ -102,19 +103,28 @@ def _name_without_years(heading):
     return re.sub(r" (?:[12][0-9]{3})(?: [12][0-9]{3})?$", "", heading)
 
 
-def linked_role_id(cn, row, variants, occurrences, role, bibs, *, record) -> str | None:
+def _eligible_role(row, variants, role) -> bool:
     """Return one first-party ID for one exact, unqualified MARC occurrence."""
-    from app.pipeline.wikidata_gila_people import _heading, _row_roles
+    from app.pipeline.wikidata_gila_people import _row_roles
 
     if role not in ROLE_PROPERTIES or role not in _row_roles(row, variants):
-        return None
+        return False
     if row["tag"] not in ({"100", "700"} if role == "author" else {"700"}):
-        return None
+        return False
     if any(marc.values(v, c) for v in variants for c in ("0", "1", "3", "5", "j", "n", "p", "u", "x", "y", "z")):
-        return None
-    if role != "author" and any(marc.values(v, "t") for v in variants):
-        return None
+        return False
+    if role != "author" and (row["indicators"][1] == "2" or any(marc.values(v, "t") for v in variants)):
+        return False
     if any(re.search(r"[?？]", name) for variant in variants for name in marc.values(variant, "a")):
+        return False
+    return True
+
+
+def linked_role_id(cn, row, variants, occurrences, role, bibs, *, record) -> str | None:
+    """Return one first-party ID for one exact, unqualified MARC occurrence."""
+    from app.pipeline.wikidata_gila_people import _heading
+
+    if not _eligible_role(row, variants, role):
         return None
     keys = _name_keys(variants)
     stems = {_name_without_years(key) for key in keys}
@@ -159,32 +169,41 @@ def linked_person_matches(candidate, authority_id):
     return bool(authority_id and mazal_identifier(candidate) == authority_id and "Q5" in _links(candidate, "P31"))
 
 
-def has_linked_source(claim, cn):
-    """Check that one reference block contains both the MARC ID and linked source."""
+def has_explicit_linked_heading(variants, bib):
+    from app.pipeline.wikidata_gila_people import _heading
+
+    stems = {_name_without_years(key) for key in _name_keys(variants)}
+    for group in ("creator", "contributor"):
+        entries = bib.get(group, [])
+        for entry in entries if isinstance(entries, list) else [entries]:
+            if (
+                isinstance(entry, dict) and _AUTHORITY_URL.fullmatch(str(entry.get("@id", "")))
+                and _name_without_years(_heading(entry.get("label") or "")) in stems
+            ):
+                return True
+    return False
+
+
+def role_authority(cn, row, variants, occurrences, role, *, record, bibs, frames):
+    """Return the bound authority ID and the source that proves the exact field."""
+    if not _eligible_role(row, variants, role):
+        return None
+    linked = linked_role_id(cn, row, variants, occurrences, role, bibs, record=record)
+    exact = frame_person_id(row, occurrences, frames.get(cn, {}))
+    if linked and exact and linked != exact:
+        return None
+    if linked:
+        return linked, bib_url(cn)
+    return (exact, frame_url(cn)) if exact else None
+
+
+def has_linked_source(claim, cn, *urls):
+    """Check that one reference block contains the source ID and all required URLs."""
+    expected = set(urls or (bib_url(cn),))
     return any(
-        cn in cited_bib_controls({"references": [reference]})
+        expected <= {
+            _snak_value(snak) for snak in reference.get("snaks", {}).get("P854", [])
+        }
         and _reference_status([{"references": [reference]}], cn, live=True) == "source_bound"
         for reference in claim["references"]
     )
-
-
-def resolve_mazal_items(authorities):
-    """Return the WDQS candidates for each exact MAZAL ID."""
-    from converter.wikidata.reconciler import WikidataReconciler
-
-    ids = sorted({aid for aid in authorities if AUTHORITY_ID.fullmatch(aid)})
-    reconciler = WikidataReconciler()
-    matches = defaultdict(set)
-    for start in range(0, len(ids), 35):
-        values = " ".join(f'"{aid}"' for aid in ids[start:start + 35])
-        query = (
-            "SELECT DISTINCT ?id ?item WHERE { "
-            f"VALUES ?id {{ {values} }} "
-            "?item wdt:P8189 ?id . }"
-        )
-        for row in reconciler._query(query):
-            aid = row["id"]["value"]
-            qid = row["item"]["value"].rsplit("/", 1)[-1]
-            if AUTHORITY_ID.fullmatch(aid) and re.fullmatch(r"Q[1-9][0-9]*", qid):
-                matches[aid].add(qid)
-    return {aid: next(iter(items)) for aid, items in matches.items() if len(items) == 1}

@@ -581,12 +581,17 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             _read_mazal_role_authorities(entities, mappings.values(), work_qids),
             _read_catalogue_role_evidence(entities, mappings, work_qids),
         )
+        from app.pipeline.wikidata_gila_bibframe_people import cited_frame_controls, read_bibframes
         from app.pipeline.wikidata_gila_linked_people import cited_bib_controls, read_linked_bibs
+        from app.pipeline.wikidata_gila_mazal_viaf import cited_mazal_controls, read_viaf_mazal
 
-        linked_controls = {
-            cn for _, claim in _cited_person_roles(entities, mappings.values(), work_qids | linked_works)
-            for cn in cited_bib_controls(claim) if cn in people_marc
-        }
+        linked_controls = set()
+        frame_controls = set()
+        viaf_mazal_ids = set()
+        for _, claim in _cited_person_roles(entities, mappings.values(), work_qids | linked_works):
+            linked_controls.update(cited_bib_controls(claim) & people_marc.keys())
+            frame_controls.update(cited_frame_controls(claim) & people_marc.keys())
+            viaf_mazal_ids.update(cited_mazal_controls(claim))
 
         async def linked_progress(processed, total):
             if await is_cancel_requested(job_id):
@@ -597,6 +602,8 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             })
 
         linked_bibs = await read_linked_bibs(linked_controls, linked_progress)
+        linked_frames = await read_bibframes(frame_controls, linked_progress)
+        linked_viaf = await read_viaf_mazal(viaf_mazal_ids, linked_progress)
         from app.pipeline.wikidata_gila_gnd_evidence import cited_gnd_ids, read_gnd_sources
 
         gnd_ids = {identifier for qid in mappings.values() if qid in entities
@@ -619,6 +626,8 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             repair_mazal_people=mazal_people,
             repair_catalogue_records=catalogue_records,
             repair_linked_bibs=linked_bibs,
+            repair_linked_frames=linked_frames,
+            repair_linked_viaf=linked_viaf,
         )
         packet = await asyncio.to_thread(
             build_gila_completion_packet,

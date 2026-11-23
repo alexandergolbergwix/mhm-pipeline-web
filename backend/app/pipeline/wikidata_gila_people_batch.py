@@ -11,19 +11,25 @@ from dataclasses import dataclass
 
 from app.pipeline import marc_occurrences as marc
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
+from app.pipeline.wikidata_gila_authority_reads import mazal_authority_url, read_named_mazal_people
+from app.pipeline.wikidata_gila_bibframe_people import frame_field_ids, read_bibframes
 from app.pipeline.wikidata_gila_execution import LiveRepairGateway, WriteRejectedError, semantic_entity
 from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status
 from app.pipeline.wikidata_gila_linked_people import (
     ROLE_PROPERTIES,
-    bib_url,
+    _eligible_role,
+    has_explicit_linked_heading,
     has_linked_source,
     linked_person_matches,
-    linked_role_id,
+    role_authority,
     read_linked_bibs,
-    resolve_mazal_items,
+)
+from app.pipeline.wikidata_gila_mazal_viaf import (
+    authority_items, read_viaf_mazal, viaf_matches, viaf_mazal_url,
 )
 from app.pipeline.wikidata_gila_people import (
     _author_target,
+    _exact_life_dates,
     _heading,
     _person_occurrences,
     _ROLE_QUALIFIERS,
@@ -52,17 +58,19 @@ class PersonCase:
     role: str
     heading: str
     authority: str
+    source_url: str
     record: Mapping
     field: dict
     variants: list[dict]
     occurrences: list[tuple[dict, list[dict]]]
+    dated_authority: bool = False
 
 
-def source_cases(cases, records, bibs):
+def _source_fields(cases, records):
     rows = {}
     for case in cases:
         cn = case["control_number"]
-        if cn not in bibs or cn not in records:
+        if cn not in records:
             continue
         if cn not in rows:
             record = prepare_record_for_pipeline(dict(records[cn]))
@@ -80,9 +88,49 @@ def source_cases(cases, records, bibs):
             or reviewed_scribe_source(record, cn, key, display)
         ):
             continue
-        aid = linked_role_id(cn, field, variants, occurrences, role, bibs, record=record)
-        if aid:
-            yield PersonCase(case["case_id"], cn, case["qid"], role, display, aid, record, field, variants, occurrences)
+        yield case, cn, role, display, record, field, variants, occurrences
+
+
+def source_cases(cases, records, bibs, frames=None):
+    frames = frames or {}
+    for case, cn, role, display, record, field, variants, occurrences in _source_fields(cases, records):
+        if proof := role_authority(
+            cn, field, variants, occurrences, role, record=record, bibs=bibs, frames=frames,
+        ):
+            aid, source_url = proof
+            yield PersonCase(
+                case["case_id"], cn, case["qid"], role, display, aid, source_url, record, field, variants, occurrences,
+            )
+
+
+async def dated_source_cases(cases, records, bibs, frames):
+    drafted = []
+    for case, cn, role, display, record, field, variants, occurrences in _source_fields(cases, records):
+        if role not in {"author", "scribe", "mentioned"} or not _eligible_role(field, variants, role):
+            continue
+        years = _exact_life_dates(variants)
+        if (
+            not years or has_explicit_linked_heading(variants, bibs.get(cn, {}))
+            or frame_field_ids(field, frames.get(cn, {})) - {""}
+        ):
+            continue
+        names = {_heading(value) for variant in variants for value in marc.values(variant, "a")}
+        if any(marc.values(variant, code) for variant in variants for code in ("b", "c", "q")):
+            continue
+        names = {name for name in names if len(name.split()) > 1}
+        if names:
+            drafted.append((case, cn, role, display, record, field, variants, occurrences, names, years))
+    index = await read_named_mazal_people({name for row in drafted for name in row[-2]})
+    results = []
+    for case, cn, role, display, record, field, variants, occurrences, names, years in drafted:
+        ids = {aid for name in names for aid in index.get((name, *years), ())}
+        if len(ids) == 1:
+            aid = next(iter(ids))
+            results.append(PersonCase(
+                case["case_id"], cn, case["qid"], role, display, aid, mazal_authority_url(aid),
+                record, field, variants, occurrences, dated_authority=True,
+            ))
+    return results
 
 
 def target_for(case, manuscript, entities):
@@ -133,7 +181,10 @@ def scoped_claim(case, person, target, build_claim):
     if len(matches) > 1:
         return None, "conflicting_claim"
     original = matches[0] if matches else None
-    if original and original["value"] == qid and has_linked_source(original, case.control):
+    authority_urls = [case.source_url]
+    if not linked_person_matches(person, case.authority):
+        authority_urls.append(viaf_mazal_url(case.authority))
+    if original and original["value"] == qid and has_linked_source(original, case.control, *authority_urls):
         return None, "already_cited"
     if any(
         claim.get("rank") == "deprecated"
@@ -145,7 +196,7 @@ def scoped_claim(case, person, target, build_claim):
     reference = [
         {"property": "P248", "value": Q_KTIV, "type": "item", "value_namespace": "wikidata"},
         {"property": "P3959", "value": case.control, "type": "external-id"},
-        {"property": "P854", "value": bib_url(case.control), "type": "url"},
+        *({"property": "P854", "value": url, "type": "url"} for url in authority_urls),
     ]
     qualifiers = [{"property": "P1932", "value": case.heading, "type": "string"}]
     if expected_role:
@@ -221,12 +272,14 @@ def _item_ids(entity, prop):
     return {value["id"] for value in _claim_values(entity, prop) if isinstance(value, dict) and value.get("id")}
 
 
-def plan_groups(proofs, candidates, entities, counts):
+def plan_groups(proofs, candidates, entities, counts, viaf=None):
     groups = defaultdict(list)
     for case in proofs:
         person = entities.get(candidates.get(case.authority), {})
         target = target_for(case, entities.get(case.manuscript, {}), entities)
-        if not linked_person_matches(person, case.authority):
+        if not linked_person_matches(person, case.authority) and (
+            case.dated_authority or not viaf_matches(person, case.authority, (viaf or {}).get(case.authority))
+        ):
             counts["no_exact_person"] += 1
         elif not target:
             counts["no_exact_target"] += 1
@@ -285,12 +338,46 @@ async def run_people_batch(
 
     bibs = await read_linked_bibs(controls, read_progress)
     counts["unavailable_catalogues"] = len(controls - bibs.keys())
-    proofs = list(source_cases(eligible_cases, records, bibs))
+    direct_proofs = list(source_cases(eligible_cases, records, bibs))
+    direct_keys = {case.case_id for case in direct_proofs}
+    remaining = [case for case in eligible_cases if case["case_id"] not in direct_keys]
+
+    async def frame_progress(processed, total):
+        await check()
+        await progress("people_bibframe", processed, total, "records",
+                       "Match original MARC fields to NLI BIBFRAME agents.")
+
+    frames = await read_bibframes({case["control_number"] for case in remaining}, frame_progress)
+    proofs = [*direct_proofs, *source_cases(remaining, records, bibs, frames)]
+    counts["bibframe_matches"] = len(proofs) - len(direct_proofs)
+    proven_ids = {case.case_id for case in proofs}
+    dated = await dated_source_cases([case for case in remaining if case["case_id"] not in proven_ids],
+                                     records, bibs, frames)
+    counts["dated_matches"] = len(dated)
+    proofs.extend(dated)
     counts["source_matches"] = len(proofs)
     if not proofs:
         return []
     await progress("people_plan", 0, len(proofs), "cases", "Match NLI authority IDs to existing Wikidata people.")
-    candidates = await asyncio.to_thread(resolve_mazal_items, {case.authority for case in proofs})
+    identifiers = {case.authority for case in proofs}
+    direct = await asyncio.to_thread(authority_items, {("P8189", aid) for aid in identifiers})
+
+    async def viaf_progress(processed, total):
+        await check()
+        await progress("people_viaf", processed, total, "identities",
+                       "Check exact VIAF cross-references for NLI authorities.")
+
+    viaf = await read_viaf_mazal({
+        case.authority for case in proofs if not case.dated_authority and not direct.get(("P8189", case.authority))
+    }, viaf_progress)
+    alternatives = await asyncio.to_thread(authority_items, {key for keys in viaf.values() for key in keys})
+    candidates = {}
+    for aid in identifiers:
+        matches = direct.get(("P8189", aid)) or {
+            qid for key in viaf.get(aid, ()) for qid in alternatives.get(key, ())
+        }
+        if len(matches) == 1:
+            candidates[aid] = next(iter(matches))
     reader = ReferenceItemReader()
     entities = {}
     await _load_items(reader, {case.manuscript for case in proofs}, entities, check)
@@ -298,7 +385,7 @@ async def run_people_batch(
         qid for case in proofs if case.role == "author"
         for qid in _item_ids(entities.get(case.manuscript, {}), "P1574")
     }, entities, check)
-    groups = plan_groups(proofs, candidates, entities, counts)
+    groups = plan_groups(proofs, candidates, entities, counts, viaf)
     counts["target_items"] = len(groups)
     if not groups:
         return []
