@@ -62,6 +62,7 @@ def build_gila_audit_report(
     repair_viaf_sources: Mapping[str, dict] | None = None,
     repair_gnd_sources: Mapping[str, dict] | None = None,
     people_marc: Mapping[str, dict] | None = None,
+    full_source_coverage: bool = False,
     repair_lc_headings: Mapping[str, frozenset[str]] | None = None,
     repair_lc_death_years: Mapping[str, str] | None = None,
     repair_mazal_headings: Mapping[str, frozenset[str]] | None = None,
@@ -74,6 +75,7 @@ def build_gila_audit_report(
     """Compare local proposals with sources; never report a live correction."""
     from app.pipeline.wikidata_gila_identity_evidence import live_source_match
     from app.pipeline.wikidata_gila_people import people_role_cases
+    from app.pipeline.wikidata_gila_sources import full_source_cases, source_colophon
     from converter.wikidata.content_projection import _work_title_key  # noqa: PLC0415
 
     sources = list(marc_records)
@@ -282,37 +284,46 @@ def build_gila_audit_report(
         ):
             case(7, "identity_or_scope_uncertain", "041/500", "verify_language_scope_against_scan")
 
-        colophon = _text(record.get("colophon_text"))
-        if colophon and not is_catalog_note_placeholder(colophon):
+        if full_source_coverage:
+            for source_row in full_source_cases(cn, full_people_source, record, public_item,
+                                                live_entities or {}, reviewed_catalogs):
+                cases.append(source_row)
+                totals[source_row["classification"]] += 1
             qid = (qids_by_cn or {}).get(cn)
-            if qid:
-                colophons_by_qid[qid] = str(record.get("colophon_text") or "").strip()
-            transcriptions = [
-                s for s in _claims(item, "P1684") if _qualified(s, "P3831", "Q372474")
-            ]
-            if not any(colophon in _text(s.get("value")) for s in transcriptions):
-                case(8, "present_not_transferred", "957/590", "full_qualified_colophon_absent")
-        elif colophon:
-            case(8, "identity_or_scope_uncertain", "957/590", "catalog_prose_requires_review")
-        for reference in _rows(record.get("catalog_references")):
-            catalog = _text(catalog_reference_code(reference))
-            reviewed = reviewed_catalogs.get(
-                (
-                    str(reference.get("source_field") or "581"),
-                    catalog_reference_text(reference).strip(),
+            if qid and (colophon := source_colophon(full_people_source)):
+                colophons_by_qid[qid] = colophon
+        else:
+            colophon = _text(record.get("colophon_text"))
+            if colophon and not is_catalog_note_placeholder(colophon):
+                qid = (qids_by_cn or {}).get(cn)
+                if qid:
+                    colophons_by_qid[qid] = str(record.get("colophon_text") or "").strip()
+                transcriptions = [
+                    s for s in _claims(item, "P1684") if _qualified(s, "P3831", "Q372474")
+                ]
+                if not any(colophon in _text(s.get("value")) for s in transcriptions):
+                    case(8, "present_not_transferred", "957/590", "full_qualified_colophon_absent")
+            elif colophon:
+                case(8, "identity_or_scope_uncertain", "957/590", "catalog_prose_requires_review")
+            for reference in _rows(record.get("catalog_references")):
+                catalog = _text(catalog_reference_code(reference))
+                reviewed = reviewed_catalogs.get(
+                    (
+                        str(reference.get("source_field") or "581"),
+                        catalog_reference_text(reference).strip(),
+                    )
                 )
-            )
-            if not catalog and reviewed and reviewed["target_identity_current"]:
-                continue
-            if catalog and catalog not in {_text(s.get("value")) for s in _claims(item, "P528")}:
-                case(8, "present_not_transferred", "581/942", "catalog_reference_absent")
-            elif not catalog and catalog_reference_text(reference):
-                case(
-                    8,
-                    "identity_or_scope_uncertain",
-                    "581/942",
-                    "bibliographic_source_identity_unresolved",
-                )
+                if not catalog and reviewed and reviewed["target_identity_current"]:
+                    continue
+                if catalog and catalog not in {_text(s.get("value")) for s in _claims(item, "P528")}:
+                    case(8, "present_not_transferred", "581/942", "catalog_reference_absent")
+                elif not catalog and catalog_reference_text(reference):
+                    case(
+                        8,
+                        "identity_or_scope_uncertain",
+                        "581/942",
+                        "bibliographic_source_identity_unresolved",
+                    )
 
         rows.append(
             {
@@ -399,12 +410,14 @@ def build_gila_audit_report(
         live_entities=live_entities,
         approved_author_qids=approved_author_qids,
         include_claim_payloads=include_repair_payloads,
+        full_source_controls=frozenset(people_marc or {}) if full_source_coverage else frozenset(),
     )
     return {
         "mode": "read_only_local_proposal",
         "live_verified": False,
         "model_decision": "separate_physical_manuscripts_and_written_works",
         "record_count": len(rows),
+        "full_source_coverage": full_source_coverage,
         "review_classes": list(_REVIEW_CLASSES),
         "case_counts": {category: totals[category] for category in _REVIEW_CLASSES},
         "records": rows,

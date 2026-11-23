@@ -1,6 +1,6 @@
 # Bulk repairs for people and roles
 
-**Repair all eligible items** uses the existing `wikidata_gila_repair` job.
+The [corpus repair](gila-corpus-repair.md) uses this person plan in the `wikidata_gila_repair` job.
 The job audits all nine requirements before and after the edits.
 Send `{"requirement": 5}` to the same administrator route to limit edits to requirement 5.
 The legacy `people_links` selection still uses the scoped Publication release.

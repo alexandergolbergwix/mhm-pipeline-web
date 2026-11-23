@@ -324,6 +324,7 @@ def _case_inventory(packet, audit):
         "source_value",
         "expected_author",
         "expected_value",
+        "source_repair",
         "expected_qualifiers",
         "expected_precision",
         "expected_calendar",
@@ -551,6 +552,10 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
         )
         if any(troki.author_statement(item) is not None for item in canonical):
             known.update({troki.WORK_QID, troki.MANUSCRIPT_QID, troki.AUTHOR_QID})
+        if job.params.get("_gila_full_sources"):
+            from app.pipeline.wikidata_gila_sources import source_topic_ids
+
+            known.update(await asyncio.to_thread(source_topic_ids, people_marc.values()))
         seen: set[str] = set()
         await _live_items(job_id, known, entities, seen, "public_items")
         linked = await asyncio.to_thread(_linked_entities, entities)
@@ -620,6 +625,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             repair_viaf_sources=viaf_sources,
             repair_gnd_sources=gnd_sources,
             people_marc=people_marc,
+            full_source_coverage=bool(job.params.get("_gila_full_sources")),
             repair_lc_headings=lc_headings,
             repair_lc_death_years=lc_death_years,
             repair_mazal_headings=mazal_headings,
@@ -730,6 +736,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             }
             | {
                 "people_coverage": people_summary,
+                "full_source_coverage": audit["full_source_coverage"],
                 "public_requested": len(seen),
                 "public_read": len(entities),
                 "reference_items": len(duplicates),

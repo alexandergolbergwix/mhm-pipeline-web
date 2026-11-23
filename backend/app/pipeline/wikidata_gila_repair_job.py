@@ -122,6 +122,7 @@ class RepairCycle:
         self.actor = job.created_by
         self.run_id = job.run_id
         self.project_id = job.project_id
+        self.corpus = job.params.get("_gila_scope") == "people_and_sources"
         self.people_only = job.params.get("_gila_requirement") == 5
         self.people_links = dict(job.params.get("_gila_people_links") or {})
         self.resolver = ExecutionCredentialResolver(
@@ -176,6 +177,7 @@ class RepairCycle:
                             db, run_id=self.run_id, project_id=self.project_id,
                             kind=kind, created_by=self.actor, params={
                                 **(params or {}), "_gila_cycle_parent": str(self.id),
+                                **({"_gila_full_sources": True} if self.corpus and kind == JOB_KIND_WIKIDATA_GILA_AUDIT else {}),
                                 "_gila_cycle_step": phase, "repair_workspace": True,
                             },
                         )
@@ -383,11 +385,14 @@ class RepairCycle:
     async def people_batch(self, audit):
         from app.pipeline.marc_verify_context import load_run_marc_records
         from app.pipeline.wikidata_gila_audit_job import gila_cases, gila_people_marc, gila_record_fingerprint
-        from app.pipeline.wikidata_gila_people_batch import run_people_batch
+        from app.pipeline.wikidata_gila_people_batch import apply_planned_edits, plan_people_batch
 
         cases = await asyncio.to_thread(gila_cases, audit)
         records = await asyncio.to_thread(gila_people_marc, audit)
-        open_ids = {row["case_id"] for row in cases if row.get("person_role")}
+        open_ids = {
+            row["case_id"] for row in cases
+            if row.get("person_role") or (self.corpus and 8 in row["points"])
+        }
         counts: Counter[str] = Counter()
         self.result["people_batch"] = counts
 
@@ -443,11 +448,37 @@ class RepairCycle:
                 for qid, receipt in receipts.items()
                 if receipt["state"] in {"intent", "uncertain"} and open_ids.intersection(receipt["case_ids"])
             }
-        verified = await run_people_batch(
-            cases, records, credential=credential, check=check, check_source=check_source,
+        people_plans = await plan_people_batch(cases, records, check=check, progress=progress, counts=counts)
+        plans = people_plans
+        if self.corpus:
+            from app.pipeline.wikidata_gila_corpus_repair import corpus_inventory, confirm_corpus_plans, plan_sources
+
+            inventory = corpus_inventory(cases)
+            source_plans = await plan_sources(cases, records, check=check, progress=progress, inventory=inventory)
+            plans = await confirm_corpus_plans(
+                [*people_plans, *source_plans], inventory, check=check, progress=progress, uncertain=uncertain,
+            )
+            await check_source()
+            self.result["corpus_preflight"] = {
+                "records": len(records), "eligible_items": len(plans),
+                "requirements": [
+                    {"point": point, "counts": dict(Counter(
+                        row["status"] for row in inventory.values() if point in row["points"]
+                    ))}
+                    for point in (5, 8)
+                ],
+            }
+            async with session_scope() as db:
+                job = await authorize_repair_cycle(db, self.id)
+                job.params = {**job.params, "_gila_corpus_preflight": list(inventory.values())}
+                job.result = dict(self.result)
+                await db.commit()
+            logger.info("Corpus preflight %s completed: %s.", self.id, self.result["corpus_preflight"])
+        verified = await apply_planned_edits(
+            plans, credential=credential, check=check, check_source=check_source,
             progress=progress, journal=journal, counts=counts, uncertain_qids=uncertain,
         )
-        logger.info("Person repair batch %s completed with %s.", self.id, dict(counts))
+        logger.info("Manuscript repair batch %s completed with %s.", self.id, dict(counts))
         if counts["uncertain"]:
             self.attention("people_apply", "A Wikidata edit needs recovery from its saved receipt.")
         if counts["service_pause"]:
@@ -480,7 +511,7 @@ class RepairCycle:
                 logger.exception("The bulk person stage stopped.")
                 self.attention("people_evidence", str(exc))
         batch = self.result.get("people_batch", {})
-        if not self.people_only and not (batch.get("uncertain") or batch.get("service_pause")):
+        if not self.corpus and not self.people_only and not (batch.get("uncertain") or batch.get("service_pause")):
             for scope in (() if self.people_links else ("original", "remaining")):
                 await self.references(scope, audit)
             repair_audit = audit
@@ -527,7 +558,19 @@ class RepairCycle:
                 {row["case_id"] for row in await asyncio.to_thread(gila_cases, final)}
                 if verified_people_cases else set()
             )
-            self.result["people_batch"]["cases_verified"] = len(verified_people_cases - open_ids)
+            confirmed_ids = verified_people_cases - open_ids
+            if self.corpus and self.result.get("corpus_preflight"):
+                async with session_scope() as db:
+                    job = await authorize_repair_cycle(db, self.id)
+                    rows = job.params["_gila_corpus_preflight"]
+                self.result["corpus_verified"] = [
+                    {"point": point, "cases": sum(
+                        point in row["points"] and row["case_id"] in confirmed_ids for row in rows
+                    )}
+                    for point in (5, 8)
+                ]
+            else:
+                self.result["people_batch"]["cases_verified"] = len(confirmed_ids)
         self.result["audit_id"] = str(final.id)
         self.result["requirement_comparison"] = compare_requirements(audit.result, final.result)
         self.result["requirements_verified"] = sum(

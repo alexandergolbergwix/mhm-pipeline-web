@@ -2,7 +2,7 @@ import {useCallback, useEffect, useState} from "react";
 import {useLocation} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
-import {GilaRepairs, type AuditDisposition, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus} from "@/api/gilaRepairs";
+import {GilaRepairs, type AuditDisposition, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus, type CorpusPreflightResult, type PreflightCase, type PreflightStatus} from "@/api/gilaRepairs";
 import type {ReferenceRepairStatus, ReferenceScope} from "@/api/referenceRepairs";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
@@ -64,6 +64,9 @@ const repairPhases: Record<string, string> = {
   people_viaf: "Check VIAF authority cross-references",
   people_plan: "Match people and check the edit targets",
   people_apply: "Apply and verify person repairs",
+  sources_plan: "Check source proposals for requirement 8",
+  corpus_ownership: "Verify the first creators",
+  corpus_apply: "Apply and verify the eligible repairs",
   find_evidence: "Check source evidence with Kimi",
   prepare: "Check source evidence and item creators",
   dry_run: "Check the publication plan",
@@ -94,6 +97,85 @@ function coverageText(counts: Partial<Record<AuditDisposition, number>>) {
   const verified = counts.verified ?? 0;
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
   return total === 0 ? "No cases" : `${verified.toLocaleString()} / ${total.toLocaleString()} (${(verified / total * 100).toFixed(2)}%)`;
+}
+
+const preflightLabels: Record<PreflightStatus, string> = {
+  eligible: "Eligible for repair",
+  needs_evidence: "Needs evidence",
+  other_creator: "Read-only item",
+  needs_review: "Needs review",
+};
+
+const preflightStatuses: PreflightStatus[] = ["eligible", "needs_evidence", "other_creator", "needs_review"];
+
+function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPreflightResult}) {
+  const [open, setOpen] = useState(false);
+  const [point, setPoint] = useState("");
+  const [status, setStatus] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [rows, setRows] = useState<{items: PreflightCase[]; total: number} | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    let current = true;
+    const params = new URLSearchParams({job_id: jobId, offset: String(offset), limit: String(pageSize)});
+    if (point) params.set("point", point);
+    if (status) params.set("status", status);
+    setError("");
+    setRows(null);
+    void GilaRepairs.preflight(params).then(result => {
+      if (current) setRows(result);
+    }).catch(failure => {
+      if (current) setError(failureText(failure));
+    });
+    return () => { current = false; };
+  }, [jobId, offset, open, point, status]);
+  return <div className="space-y-2">
+    <h3 className="font-medium">Corpus preflight</h3>
+    <p className="text-sm muted">{summary.records.toLocaleString()} full MARC records · {summary.eligible_items.toLocaleString()} eligible project items</p>
+    {summary.requirements.map(row => <p className="text-sm muted" key={row.point}>
+      Requirement {row.point} · {preflightStatuses.map(key =>
+        `${(row.counts[key] ?? 0).toLocaleString()} ${preflightLabels[key].toLowerCase()}`).join(" · ")}
+    </p>)}
+    <details onToggle={event => setOpen(event.currentTarget.open)}>
+      <summary className="cursor-pointer text-sm">Review preflight cases</summary>
+      {open && <div className="mt-2 space-y-2 text-sm">
+        <div className="flex flex-wrap gap-3">
+          <select aria-label="Preflight requirement" value={point} onChange={event => {
+            setPoint(event.target.value);
+            setOffset(0);
+          }}>
+            <option value="">Both requirements</option>
+            <option value="5">People, roles, and authority evidence</option>
+            <option value="8">Sources, bibliography, and inscriptions</option>
+          </select>
+          <select aria-label="Preflight status" value={status} onChange={event => {
+            setStatus(event.target.value);
+            setOffset(0);
+          }}>
+            <option value="">All results</option>
+            {Object.entries(preflightLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+        </div>
+        {error ? <p role="alert" className="text-danger">{error}</p>
+          : rows ? <>
+            <div className="overflow-x-auto"><table className="w-full text-left">
+              <thead><tr><th scope="col">Item</th><th scope="col">Source record</th><th scope="col">Decision</th></tr></thead>
+              <tbody>{rows.items.map(row => <tr key={row.case_id} className="border-t border-glass-line">
+                <td className="py-2 pr-3">{row.qid ?? "—"}</td>
+                <td className="pr-3">{row.control_number ?? "—"} {row.source_field}</td>
+                <td>{preflightLabels[row.status]} · {explanations[row.reason] ?? row.reason.replaceAll("_", " ")}</td>
+              </tr>)}</tbody>
+            </table></div>
+            {rows.total === 0 ? <p>No cases match these filters.</p> : <div className="flex flex-wrap items-center gap-2">
+              <button className="button-ghost" disabled={offset === 0} onClick={() => setOffset(offset - pageSize)}>Previous</button>
+              <span>{offset + 1}–{Math.min(offset + pageSize, rows.total)} of {rows.total}</span>
+              <button className="button-ghost" disabled={offset + pageSize >= rows.total} onClick={() => setOffset(offset + pageSize)}>Next</button>
+            </div>}
+          </> : <p role="status">Read the preflight cases.</p>}
+      </div>}
+    </details>
+  </div>;
 }
 
 function AuditResult({
@@ -605,7 +687,7 @@ export default function AdminGilaRepairs() {
           </button>
         </div>
       </div>
-      <p className="text-sm muted">Kimi checks MARC and authority evidence for unresolved scribes and places of production. The job publishes source-supported edits only on items the project account created.</p>
+      <p className="text-sm muted">Repair all eligible items checks the full MARC corpus for requirements 5 and 8. The job verifies the evidence and creator before it applies each eligible edit.</p>
       {automatic && <section id="automatic-manuscript-repair" tabIndex={-1}
         aria-label="Automatic manuscript repair" aria-live="polite"
         className="space-y-2 rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4">
@@ -625,11 +707,15 @@ export default function AdminGilaRepairs() {
           Next retry at {new Date(automatic.progress.next_attempt_at).toLocaleString()}
         </p>}
         {automaticResult && <>
-          <p className="text-sm">{automaticResult.items_published} manuscript or work edits verified
+          {automaticResult.corpus_preflight && <CorpusPreflight key={automatic.id} jobId={automatic.id} summary={automaticResult.corpus_preflight} />}
+          {automaticResult.corpus_verified?.map(row => <p key={row.point} className="text-sm">
+            Requirement {row.point} · {row.cases.toLocaleString()} repaired cases verified
+          </p>)}
+          {!automaticResult.corpus_preflight && <p className="text-sm">{automaticResult.items_published} manuscript or work edits verified
             · {automaticResult.reference_items_corrected} items with reference repairs verified
             {automaticResult.requirements_verified != null && ` · ${automaticResult.requirements_verified} of 9 requirements verified`}
-          </p>
-          {automaticResult.people_batch && <p className="text-sm muted">
+          </p>}
+          {automaticResult.people_batch && !automaticResult.corpus_preflight && <p className="text-sm muted">
             {automaticResult.people_batch.cases_verified ?? 0} person cases verified by the final audit
             {" · "}{automaticResult.people_batch.edited_items ?? 0} project items edited
             {" · "}{automaticResult.people_batch.excluded_creator ?? 0} cases outside the creator scope
@@ -651,7 +737,8 @@ export default function AdminGilaRepairs() {
                   <th className="py-2 pr-4" scope="col">Before</th>
                   <th className="py-2" scope="col">After</th>
                 </tr></thead>
-                <tbody>{automaticResult.requirement_comparison.map(row =>
+                <tbody>{automaticResult.requirement_comparison.filter(row =>
+                  !automaticResult.corpus_preflight || [5, 8].includes(row.point)).map(row =>
                   <tr className="border-t border-glass-line" key={row.point}>
                     <th className="py-2 pr-4 font-normal" scope="row">{row.title}</th>
                     <td className="whitespace-nowrap py-2 pr-4 tabular-nums">{coverageText(row.before)}</td>

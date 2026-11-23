@@ -50,7 +50,7 @@ The panel uses the same audit date to show repeated references on project-create
 If the remaining reference queue finishes after that audit, select **Verify repairs on Wikidata**.
 The next audit reads Wikidata again and checks all nine requirements.
 Select **Repair all eligible items** to start the automatic repair and verification job.
-The job includes the [bulk repairs for people and roles](gila-people-batch.md).
+The job runs the [corpus preflight and repair for requirements 5 and 8](gila-corpus-repair.md).
 Select **Prepare eligible release** to review and publish a scoped release manually.
 Review and verify repairs on the same page. See the [repair workspace](manuscript-repair-workspace.md).
 The **Ready to prepare** filter shows only cases with evidence for a repair release.

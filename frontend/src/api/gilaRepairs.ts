@@ -89,12 +89,32 @@ export interface GilaStatus {
   report: GilaReport | null;
 }
 
+export type PreflightStatus = "eligible" | "needs_evidence" | "other_creator" | "needs_review";
+
+export interface PreflightCase {
+  case_id: string;
+  points: number[];
+  qid: string | null;
+  control_number: string | null;
+  source_field: string | null;
+  reason: string;
+  status: PreflightStatus;
+}
+
+export interface CorpusPreflightResult {
+  records: number;
+  eligible_items: number;
+  requirements: Array<{point: number; counts: Partial<Record<PreflightStatus, number>>}>;
+}
+
 export interface AutomaticRepairJob extends AuditJob {
   result: {
     requirements_verified?: number;
     items_published: number;
     reference_items_corrected: number;
     repeated_references?: number;
+    corpus_preflight?: CorpusPreflightResult;
+    corpus_verified?: Array<{point: number; cases: number}>;
     people_batch?: {
       cases_verified?: number;
       edited_items?: number;
@@ -123,7 +143,9 @@ const endpoint = "/admin/wikidata-gila-repairs";
 export const GilaRepairs = {
   status: () => api.get<GilaStatus>(endpoint),
   start: () => api.post<AuditJob>(endpoint + "/start", {}),
-  repairAll: () => api.post<RunJobSnapshot>(endpoint + "/repair-all", {}),
+  repairAll: () => api.post<RunJobSnapshot>(endpoint + "/repair-all", {scope: "people_and_sources"}),
+  preflight: (params: URLSearchParams) =>
+    api.get<{items: PreflightCase[]; total: number}>(endpoint + "/preflight?" + params),
   evidence: (auditId: string) => api.get<unknown>(endpoint + "/evidence?" + new URLSearchParams({audit_id: auditId})),
   cases: (params: URLSearchParams) => api.get<{items: GilaCase[]; total: number}>(endpoint + "/cases?" + params),
   latestCaseReview: (auditId: string, caseId: string) =>

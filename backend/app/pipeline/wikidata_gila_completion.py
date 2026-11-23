@@ -199,6 +199,8 @@ def build_gila_completion_packet(
             if case.get("person_role") and case.get("occurrence"):
                 role = sha256(str(case["person_role"]).encode()).hexdigest()[:16]
                 case_id = f"source:{cn}:person:{case['occurrence']}:{role}"
+            if point == 8 and case.get("occurrence"):
+                case_id = f"source:{cn}:evidence:{case['occurrence']}"
             case_rows.append(
                 {
                     **dict(case),
@@ -289,7 +291,8 @@ def build_gila_completion_packet(
         points[8].append(historical_status)
         case_rows.append(
             {
-                "case_id": f"historical:{proposal.get('qid')}:{index}",
+                "case_id": f"historical:{proposal.get('qid')}" if audit.get("full_source_coverage")
+                else f"historical:{proposal.get('qid')}:{index}",
                 "qid": proposal.get("qid"),
                 "live_revision": proposal.get("revision"),
                 "points": [8],

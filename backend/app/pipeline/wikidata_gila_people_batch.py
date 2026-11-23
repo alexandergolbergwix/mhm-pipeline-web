@@ -222,6 +222,12 @@ def apply_claims(entity, patches):
     old_claim_ids = {claim["id"] for rows in entity["claims"].values() for claim in rows if "id" in claim}
     additions = []
     for patch in patches:
+        if "remove" in patch:
+            pid = next(pid for pid, rows in expected["claims"].items() if any(c["id"] == patch["id"] for c in rows))
+            expected["claims"][pid] = [c for c in expected["claims"][pid] if c["id"] != patch["id"]]
+            if not expected["claims"][pid]:
+                del expected["claims"][pid]
+            continue
         rows = expected["claims"].setdefault(patch["mainsnak"]["property"], [])
         if patch.get("id"):
             index = next(i for i, claim in enumerate(rows) if claim["id"] == patch["id"])
@@ -256,7 +262,7 @@ class PersonRepairGateway(LiveRepairGateway):
         data = super()._write_parameters(qid, revision, claims, token)
         return {
             **data, "assertuser": GILA_CREATOR_NAME,
-            "summary": "Verify manuscript person roles from NLI MARC and linked authority evidence",
+            "summary": "Repair verified manuscript claims from NLI MARC and exact source evidence",
         }
 
 
@@ -319,10 +325,25 @@ def patches_for_group(group, target, build_claim, counts):
     return list(patches.values()), [case_id for ids in case_ids.values() for case_id in ids]
 
 
-async def run_people_batch(
-    cases, records, *, credential, check, check_source, progress, journal, counts, uncertain_qids,
-):
-    """Use one guarded Wikidata edit per target and keep exact result receipts."""
+@dataclass
+class PlannedEdit:
+    target: dict
+    patches: list[dict]
+    case_ids: list[str]
+    revisions: dict[str, int]
+
+
+def repair_claim_builder():
+    from converter.wikidata.uploader import WikidataUploader
+
+    # Native serialization needs only the main-wiki data types. A preflight has no login.
+    builder = WikidataUploader.__new__(WikidataUploader)
+    builder._is_test = False
+    return lambda statement: builder._build_claim(statement).get_json()
+
+
+async def plan_people_batch(cases, records, *, check, progress, counts):
+    """Resolve exact roles and prepare revision-bound patches without a login."""
     eligible_cases = [
         case for case in cases
         if case.get("points") == [5] and case.get("person_role") in ROLE_PROPERTIES
@@ -387,31 +408,45 @@ async def run_people_batch(
     }, entities, check)
     groups = plan_groups(proofs, candidates, entities, counts, viaf)
     counts["target_items"] = len(groups)
-    if not groups:
-        return []
+    plans = []
+    build_claim = repair_claim_builder()
+    for qid, group in sorted(groups.items()):
+        before = entities[qid]
+        patches, case_ids = patches_for_group(group, before, build_claim, counts)
+        if not patches:
+            continue
+        sources = {qid}
+        for case, person in group:
+            if case.case_id in case_ids:
+                sources.update({case.manuscript, person["id"]})
+        plans.append(PlannedEdit(before, patches, case_ids, {key: entities[key]["lastrevid"] for key in sources}))
+    return plans
 
+
+async def apply_planned_edits(
+    plans, *, credential, check, check_source, progress, journal, counts, uncertain_qids,
+):
+    """Apply only the saved claims and prove each resulting entity."""
+    if not plans:
+        return []
     await check_source()
+    reader = ReferenceItemReader()
     boundary = await CurrentWikidataBoundaryFactory().open(await credential())
     uploader = boundary._uploader
     identity = await asyncio.to_thread(uploader._query_userinfo_rights)
     if not isinstance(identity, dict) or identity.get("id") != GILA_CREATOR_UID:
         raise ValueError("The production credential does not match the project creator.")
     gateway = PersonRepairGateway(uploader, read_item=reader.fetch, maxlag=STUDIO_MAXLAG)
-
-    def build_claim(statement):
-        return uploader._build_claim(statement).get_json()
-
     verified = []
-    for index, (qid, group) in enumerate(sorted(groups.items())):
+    written = {}
+    for index, plan in enumerate(plans):
+        before, patches, case_ids = plan.target, plan.patches, plan.case_ids
+        qid = before["id"]
         await check()
-        await progress("people_apply", index, len(groups), "items",
+        await progress("corpus_apply", index, len(plans), "items",
                        f"Check {qid}. Verified {counts['edited_items']} project items.")
         if qid in uncertain_qids:
-            counts["prior_uncertain"] += len(group)
-            continue
-        before = entities[qid]
-        patches, case_ids = patches_for_group(group, before, build_claim, counts)
-        if not patches:
+            counts["prior_uncertain"] += len(case_ids)
             continue
         try:
             if await reader.creator_uid(qid) != GILA_CREATOR_UID:
@@ -419,15 +454,15 @@ async def run_people_batch(
                 continue
             await gateway.assert_allowed(qid)
             async with reader._public_client() as client:
-                sources = sorted({qid, *(
-                    case.manuscript for case, _ in group if case.case_id in case_ids
-                ), *(
-                    person["id"] for case, person in group if case.case_id in case_ids
-                )})
+                sources = sorted(plan.revisions)
                 latest = {}
                 for start in range(0, len(sources), 50):
                     latest.update(await reader.fetch_batch(client, sources[start:start + 50]))
-                if any(latest.get(key, {}).get("lastrevid") != entities[key]["lastrevid"] for key in sources):
+                if any(
+                    latest.get(key, {}).get("lastrevid")
+                    != (written.get(key, plan.revisions[key]) if key != qid else plan.revisions[key])
+                    for key in sources
+                ):
                     counts["changed_revision"] += len(case_ids)
                     continue
         except (ValueError, RuntimeError) as error:
@@ -464,7 +499,7 @@ async def run_people_batch(
                     counts["service_pause"] += 1
                     logger.warning("Wikidata requested a pause for person repairs (%s).", error.code)
                     break
-                await progress("people_apply", index, len(groups), "items",
+                await progress("corpus_apply", index, len(plans), "items",
                                f"Wikidata requested a {wait:g}-second wait before the edit on {qid}.")
                 await asyncio.sleep(wait)
             except Exception:
@@ -497,7 +532,7 @@ async def run_people_batch(
         counts["edited_items"] += 1
         counts["claims_written"] += len(patches)
         verified.extend(case_ids)
-        entities[qid] = fresh
-    await progress("people_apply", min(index + 1, len(groups)), len(groups), "items",
+        written[qid] = updated
+    await progress("corpus_apply", min(index + 1, len(plans)), len(plans), "items",
                    f"Verified edits on {counts['edited_items']} project items.")
     return verified

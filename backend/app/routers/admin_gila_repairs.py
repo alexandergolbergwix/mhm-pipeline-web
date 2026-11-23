@@ -58,6 +58,7 @@ class RepairAllRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     people_links: dict[RepairQid, RepairQid] = Field(default_factory=dict, max_length=50)
     requirement: Literal[5] | None = None
+    scope: Literal["people_and_sources"] | None = None
 
 
 class PrepareRepair(AuditSelection):
@@ -116,8 +117,8 @@ async def status(auth: Admin, db: Database):
 @router.post("/repair-all")
 async def repair_all(auth: Admin, db: Database, body: RepairAllRequest | None = None):
     run = await _lookup_run_with_access(db, _run_id(), auth, write=True)
-    if body and body.requirement and body.people_links:
-        raise HTTPException(422, "Select the full person batch or specific scribe links.")
+    if body and sum(bool(value) for value in (body.scope, body.requirement, body.people_links)) > 1:
+        raise HTTPException(422, "Select one repair scope.")
     cycle = f"gila-repair:{uuid.uuid4()}"
     try:
         credential = await SavedPublicationCredentialResolver(db, auth.user.id, auth.kek).resolve(
@@ -133,6 +134,7 @@ async def repair_all(auth: Admin, db: Database, body: RepairAllRequest | None = 
                 "_cycle": cycle,
                 **({"_gila_people_links": body.people_links} if body and body.people_links else {}),
                 **({"_gila_requirement": body.requirement} if body and body.requirement else {}),
+                **({"_gila_scope": body.scope} if body and body.scope else {}),
                 "_publication_credential": seal_execution_credential(
                     credential, publication_id=str(run.id), execution_id=cycle,
                 ),
@@ -145,6 +147,26 @@ async def repair_all(auth: Admin, db: Database, body: RepairAllRequest | None = 
     return serialise_job(job)
 
 
+@router.get("/preflight")
+async def corpus_preflight(
+    auth: Admin, db: Database, job_id: uuid.UUID,
+    point: Literal["5", "8"] | None = None,
+    status: Literal["eligible", "needs_evidence", "other_creator", "needs_review"] | None = None,
+    offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
+):
+    run = await _lookup_run_with_access(db, _run_id(), auth)
+    rows = await db.scalar(select(RunJob.params["_gila_corpus_preflight"]).where(
+        RunJob.id == job_id, RunJob.run_id == run.id, RunJob.kind == JOB_KIND_WIKIDATA_GILA_REPAIR,
+    ))
+    if rows is None:
+        raise HTTPException(404, "The corpus preflight is unavailable.")
+    selected = [
+        row for row in rows
+        if (point is None or int(point) in row["points"]) and (status is None or status == row["status"])
+    ]
+    return {"items": selected[offset:offset + limit], "total": len(selected)}
+
+
 @router.post("/start")
 async def start(auth: Admin, db: Database):
     run = await _lookup_run_with_access(db, _run_id(), auth)
@@ -154,7 +176,7 @@ async def start(auth: Admin, db: Database):
             project_id=run.project_id,
             run_id=run.id,
             kind=KIND,
-            params={},
+            params={"_gila_full_sources": True},
             created_by=auth.user.id,
         )
     except ActiveJobError as exc:

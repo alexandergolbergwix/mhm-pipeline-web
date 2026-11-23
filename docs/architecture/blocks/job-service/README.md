@@ -53,5 +53,5 @@ open clients see updates without waiting for the next poll tick.
 - [versioning-export](../versioning-export/README.md) · [research](../research/README.md)
 
 Exact historical repairs reuse the Publication action queue. See [repair retries](../wikidata-studio/repair-retries.md). No new run-job kind exists.
-The [bulk person stage](../wikidata-studio/gila-people-batch.md) uses the existing administrator repair job.
+The [corpus preflight](../wikidata-studio/gila-corpus-repair.md) uses the existing administrator repair job.
 The stage keeps exact intents in the private job parameters and reports the final audit counts.

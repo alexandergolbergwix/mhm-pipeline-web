@@ -587,6 +587,7 @@ def compare_gila_source_facts(
     live_entities: Mapping[str, object] | None = None,
     approved_author_qids: Mapping[tuple[str, str], Iterable[str]] | None = None,
     include_claim_payloads: bool = True,
+    full_source_controls: frozenset[str] = frozenset(),
 ) -> dict[str, object]:
     """Export differences; a read-only comparison never certifies a repair."""
     manuscripts: dict[str, Mapping[str, object]] = {}
@@ -634,6 +635,12 @@ def compare_gila_source_facts(
         if not isinstance(entity, Mapping):
             raise ValueError("A live entity must be an object.")
         source_facts = _source_facts(record, catalog_choices=reviewed_catalog_map(reviewed))
+        if cn in full_source_controls:
+            source_facts = [
+                fact for fact in source_facts
+                if fact.source_field != "957/590" and fact.scope != "catalogue_status"
+                and not (fact.scope == "bibliographic_source" and fact.source_field in {"510", "581"})
+            ]
         for decision in reviewed:
             proof = decision["proof"]
             candidate = proof["candidate"]
