@@ -6,6 +6,7 @@ from hashlib import sha256
 
 from app.pipeline import marc_occurrences as marc
 from app.pipeline.wikidata_source_choices import _claim_values
+from converter.wikidata.property_mapping import P_FOLIO
 
 DELFOGIT_QID = "Q141175708"
 DELFOGIT_HEADING = "דלפוגיט, אליהו"
@@ -40,21 +41,25 @@ class ReviewedScribeExclusion:
 @dataclass(frozen=True)
 class ReviewedScribePerson:
     qid: str
-    hebrew_name: str
+    hebrew_name: str | None
     urls: tuple[str, ...]
     identifier: tuple[str, str] | None = None
-    hewiki_title: str | None = None
+    sitelink: tuple[str, str] | None = None
     wrong_ids: tuple[tuple[str, str], ...] = ()
 
     def matches(self, item: Mapping) -> bool:
-        if item.get("id") != self.qid or item.get("labels", {}).get("he", {}).get("value") != self.hebrew_name:
+        if item.get("id") != self.qid:
+            return False
+        if self.hebrew_name and item.get("labels", {}).get("he", {}).get("value") != self.hebrew_name:
             return False
         if self.identifier:
             pid, value = self.identifier
             if _claim_values(item, pid) != [value]:
                 return False
-        if self.hewiki_title and item.get("sitelinks", {}).get("hewiki", {}).get("title") != self.hewiki_title:
-            return False
+        if self.sitelink:
+            site, title = self.sitelink
+            if item.get("sitelinks", {}).get(site, {}).get("title") != title:
+                return False
         return all(value not in _claim_values(item, pid) for pid, value in self.wrong_ids)
 
 
@@ -66,12 +71,23 @@ class ReviewedScribeNote:
     digest: str
     tag: str = "957"
     former_heading: str | None = None
+    corrected_heading: str | None = None
+    folio: str | None = None
+
+    @property
+    def exact_qualifiers(self) -> dict[str, str]:
+        qualifiers = {}
+        if self.corrected_heading or self.folio:
+            qualifiers["P1932"] = self.corrected_heading or self.heading
+        if self.folio:
+            qualifiers[P_FOLIO] = self.folio
+        return qualifiers
 
 
 _QATI = ReviewedScribePerson(
     "Q108378115", "משה קטיעי",
     ("https://teman.org.il/content/13032",),
-    hewiki_title="משה קטיעי",
+    sitelink=("hewiki", "משה קטיעי"),
 )
 _ELADWI = ReviewedScribePerson(
     "Q141175696", "יוסף בן עמרם בן עודד אלעדוי",
@@ -100,6 +116,174 @@ _BASHIRI = ReviewedScribePerson(
 
 # Bind each identification to the full set of notes in the reviewed MARC field.
 _EXTRA_SCRIBE_NOTES = {
+    "990000702460205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q132798628", None,
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990000702460205171&vid=KTIV",
+                "https://catalog.digital-scriptorium.org/wiki/Item:Q75810",
+            ),
+            identifier=("P13311", "Q75810"),
+        ),
+        "700:1", "מיליאב, גד בן עמנואל",
+        "360ac6e9c4a88d7e91905fa300af2b944e6c41f213b8ee7811d9a488594530f0", corrected_heading="עמנואל בר גד דמילייאב",
+    ),
+    "990000776020205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141175593", "ישועה אזולאי",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990000776020205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1059",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1059"),
+        ),
+        "700:1", "אזולאי, ישועה",
+        "ffa3848b65478b2c48f87a18cbf23cf5fa642dda5e9d0a80d9d444a204524ac2", tag="500",
+    ),
+    "990000825080205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141953248", "יוסף בן שמואל אשנבי",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990000825080205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1189",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1189"),
+        ),
+        "700:1", "אשנבי, יוסף בן שמואל",
+        "d2a66eacbe70d4442a791d76b3d418679bfd8c2d5701771354c106685ab99483", tag="561",
+    ),
+    "990000856010205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141748471", "שלמה נחום בן שבתי",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990000856010205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1160",
+                "https://bidspirit-images.global.ssl.fastly.net/kedem/auctionDocs/531/catalog/100_-_.pdf#page=53",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1160"),
+            wrong_ids=(("P8189", "987007258452905171"),),
+        ),
+        "700:1", "שלמה נחום בן שבתי",
+        "dcefd3301fa9ae7746e27c3f066349c081d9210af35c346f9507fdb7025a27b0",
+    ),
+    "990000880550205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141748463", "שלמה סידיש",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990000880550205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1093",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1093"),
+            wrong_ids=(("P8189", "987007294122705171"),),
+        ),
+        "700:1", "סידיש, שלמה",
+        "a22b7d1c787924007588fc5847236ae05d29cab28c5cc34bea24fd5c7ad5dd9e",
+    ),
+    "990001089360205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141953226", "יוסף יצחק עמר — 990001089360205171",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990001089360205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1110",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1110"),
+            wrong_ids=(("P8189", "987007270155705171"),),
+        ),
+        "700:1", "עמר, יוסף יצחק",
+        "8de929327ca936453e17a59083cd517542f2b40f03f0f62996b35d7276debcf8", tag="500",
+    ),
+    "990001205840205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141748479", "יוסף בן סעדיה בן יוסף בן דוד אבהר",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990001205840205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1136",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1136"),
+            wrong_ids=(("P8189", "987007300794605171"),),
+        ),
+        "700:1", "אבהר, יוסף בן סעדיה בן יוסף בן דוד",
+        "90026d5711de0febc9610f36b6fee965e91db2fd81dbeab778669e5584c2822d",
+    ),
+    "990001254240205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141953251", "טוביה בן חיים יצחק גבאי",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990001254240205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1205",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1205"),
+        ),
+        "700:1", "גבאי, טוביה בן חיים יצחק",
+        "3520cb99d2cabbf8f88617fe2fc772769ff2fcc5ffe7fbbf517516a4e0ae89a8",
+    ),
+    "990001830400205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141953253", "יהודה בן יצחק דדיניאה",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990001830400205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1213",
+                "https://live-kedem.circuit.auction/he/node/188519",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1213"),
+            wrong_ids=(("P8189", "987007270165205171"),),
+        ),
+        "700:1", "דדיניאה, יהודה בן יצחק",
+        "21f9341f45405c14fd94d275008910ffdb0317234681608036f1b0b34cb59657", folio="final unnumbered replacement leaf",
+    ),
+    "990001856120205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141953249", "נתן יהושע בן שלמה בידרידוש",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990001856120205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1192",
+                "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1192"),
+        ),
+        "700:1", "בידרידוש, נתן יהושע בן שלמה",
+        "a1e274629a5fc7cdc76c4130720d6fc2f5feed22a858590d4094024f1a8ba559",
+    ),
+    "990001878130205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141748477", "יוסף בן יונה אלפתיחי",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990001878130205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1180",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1180"),
+            wrong_ids=(("P8189", "987007415787305171"),),
+        ),
+        "700:1", "אלפתיחי, יוסף בן יונה",
+        "01daf59096d77c8b293669cc4501cd5e2a50f4d6d3bafc3922a26a807236ca72",
+    ),
+    "990035044030205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141953262", "שמואל בן אברהם מונדולפו",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990035044030205171&vid=KTIV",
+                "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1056",
+                "https://makor.primo.exlibrisgroup.com/discovery/fulldisplay"
+                "?docid=alma990001928240107706&context=L&vid=01JTS_INST:01JTS&lang=en",
+            ),
+            identifier=("P2888", "https://mhm-hmo.wikibase.cloud/wiki/Item:Q1056"),
+            wrong_ids=(("P8189", "987007261158205171"),),
+        ),
+        "700:3", "מונדולפו, שמואל בן אברהם",
+        "cc9f6436ce8949dfe3b777b2bdcdcd10a2c2aa7858ebefdbc524f62012f930a3", tag="500",
+    ),
     "990000561550205171": ReviewedScribeNote(
         _QATI, "700:1", "אלקטיעי, משה בן סעדיה",
         "7b8f460deeac6f56020bdb1a0d6b754a9f7422370fc6673cc992fe9cb834cfb2",
@@ -191,14 +375,21 @@ _EXTRA_SCRIBE_NOTES = {
 }
 
 
-def reviewed_scribe_note(
-    record: Mapping, cn: str, occurrence: str, heading: str, candidate: Mapping,
+def reviewed_scribe_source(
+    record: Mapping, cn: str, occurrence: str, heading: str,
 ) -> ReviewedScribeNote | None:
     proof = _EXTRA_SCRIBE_NOTES.get(cn)
-    if not proof or proof.occurrence != occurrence or proof.heading != heading or not proof.person.matches(candidate):
+    if not proof or proof.occurrence != occurrence or proof.heading != heading:
         return None
     notes = _note_digests(record, proof.tag)
     return proof if notes and sha256(" ".join(notes).encode()).hexdigest() == proof.digest else None
+
+
+def reviewed_scribe_note(
+    record: Mapping, cn: str, occurrence: str, heading: str, candidate: Mapping,
+) -> ReviewedScribeNote | None:
+    proof = reviewed_scribe_source(record, cn, occurrence, heading)
+    return proof if proof and proof.person.matches(candidate) else None
 
 
 # The review binds the MARC occurrence to the exact text of field 957.

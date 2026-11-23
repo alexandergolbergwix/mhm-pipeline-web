@@ -106,3 +106,9 @@ catalogue or authority citation. The person record must have no active
 authority ID that the review found incorrect. The plan can update an older
 name qualifier only when the exact review identifies that qualifier.
 See the [source review](../../../audits/2026-11-22-remaining-scribe-authorities.md).
+
+A reviewed colophon can supply the signed name if the MARC heading reverses
+the names. A reviewed catalogue can limit a scribe to a specific part of a
+manuscript. The plan writes the value in `P1932` or `P958` as applicable.
+The audit checks the exact qualifier and all required citations.
+See the [scribe authority review](../../../audits/2026-11-23-scribe-authority-review.md).

@@ -693,3 +693,53 @@ def test_reviewed_scribe_note_requires_exact_authority_and_placeholder(monkeypat
     assert not people_role_cases(record, manuscript, {identity.qid: person})[0]["verified"]
     old["references"].append({"snaks": {"P854": [_snak(authority_url)]}})
     assert people_role_cases(record, manuscript, {identity.qid: person})[0]["authority_verified"]
+
+
+@pytest.mark.parametrize(
+    ("corrected", "folio"),
+    [("Immanuel son of Gad", None), (None, "final unnumbered replacement leaf")],
+)
+def test_reviewed_scribe_requires_the_signed_name_or_exact_folio(monkeypatch, corrected, folio):
+    from hashlib import sha256
+
+    from app.pipeline import wikidata_gila_scribe_colophons as reviewed
+    from app.pipeline.wikidata_gila_people import plan_person_role_repair
+
+    heading = "Gad son of Immanuel"
+    signed_name = corrected or heading
+    note = "The colophon names the person who copied the reviewed material."
+    url = "https://example.org/record"
+    record = parse_nli_records(_response(_record(
+        _field("700", ("a", heading), ("4", "scr")) + _field("957", ("a", note)),
+    )), {CONTROL})[CONTROL]
+    claim = _claim(None, qualifiers={"P1932": heading})
+    claim["id"] = "Q10$copyist"
+    claim["mainsnak"] = {"snaktype": "somevalue"}
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P11603": [claim]}}
+    case = {**people_role_cases(record, manuscript, {})[0], "control_number": CONTROL, "qid": "Q10"}
+    identity = reviewed.ReviewedScribePerson("Q20", None, (url,), identifier=("P13311", "Q30"))
+    monkeypatch.setitem(reviewed._EXTRA_SCRIBE_NOTES, CONTROL, reviewed.ReviewedScribeNote(
+        identity, case["occurrence"], heading, sha256(sha256(note.encode()).hexdigest().encode()).hexdigest(),
+        corrected_heading=corrected, folio=folio,
+    ))
+    signed_person = {"id": "Q20", "claims": {"P31": [_claim({"id": "Q5"})], "P13311": [_claim("Q30")]}}
+    other_person = {"id": "Q21", "claims": {"P31": [_claim({"id": "Q5"})], "P13311": [_claim("Q30")]}}
+    assert plan_person_role_repair(record, case, manuscript, {}, other_person, {}) is None
+    _, change, claim_id = plan_person_role_repair(record, case, manuscript, {}, signed_person, {})
+    assert claim_id == claim["id"]
+    assert change.qualifiers == [
+        {"property": pid, "value": value, "type": "string"}
+        for pid, value in ([("P1932", signed_name), ("P958", folio)] if folio else [("P1932", signed_name)])
+    ]
+
+    claim["references"].append({"snaks": {"P854": [_snak(url)]}})
+    claim["mainsnak"] = _snak({"id": "Q21"})
+    assert not people_role_cases(record, manuscript, {"Q21": other_person})[0]["verified"]
+    claim["mainsnak"] = _snak({"id": "Q20"})
+    assert not people_role_cases(record, manuscript, {"Q20": signed_person})[0]["verified"]
+    claim["qualifiers"]["P1932"] = [_snak(signed_name)]
+    if folio:
+        claim["qualifiers"]["P958"] = [_snak(folio)]
+    result = people_role_cases(record, manuscript, {"Q20": signed_person})[0]
+    assert result["authority_verified"]
+    assert result["source_value"] == heading

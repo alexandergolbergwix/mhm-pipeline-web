@@ -4543,3 +4543,9 @@ verified Delfogit claim and cite the holding catalogue on the deprecated claim.
 The audit checks the full set of MARC notes for the reviewed field. It also checks the exact contributor occurrence, scribe role, and person item. It requires the catalogue or authority citation on the manuscript statement.
 
 Reject a reviewed link when a known incorrect authority ID has an active rank. Apply each correction only to the exact claim on an item that the project account created. Check the current revision before the edit.
+
+## Rule W-381 — Preserve the signed name and folio scope
+
+A MARC contributor heading can reverse the scribe's name and patronymic. A catalogue can attribute a folio to a scribe separately from the rest of the manuscript. Bind the reviewed correction to the exact MARC occurrence, note, and person.
+
+Require `P1932` for the signed name or `P958` for the documented part. Require each reviewed citation and the source reference on the exact statement. The audit verifies the case after it checks these values.

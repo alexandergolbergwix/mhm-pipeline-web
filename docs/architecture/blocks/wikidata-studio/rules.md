@@ -1420,3 +1420,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 236. **R236 — Bind an external scribe item to its reviewed authority (W-379).** Check the live person record, the name authority, and the exact MARC scribe note before a link.
 
 237. **R237 — Check the exact scribe identity and the source note (W-380).** Match the MARC occurrence and the complete note. Reject the link when a known incorrect authority ID has an active rank.
+
+238. **R238 — Preserve the signed name and folio scope (W-381).** For a reviewed discrepancy, require the signed name or documented folio in the exact qualifier. Check all reviewed citations before the audit verifies the case.

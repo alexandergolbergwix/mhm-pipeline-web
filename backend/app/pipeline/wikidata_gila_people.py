@@ -24,13 +24,13 @@ from app.pipeline.wikidata_gila_identity_evidence import (
 from app.pipeline.wikidata_gila_scribe_colophons import (
     DELFOGIT_HEADING, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS,
     MILHAUD_COLUMBIA, MILHAUD_DS_ID, MILHAUD_HEADING, MILHAUD_QID, MISATTRIBUTION,
-    reviewed_colophon_urls, reviewed_scribe_exclusion, reviewed_scribe_note,
+    reviewed_colophon_urls, reviewed_scribe_exclusion, reviewed_scribe_note, reviewed_scribe_source,
 )
 from app.pipeline.wikidata_source_choices import _claim_values
 from converter.authority.mazal_index import MazalIndex
 from converter.wikidata.content_projection import _work_title_key
 from converter.wikidata.item_models import WikidataStatement, merge_statement_references
-from converter.wikidata.property_mapping import Q_ADDRESSEE_ROLE, Q_FORMER_OWNER_ROLE, Q_SENDER_ROLE, nli_reference
+from converter.wikidata.property_mapping import P_FOLIO, Q_ADDRESSEE_ROLE, Q_FORMER_OWNER_ROLE, Q_SENDER_ROLE, nli_reference
 
 logger = logging.getLogger(__name__)
 _MARC_NS = "{http://www.loc.gov/MARC21/slim}"
@@ -319,6 +319,21 @@ def _colophon_scribe_urls(candidate, record, cn, occurrence, display):
     return urls
 
 
+def _has_reviewed_scribe_qualifiers(claim, proof):
+    return all(_qualifier_values(claim, pid) == [value] for pid, value in proof.exact_qualifiers.items())
+
+
+def _matches_scoped_scribe(claim, candidate, proof, cn):
+    return (
+        claim["value"] == proof.person.qid
+        and "Q5" in _links(candidate, "P31")
+        and proof.person.matches(candidate)
+        and _has_reviewed_scribe_qualifiers(claim, proof)
+        and all(_cites_authority(claim, (url,)) for url in proof.person.urls)
+        and _reference_status([claim], cn, live=True) == "source_bound"
+    )
+
+
 def _confirmed_scribe_exclusion(manuscript, cn, display, exclusion):
     active = _live_claims(manuscript, "P11603")
     if any(
@@ -525,6 +540,7 @@ def plan_person_role_repair(
     occurrence = marc.source_key(row)
     if role == "scribe" and reviewed_scribe_exclusion(record, cn, occurrence, display):
         return None
+    reviewed_source = reviewed_scribe_source(record, cn, occurrence, display) if role == "scribe" else None
     dates = _exact_life_dates(variants)
     urls = _dated_authority_urls(candidate, source_names, dates, lc_headings, mazal_headings)
     gnd_url = _gnd_scribe_url(candidate, source_names, dates, gnd_sources) if role == "scribe" else None
@@ -537,6 +553,8 @@ def plan_person_role_repair(
     )
     colophon_urls = _colophon_scribe_urls(candidate, record, cn, occurrence, display) if role == "scribe" else ()
     reviewed_note = reviewed_scribe_note(record, cn, occurrence, display, candidate) if colophon_urls else None
+    if reviewed_source and reviewed_source.exact_qualifiers and not reviewed_note:
+        return None
     accepted_placeholder = (reviewed_note.former_heading if reviewed_note else None) or display
     required_urls = colophon_urls
     if role == "author" and row["tag"] != "100" and not marc.values(row, "t"):
@@ -551,7 +569,9 @@ def plan_person_role_repair(
     if not target.get("id") or target["id"] == candidate["id"]:
         return None
 
-    qualifiers = [{"property": "P1932", "value": display, "type": "string"}]
+    text_qualifiers = (reviewed_note.exact_qualifiers if reviewed_note else {}) or {"P1932": display}
+    accepted_names = source_names | {_heading(text_qualifiers["P1932"])}
+    qualifiers = [{"property": pid, "value": value, "type": "string"} for pid, value in text_qualifiers.items()]
     role_qualifier = _ROLE_QUALIFIERS.get(role)
     if role_qualifier:
         qualifiers.append({"property": "P3831", "value": role_qualifier, "type": "item"})
@@ -586,8 +606,9 @@ def plan_person_role_repair(
             continue
         if (
             not claim["claim_id"]
-            or any(qualifier["property"] not in {"P1932", "P3831"} for qualifier in claim["qualifiers"])
-            or any(_heading(name) not in source_names for name in _qualifier_values(claim, "P1932"))
+            or any(qualifier["property"] not in {*text_qualifiers, "P3831"} for qualifier in claim["qualifiers"])
+            or any(_heading(name) not in accepted_names for name in _qualifier_values(claim, "P1932"))
+            or (bool(folios := _qualifier_values(claim, P_FOLIO)) and folios != [text_qualifiers.get(P_FOLIO)])
         ):
             return None
         existing.append(claim)
@@ -598,7 +619,8 @@ def plan_person_role_repair(
             all(_cites_authority(existing[0], (url,)) for url in required_urls)
             if required_urls else _cites_authority(existing[0], urls)
         )
-        if cited or (role != "scribe" and has_dated_proof):
+        needs_qualifier_change = reviewed_note and not _has_reviewed_scribe_qualifiers(existing[0], reviewed_note)
+        if (cited and not needs_qualifier_change) or (role != "scribe" and has_dated_proof):
             return None
 
     selected = existing or unknowns
@@ -651,6 +673,21 @@ def people_role_cases(
                 target = _author_target(row, record, manuscript, entities, cn) if exact_manuscript else {}
             else:
                 target = manuscript if exact_manuscript else {}
+            proof = reviewed_scribe_source(record, cn, occurrence, display) if role == "scribe" else None
+            if proof and proof.exact_qualifiers:
+                confirmed = [
+                    claim for claim in _live_claims(target, "P11603")
+                    if _matches_scoped_scribe(claim, entities.get(claim["value"], {}), proof, cn)
+                ]
+                verified = len(confirmed) == 1
+                cases.append({
+                    "point": 5, "field": occurrence, "source_field": occurrence,
+                    "occurrence": occurrence, "source_value": display, "person_role": role,
+                    "classification": "identity_or_scope_uncertain",
+                    "reason": "verified_person_authority" if verified else "named_scribe_identity_unresolved",
+                    "verified": verified, "authority_verified": verified, "role_verified": verified,
+                })
+                continue
             authority_proven = set()
             if role in _DATED_AUTHORITY_ROLES and not uncertain and not source_ids and not source_qids:
                 pid = "P50" if role == "author" else "P11603" if role == "scribe" else "P3342"
