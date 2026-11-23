@@ -179,7 +179,7 @@ class RepairCycle:
                             db, run_id=self.run_id, project_id=self.project_id,
                             kind=kind, created_by=self.actor, params={
                                 **(params or {}), "_gila_cycle_parent": str(self.id),
-                                **({"_gila_full_sources": True} if self.corpus and kind == JOB_KIND_WIKIDATA_GILA_AUDIT else {}),
+                                **({"_gila_full_sources": True} if (self.corpus or self.people_only) and kind == JOB_KIND_WIKIDATA_GILA_AUDIT else {}),
                                 "_gila_cycle_step": phase, "repair_workspace": True,
                             },
                         )
@@ -477,7 +477,7 @@ class RepairCycle:
                 job.result = dict(self.result)
                 await db.commit()
             logger.info("Corpus preflight %s completed: %s.", self.id, self.result["corpus_preflight"])
-        with paced_wikidata_evidence_reads() if self.corpus else nullcontext():
+        with paced_wikidata_evidence_reads() if self.corpus or self.people_only else nullcontext():
             verified = await apply_planned_edits(
                 plans, credential=credential, check=check, check_source=check_source,
                 progress=progress, journal=journal, counts=counts, uncertain_qids=uncertain,

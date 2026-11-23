@@ -26,6 +26,7 @@ from app.pipeline.wikidata_gila_linked_people import (
     ROLE_PROPERTIES, cited_bib_controls, has_linked_source, linked_person_matches, role_authority,
 )
 from app.pipeline.wikidata_gila_mazal_viaf import viaf_matches, viaf_mazal_url
+from app.pipeline.wikidata_gila_reviewed_people import reviewed_linked_person_url
 from app.pipeline.wikidata_gila_scribe_colophons import (
     DELFOGIT_HEADING, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS,
     MILHAUD_COLUMBIA, MILHAUD_DS_ID, MILHAUD_HEADING, MILHAUD_QID, MISATTRIBUTION,
@@ -713,6 +714,10 @@ def people_role_cases(
                     linked_id, source_url = proof
                     candidate = entities.get(claim["value"], {})
                     if linked_person_matches(candidate, linked_id) and has_linked_source(claim, cn, source_url):
+                        linked_proven.add(claim["value"])
+                    elif role == "author" and (url := reviewed_linked_person_url(candidate, linked_id)) and has_linked_source(
+                        claim, cn, source_url, url,
+                    ):
                         linked_proven.add(claim["value"])
                     elif viaf_matches(candidate, linked_id, (linked_viaf or {}).get(linked_id)) and has_linked_source(
                         claim, cn, source_url, viaf_mazal_url(linked_id),

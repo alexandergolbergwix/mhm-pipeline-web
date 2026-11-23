@@ -37,7 +37,10 @@ from app.pipeline.wikidata_gila_people import (
     _separate_scribe_claim,
     _sole_work_for_added_author,
 )
-from app.pipeline.wikidata_gila_scribe_colophons import reviewed_scribe_exclusion, reviewed_scribe_source
+from app.pipeline.wikidata_gila_reviewed_people import REVIEWED_LINKED_PEOPLE, reviewed_linked_person_url
+from app.pipeline.wikidata_gila_scribe_colophons import (
+    ReviewedScribeNote, reviewed_scribe_exclusion, reviewed_scribe_source,
+)
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
 from app.pipeline.wikidata_source_choices import _claim_values
 from app.publication.reviewed_reference_scope import GILA_CREATOR_NAME, GILA_CREATOR_UID
@@ -64,9 +67,10 @@ class PersonCase:
     variants: list[dict]
     occurrences: list[tuple[dict, list[dict]]]
     dated_authority: bool = False
+    reviewed_scribe: ReviewedScribeNote | None = None
 
 
-def _source_fields(cases, records):
+def _source_fields(cases, records, *, include_reviewed=False):
     rows = {}
     for case in cases:
         cn = case["control_number"]
@@ -85,7 +89,7 @@ def _source_fields(cases, records):
             continue
         if role == "scribe" and (
             reviewed_scribe_exclusion(record, cn, key, display)
-            or reviewed_scribe_source(record, cn, key, display)
+            or (not include_reviewed and reviewed_scribe_source(record, cn, key, display))
         ):
             continue
         yield case, cn, role, display, record, field, variants, occurrences
@@ -145,6 +149,16 @@ def target_for(case, manuscript, entities):
     return _author_target(case.field, case.record, manuscript, entities, case.control)
 
 
+def reviewed_scribe_cases(cases, records):
+    for case, cn, role, display, record, field, variants, occurrences in _source_fields(
+        (case for case in cases if case["person_role"] == "scribe"), records, include_reviewed=True,
+    ):
+        proof = reviewed_scribe_source(record, cn, case["occurrence"], display)
+        if proof and not proof.exact_qualifiers and not proof.former_heading and _eligible_role(field, variants, role):
+            yield PersonCase(case["case_id"], cn, case["qid"], role, display, "",
+                             proof.person.urls[0], record, field, variants, occurrences, reviewed_scribe=proof)
+
+
 def scoped_claim(case, person, target, build_claim):
     """Return a single claim patch or a reason the source cannot change it."""
     pid = ROLE_PROPERTIES[case.role]
@@ -154,6 +168,10 @@ def scoped_claim(case, person, target, build_claim):
     matches = []
     expected_role = _ROLE_QUALIFIERS.get(case.role)
     names = {_heading(value) for variant in case.variants for value in marc.values(variant, "a")}
+    if case.role == "author":
+        names.update(_heading(" ".join(
+            value for code in ("a", "b", "c", "q") for value in marc.values(variant, code)
+        )) for variant in case.variants)
     for claim in _live_claims(target, pid):
         role = _qualifier_values(claim, "P3831")
         value = claim["value"]
@@ -182,8 +200,11 @@ def scoped_claim(case, person, target, build_claim):
         return None, "conflicting_claim"
     original = matches[0] if matches else None
     authority_urls = [case.source_url]
-    if not linked_person_matches(person, case.authority):
-        authority_urls.append(viaf_mazal_url(case.authority))
+    if case.reviewed_scribe:
+        authority_urls = list(case.reviewed_scribe.person.urls)
+    elif not linked_person_matches(person, case.authority):
+        reviewed_url = reviewed_linked_person_url(person, case.authority) if case.role == "author" else None
+        authority_urls.append(reviewed_url or viaf_mazal_url(case.authority))
     if original and original["value"] == qid and has_linked_source(original, case.control, *authority_urls):
         return None, "already_cited"
     if any(
@@ -281,9 +302,12 @@ def _item_ids(entity, prop):
 def plan_groups(proofs, candidates, entities, counts, viaf=None):
     groups = defaultdict(list)
     for case in proofs:
-        person = entities.get(candidates.get(case.authority), {})
+        person_qid = case.reviewed_scribe.person.qid if case.reviewed_scribe else candidates.get(case.authority)
+        person = entities.get(person_qid, {})
         target = target_for(case, entities.get(case.manuscript, {}), entities)
-        if not linked_person_matches(person, case.authority) and (
+        signed = case.reviewed_scribe and case.reviewed_scribe.person.matches(person) and "Q5" in _item_ids(person, "P31")
+        reviewed_link = case.role == "author" and reviewed_linked_person_url(person, case.authority)
+        if not (signed or reviewed_link or linked_person_matches(person, case.authority)) and (
             case.dated_authority or not viaf_matches(person, case.authority, (viaf or {}).get(case.authority))
         ):
             counts["no_exact_person"] += 1
@@ -376,8 +400,10 @@ async def plan_people_batch(cases, records, *, check, progress, counts):
                                      records, bibs, frames)
     counts["dated_matches"] = len(dated)
     proofs.extend(dated)
-    counts["source_matches"] = len(proofs)
-    if not proofs:
+    signed = list(reviewed_scribe_cases(eligible_cases, records))
+    counts["reviewed_scribe_matches"] = len(signed)
+    counts["source_matches"] = len(proofs) + len(signed)
+    if not proofs and not signed:
         return []
     await progress("people_plan", 0, len(proofs), "cases", "Match NLI authority IDs to existing Wikidata people.")
     identifiers = {case.authority for case in proofs}
@@ -389,7 +415,9 @@ async def plan_people_batch(cases, records, *, check, progress, counts):
                        "Check exact VIAF cross-references for NLI authorities.")
 
     viaf = await read_viaf_mazal({
-        case.authority for case in proofs if not case.dated_authority and not direct.get(("P8189", case.authority))
+        case.authority for case in proofs if not case.dated_authority
+        and not direct.get(("P8189", case.authority))
+        and (case.role != "author" or case.authority not in REVIEWED_LINKED_PEOPLE)
     }, viaf_progress)
     alternatives = await asyncio.to_thread(authority_items, {key for keys in viaf.values() for key in keys})
     candidates = {}
@@ -397,12 +425,16 @@ async def plan_people_batch(cases, records, *, check, progress, counts):
         matches = direct.get(("P8189", aid)) or {
             qid for key in viaf.get(aid, ()) for qid in alternatives.get(key, ())
         }
+        reviewed = REVIEWED_LINKED_PEOPLE.get(aid)
+        if reviewed and not (matches - {reviewed.qid}):
+            matches = {reviewed.qid}
         if len(matches) == 1:
             candidates[aid] = next(iter(matches))
+    proofs.extend(signed)
     reader = ReferenceItemReader()
     entities = {}
     await _load_items(reader, {case.manuscript for case in proofs}, entities, check)
-    await _load_items(reader, {candidate for candidate in candidates.values()} | {
+    await _load_items(reader, set(candidates.values()) | {case.reviewed_scribe.person.qid for case in signed} | {
         qid for case in proofs if case.role == "author"
         for qid in _item_ids(entities.get(case.manuscript, {}), "P1574")
     }, entities, check)

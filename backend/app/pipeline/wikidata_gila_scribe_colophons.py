@@ -1263,6 +1263,15 @@ _EXTRA_SCRIBE_NOTES = {
         _QATI, "700:1", "אלקטיעי, משה בן סעדיה",
         "5c88a2026ca773f9ba8de7d3f9963ad7d9433b69de964169cecfbb18a976a4d9",
     ),
+    "990001775180205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258816", "שלמה בן ישראל בן יוסף בן ישראל",
+            ("https://teman.org.il/content/13241",),
+            identifier=("P973", "https://teman.org.il/content/13241"),
+        ),
+        "700:1", "שלמה בן ישראל בן יוסף",
+        "70d099d411cc60d6bc9ba224561de2ab00f0a8c22d5076ca7e803aaac77e2eec",
+    ),
     "990001827870205171": ReviewedScribeNote(
         _ELADWI, "700:1", "אלעדוי, יוסף בן עמרם בן עודד",
         "c5f3fd1b0cdf4f64808129af6f8ea7e8e257db4286c1769a2e6f151c30f957d3",

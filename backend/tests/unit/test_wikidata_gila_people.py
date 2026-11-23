@@ -908,3 +908,47 @@ async def test_dated_mazal_batch_requires_one_preferred_name_and_exact_years(mon
     assert not await batch.dated_source_cases([case], {CONTROL: raw}, {}, {})
     index.return_value = {("qualified scribe", "1612", "1679"): {aid}}
     assert not await batch.dated_source_cases([case], {CONTROL: raw}, {}, {})
+
+
+def test_linked_author_reuses_the_full_marc_heading_and_keeps_its_qualifier():
+    from app.pipeline.wikidata_gila_linked_people import bib_url
+    from app.pipeline.wikidata_gila_people_batch import repair_claim_builder, scoped_claim, source_cases
+
+    record = parse_nli_records(_response(_record(
+        _field("100", ("a", "Isaac ben Abraham,"), ("c", "of Troki,"), ("d", "1533-1594"))
+        + _field("245", ("a", "Faith Strengthened"))
+    )), {CONTROL})[CONTROL]
+    aid = "987007297464205171"
+    bib = {"@id": bib_url(CONTROL), "creator": [{
+        "@id": bib_url(CONTROL).split("/bibs/")[0] + f"/authorities/{aid}",
+        "label": "Isaac ben Abraham of Troki 1533-1594",
+    }]}
+    case = next(source_cases([{
+        "case_id": "author", "control_number": CONTROL, "qid": "Q10", "occurrence": "100:1",
+        "person_role": "author", "source_value": "Isaac ben Abraham",
+    }], {CONTROL: record}, {CONTROL: bib}))
+    person = {"id": "Q168171", "claims": {
+        "P31": [_claim({"id": "Q5"})], "P8189": [_claim(aid)],
+    }}
+    old = {"id": "Q11$author", **_claim({"id": "Q168171"}, qualifiers={"P1932": "Isaac ben Abraham of Troki"})}
+    target = {"id": "Q11", "claims": {"P50": [old]}}
+    patch, error = scoped_claim(case, person, target, repair_claim_builder())
+    assert error is None
+    assert patch["id"] == old["id"]
+    assert patch["qualifiers"] == old["qualifiers"]
+    assert patch["references"][0] == old["references"][0]
+    assert len(patch["references"]) == 2
+
+
+def test_reviewed_author_identity_refuses_a_conflicting_authority_id():
+    from app.pipeline.wikidata_gila_reviewed_people import reviewed_linked_person_url
+
+    candidate = {"id": "Q59628092", "claims": {
+        "P31": [_claim({"id": "Q5"})], "P244": [_claim("n86814129")],
+        "P8189": [_claim("987007310194705171"), _claim("987007263551105171")],
+    }}
+    assert reviewed_linked_person_url(candidate, "987007310194705171") == (
+        "https://id.loc.gov/authorities/names/n86814129.html"
+    )
+    candidate["claims"]["P8189"].append(_claim("987007297464205171"))
+    assert reviewed_linked_person_url(candidate, "987007310194705171") is None

@@ -26,6 +26,13 @@ That path requires the same MAZAL ID on a live human item.
 The job checks the exact manuscript ID for copy roles.
 An author edit needs an exact source-bound work link and a unique work title.
 The job reuses existing people and has no item creation path.
+When an author has a reviewed authority cross-reference, the job requires the same live person and identifier.
+The job cites the independent authority and the exact NLI record in the same reference.
+An unexpected MAZAL identifier blocks this path.
+The job can keep an existing author qualifier that matches the full MARC name, title, and numeration.
+The qualifier can contain these parts in addition to the name in subfield `$a`.
+A reviewed scribe needs the exact MARC occurrence and a digest of the source note.
+The job checks the linked person before it adds the scribe reference.
 A Wikidata person that another account created can supply an identifier.
 
 The stage groups exact claims by the item that receives the edit.
@@ -51,6 +58,8 @@ The page displays the current phase and the before and after verification counts
 - `wikidata_gila_linked_people.py` checks NLI links and matches exact authority IDs.
 - `wikidata_gila_bibframe_people.py` matches the exact MARC fields on NLI agents.
 - `wikidata_gila_mazal_viaf.py` confirms the MAZAL source ID and resolves exact authority cross-references.
+- `wikidata_gila_reviewed_people.py` lists reviewed NLI cross-references for existing author identities.
+- `wikidata_gila_scribe_colophons.py` binds reviewed scribes to exact source notes.
 - `wikidata_gila_people_batch.py` plans, groups, and verifies exact live changes.
 - `wikidata_gila_repair_job.py` records the private receipts and starts the final audit.
 - `wikidata_gila_audit_job.py` and `wikidata_gila_people.py` check the cited sources.
@@ -58,3 +67,9 @@ The page displays the current phase and the before and after verification counts
 
 The tests check the route scope, the exact person proof, and the full item comparison.
 See `test_admin_gila_repairs.py` and `test_wikidata_gila_people.py`.
+
+The authority review used MARC and three independent catalogue records.
+See [Giovanni Battista Iona](https://id.loc.gov/authorities/names/n86814129.html),
+[Arnold Boate](https://id.loc.gov/authorities/names/n85005814.html),
+and [Israel ben Aaron Jaffe](https://d-nb.info/gnd/142126152).
+The [scribe authority](https://teman.org.il/content/13241) identifies Solomon son of Israel son of Joseph and his work in Gadas.
