@@ -117,3 +117,8 @@ The deduplicated scribe repair uses signed names and exact catalogue records.
 For each new person it checks authority IDs, multilingual names, and aliases.
 The Hoter and Fano reviews limit the scribe claim to the documented part.
 See the [repair evidence](../../../audits/2026-11-23-deduplicated-scribe-repair.md).
+
+The second authority review grouped the open scribe occurrences by name.
+It ran NLI and VIAF checks in parallel with the catalogue reviews.
+The repair applies each verified identity to its exact occurrences in one batch.
+See the [second source review](../../../audits/2026-11-23-scribe-authority-batch.md).

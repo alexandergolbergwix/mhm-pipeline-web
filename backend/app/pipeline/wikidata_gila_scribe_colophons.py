@@ -135,8 +135,169 @@ _BARAKA_CAIRO = ReviewedScribePerson(
 )
 
 
+_PINHAS_BEN_GAD = ReviewedScribePerson(
+    "Q142258526", "פינחס בן גד הכהן",
+    (
+        "https://cris.biu.ac.il/en/publications/manuscript-of-rekhev-elohim-by-r-yishaq-wannah-copied-by-r-pinhas/",
+        "https://viaf.org/viaf/25146461598227731736/",
+    ),
+    identifier=("P8189", "987007602408705171"),
+)
+
+_JACOB_PHILIP = ReviewedScribePerson(
+    "Q142258533", "יעקב חיים פיליף",
+    (
+        "https://viaf.org/viaf/97260049/",
+        "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990000572680205171/NLI",
+        "https://www.nli.org.il/he/a-topic/987007307890705171",
+    ),
+    identifier=("P8189", "987007307890705171"),
+)
+
+_ISRAEL_TUVIA_LINGI = ReviewedScribePerson(
+    "Q142258542", "ישראל שלמה בן טוביה לינגי",
+    (
+        "https://viaf.org/viaf/216175412666203711416/",
+        "https://www.nli.org.il/he/a-topic/987013431293005171",
+    ),
+    identifier=("P8189", "987013431293005171"),
+)
+
+
 # Bind each identification to the full set of notes in the reviewed MARC field.
 _EXTRA_SCRIBE_NOTES = {
+    "990000564000205171": ReviewedScribeNote(
+        _PINHAS_BEN_GAD,
+        "700:1", "פינחס בן גד",
+        "464481915e297b4e443c6d9246f9ccf95e7bd54ecbf10a33b395ef07a16144ea",
+    ),
+    "990000572680205171": ReviewedScribeNote(
+        _JACOB_PHILIP,
+        "700:1", "פיליפ, יעקב חיים",
+        "7c867c334100afb9bb1df7b84cfb80b940caf28ada3403b23e25b279654adf7b",
+        tag="500",
+        folio="copy excluding the duplicate leaves on folios 54r–157v",
+    ),
+    "990000572690205171": ReviewedScribeNote(
+        _JACOB_PHILIP,
+        "700:1", "פיליפ, יעקב חיים",
+        "2b1a336da69b16c178cff8e6faf1de8375fe7df48403280850c0e490725be346",
+    ),
+    "990000591080205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258537", "יעקב בן נחום מטישוויטץ",
+            (
+                "https://id.loc.gov/authorities/names/nb2007025985",
+                "https://viaf.org/viaf/281074688/",
+            ),
+            identifier=("P8189", "987007310488605171"),
+        ),
+        "700:1", "יעקב בן נחום",
+        "e4cf15703b7512c48faefd331e87d29efb1a69d7650fbc475e153595c23d55b4",
+        former_heading="יעקב בן נחום מטישוויטץ",
+        corrected_heading="יעקב בן נחום מטישוויטץ",
+    ),
+    "990000677600205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258539", "אליעזר ראובן חי מפאנו",
+            (
+                "https://www.nli.org.il/he/a-topic/987007329659105171",
+                "https://viaf.org/viaf/75149616563303750267/",
+            ),
+            identifier=("P8189", "987007329659105171"),
+        ),
+        "700:1", "פנו, אליעזר ראובן חי",
+        "091cc5bc7a143910110b4f0b6f63ae08f0843b41d1b205f3ecc38a2b196d471b",
+    ),
+    "990000790230205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q124636964", None,
+            (
+                "https://digitalcollections.jtsa.edu/islandora/object/jts%3A41245",
+                "https://id.loc.gov/authorities/names/nb2009006055",
+            ),
+            identifier=("P214", "83527758"),
+        ),
+        "700:1", "יצחק בן יעקב",
+        "b9e76b78ebdefe73b721f0b25658aec47d5fe9ddcc61c57491d693b7148cf11f",
+        former_heading="יצחק בן יעקב מן הלויים",
+        corrected_heading="יצחק בן יעקב מן הלויים",
+        folio="main text, before the section copied by Hayyim Volterra",
+    ),
+    "990000818510205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258566", "משה בן אליהו הלוי הירושלמי",
+            (
+                "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990000801730205171/NLI",
+                "https://id.loc.gov/authorities/names/no2005078366",
+                "https://viaf.org/viaf/2203699/",
+            ),
+            identifier=("P8189", "987007577585605171"),
+        ),
+        "700:1", "משה בן אליהו",
+        "0f9696c9b77b8d5427f64dbd5e7b0c1d7bf9ba7a960d7e461b22b062d6d65811",
+        former_heading="משה בן אליהו הלוי הירושלמי",
+        corrected_heading="משה בן אליהו הלוי הירושלמי",
+    ),
+    "990000893610205171": ReviewedScribeNote(
+        _ISRAEL_TUVIA_LINGI,
+        "700:1", "לינגי, ישראל שלמה בן טוביה",
+        "50eeea24b82dda33338acbb8cf3100b4c8da96cdf8b8e663c29aaca3688f194e",
+    ),
+    "990001010130205171": ReviewedScribeNote(
+        _ISRAEL_TUVIA_LINGI,
+        "700:1", "לינגי, ישראל שלמה בן טוביה",
+        "5a4638c2f2a6c8849a28910d87b6b0c514072298a833a96903f5322c0b86213d",
+    ),
+    "990001064960205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258567", "שלמה אליהו אבן צור",
+            (
+                "https://www.nli.org.il/he/a-topic/987009538784505171",
+                "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990001006730205171&scope=KTIV&vid=KTIV",
+                "https://viaf.org/viaf/14161451567664102341/",
+            ),
+            identifier=("P8189", "987009538784505171"),
+        ),
+        "700:1", "אבן צור, שלמה אליהו בן יעקב",
+        "44f6535b98b08850a1d347705d1ed18f571312b6642f279fa10987cd97f4458a",
+        folio="later additions attributed to him from folio 55r",
+    ),
+    "990001164280205171": ReviewedScribeNote(
+        _PINHAS_BEN_GAD,
+        "700:1", "כהן, פינחס בן גד",
+        "6477508fefcc71eac1e792809ed72891c10908885ad161fa875844d292d70973",
+    ),
+    "990001219520205171": ReviewedScribeNote(
+        _PINHAS_BEN_GAD,
+        "700:1", "פינחס בן גד",
+        "23340f65b8b2b535b8d076fabfd5713e88d4c79886e05bc2f4dfa21cfb8fa222",
+    ),
+    "990001349760205171": ReviewedScribeNote(
+        _PINHAS_BEN_GAD,
+        "700:1", "פינחס בן גד",
+        "0ce7e0ae2f0c586d9b1b17ddd2f65c42fd0e2309f3bd5af74a7c85278f9d8206",
+    ),
+    "990001349770205171": ReviewedScribeNote(
+        _PINHAS_BEN_GAD,
+        "700:1", "פינחס בן גד",
+        "44384732d3f5c296da6e10754c992935a3aca3548041c4fe05b0730dfdc25d94",
+        former_heading="פינחס בן גד הכהן",
+    ),
+    "990001792130205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258530", "מיכאל יהודה לאון",
+            (
+                "https://cja.huji.ac.il/browser.php?id=37632&mode=set",
+                "https://thejewishmuseum.org/wp-content/uploads/2025/07/Esther_Object_Labels_FINAL_rev-1.pdf",
+                "https://viaf.org/viaf/299520564/",
+            ),
+            identifier=("P8189", "987007311072405171"),
+        ),
+        "700:1", "מיכאל יהודה",
+        "60179cd965fd6555f936b5727761a4c2e3d9a5d08f65a211ee6a8b4e8cf82314",
+    ),
     "990000594240205171": ReviewedScribeNote(
         ReviewedScribePerson(
             "Q5423435", "עזרא מפאנו",
