@@ -152,8 +152,10 @@ def test_a_conclusive_fresh_absence_allows_a_valid_create(
     uploader, writes = boundary
     lookup = Mock(return_value=(None, "none"))
     monkeypatch.setattr("app.pipeline.wikidata_upload._reconcile_for_upload", lookup)
+    names = Mock(return_value=())
     monkeypatch.setattr(
-        "converter.wikidata.reconciler.WikidataReconciler", lambda: SimpleNamespace()
+        "converter.wikidata.reconciler.WikidataReconciler",
+        lambda: SimpleNamespace(person_creation_name_candidates=names),
     )
 
     result = uploader.upload_item(_person())
@@ -161,7 +163,31 @@ def test_a_conclusive_fresh_absence_allows_a_valid_create(
     assert result.status == "success"
     assert result.qid == "Q123"
     lookup.assert_called_once()
+    names.assert_called_once_with(_person().labels, {})
     writes.assert_called_once()
+
+
+@pytest.mark.parametrize("candidates", [("Q456",), ("Q456", "Q789")])
+def test_create_defers_exact_names_even_without_an_identifier_match(
+    boundary, monkeypatch: pytest.MonkeyPatch, candidates: tuple[str, ...],
+) -> None:
+    uploader, writes = boundary
+    item = _person()
+    item.aliases = {"he": ["משה הסופר"]}
+    monkeypatch.setattr("app.pipeline.wikidata_upload._reconcile_for_upload", lambda *args: (None, "none"))
+    names = Mock(return_value=candidates)
+    monkeypatch.setattr(
+        "converter.wikidata.reconciler.WikidataReconciler",
+        lambda: SimpleNamespace(person_creation_name_candidates=names),
+    )
+
+    result = uploader.upload_item(item)
+
+    assert result.status == "blocked"
+    assert all(qid in result.message for qid in candidates)
+    assert result.qid is None
+    names.assert_called_once_with(item.labels, item.aliases)
+    writes.assert_not_called()
 
 
 def test_deprecated_identity_is_not_used_for_duplicate_absence(

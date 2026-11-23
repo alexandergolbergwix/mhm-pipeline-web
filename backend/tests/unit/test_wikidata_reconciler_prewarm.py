@@ -3,12 +3,43 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
 
 from converter.wikidata.reconciler import (
+    ReconciliationUnavailableError,
     WikidataReconciler,
     prewarm_identifier_cache,
     prewarm_reconciler_for_items,
 )
+
+
+def test_person_creation_checks_labels_and_aliases_in_each_language(monkeypatch) -> None:
+    reconciler = WikidataReconciler()
+    query = Mock(return_value=[{"item": {"value": "http://www.wikidata.org/entity/Q12"}}])
+    monkeypatch.setattr(reconciler, "_query", query)
+
+    assert reconciler.person_creation_name_candidates(
+        {"he": "שם", "en": 'Scribe "A"'}, {"en": ["Another name"]},
+    ) == ("Q12",)
+
+    sparql = query.call_args.args[0]
+    assert "rdfs:label ?name" in sparql
+    assert "skos:altLabel ?name" in sparql
+    assert '"שם"@he' in sparql
+    assert r'"Scribe \"A\""@en' in sparql
+    assert '"Another name"@en' in sparql
+
+
+def test_name_check_rejects_a_response_without_bindings(monkeypatch) -> None:
+    reconciler = WikidataReconciler()
+    response = Mock()
+    response.json.return_value = {"results": {}}
+    monkeypatch.setattr(reconciler._session, "get", Mock(return_value=response))
+
+    with pytest.raises(ReconciliationUnavailableError):
+        reconciler.person_creation_name_candidates({"en": "Scribe"}, {})
 
 
 class FakeReconciler(WikidataReconciler):

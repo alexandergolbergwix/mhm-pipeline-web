@@ -8,7 +8,9 @@ Rate-limited to 1 query/second per Wikidata API policy.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -166,7 +168,11 @@ class WikidataReconciler:
                     )
                 resp.raise_for_status()
                 data = resp.json()
-                return data.get("results", {}).get("bindings", [])
+                results = data.get("results") if isinstance(data, dict) else None
+                bindings = results.get("bindings") if isinstance(results, dict) else None
+                if not isinstance(bindings, list) or any(not isinstance(row, dict) for row in bindings):
+                    raise ReconciliationUnavailableError("The SPARQL response did not contain a result set.")
+                return bindings
             except requests.RequestException as exc:
                 # FAIL CLOSED: do NOT return [] here. An empty list means "confirmed
                 # absent" to every caller and would let a transient WDQS outage be
@@ -841,6 +847,42 @@ class WikidataReconciler:
 
         self._cache[cache_key] = qid
         return qid
+
+    def person_creation_name_candidates(
+        self, labels: Mapping[str, str], aliases: Mapping[str, list[str]],
+    ) -> tuple[str, ...]:
+        """Return exact candidates with a label or alias in either name list."""
+        names = {(language.lower(), label.strip()) for language, label in labels.items() if label.strip()}
+        names.update(
+            (language.lower(), name.strip()) for language, variants in aliases.items()
+            for name in variants if name.strip()
+        )
+        if not names or any(not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", lang) for lang, _ in names):
+            raise PersonIdentityUncertainError("The item needs usable multilingual names for its duplicate check.")
+        values = " ".join(f"{json.dumps(name, ensure_ascii=False)}@{lang}" for lang, name in sorted(names))
+        rows = self._query(f"""
+        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        SELECT DISTINCT ?item WHERE {{
+          VALUES ?name {{ {values} }}
+          {{ ?item rdfs:label ?name }} UNION {{ ?item skos:altLabel ?name }}
+          FILTER (
+            EXISTS {{ ?item wdt:P31 wd:Q5 }}
+            || NOT EXISTS {{ ?item wdt:P31 ?type }}
+          )
+          FILTER(STRSTARTS(STR(?item), STR(wd:Q)))
+        }} LIMIT 2
+        """)
+        qids: list[str] = []
+        for row in rows:
+            item = row.get("item")
+            uri = item.get("value") if isinstance(item, dict) else None
+            if not isinstance(uri, str):
+                raise ReconciliationUnavailableError("The name search did not return valid item identifiers.")
+            match = re.fullmatch(r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)", uri)
+            if not match:
+                raise ReconciliationUnavailableError("The name search did not return valid item identifiers.")
+            qids.append(match[1])
+        return tuple(qids)
 
     # ── Batch reconciliation (efficient for large uploads) ────────
 

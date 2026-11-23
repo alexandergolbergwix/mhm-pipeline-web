@@ -77,6 +77,14 @@ def reconcile_creation_identity(
         statements=[statement for statement in item.statements if statement.rank != "deprecated"],
     )
     qid, method = _reconcile_for_upload(reconciler, active_item, item.entity_type)
+    if not qid and item.entity_type == "person":
+        from converter.wikidata.reconciler import PersonIdentityUncertainError
+
+        candidates = reconciler.person_creation_name_candidates(item.labels, item.aliases)
+        if candidates:
+            raise PersonIdentityUncertainError(
+                f"Exact names require identity review before CREATE: {', '.join(candidates)}."
+            )
     if not qid and method == "source_scoped_work":
         raise ValueError("The source-scoped work did not receive a duplicate check")
     if not qid and item.entity_type == "work" and not properties.intersection({"P50", "P2093"}):

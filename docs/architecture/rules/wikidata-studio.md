@@ -4549,3 +4549,10 @@ Reject a reviewed link when a known incorrect authority ID has an active rank. A
 A MARC contributor heading can reverse the scribe's name and patronymic. A catalogue can attribute a folio to a scribe separately from the rest of the manuscript. Bind the reviewed correction to the exact MARC occurrence, note, and person.
 
 Require `P1932` for the signed name or `P958` for the documented part. Require each reviewed citation and the source reference on the exact statement. The audit verifies the case after it checks these values.
+
+## Rule W-382 — Check person names before public CREATE
+
+After the fresh authority checks, search for each proposed label and alias in its language.
+Search existing labels and aliases. A match requires identity review before CREATE.
+If the query fails or returns an invalid result, block CREATE.
+A name match alone cannot authorize an update or a new link.

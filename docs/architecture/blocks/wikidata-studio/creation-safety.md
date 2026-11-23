@@ -1,6 +1,6 @@
 # Public CREATE guards
 
-> Up: [Wikidata Studio](README.md) · W-335–W-337 · R185–R187
+> Up: [Wikidata Studio](README.md) · W-335–W-337, W-382 · R185–R187, R239
 
 ## Final boundary
 
@@ -25,6 +25,9 @@ The code does not convert this result to an UPDATE.
 Distinct candidate QIDs or a conflicting authority value raise `PersonIdentityUncertainError`.
 The exception requires review and cannot authorize a new item or adoption.
 A safe single identity still returns its QID.
+When the authority checks return no match, search the proposed labels and aliases in their languages.
+The search checks labels and aliases on human items and items without an instance-of claim.
+A match requires identity review. A failed or invalid search blocks CREATE.
 
 Existing partial updates retain their separate creator and claim guards.
 Public updates still require fresh proof for creator user ID `6935067`.
@@ -71,7 +74,8 @@ Historical public repairs still require exact source proof and durable receipts.
 
 ## Tests
 
-- `backend/tests/unit/test_wikidata_creation_safety.py`: direct semantic bypass, valid CREATE, fresh duplicate/failure, deprecated identity, person conflicts, current shelfmark.
+- `backend/tests/unit/test_wikidata_creation_safety.py`: direct semantic bypass, valid CREATE, fresh duplicate and failure, exact person names, deprecated identity, person conflicts, current shelfmark.
+- `backend/tests/unit/test_wikidata_reconciler_prewarm.py`: multilingual labels and aliases, and invalid name lookup results.
 - `backend/tests/unit/test_hmo_canonical_wikidata.py`: final canonical payload cannot restore a microfilm P217, label, or named role-list description.
 - `backend/tests/unit/test_wikidata_upload_guards.py`: person conflicts require review; safe identity remains valid.
 - `backend/tests/unit/test_wikidata_publication_gateway.py`: shared fresh Publication checks.

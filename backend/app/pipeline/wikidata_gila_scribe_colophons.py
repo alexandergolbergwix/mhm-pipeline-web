@@ -114,8 +114,137 @@ _BASHIRI = ReviewedScribePerson(
 )
 
 
+_HOTER_1650 = ReviewedScribePerson(
+    "Q142258354", "חטר בן דוד",
+    (
+        "https://www.nli.org.il/he/manuscripts/NNL_ALEPH990001878530205171/NLI",
+        "https://www.nli.org.il/he/manuscripts/NNL_ALEPH990025656430205171/NLI",
+        "https://viaf.org/viaf/sourceID/J9U%7C987007522648605171",
+    ),
+    identifier=("P8189", "987007522648605171"),
+)
+
+_BARAKA_CAIRO = ReviewedScribePerson(
+    "Q142258379", "יוסף בן רצון בן שמואל בן אהרן ברכה",
+    (
+        "https://sammlungen.ub.uni-frankfurt.de/freimann/download/pdf/1353313#page=22",
+        "https://gallica.bnf.fr/ark:/12148/btv1b10540882h",
+        "https://viaf.org/viaf/sourceID/J9U%7C987010933984205171",
+    ),
+    identifier=("P8189", "987010933984205171"),
+)
+
+
 # Bind each identification to the full set of notes in the reviewed MARC field.
 _EXTRA_SCRIBE_NOTES = {
+    "990000594240205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q5423435", "עזרא מפאנו",
+            (
+                "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990000594240205171/NLI",
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990000594240205171&vid=KTIV",
+                "https://cja.huji.ac.il/sch/browser.php?id=21005&mode=set",
+                "https://id.loc.gov/authorities/names/nb2008014391",
+            ),
+            identifier=("P214", "2001250"),
+        ),
+        "700:1", "פאנו, עזרא בן יצחק",
+        "40c49c268db38122b9316ab5fca13706f1de508271805981d8165478d0cb084c",
+        tag="500",
+        former_heading="פנו, עזרא בן יצחק",
+        folio="Part II marginal notes and corrections",
+    ),
+    "990001067860205171": ReviewedScribeNote(
+        _BARAKA_CAIRO,
+        "700:1", "ברכה, יוסף בן רצון בן שמואל בן אהרן",
+        "a6ef1c935db06f0975286472342ecb22c46c63d00bb98df1f6a376ab4ef097bd",
+        tag="500",
+    ),
+    "990001067870205171": ReviewedScribeNote(
+        _BARAKA_CAIRO,
+        "700:1", "ברכה, יוסף בן רצון בן שמואל בן אהרן",
+        "80bd37d2dc19fa549da92192589e3c414271995f814d93ab2a46adf639217cb9",
+    ),
+    "990001091450205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258381", "אגוסטינו גרימני",
+            (
+                "https://digi.vatlib.it/view/MSS_Vat.ebr.434",
+                "https://www.nli.org.il/media/26037/vaticanhebmss.pdf",
+                "https://viaf.org/viaf/sourceID/J9U%7C987007601761505171",
+            ),
+            identifier=("P8189", "987007601761505171"),
+        ),
+        "700:2", "Grimani, Agostino",
+        "340898120c5bf1728dc6b3d9363f906915574ed573ddf1f3b0d725dabdad5c36",
+    ),
+    "990001134600205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q26954684", "אפרים פיגו",
+            (
+                "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990001134600205171&scope=KTIV&vid=KTIV",
+                "https://tablet.otzar.org/he/book/book.php?book=619068&pagenum=133",
+            ),
+            sitelink=("vecwiki", "Efrem Piccio"),
+        ),
+        "700:1", "פיגו, אפרים",
+        "35e8b6cb13fccca330e64dc50bbecad06dee1d312a954737b52f8db1ab96e163",
+    ),
+    "990001291720205171": ReviewedScribeNote(
+        _BARAKA_CAIRO,
+        "700:1", "ברכה, יוסף בן רצון בן שמואל בן אהרן",
+        "d455cbb85d3429aef68f091bd590da0d390f4ff81cee148627319f4412e27642",
+    ),
+    "990001376840205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q141748501", "יום טוב ליפמן חזן בן וייבלמן",
+            (
+                "https://sammlungen.ub.uni-frankfurt.de/mshebr/content/titleinfo/1931458",
+                "https://sammlungen.ub.uni-frankfurt.de/download/webcache/2000/1931489",
+            ),
+        ),
+        "700:1", "יום טוב ליפמן חזן בן וייבלמן",
+        "89f6fd37a858116fe251fc8d06e204c27f5623814c611937d685089cc99afc3e",
+    ),
+    "990001878530205171": ReviewedScribeNote(
+        _HOTER_1650,
+        "700:2", "חטר בן דוד",
+        "d977cf30b5cec0e14e22d78c88d7f7862a7ea4dba5063196746062d5c3fc49b1",
+        former_heading="שלום בן יוסף הקרחי",
+        folio="section ending with the 1650 colophon",
+    ),
+    "990024953100205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q79118397", None,
+            (
+                "https://etshaimmanuscripts.nl/items/eh-47-e-33/",
+            ),
+            identifier=("P244", "nr98002003"),
+        ),
+        "700:1", "בנימין שניאור",
+        "2888cb179e3c42fc77ae1e075bbe19e41cebd2e9416c0f6044e6832430f576cd",
+    ),
+    "990025656430205171": ReviewedScribeNote(
+        _HOTER_1650,
+        "700:1", "חטר בן דוד",
+        "fa68469a485a1d4f506ffc70a3190fef4cdf5f20ac74d811fadf63aa3758291f",
+    ),
+    "990036375040205171": ReviewedScribeNote(
+        ReviewedScribePerson(
+            "Q142258400", "יהודה מכבי",
+            (
+                "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage"
+                "?docId=PNX_MANUSCRIPTS990036375040205171&vid=MANUSCRIPTS",
+                "https://data.bibliotheken.nl/id/thes/p408625058",
+                "https://viaf.org/viaf/sourceID/J9U%7C987007401772005171",
+            ),
+            identifier=("P8189", "987007401772005171"),
+        ),
+        "700:1", "מכבי, יהודה",
+        "91523c0ce83703557677c338acaec69d2804374e71dd579c3fdd004ac1bbc8dd",
+    ),
     "990000702460205171": ReviewedScribeNote(
         ReviewedScribePerson(
             "Q132798628", None,
