@@ -239,8 +239,28 @@ _REVIEWED_SCRIBE_JOSEPH_SHARAFAH = ReviewedScribePerson(
 )
 
 
+_REVIEWED_SCRIBE_SHIMON_MIZRAHI = ReviewedScribePerson(
+    "Q142259895", "שמעון בן יונה מזרחי",
+    (
+        "https://files.ybz.org.il/periodicals/peamim/13/Article_13.3.pdf#page=10",
+        "https://www.csmc.uni-hamburg.de/publications/mc/files/articles/mc09-2-3-wandrey.pdf",
+    ),
+    identifier=("P973", "https://files.ybz.org.il/periodicals/peamim/13/Article_13.3.pdf#page=10"),
+)
+
+
 # Bind each identification to the full set of notes in the reviewed MARC field.
 _EXTRA_SCRIBE_NOTES = {
+    "990001679060205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_SHIMON_MIZRAHI,
+        "700:1", "מזרחי, שמעון בן יונה",
+        "4722ad3b2f07f9bccbd202b1dda760a4f961c06720192287e36a7a4eb8090895",
+    ),
+    "990001679300205171": ReviewedScribeNote(
+        _REVIEWED_SCRIBE_SHIMON_MIZRAHI,
+        "700:1", "מזרחי, שמעון בן יונה",
+        "1fe000bce57a9c7e05d8d7905da9ca7a226a5c19d7609377487eec2618f6c000",
+    ),
     "990000550940205171": ReviewedScribeNote(
         ReviewedScribePerson(
             "Q142259360", "חיים בן סעדיה",

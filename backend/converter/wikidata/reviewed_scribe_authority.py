@@ -173,6 +173,7 @@ _YAHYA_ENTRY = "https://www.jewishencyclopedia.com/articles/15051-yahya#anchor25
 _MERARI_ENTRY = "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/6117251"
 _FIRUZ_ENTRY = "https://www.orientalstudies.ru/rus/images/pdf/belkina_2024.pdf#page=12"
 _POGGETTI_ENTRY = "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/6117264"
+_MIZRAHI_ENTRY = "https://files.ybz.org.il/periodicals/peamim/13/Article_13.3.pdf#page=10"
 _REVIEWED_INDEX_ENTRIES = {
     _CJA_ENTRY: ReviewedScribeAuthority(
         "נתן נטע בן משה נפתלי הירש המרשלק",
@@ -194,8 +195,17 @@ _REVIEWED_INDEX_ENTRIES = {
         "יהודה אריה בן יעקב פוג׳טי",
         frozenset({"990001860230205171"}),
     ),
+    _MIZRAHI_ENTRY: ReviewedScribeAuthority(
+        "שמעון בן יונה מזרחי",
+        frozenset({"990001679060205171", "990001679300205171"}),
+    ),
 }
 _INDEX_ENTRY_VARIANTS = {
+    _MIZRAHI_ENTRY: (
+        "https://files.ybz.org.il/periodicals/peamim/13/Article_13.3.pdf",
+        "https://mhm-hmo.wikibase.cloud/wiki/Item:Q13051",
+        "https://mhm-hmo.wikibase.cloud/wiki/Q13051",
+    ),
     _YAHYA_ENTRY: ("https://jewishencyclopedia.com/articles/15051-yahya#anchor25",),
     _FIRUZ_ENTRY: (
         "https://orientalstudies.ru/rus/images/pdf/belkina_2024.pdf#page=12",

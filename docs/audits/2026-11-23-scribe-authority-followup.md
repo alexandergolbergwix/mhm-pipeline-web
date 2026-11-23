@@ -55,3 +55,13 @@ The production audit verified 497 of 2,342 Requirement 5 cases. It had 236 open 
 ## Duplicate evidence
 
 The duplicate review checked exact Hebrew and Latin name forms and Teman URL variants. It used native Wikidata search and WDQS. The writer repeats the name and URL checks before it creates a person. Each edit checks the exact live revision and the original creator of the manuscript.
+
+## Shimon ben Yonah Mizrahi
+
+The two Baghdad colophons give the same full name. The 1697 prayer book, `990001679060205171`, names him on the title page. The 1680 commentary, `990001679300205171`, names him on folio 196v. Field `700:1` identifies the copyist in both records.
+
+The biographical passage identifies his father Yonah and the Barzani, Adoni, and Mizrahi family names. The Hamburg study publishes his signed monogram. [Pe’amim, page 67](https://files.ybz.org.il/periodicals/peamim/13/Article_13.3.pdf#page=10) · [Hamburg manuscript study, figure 6](https://www.csmc.uni-hamburg.de/publications/mc/files/articles/mc09-2-3-wandrey.pdf)
+
+The HMO person record links the two copies and lists life dates that conflict with both signed dates. The repair uses the source to identify the scribe and preserves the manuscript dates. The duplicate check includes the HMO entry. [HMO record](https://mhm-hmo.wikibase.cloud/wiki/Item:Q13051)
+
+Both manuscript claims use the same person item. [Wikidata person item](https://www.wikidata.org/wiki/Q142259895)
