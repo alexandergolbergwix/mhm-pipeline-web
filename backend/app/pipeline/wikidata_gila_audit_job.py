@@ -147,10 +147,12 @@ async def _canonical_items(projection, run_id, snapshot, ledger):
 
 
 def _linked_entities(entities: Mapping[str, dict]) -> set[str]:
+    from app.pipeline.wikidata_gila_linked_people import COPY_ROLE_PROPERTIES
+
     return {
         value["id"]
         for entity in entities.values()
-        for pid in ("P1574", "P50", "P3342", "P11603", "P1071")
+        for pid in ("P1574", "P50", "P1071", *COPY_ROLE_PROPERTIES)
         for claim in entity["claims"].get(pid, [])
         if claim.get("rank") != "deprecated"
         and isinstance(value := claim["mainsnak"].get("datavalue", {}).get("value"), dict)
@@ -171,7 +173,9 @@ def _geographic_context(entities, qids, properties):
 def _cited_person_roles(entities, manuscript_qids, work_qids):
     from app.pipeline.wikidata_gila_facts import _live_claims
 
-    for qids, properties in ((manuscript_qids, ("P11603", "P3342")), (work_qids, ("P50",))):
+    from app.pipeline.wikidata_gila_linked_people import COPY_ROLE_PROPERTIES
+
+    for qids, properties in ((manuscript_qids, COPY_ROLE_PROPERTIES), (work_qids, ("P50",))):
         for qid in qids:
             entity = entities.get(qid, {})
             for pid in properties:
@@ -577,6 +581,22 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             _read_mazal_role_authorities(entities, mappings.values(), work_qids),
             _read_catalogue_role_evidence(entities, mappings, work_qids),
         )
+        from app.pipeline.wikidata_gila_linked_people import cited_bib_controls, read_linked_bibs
+
+        linked_controls = {
+            cn for _, claim in _cited_person_roles(entities, mappings.values(), work_qids | linked_works)
+            for cn in cited_bib_controls(claim) if cn in people_marc
+        }
+
+        async def linked_progress(processed, total):
+            if await is_cancel_requested(job_id):
+                raise AuditCancelledError()
+            await update_job_progress(job_id, {
+                "phase": "linked_people", "processed": processed, "total": total, "unit": "records",
+                "message": "Verify the NLI authority links cited on live statements.",
+            })
+
+        linked_bibs = await read_linked_bibs(linked_controls, linked_progress)
         from app.pipeline.wikidata_gila_gnd_evidence import cited_gnd_ids, read_gnd_sources
 
         gnd_ids = {identifier for qid in mappings.values() if qid in entities
@@ -598,6 +618,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             repair_mazal_headings=mazal_headings,
             repair_mazal_people=mazal_people,
             repair_catalogue_records=catalogue_records,
+            repair_linked_bibs=linked_bibs,
         )
         packet = await asyncio.to_thread(
             build_gila_completion_packet,

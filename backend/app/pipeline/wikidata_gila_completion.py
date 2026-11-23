@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
+from hashlib import sha256
 from typing import Literal
 
 from app.pipeline.wikidata_gila_repairs import entity_digest
@@ -194,10 +195,14 @@ def build_gila_completion_packet(
             if read and case.get("verified") is True:
                 disposition = "verified"
             points[point].append(disposition)
+            case_id = f"source:{cn}:{index}"
+            if case.get("person_role") and case.get("occurrence"):
+                role = sha256(str(case["person_role"]).encode()).hexdigest()[:16]
+                case_id = f"source:{cn}:person:{case['occurrence']}:{role}"
             case_rows.append(
                 {
                     **dict(case),
-                    "case_id": f"source:{cn}:{index}",
+                    "case_id": case_id,
                     "control_number": cn,
                     "qid": qid,
                     "points": [point],

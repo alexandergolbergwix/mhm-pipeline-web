@@ -743,3 +743,74 @@ def test_reviewed_scribe_requires_the_signed_name_or_exact_folio(monkeypatch, co
     result = people_role_cases(record, manuscript, {"Q20": signed_person})[0]
     assert result["authority_verified"]
     assert result["source_value"] == heading
+
+
+def test_linked_person_edit_keeps_the_claim_and_closes_the_exact_role():
+    from copy import deepcopy
+
+    from app.pipeline.wikidata_gila_linked_people import ALMA, bib_url
+    from app.pipeline.wikidata_gila_people_batch import patches_for_group, source_cases, verify_claims
+    from collections import Counter
+    from converter.wikidata.uploader import WikidataUploader
+
+    aid = "987007265745205171"
+    heading = "Source Person"
+    fields = _field("700", ("a", heading), ("d", "1640-1700"), ("e", "scribe"))
+    raw = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    person = {"id": "Q42", "claims": {"P31": [_claim({"id": "Q5"})], "P8189": [_claim(aid)]}}
+    placeholder = {
+        **_claim(None, qualifiers={"P1932": heading}),
+        "type": "statement", "rank": "normal", "id": "Q10$old",
+        "mainsnak": {"property": "P11603", "snaktype": "somevalue"},
+    }
+    manuscript = {"id": "Q10", "lastrevid": 100, "claims": {
+        "P3959": [_claim(CONTROL)], "P11603": [placeholder], "P31": [_claim({"id": "Q87167"})],
+    }}
+    bib = {
+        "@id": bib_url(CONTROL),
+        "contributor": {"@id": f"{ALMA}/authorities/{aid}.jsonld", "label": f"{heading}, 1640-1700"},
+    }
+    initial = people_role_cases(raw, manuscript, {"Q42": person})
+    assert not initial[0]["verified"]
+    row = {**initial[0], "case_id": "case", "control_number": CONTROL, "qid": "Q10"}
+    proof, = source_cases([row], {CONTROL: raw}, {CONTROL: bib})
+    builder = WikidataUploader.__new__(WikidataUploader)
+    builder._is_test = False
+    patches, case_ids = patches_for_group(
+        [(proof, person)], manuscript, lambda st: builder._build_claim(st).get_json(), Counter(),
+    )
+    assert case_ids == ["case"]
+    assert patches[0]["id"] == placeholder["id"]
+    assert patches[0]["references"][0] == placeholder["references"][0]
+    assert patches[0]["qualifiers"] == placeholder["qualifiers"]
+    after = deepcopy(manuscript)
+    after.update(lastrevid=101)
+    after["claims"]["P11603"] = deepcopy(patches)
+    assert verify_claims(manuscript, after, 101, patches)
+    assert people_role_cases(raw, after, {"Q42": person}, linked_bibs={CONTROL: bib})[0]["verified"]
+    assert not people_role_cases(raw, after, {"Q42": person})[0]["verified"]
+    assert not list(source_cases([row], {CONTROL: raw}, {
+        CONTROL: {**bib, "contributor": {**bib["contributor"], "label": f"{heading}, 1640-1701"}},
+    }))
+    assert not list(source_cases([row], {CONTROL: raw}, {
+        CONTROL: {**bib, "@id": bib_url("990000403370205171")},
+    }))
+    after["claims"].pop("P31")
+    assert not verify_claims(manuscript, after, 101, patches)
+
+
+def test_complete_readback_accepts_only_the_generated_claim_id():
+    from copy import deepcopy
+
+    from app.pipeline.wikidata_gila_people_batch import verify_claims
+
+    claim = {"type": "statement", "rank": "normal", "mainsnak": {
+        "property": "P50", **_snak({"id": "Q42"}),
+    }}
+    before = {"id": "Q10", "lastrevid": 21, "claims": {"P31": [_claim({"id": "Q386724"})]}}
+    after = deepcopy(before)
+    after["lastrevid"] = 22
+    after["claims"]["P50"] = [{**claim, "id": "Q10$new"}]
+    assert verify_claims(before, after, 22, [claim])
+    after["claims"]["P50"].append({**claim, "id": "Q10$duplicate"})
+    assert not verify_claims(before, after, 22, [claim])

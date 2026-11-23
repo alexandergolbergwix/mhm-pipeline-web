@@ -56,7 +56,8 @@ RepairQid = Annotated[str, Field(pattern=r"^Q[1-9][0-9]*$")]
 
 class RepairAllRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    people_links: dict[RepairQid, RepairQid] = Field(min_length=1, max_length=50)
+    people_links: dict[RepairQid, RepairQid] = Field(default_factory=dict, max_length=50)
+    requirement: Literal[5] | None = None
 
 
 class PrepareRepair(AuditSelection):
@@ -115,6 +116,8 @@ async def status(auth: Admin, db: Database):
 @router.post("/repair-all")
 async def repair_all(auth: Admin, db: Database, body: RepairAllRequest | None = None):
     run = await _lookup_run_with_access(db, _run_id(), auth, write=True)
+    if body and body.requirement and body.people_links:
+        raise HTTPException(422, "Select the full person batch or specific scribe links.")
     cycle = f"gila-repair:{uuid.uuid4()}"
     try:
         credential = await SavedPublicationCredentialResolver(db, auth.user.id, auth.kek).resolve(
@@ -128,7 +131,8 @@ async def repair_all(auth: Admin, db: Database, body: RepairAllRequest | None = 
             kind=JOB_KIND_WIKIDATA_GILA_REPAIR, created_by=auth.user.id,
             params={
                 "_cycle": cycle,
-                **({"_gila_people_links": body.people_links} if body else {}),
+                **({"_gila_people_links": body.people_links} if body and body.people_links else {}),
+                **({"_gila_requirement": body.requirement} if body and body.requirement else {}),
                 "_publication_credential": seal_execution_credential(
                     credential, publication_id=str(run.id), execution_id=cycle,
                 ),

@@ -67,6 +67,7 @@ def build_gila_audit_report(
     repair_mazal_headings: Mapping[str, frozenset[str]] | None = None,
     repair_mazal_people: Mapping[str, MazalPersonAuthority] | None = None,
     repair_catalogue_records: Mapping[tuple[str, str], dict] | None = None,
+    repair_linked_bibs: Mapping[str, dict] | None = None,
 ) -> dict[str, object]:
     """Compare local proposals with sources; never report a live correction."""
     from app.pipeline.wikidata_gila_identity_evidence import live_source_match
@@ -180,6 +181,7 @@ def build_gila_audit_report(
                 lc_death_years=repair_lc_death_years,
                 mazal_headings=repair_mazal_headings,
                 mazal_people=repair_mazal_people, catalogue_records=repair_catalogue_records,
+                linked_bibs=repair_linked_bibs,
             ))
         else:
             if people_marc is not None:

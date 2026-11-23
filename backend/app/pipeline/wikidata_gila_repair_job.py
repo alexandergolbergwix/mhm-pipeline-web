@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections import Counter
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
@@ -20,6 +21,7 @@ from app.models.run_job import (
     ACTIVE_JOB_STATUSES,
     JOB_KIND_WIKIDATA_GILA_AUDIT,
     JOB_KIND_WIKIDATA_GILA_CASE_REVIEW,
+    JOB_KIND_WIKIDATA_GILA_REPAIR,
     JOB_KIND_WIKIDATA_PUBLICATION_DRY_RUN,
     JOB_KIND_WIKIDATA_PUBLICATION_EXECUTION,
     JOB_KIND_WIKIDATA_PUBLICATION_PREPARE,
@@ -120,6 +122,7 @@ class RepairCycle:
         self.actor = job.created_by
         self.run_id = job.run_id
         self.project_id = job.project_id
+        self.people_only = job.params.get("_gila_requirement") == 5
         self.people_links = dict(job.params.get("_gila_people_links") or {})
         self.resolver = ExecutionCredentialResolver(
             job.params["_publication_credential"], publication_id=str(self.run_id),
@@ -377,6 +380,80 @@ class RepairCycle:
             self.attention("publish", applied.error)
         return set()
 
+    async def people_batch(self, audit):
+        from app.pipeline.marc_verify_context import load_run_marc_records
+        from app.pipeline.wikidata_gila_audit_job import gila_cases, gila_people_marc, gila_record_fingerprint
+        from app.pipeline.wikidata_gila_people_batch import run_people_batch
+
+        cases = await asyncio.to_thread(gila_cases, audit)
+        records = await asyncio.to_thread(gila_people_marc, audit)
+        open_ids = {row["case_id"] for row in cases if row.get("person_role")}
+        counts: Counter[str] = Counter()
+        self.result["people_batch"] = counts
+
+        async def check():
+            async with session_scope() as db:
+                await authorize_repair_cycle(db, self.id)
+
+        async def progress(phase, processed, total, unit, message):
+            await update_job_progress(self.id, {
+                "phase": phase, "message": message, "processed": processed, "total": total, "unit": unit,
+            })
+
+        async def check_source():
+            from app.publication.runtime import StudioCacheProjectionSource
+            from app.routers.wikidata_studio import STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS
+
+            async with session_scope() as db:
+                await authorize_repair_cycle(db, self.id)
+                current = await load_run_marc_records(db, self.run_id)
+                projection = StudioCacheProjectionSource(
+                    db, freshness_timeout_seconds=STUDIO_JOB_FRESHNESS_TIMEOUT_SECONDS,
+                )
+                snapshot = await projection.current_snapshot(
+                    run_id=self.run_id, source="canonical", approved_only=True,
+                )
+            if (
+                snapshot.revision != audit.params.get("_gila_build_revision")
+                or snapshot.digest != audit.params.get("_gila_build_digest")
+                or gila_record_fingerprint(current) != audit.params.get("_gila_source_fingerprint")
+            ):
+                raise ValueError("The manuscript source or Studio build changed after the first audit.")
+
+        async def journal(state, receipt):
+            async with session_scope() as db:
+                if state == "intent":
+                    await authorize_repair_cycle(db, self.id)
+                job = await db.get(RunJob, self.id, with_for_update=True)
+                previous = job.params.get("_gila_people_receipts") or {}
+                job.params = {**job.params, "_gila_people_receipts": {
+                    **previous, receipt["qid"]: {**receipt, "state": state},
+                }}
+                await db.commit()
+
+        async def credential():
+            return await self.resolver.resolve(f"wikidata:production:{self.actor}")
+
+        async with session_scope() as db:
+            previous_receipts = await db.scalars(select(RunJob.params["_gila_people_receipts"]).where(
+                RunJob.run_id == self.run_id, RunJob.kind == JOB_KIND_WIKIDATA_GILA_REPAIR,
+            ))
+            uncertain = {
+                qid for receipts in previous_receipts if isinstance(receipts, dict)
+                for qid, receipt in receipts.items()
+                if receipt["state"] in {"intent", "uncertain"} and open_ids.intersection(receipt["case_ids"])
+            }
+        verified = await run_people_batch(
+            cases, records, credential=credential, check=check, check_source=check_source,
+            progress=progress, journal=journal, counts=counts, uncertain_qids=uncertain,
+        )
+        logger.info("Person repair batch %s completed with %s.", self.id, dict(counts))
+        if counts["uncertain"]:
+            self.attention("people_apply", "A Wikidata edit needs recovery from its saved receipt.")
+        if counts["service_pause"]:
+            self.attention("people_apply", "Wikidata requested a pause before the next edit.")
+        return set(verified)
+
     async def run(self):
         audit = await self.stage(
             JOB_KIND_WIKIDATA_GILA_AUDIT, "initial_audit", "Read Wikidata and check the source.", full=True,
@@ -395,45 +472,62 @@ class RepairCycle:
             )
         if audit.status != "succeeded":
             raise ValueError(audit.error or "The initial audit did not finish.")
-        for scope in (() if self.people_links else ("original", "remaining")):
-            await self.references(scope, audit)
-        repair_audit = audit
-        if self.result["reference_items_corrected"]:
-            refreshed = await self.stage(
-                JOB_KIND_WIKIDATA_GILA_AUDIT, "audit_after_references",
-                "Check current revisions after reference repairs.",
-                {"_gila_people_source_audit": str(audit.id)}, full=True,
+        verified_people_cases = set()
+        if not self.people_links:
+            try:
+                verified_people_cases = await self.people_batch(audit)
+            except (ValueError, RuntimeError) as exc:
+                logger.exception("The bulk person stage stopped.")
+                self.attention("people_evidence", str(exc))
+        batch = self.result.get("people_batch", {})
+        if not self.people_only and not (batch.get("uncertain") or batch.get("service_pause")):
+            for scope in (() if self.people_links else ("original", "remaining")):
+                await self.references(scope, audit)
+            repair_audit = audit
+            if self.result["reference_items_corrected"]:
+                refreshed = await self.stage(
+                    JOB_KIND_WIKIDATA_GILA_AUDIT, "audit_after_references",
+                    "Check current revisions after reference repairs.",
+                    {"_gila_people_source_audit": str(audit.id)}, full=True,
+                )
+                if refreshed.status == "succeeded":
+                    repair_audit = refreshed
+                else:
+                    self.attention("audit_after_references", refreshed.error)
+            evidence = await self.stage(
+                JOB_KIND_WIKIDATA_GILA_CASE_REVIEW, "find_evidence",
+                "Find evidence in MARC and Wikidata with Kimi.", {
+                    "_audit_id": str(repair_audit.id),
+                    **({"_gila_people_links": self.people_links} if self.people_links else {}),
+                },
             )
-            if refreshed.status == "succeeded":
-                repair_audit = refreshed
+            if evidence.status == "succeeded":
+                self.result["evidence_review"] = {
+                    key: (evidence.result or {}).get(key, 0)
+                    for key in ("checked", "supported", "needs_evidence", "excluded_creator", "unavailable")
+                }
+                if unavailable := self.result["evidence_review"]["unavailable"]:
+                    self.attention("find_evidence", f"Evidence checks were unavailable for {unavailable} cases.")
             else:
-                self.attention("audit_after_references", refreshed.error)
-        evidence = await self.stage(
-            JOB_KIND_WIKIDATA_GILA_CASE_REVIEW, "find_evidence",
-            "Find evidence in MARC and Wikidata with Kimi.", {
-                "_audit_id": str(repair_audit.id),
-                **({"_gila_people_links": self.people_links} if self.people_links else {}),
-            },
-        )
-        if evidence.status == "succeeded":
-            self.result["evidence_review"] = {
-                key: (evidence.result or {}).get(key, 0)
-                for key in ("checked", "supported", "needs_evidence", "excluded_creator", "unavailable")
-            }
-            if unavailable := self.result["evidence_review"]["unavailable"]:
-                self.attention("find_evidence", f"Evidence checks were unavailable for {unavailable} cases.")
-        else:
-            self.attention("find_evidence", evidence.error)
-        try:
-            await self.publication(repair_audit, evidence)
-        except ValueError as exc:
-            self.attention("publication", str(exc))
+                self.attention("find_evidence", evidence.error)
+            try:
+                await self.publication(repair_audit, evidence)
+            except ValueError as exc:
+                self.attention("publication", str(exc))
         final = await self.stage(
             JOB_KIND_WIKIDATA_GILA_AUDIT, "verify", "Recheck all nine requests against live Wikidata.",
-            {"_gila_people_source_audit": str(audit.id)},
+            {"_gila_people_source_audit": str(audit.id)}, full=bool(verified_people_cases),
         )
         if final.status != "succeeded":
             raise ValueError(final.error or "The verification audit did not finish.")
+        if "people_batch" in self.result:
+            from app.pipeline.wikidata_gila_audit_job import gila_cases
+
+            open_ids = (
+                {row["case_id"] for row in await asyncio.to_thread(gila_cases, final)}
+                if verified_people_cases else set()
+            )
+            self.result["people_batch"]["cases_verified"] = len(verified_people_cases - open_ids)
         self.result["audit_id"] = str(final.id)
         self.result["requirement_comparison"] = compare_requirements(audit.result, final.result)
         self.result["requirements_verified"] = sum(

@@ -21,6 +21,9 @@ from app.pipeline.wikidata_gila_gnd_evidence import gnd_identifier
 from app.pipeline.wikidata_gila_identity_evidence import (
     _viaf_identifier, _viaf_reference_ids, live_source_match, viaf_proves_person,
 )
+from app.pipeline.wikidata_gila_linked_people import (
+    ROLE_PROPERTIES, has_linked_source, linked_person_matches, linked_role_id,
+)
 from app.pipeline.wikidata_gila_scribe_colophons import (
     DELFOGIT_HEADING, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS,
     MILHAUD_COLUMBIA, MILHAUD_DS_ID, MILHAUD_HEADING, MILHAUD_QID, MISATTRIBUTION,
@@ -219,8 +222,8 @@ def _actual_name(entity: Mapping, claim: Mapping) -> set[str]:
 
 
 def _matching_role_claims(role, names, source_qid, entity, entities, independently_proven=()):
-    pid = "P50" if role == "author" else "P11603" if role == "scribe" else "P3342"
-    if role not in {"author", "scribe", "mentioned", *_ROLE_QUALIFIERS}:
+    pid = ROLE_PROPERTIES.get(role, "P3342")
+    if role not in {*ROLE_PROPERTIES, *_ROLE_QUALIFIERS}:
         return []
     result = []
     for claim in _live_claims(entity, pid):
@@ -636,6 +639,7 @@ def plan_person_role_repair(
 def people_role_cases(
     raw, manuscript, live_entities, *, authority_rows=(), viaf_sources=None, gnd_sources=None,
     lc_headings=None, lc_death_years=None, mazal_headings=None, mazal_people=None, catalogue_records=None,
+    linked_bibs=None,
 ):
     """Report one check per MARC occurrence and role."""
     record = prepare_record_for_pipeline(dict(raw))
@@ -688,10 +692,19 @@ def people_role_cases(
                     "verified": verified, "authority_verified": verified, "role_verified": verified,
                 })
                 continue
-            authority_proven = set()
+            linked_proven = set()
+            if linked_bibs and cn in linked_bibs and role in ROLE_PROPERTIES and not uncertain:
+                linked_id = linked_role_id(cn, row, variants, occurrences, role, linked_bibs, record=record)
+                if linked_id:
+                    linked_proven = {
+                        claim["value"] for claim in _live_claims(target, ROLE_PROPERTIES[role])
+                        if has_linked_source(claim, cn)
+                        and linked_person_matches(entities.get(claim["value"], {}), linked_id)
+                    }
+            authority_proven = set(linked_proven)
             if role in _DATED_AUTHORITY_ROLES and not uncertain and not source_ids and not source_qids:
                 pid = "P50" if role == "author" else "P11603" if role == "scribe" else "P3342"
-                authority_proven = {
+                authority_proven.update({
                     claim["value"] for claim in _live_claims(target, pid)
                     if _proves_dated_role(
                         claim, candidate := entities.get(claim["value"], {}), role, names, life_dates,
@@ -710,11 +723,12 @@ def people_role_cases(
                         ))
                         and all(_cites_authority(claim, (url,)) for url in urls)
                     )
-                }
+                })
             matches = [
                 (claim, candidate) for claim, candidate in
                 _matching_role_claims(role, names, source_qid, target, entities, authority_proven)
                 if _reference_status([claim], cn, live=True) == "source_bound"
+                or (claim["value"] in linked_proven and has_linked_source(claim, cn))
             ]
             concrete = [pair for pair in matches if pair[0]["value"] not in {"somevalue", "novalue"}]
             if concrete and not uncertain:

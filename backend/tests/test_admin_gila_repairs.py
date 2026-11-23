@@ -56,7 +56,7 @@ async def test_automatic_repair_requires_admin_and_attaches_to_active_job(sample
     assert (await client.post(f"/api/runs/{sample_run['run_id']}/jobs", json={
         "kind": "wikidata_gila_repair", "params": {},
     })).status_code == 403
-    first = await client.post(endpoint)
+    first = await client.post(endpoint, json={"requirement": 5})
     assert first.status_code == 200
     repeated = await client.post(endpoint)
     assert first.json()["id"] == repeated.json()["id"]
@@ -64,6 +64,7 @@ async def test_automatic_repair_requires_admin_and_attaches_to_active_job(sample
     job = await db_session.get(RunJob, spawn.call_args.args[0])
     assert job.params["_publication_credential"] == "fixture-envelope"
     assert job.params["_cycle"].startswith("gila-repair:")
+    assert job.params["_gila_requirement"] == 5
     spawn.assert_called_once()
 
 
@@ -108,6 +109,7 @@ async def test_repair_cycle_rebuilds_then_runs_both_repair_scopes_and_verifies()
         SimpleNamespace(status="succeeded"), audit, evidence, verified,
     ])
     cycle.references = AsyncMock()
+    cycle.people_batch = AsyncMock(return_value=set())
     cycle.publication = AsyncMock(side_effect=ValueError("The source changed before publication."))
     await cycle.run()
     assert [call.args[1] for call in cycle.stage.await_args_list] == [
@@ -116,6 +118,7 @@ async def test_repair_cycle_rebuilds_then_runs_both_repair_scopes_and_verifies()
     assert [call.args for call in cycle.references.await_args_list] == [
         ("original", audit), ("remaining", audit),
     ]
+    cycle.people_batch.assert_awaited_once_with(audit)
     cycle.publication.assert_awaited_once_with(audit, evidence)
     assert cycle.result["evidence_review"]["supported"] == 1
     assert cycle.result["requirements_verified"] == 1

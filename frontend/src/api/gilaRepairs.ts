@@ -95,6 +95,12 @@ export interface AutomaticRepairJob extends AuditJob {
     items_published: number;
     reference_items_corrected: number;
     repeated_references?: number;
+    people_batch?: {
+      cases_verified?: number;
+      edited_items?: number;
+      excluded_creator?: number;
+      unavailable_catalogues?: number;
+    };
     evidence_review?: {
       checked: number;
       supported: number;

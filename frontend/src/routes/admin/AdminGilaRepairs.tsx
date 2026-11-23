@@ -48,6 +48,7 @@ const phases: Record<string, string> = {
   source: "Read the source",
   public_items: "Check Wikidata items",
   linked_items: "Check linked items",
+  linked_people: "Verify cited NLI authority links",
   compare: "Compare the evidence",
   check_report_source: "Verify the source before save",
 };
@@ -58,6 +59,9 @@ const repairPhases: Record<string, string> = {
   references_original: "Check the original reference queue",
   references_remaining: "Check the remaining reference queue",
   audit_after_references: "Check revisions after reference repairs",
+  people_evidence: "Read NLI authority links for people and roles",
+  people_plan: "Match people and check the edit targets",
+  people_apply: "Apply and verify person repairs",
   find_evidence: "Check source evidence with Kimi",
   prepare: "Check source evidence and item creators",
   dry_run: "Check the publication plan",
@@ -623,6 +627,12 @@ export default function AdminGilaRepairs() {
             · {automaticResult.reference_items_corrected} items with reference repairs verified
             {automaticResult.requirements_verified != null && ` · ${automaticResult.requirements_verified} of 9 requirements verified`}
           </p>
+          {automaticResult.people_batch && <p className="text-sm muted">
+            {automaticResult.people_batch.cases_verified ?? 0} person cases verified by the final audit
+            {" · "}{automaticResult.people_batch.edited_items ?? 0} project items edited
+            {" · "}{automaticResult.people_batch.excluded_creator ?? 0} cases outside the creator scope
+            {" · "}{automaticResult.people_batch.unavailable_catalogues ?? 0} catalogue records unavailable
+          </p>}
           {automaticResult.evidence_review && <p className="text-sm muted">
             {automaticResult.evidence_review.checked} source cases reviewed
             {" · "}{automaticResult.evidence_review.supported} passed the evidence checks

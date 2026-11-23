@@ -1,0 +1,416 @@
+"""Plan and verify source-bound person edits on existing project items."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from collections import defaultdict
+from collections.abc import Mapping
+from copy import deepcopy
+from dataclasses import dataclass
+
+from app.pipeline import marc_occurrences as marc
+from app.pipeline.marc_ingest import prepare_record_for_pipeline
+from app.pipeline.wikidata_gila_execution import LiveRepairGateway, WriteRejectedError, semantic_entity
+from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status
+from app.pipeline.wikidata_gila_linked_people import (
+    ROLE_PROPERTIES,
+    bib_url,
+    has_linked_source,
+    linked_person_matches,
+    linked_role_id,
+    read_linked_bibs,
+    resolve_mazal_items,
+)
+from app.pipeline.wikidata_gila_people import (
+    _author_target,
+    _heading,
+    _person_occurrences,
+    _ROLE_QUALIFIERS,
+    _qualifier_values,
+    _separate_scribe_claim,
+    _sole_work_for_added_author,
+)
+from app.pipeline.wikidata_gila_scribe_colophons import reviewed_scribe_exclusion, reviewed_scribe_source
+from app.pipeline.wikidata_reference_reader import ReferenceItemReader
+from app.pipeline.wikidata_source_choices import _claim_values
+from app.publication.reviewed_reference_scope import GILA_CREATOR_NAME, GILA_CREATOR_UID
+from app.publication.wikidata_gateway import CurrentWikidataBoundaryFactory
+from converter.wikidata.item_models import WikidataStatement
+from converter.wikidata.property_mapping import Q_KTIV
+from converter.wikidata.retry_policy import STUDIO_MAXLAG
+
+logger = logging.getLogger(__name__)
+_RETRYABLE = {"maxlag", "ratelimited", "readonly"}
+
+
+@dataclass(frozen=True)
+class PersonCase:
+    case_id: str
+    control: str
+    manuscript: str
+    role: str
+    heading: str
+    authority: str
+    record: Mapping
+    field: dict
+    variants: list[dict]
+    occurrences: list[tuple[dict, list[dict]]]
+
+
+def source_cases(cases, records, bibs):
+    rows = {}
+    for case in cases:
+        cn = case["control_number"]
+        if cn not in bibs or cn not in records:
+            continue
+        if cn not in rows:
+            record = prepare_record_for_pipeline(dict(records[cn]))
+            occurrences = _person_occurrences(record)
+            rows[cn] = (record, occurrences, {marc.source_key(row): (row, vs) for row, vs in occurrences})
+        record, occurrences, fields = rows[cn]
+        key, role, display = case["occurrence"], case["person_role"], case["source_value"]
+        if key not in fields:
+            continue
+        field, variants = fields[key]
+        if [name.strip().rstrip(",") for name in marc.values(field, "a")] != [display]:
+            continue
+        if role == "scribe" and (
+            reviewed_scribe_exclusion(record, cn, key, display)
+            or reviewed_scribe_source(record, cn, key, display)
+        ):
+            continue
+        aid = linked_role_id(cn, field, variants, occurrences, role, bibs, record=record)
+        if aid:
+            yield PersonCase(case["case_id"], cn, case["qid"], role, display, aid, record, field, variants, occurrences)
+
+
+def target_for(case, manuscript, entities):
+    if set(_claim_values(manuscript, "P3959")) != {case.control}:
+        return {}
+    if case.role != "author":
+        return manuscript
+    if case.field["tag"] != "100" and not marc.values(case.field, "t") and not _sole_work_for_added_author(
+        case.field, case.record, manuscript, case.occurrences,
+    ):
+        return {}
+    return _author_target(case.field, case.record, manuscript, entities, case.control)
+
+
+def scoped_claim(case, person, target, build_claim):
+    """Return a single claim patch or a reason the source cannot change it."""
+    pid = ROLE_PROPERTIES[case.role]
+    qid = person["id"]
+    if target["id"] == qid:
+        return None, "identity_or_scope"
+    matches = []
+    expected_role = _ROLE_QUALIFIERS.get(case.role)
+    names = {_heading(value) for variant in case.variants for value in marc.values(variant, "a")}
+    for claim in _live_claims(target, pid):
+        role = _qualifier_values(claim, "P3831")
+        value = claim["value"]
+        if pid == "P3342" and role != ([expected_role] if expected_role else []):
+            if expected_role and not role and value == qid:
+                return None, "conflicting_claim"
+            continue
+        recorded_names = _qualifier_values(claim, "P1932")
+        if value == qid:
+            if recorded_names and (len(recorded_names) != 1 or _heading(recorded_names[0]) not in names):
+                return None, "conflicting_claim"
+            matches.append(claim)
+        elif value == "somevalue" and case.role == "scribe" and len(recorded_names) == 1 and (
+            _heading(recorded_names[0]) in names
+            and {row["property"] for row in claim["qualifiers"]} == {"P1932"}
+            and _reference_status([claim], case.control, live=True) == "source_bound"
+        ):
+            matches.append(claim)
+        elif case.role == "author" or (
+            case.role == "scribe" and not _separate_scribe_claim(
+                claim, case.control, case.field, names, case.occurrences,
+            )
+        ) or any(_heading(name) in names for name in recorded_names):
+            return None, "conflicting_claim"
+    if len(matches) > 1:
+        return None, "conflicting_claim"
+    original = matches[0] if matches else None
+    if original and original["value"] == qid and has_linked_source(original, case.control):
+        return None, "already_cited"
+    if any(
+        claim.get("rank") == "deprecated"
+        and claim.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("id") == qid
+        for claim in target["claims"].get(pid, [])
+        if isinstance(claim.get("mainsnak", {}).get("datavalue", {}).get("value"), dict)
+    ):
+        return None, "conflicting_claim"
+    reference = [
+        {"property": "P248", "value": Q_KTIV, "type": "item", "value_namespace": "wikidata"},
+        {"property": "P3959", "value": case.control, "type": "external-id"},
+        {"property": "P854", "value": bib_url(case.control), "type": "url"},
+    ]
+    qualifiers = [{"property": "P1932", "value": case.heading, "type": "string"}]
+    if expected_role:
+        qualifiers.append({"property": "P3831", "value": expected_role, "type": "item"})
+    statement = WikidataStatement(
+        pid, qid, "item", reference_blocks=[reference], references=reference, qualifiers=qualifiers,
+    )
+    patch = build_claim(statement)
+    if original:
+        if not original["claim_id"]:
+            return None, "conflicting_claim"
+        existing = deepcopy(next(claim for claim in target["claims"][pid] if claim["id"] == original["claim_id"]))
+        if original["value"] == "somevalue":
+            existing["mainsnak"] = patch["mainsnak"]
+        existing.setdefault("references", []).extend(patch["references"])
+        patch = existing
+    return patch, None
+
+
+def apply_claims(entity, patches):
+    """Apply exact claim changes to a copy for the independent read-back check."""
+    expected = deepcopy(entity)
+    old_claim_ids = {claim["id"] for rows in entity["claims"].values() for claim in rows if "id" in claim}
+    additions = []
+    for patch in patches:
+        rows = expected["claims"].setdefault(patch["mainsnak"]["property"], [])
+        if patch.get("id"):
+            index = next(i for i, claim in enumerate(rows) if claim["id"] == patch["id"])
+            rows[index] = patch
+        else:
+            addition = deepcopy(patch)
+            rows.append(addition)
+            additions.append(addition)
+    return expected, additions, old_claim_ids
+
+
+def verify_claims(before, after, revision, patches):
+    if revision <= before["lastrevid"] or after.get("lastrevid") != revision:
+        return False
+    expected, additions, old_ids = apply_claims(before, patches)
+    for added in additions:
+        prop = added["mainsnak"]["property"]
+        matches = [
+            claim["id"] for claim in after["claims"].get(prop, [])
+            if claim.get("id") and claim["id"] not in old_ids
+            and semantic_entity({key: value for key, value in claim.items() if key != "id"}) == semantic_entity(added)
+        ]
+        if len(matches) != 1:
+            return False
+        added["id"] = matches[0]
+        old_ids.add(matches[0])
+    return semantic_entity(after) == semantic_entity(expected)
+
+
+class PersonRepairGateway(LiveRepairGateway):
+    def _write_parameters(self, qid, revision, claims, token):
+        data = super()._write_parameters(qid, revision, claims, token)
+        return {
+            **data, "assertuser": GILA_CREATOR_NAME,
+            "summary": "Verify manuscript person roles from NLI MARC and linked authority evidence",
+        }
+
+
+async def _load_items(reader, qids, entities, check):
+    pending = sorted(set(qids) - entities.keys())
+    async with reader._public_client() as client:
+        for offset in range(0, len(pending), 50):
+            await check()
+            entities.update(await reader.fetch_batch(client, pending[offset:offset + 50]))
+
+
+def _item_ids(entity, prop):
+    return {value["id"] for value in _claim_values(entity, prop) if isinstance(value, dict) and value.get("id")}
+
+
+def plan_groups(proofs, candidates, entities, counts):
+    groups = defaultdict(list)
+    for case in proofs:
+        person = entities.get(candidates.get(case.authority), {})
+        target = target_for(case, entities.get(case.manuscript, {}), entities)
+        if not linked_person_matches(person, case.authority):
+            counts["no_exact_person"] += 1
+        elif not target:
+            counts["no_exact_target"] += 1
+        else:
+            groups[target["id"]].append((case, person))
+    return groups
+
+
+def patches_for_group(group, target, build_claim, counts):
+    """Combine sources for the same person claim and retain all case IDs."""
+    patches = {}
+    case_ids = defaultdict(list)
+    conflicts = set()
+    for case, person in group:
+        patch, reason = scoped_claim(case, person, target, build_claim)
+        if reason:
+            counts[reason] += 1
+            continue
+        prop = patch["mainsnak"]["property"]
+        key = patch.get("id") or (prop, person["id"], _ROLE_QUALIFIERS.get(case.role))
+        if key in patches:
+            prior = patches[key]
+            if semantic_entity(prior["mainsnak"]) != semantic_entity(patch["mainsnak"]):
+                conflicts.add(key)
+            for ref in patch["references"]:
+                if semantic_entity(ref) not in [semantic_entity(row) for row in prior["references"]]:
+                    prior["references"].append(ref)
+        else:
+            patches[key] = patch
+        case_ids[key].append(case.case_id)
+    new_authors = {key for key in patches if isinstance(key, tuple) and key[0] == "P50"}
+    if len(new_authors) > 1:
+        conflicts.update(new_authors)
+    for key in conflicts:
+        counts["conflicting_claim"] += len(case_ids.pop(key))
+        del patches[key]
+    return list(patches.values()), [case_id for ids in case_ids.values() for case_id in ids]
+
+
+async def run_people_batch(
+    cases, records, *, credential, check, check_source, progress, journal, counts, uncertain_qids,
+):
+    """Use one guarded Wikidata edit per target and keep exact result receipts."""
+    eligible_cases = [
+        case for case in cases
+        if case.get("points") == [5] and case.get("person_role") in ROLE_PROPERTIES
+        and all(case.get(key) for key in ("qid", "source_value", "control_number", "occurrence"))
+    ]
+    counts.update(open_cases=sum(case.get("points") == [5] and bool(case.get("person_role")) for case in cases))
+    controls = {case["control_number"] for case in eligible_cases}
+    counts["supported_roles"] = len(eligible_cases)
+
+    async def read_progress(processed, total):
+        await check()
+        await progress("people_evidence", processed, total, "records", "Read NLI authority links for open person cases.")
+
+    bibs = await read_linked_bibs(controls, read_progress)
+    counts["unavailable_catalogues"] = len(controls - bibs.keys())
+    proofs = list(source_cases(eligible_cases, records, bibs))
+    counts["source_matches"] = len(proofs)
+    if not proofs:
+        return []
+    await progress("people_plan", 0, len(proofs), "cases", "Match NLI authority IDs to existing Wikidata people.")
+    candidates = await asyncio.to_thread(resolve_mazal_items, {case.authority for case in proofs})
+    reader = ReferenceItemReader()
+    entities = {}
+    await _load_items(reader, {case.manuscript for case in proofs}, entities, check)
+    await _load_items(reader, {candidate for candidate in candidates.values()} | {
+        qid for case in proofs if case.role == "author"
+        for qid in _item_ids(entities.get(case.manuscript, {}), "P1574")
+    }, entities, check)
+    groups = plan_groups(proofs, candidates, entities, counts)
+    counts["target_items"] = len(groups)
+    if not groups:
+        return []
+
+    await check_source()
+    boundary = await CurrentWikidataBoundaryFactory().open(await credential())
+    uploader = boundary._uploader
+    identity = await asyncio.to_thread(uploader._query_userinfo_rights)
+    if not isinstance(identity, dict) or identity.get("id") != GILA_CREATOR_UID:
+        raise ValueError("The production credential does not match the project creator.")
+    gateway = PersonRepairGateway(uploader, read_item=reader.fetch, maxlag=STUDIO_MAXLAG)
+
+    def build_claim(statement):
+        return uploader._build_claim(statement).get_json()
+
+    verified = []
+    for index, (qid, group) in enumerate(sorted(groups.items())):
+        await check()
+        await progress("people_apply", index, len(groups), "items",
+                       f"Check {qid}. Verified {counts['edited_items']} project items.")
+        if qid in uncertain_qids:
+            counts["prior_uncertain"] += len(group)
+            continue
+        before = entities[qid]
+        patches, case_ids = patches_for_group(group, before, build_claim, counts)
+        if not patches:
+            continue
+        try:
+            if await reader.creator_uid(qid) != GILA_CREATOR_UID:
+                counts["excluded_creator"] += len(case_ids)
+                continue
+            await gateway.assert_allowed(qid)
+            async with reader._public_client() as client:
+                sources = sorted({qid, *(
+                    case.manuscript for case, _ in group if case.case_id in case_ids
+                ), *(
+                    person["id"] for case, person in group if case.case_id in case_ids
+                )})
+                latest = {}
+                for start in range(0, len(sources), 50):
+                    latest.update(await reader.fetch_batch(client, sources[start:start + 50]))
+                if any(latest.get(key, {}).get("lastrevid") != entities[key]["lastrevid"] for key in sources):
+                    counts["changed_revision"] += len(case_ids)
+                    continue
+        except (ValueError, RuntimeError) as error:
+            logger.warning("Person repair could not confirm %s (%s).", qid, type(error).__name__)
+            counts["unavailable_targets"] += len(case_ids)
+            continue
+
+        revision = before["lastrevid"]
+        receipt = {"qid": qid, "revision": revision, "case_ids": case_ids, "claims": patches}
+        updated = None
+        for attempt in range(3):
+            if attempt:
+                await check()
+                try:
+                    await gateway.assert_allowed(qid)
+                    if any([await reader.current_revision(key) != latest[key]["lastrevid"] for key in sources]):
+                        counts["changed_revision"] += len(case_ids)
+                        break
+                except (ValueError, RuntimeError):
+                    counts["unavailable_targets"] += len(case_ids)
+                    break
+            await journal("intent", receipt)
+            logger.info("Person repair intent %s at revision %s for %s cases.", qid, revision, len(case_ids))
+            try:
+                updated = await gateway.write(qid, revision, patches)
+                break
+            except WriteRejectedError as error:
+                await journal("rejected", {**receipt, "code": error.code})
+                if error.code not in _RETRYABLE:
+                    counts["rejected"] += len(case_ids)
+                    break
+                wait = max(15, error.retry_after_seconds or 0)
+                if attempt == 2 or wait > 105:
+                    counts["service_pause"] += 1
+                    logger.warning("Wikidata requested a pause for person repairs (%s).", error.code)
+                    break
+                await progress("people_apply", index, len(groups), "items",
+                               f"Wikidata requested a {wait:g}-second wait before the edit on {qid}.")
+                await asyncio.sleep(wait)
+            except Exception:
+                await journal("uncertain", receipt)
+                counts["uncertain"] += len(case_ids)
+                logger.exception("The result of the person edit on %s is uncertain.", qid)
+                break
+        if counts["service_pause"] or counts["uncertain"]:
+            break
+        if updated is None:
+            continue
+        try:
+            fresh = await reader.fetch(qid)
+            for delay in (2, 4):
+                if fresh["lastrevid"] >= updated:
+                    break
+                await asyncio.sleep(delay)
+                fresh = await reader.fetch(qid)
+            if not verify_claims(before, fresh, updated, patches):
+                raise ValueError(f"The complete item read-back differs for {qid} at revision {updated}.")
+        except Exception:
+            await journal("uncertain", {**receipt, "after_revision": updated})
+            counts["uncertain"] += len(case_ids)
+            logger.exception("The complete read-back of the person edit on %s is uncertain.", qid)
+            break
+        await journal("verified", {
+            "qid": qid, "revision": revision, "case_ids": case_ids, "after_revision": updated,
+        })
+        logger.info("Person repair verified %s at revision %s for %s cases.", qid, updated, len(case_ids))
+        counts["edited_items"] += 1
+        counts["claims_written"] += len(patches)
+        verified.extend(case_ids)
+        entities[qid] = fresh
+    await progress("people_apply", min(index + 1, len(groups)), len(groups), "items",
+                   f"Verified edits on {counts['edited_items']} project items.")
+    return verified
