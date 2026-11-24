@@ -138,6 +138,22 @@ def test_automatic_repair_selects_only_the_exact_audited_claim():
     ) == [unrelated]
 
 
+@pytest.mark.parametrize(("scope", "subjects_only", "expected"), [
+    ("sources_append_only", True, 100),
+    ("sources_append_only", False, 50),
+    ("people_authority", True, 50),
+])
+def test_repair_cycle_selects_maxlag_for_its_write_scope(scope, subjects_only, expected):
+    cycle = RepairCycle(SimpleNamespace(
+        id=uuid.uuid4(), run_id=uuid.uuid4(), project_id=uuid.uuid4(), created_by=uuid.uuid4(),
+        params={
+            "_publication_credential": "fixture-envelope", "_cycle": "fixture-cycle",
+            "_gila_scope": scope, "_gila_subjects_only": subjects_only,
+        },
+    ))
+    assert cycle.write_maxlag == expected
+
+
 @pytest.mark.asyncio
 async def test_repair_cycle_rebuilds_then_runs_both_repair_scopes_and_verifies():
     cycle = RepairCycle(SimpleNamespace(

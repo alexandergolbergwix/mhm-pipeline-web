@@ -40,7 +40,7 @@ from app.pipeline.run_job_service import (
 from app.pipeline.wikidata_publication_prepare_job import audited_batch_params
 from app.pipeline.wikidata_evidence_reads import paced_wikidata_evidence_reads
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
-from app.pipeline.wikidata_reference_repair_job import load_remaining_seed, load_seed
+from app.pipeline.wikidata_reference_repair_job import REFERENCE_JOB_MAXLAG, load_remaining_seed, load_seed
 from app.publication.credentials import (
     ExecutionCredentialResolver,
     configured_publication_gateway_factory,
@@ -57,6 +57,7 @@ from app.schemas.publication import (
     ReviewPublicationCommand,
 )
 from converter.wikidata import troki_author_repair as troki
+from converter.wikidata.retry_policy import STUDIO_MAXLAG
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +129,8 @@ class RepairCycle:
         self.evidence_batch = job.params.get("_gila_scope") == "people_evidence_batch"
         self.authority_batch = job.params.get("_gila_scope") == "people_authority"
         self.source_evidence_batch = job.params.get("_gila_scope") == "sources_append_only"
-        self.subjects_only = job.params.get("_gila_subjects_only") is True
+        self.subjects_only = self.source_evidence_batch and job.params.get("_gila_subjects_only") is True
+        self.write_maxlag = REFERENCE_JOB_MAXLAG if self.subjects_only else STUDIO_MAXLAG
         self.people_only = self.evidence_batch or self.authority_batch or job.params.get("_gila_requirement") == 5
         self.has_preflight = self.corpus or self.evidence_batch or self.authority_batch or self.source_evidence_batch
         self.preflight_points = {
@@ -506,7 +508,7 @@ class RepairCycle:
                 if inventory is None:
                     inventory = corpus_inventory(cases)
                 source_cases = cases
-                if self.source_evidence_batch and self.subjects_only:
+                if self.subjects_only:
                     source_cases = [row for row in cases if row.get("source_repair", {}).get("property") == "P921"]
                 plans.extend(await plan_sources(
                     source_cases, records, check=check, progress=progress, inventory=inventory,
@@ -554,6 +556,7 @@ class RepairCycle:
             verified = await apply_planned_edits(
                 plans, credential=credential, check=check, check_source=check_source,
                 progress=progress, journal=journal, counts=counts, uncertain_qids=uncertain,
+                maxlag=self.write_maxlag,
             )
         logger.info("Manuscript repair batch %s completed with %s.", self.id, dict(counts))
         if counts["uncertain"]:

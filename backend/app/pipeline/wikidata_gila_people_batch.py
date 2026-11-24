@@ -50,7 +50,6 @@ from app.publication.reviewed_reference_scope import GILA_CREATOR_NAME, GILA_CRE
 from app.publication.wikidata_gateway import CurrentWikidataBoundaryFactory
 from converter.wikidata.item_models import WikidataStatement
 from converter.wikidata.property_mapping import Q_KTIV
-from converter.wikidata.retry_policy import STUDIO_MAXLAG
 
 logger = logging.getLogger(__name__)
 _RETRYABLE = {"maxlag", "ratelimited", "readonly"}
@@ -532,7 +531,7 @@ async def plan_people_batch(cases, records, *, check, progress, counts, inventor
 
 
 async def apply_planned_edits(
-    plans, *, credential, check, check_source, progress, journal, counts, uncertain_qids,
+    plans, *, credential, check, check_source, progress, journal, counts, uncertain_qids, maxlag,
 ):
     """Apply only the saved claims and prove each resulting entity."""
     if not plans:
@@ -544,7 +543,7 @@ async def apply_planned_edits(
     identity = await asyncio.to_thread(uploader._query_userinfo_rights)
     if not isinstance(identity, dict) or identity.get("id") != GILA_CREATOR_UID:
         raise ValueError("The production credential does not match the project creator.")
-    gateway = PersonRepairGateway(uploader, read_item=reader.fetch, maxlag=STUDIO_MAXLAG)
+    gateway = PersonRepairGateway(uploader, read_item=reader.fetch, maxlag=maxlag)
     verified = []
     written = {}
     for index, plan in enumerate(plans):
