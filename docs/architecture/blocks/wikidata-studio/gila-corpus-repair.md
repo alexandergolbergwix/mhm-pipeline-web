@@ -55,7 +55,13 @@ The audit retains other passages in the evidence inventory.
 
 The job checks person identities through MARC, NLI Alma, BIBFRAME, and exact authority IDs.
 The source checks require an exact quotation, controlled term, reviewed publication, or already identified scan URL.
-A work claim needs one source-bound work with a matching title and no evidence of analytic scope.
+A work claim needs one source-bound work with a matching title.
+An automatic match also needs a record that describes one work.
+A reviewed match can use an exact contents note to identify a work in a collection.
+For a reviewed subdivided subject, the worker compares the complete ordered MARC 650 field with the proof.
+The subject reference includes the catalogue record, the authority URLs, and the complete heading in P1683.
+The audit checks those values together in one reference on the exact subject claim.
+The subject-only repair option restricts edits to P921 and keeps the full audit for verification.
 The job keeps different inscription texts for the same role and folio open for review.
 An unknown role or folio can overlap a known one.
 The job keeps catalogue status notes as evidence.

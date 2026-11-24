@@ -6685,5 +6685,3566 @@
     "value": "https://digitalcollections.universiteitleiden.nl/view/item/3780367",
     "proof_url": "https://digitalcollections.universiteitleiden.nl/iiif_manifest/item%3A3780367/manifest",
     "prior_access_urls": []
+  },
+  {
+    "qid": "Q141746846",
+    "control_number": "990000417500205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000417500205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "d36649bb87bc10c3a04f9a2d2fda23934a4b62ac64793e78a841bfc260445950"
+    },
+    "target_work_qid": "Q141992118",
+    "target_work_title": "שלחן ערוך על דרך הקבלה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572097774,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746848",
+    "control_number": "990000454350205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000454350205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "502accf3665fe85973005168abcd13300fbcf23466aa0ad2727d6a180390a65b"
+    },
+    "target_work_qid": "Q141990811",
+    "target_work_title": "חבצלת השרון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572090111,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141175738",
+    "control_number": "990000464110205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000464110205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "ad92d598ce2361994cc60a11149065ae89a2479fe949c9264128466332ee1f79"
+    },
+    "target_work_qid": "Q141992069",
+    "target_work_title": "פרי עץ חיים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573677149,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001793850205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746871",
+    "control_number": "990000554010205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000554010205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "5361de0f46bc69f3e39a2f714d9cb79ac7ee0e5816e9dbfb6750077479b27edf"
+    },
+    "target_work_qid": "Q141990869",
+    "target_work_title": "זהר (רעיא מהימנא)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572092728,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746872",
+    "control_number": "990000558260205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000558260205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "5361de0f46bc69f3e39a2f714d9cb79ac7ee0e5816e9dbfb6750077479b27edf"
+    },
+    "target_work_qid": "Q141990869",
+    "target_work_title": "זהר (רעיא מהימנא)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572092728,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746892",
+    "control_number": "990000566780205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000566780205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "891f2e9a8e6f95cc005b22557b8d74c9c2c48036ae2f310e736eaeec0f2292f7"
+    },
+    "target_work_qid": "Q141754906",
+    "target_work_title": "ספר הכונות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574050645,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000614320205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746901",
+    "control_number": "990000570500205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000570500205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "27265d090078721151998b73da967168b79779a35ea5a24051a2f315b8fa6960"
+    },
+    "target_work_qid": "Q141754669",
+    "target_work_title": "עסיס רמונים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574356342,
+    "authority_urls": [
+      "https://www.nli.org.il/en/books/NNL_ALEPH990018667870205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746902",
+    "control_number": "990000571790205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000571790205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "b93442d4f467e5672bddceb89ce8e35aca9cc74ef036d11ed07207ffc2431a7c"
+    },
+    "target_work_qid": "Q141754983",
+    "target_work_title": "בן אלישע",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572075104,
+    "authority_urls": [
+      "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990001844650205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746908",
+    "control_number": "990000576790205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000576790205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "e7aaec3c6be47652a11d4c6a281384eeb2855286c7c980d33fda4f05ee62e074"
+    },
+    "target_work_qid": "Q141755003",
+    "target_work_title": "בן פורת",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572078480,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746927",
+    "control_number": "990000580410205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000580410205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:6",
+      "source_sha256": "3385d0ee1420b0c24b3a50886571489bb180ce87b2f86ee493eac0518f552f6b"
+    },
+    "target_work_qid": "Q142031906",
+    "target_work_title": "שער המצוות (קטע)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572097917,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141175740",
+    "control_number": "990000592310205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000592310205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "7284db63246fd5ba1dfacde54e45d599791ee634e721711674e41c95591d826b"
+    },
+    "target_work_qid": "Q141754906",
+    "target_work_title": "ספר הכונות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574050645,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000614320205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746942",
+    "control_number": "990000594240205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000594240205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "b8ef7784f3db1c5d6ac1a22f01466d7ba10092b92b917f007b082defe13e3ad6"
+    },
+    "target_work_qid": "Q141992150",
+    "target_work_title": "קבלה מאת הגאון כמהר\"ר מ\"ע נר\"ו על לשון הרמב\"ם",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572096378,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746943",
+    "control_number": "990000595490205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000595490205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "e2e677b30530d055e3f30b1f484a3ec683de8b790beb2666b7fa7c23bc3f712d"
+    },
+    "target_work_qid": "Q141748536",
+    "target_work_title": "אדם הרוצה ליכנס בפרדס הקבלה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572029833,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000779510205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746944",
+    "control_number": "990000595570205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000595570205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "1668e9bdfa165b1cd9c7986d03b9a6e09681db1a8c527d54006b3109ac1c75c2"
+    },
+    "target_work_qid": "Q141175528",
+    "target_work_title": "אוצרות חיים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049316,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000608930205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746951",
+    "control_number": "990000610900205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000610900205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "3f6a2f9b0845a89e088c610ff7316357446a86c8cd07def053f16229c24548f3"
+    },
+    "target_work_qid": "Q141754939",
+    "target_work_title": "אדרת אליהו (בראשית)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022296,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746959",
+    "control_number": "990000617640205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000617640205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "826791f640f7e72ec790edce5aff9e67bab2a59028d5aa05cf429e0b90489901"
+    },
+    "target_work_qid": "Q141990778",
+    "target_work_title": "כוונות העומר סגלות ומזמור",
+    "first_creator_uid": 6935067,
+    "live_revision": 2564474579,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746978",
+    "control_number": "990000653570205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000653570205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "2dc01e12e71820ffd50442dc2095c89fd83e924c7c388f6523799450376ee45d"
+    },
+    "target_work_qid": "Q141754566",
+    "target_work_title": "צפוני ציוני",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573686809,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000644140205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746980",
+    "control_number": "990000654070205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000654070205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "98a4129e1221ee6319e5e1bc71ddd39b92975afb7b2c090dd557c31625891750"
+    },
+    "target_work_qid": "Q141175532",
+    "target_work_title": "מבוא שערים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049333,
+    "authority_urls": [
+      "https://www.nli.org.il/en/books/NNL_ALEPH990018957820205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746981",
+    "control_number": "990000654100205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000654100205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "7bc2a1ae313dfd543143ec516080c27733ff8d4ca1540833cdff2587b9f44183"
+    },
+    "target_work_qid": "Q141992153",
+    "target_work_title": "שער הכללים, כמו שנדפס בראש ספר עץ חיים בקארעץ תקמ\"ב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2564512386,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746989",
+    "control_number": "990000665780205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000665780205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "1f6131036b9f489cec2ed6bcf276f4077211c94d0f8166402fc6c393268273a6"
+    },
+    "target_work_qid": "Q141991936",
+    "target_work_title": "פירוש על המשנה הראשונה אשר מספר יצירה מלימודי האר\"י",
+    "first_creator_uid": 6935067,
+    "live_revision": 2564508813,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141746992",
+    "control_number": "990000667860205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000667860205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "7b8c9044bf86cf4eee0fb8bc8a636a79f13d9d3c3cd4686b7d119f3dfa095e23"
+    },
+    "target_work_qid": "Q141991945",
+    "target_work_title": "פרוש האותיות על דרך הקבלה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572093542,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747002",
+    "control_number": "990000685600205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000685600205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "ad44c9e0d9706318a3d9299ea3e7de1cdf9e644304e34889fbe2047497d98c3e"
+    },
+    "target_work_qid": "Q141755388",
+    "target_work_title": "צפנת פענח",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574451305,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747008",
+    "control_number": "990000696420205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000696420205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "643bc9466db9b0828e7efe846a91078e5558aa0e712a6d87ce74c5f4ac3dcfe4"
+    },
+    "target_work_qid": "Q141754868",
+    "target_work_title": "ספר המשקל",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573677740,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000610120205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747009",
+    "control_number": "990000698660205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000698660205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "4ad8761db648e6ea2ff644b556763ec7d1f6afb3a27cff4ff8f0e2ff87135123"
+    },
+    "target_work_qid": "Q141990612",
+    "target_work_title": "מעשה חושב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022720,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747018",
+    "control_number": "990000739440205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000739440205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "aad9681828fa37bc380bd0591025f25019576ac7d6141e6d13aaf68c1f7bc42f"
+    },
+    "target_work_qid": "Q141754612",
+    "target_work_title": "עדות ביעקב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049913,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747062",
+    "control_number": "990000770470205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000770470205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "c58809e6a0f5afd0720584201e2a8b11ec719808895b4650b46a71b1bd6575f5"
+    },
+    "target_work_qid": "Q141990846",
+    "target_work_title": "זהר (ספר בראשית) (פרשנות)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572090580,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747073",
+    "control_number": "990000779510205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000779510205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:7",
+      "source_sha256": "e4470f765c3d6d8aac99897b45bc911e4171c75c80cae9b730d50216873473f1"
+    },
+    "target_work_qid": "Q141748536",
+    "target_work_title": "אדם הרוצה ליכנס בפרדס הקבלה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572029833,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000779510205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747074",
+    "control_number": "990000788370205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000788370205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "ec3c829a65fd18906685f1ab2b9b902a11d7ae3bd953c1364202a7e270729748"
+    },
+    "target_work_qid": "Q141755027",
+    "target_work_title": "תוצאות חיים (דברים)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573686830,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000788370205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747082",
+    "control_number": "990000790140205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000790140205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "fa8ec5eeaf8a818a80090218fe7e7ded958683c1f4732fdf3b04462baa8d05eb"
+    },
+    "target_work_qid": "Q141754906",
+    "target_work_title": "ספר הכונות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574050645,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000614320205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747149",
+    "control_number": "990000825050205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000825050205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "158eeab1c35e8231da53807e3c4dbd6365deb67426b7ff65c59e4891058c177f"
+    },
+    "target_work_qid": "Q141755254",
+    "target_work_title": "נגיד ומצוה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052255,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001045840205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747173",
+    "control_number": "990000893610205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000893610205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "3ced0b671152a5b8f0487388389e139479d0865a350cde78c879582c11a7b8b2"
+    },
+    "target_work_qid": "Q141754911",
+    "target_work_title": "ספר הדרושים (קצור)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678212,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747222",
+    "control_number": "990000988150205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000988150205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "14eeb61ae6c3d6fc1f95490c487fb3d5f9b198491943b4adf4dde5469e200e7a"
+    },
+    "target_work_qid": "Q141755348",
+    "target_work_title": "סדור עם כוונות האר\"י",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574342496,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747254",
+    "control_number": "990001029230205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001029230205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "aeb4cd847a228d162f85105d1937f4fb0471d765f27fd6e815e882469f9e259b"
+    },
+    "target_work_qid": "Q141754604",
+    "target_work_title": "צדה לדרך",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687203,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001029210205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747265",
+    "control_number": "990001041130205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001041130205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "9cc111ff290166e84bb54171e77e3a880fd177e84cf56b7dfce679860308895b"
+    },
+    "target_work_qid": "Q141754851",
+    "target_work_title": "לחם שלמה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2568179682,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000561500205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747266",
+    "control_number": "990001042210205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001042210205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "530eaa2ca5481d6bf825e1285bf09c0ebf92de89aaaa738f4c09578cddaa1ed8"
+    },
+    "target_work_qid": "Q141754929",
+    "target_work_title": "אפריון שלמה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572074063,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001263840205171&scope=KTIV&vid=KTIV",
+      "https://www.nli.org.il/en/books/NNL_ALEPH990018639030205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747459",
+    "control_number": "990001189730205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001189730205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "d90851c6cce641271b02854387689cf5c2a72c9b5d27b7cfae5bcd4ef313172b"
+    },
+    "target_work_qid": "Q141990618",
+    "target_work_title": "מפתחות הזהר (קטע)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572087023,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747463",
+    "control_number": "990001190680205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001190680205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "349775e4dd0787606098aa68aa22efc82227d086b9a3b3bdcc42aee8b562fc28"
+    },
+    "target_work_qid": "Q141755369",
+    "target_work_title": "פרוש הזהר (אדרא זוטא)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574030772,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141175798",
+    "control_number": "990001254240205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001254240205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "494d97330a4bf7ac9cc238fa13ffa53f687e1dc17ce6cece670ecec9adb1de06"
+    },
+    "target_work_qid": "Q141175581",
+    "target_work_title": "קול ברמה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574030559,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747610",
+    "control_number": "990001304360205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001304360205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "e31ccdcd00d751b22f92b6dd51da966df62c106b251a7cd95fd51d0b8a8a5882"
+    },
+    "target_work_qid": "Q141754906",
+    "target_work_title": "ספר הכונות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574050645,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000614320205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747616",
+    "control_number": "990001321540205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001321540205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "c8cdae282b301694db5464f22e0210f7d9f2e7ede480cde0c05cd31adc0253df"
+    },
+    "target_work_qid": "Q141175528",
+    "target_work_title": "אוצרות חיים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049316,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000608930205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747654",
+    "control_number": "990001360250205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001360250205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "81b174a2769722bb1d1f81b9b25dc6a9b9921713b96a112b6fb48441332a8042"
+    },
+    "target_work_qid": "Q141754946",
+    "target_work_title": "מאמר שבתות ה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574342411,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001360250205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141175808",
+    "control_number": "990001406710205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001406710205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "834bac9213fd0251cf802b98359896da39eab7cb4b533f4de135ac89957a2c31"
+    },
+    "target_work_qid": "Q141175528",
+    "target_work_title": "אוצרות חיים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049316,
+    "authority_urls": [
+      "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000608930205171&scope=KTIV&vid=KTIV",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747695",
+    "control_number": "990001406740205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001406740205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "43a2fa4c839db9771549800561a57db499c935360f2e60cf22fb08b2f2425890"
+    },
+    "target_work_qid": "Q141991841",
+    "target_work_title": "עץ חיים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574053207,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747774",
+    "control_number": "990001492200205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001492200205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "156fd0b4772586a7e14d7fab3bc871ee210bb22204abba986908f8a122f3e47e"
+    },
+    "target_work_qid": "Q142116373",
+    "target_work_title": "Puerta del Cielo",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022742,
+    "authority_urls": [
+      "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990001492200205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747791",
+    "control_number": "990001641670205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001641670205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "f59acaa8950ff3ae15fbc2cf8bcb7e8830be1b396ea24d510730ab066ed91eaf"
+    },
+    "target_work_qid": "Q141990612",
+    "target_work_title": "מעשה חושב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022720,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747805",
+    "control_number": "990001642250205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001642250205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "136757a0fec4ed9006b62f48aaa72442f9215426377600d943f6221982878ff4"
+    },
+    "target_work_qid": "Q141175532",
+    "target_work_title": "מבוא שערים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049333,
+    "authority_urls": [
+      "https://www.nli.org.il/en/books/NNL_ALEPH990018957820205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747806",
+    "control_number": "990001642380205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001642380205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "868d3d7dec281ab8996d97da3b27e4db33ac78f03c850a0840769f61d97b9be2"
+    },
+    "target_work_qid": "Q141755037",
+    "target_work_title": "אמת ליעקב (פרשת בראשית)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574356495,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141747811",
+    "control_number": "990001642720205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001642720205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "6fd2071e3053b401ded32942afa704ad62aaafb17e5bb397998bdf6ddb438a80"
+    },
+    "target_work_qid": "Q141990670",
+    "target_work_title": "לקוטים מכתבי האר\"י ותלמידיו",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678657,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141748072",
+    "control_number": "990001758470205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001758470205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "3bf23bc548c50993d0c25c96bb5f798f374a515079a996f60830c492ac457a38"
+    },
+    "target_work_qid": "Q141991852",
+    "target_work_title": "מנורת זהב טהור",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572093127,
+    "authority_urls": [
+      "https://www.nli.org.il/en/books/NNL_ALEPH990019789240205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141748092",
+    "control_number": "990001785780205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001785780205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "10b91536b141497b30abd53bd1fe81c82df1a015346e19e275839a21fd44344a"
+    },
+    "target_work_qid": "Q141754990",
+    "target_work_title": "ספר הגלגולים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678714,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141748101",
+    "control_number": "990001793970205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001793970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "e555b599aafafc7893b80935bb52461c2216c22c2822627e8223292b2a163331"
+    },
+    "target_work_qid": "Q141990272",
+    "target_work_title": "דרוש האצילות בקיצור מופלג",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572085526,
+    "authority_urls": [
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141748138",
+    "control_number": "990001844730205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001844730205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "af397ab6746683c95cf5fdc2d8b689729aed9acb6b8e08e245391146f9b6cacc"
+    },
+    "target_work_qid": "Q141754883",
+    "target_work_title": "מגלה עמוקות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022253,
+    "authority_urls": [
+      "https://www.nli.org.il/en/books/NNL_ALEPH990020892830205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141362082",
+    "control_number": "990001869850205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001869850205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "4cfbb93a7c2b97427246ce2b40f663778803ce793d43c8ef23375c352e0cdec4"
+    },
+    "target_work_qid": "Q141175535",
+    "target_work_title": "מגן אהרן",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678791,
+    "authority_urls": [
+      "https://www.nli.org.il/en/articles/NNL_ALEPH990002920510205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141748333",
+    "control_number": "990001949060205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001949060205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "53d278b8462bd48c15047404e138afd78a87ce916858341d72dfeb42374955c7"
+    },
+    "target_work_qid": "Q141991931",
+    "target_work_title": "פירוש ספרא דצניעותא מהרב זלה\"ה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572093339,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141748336",
+    "control_number": "990001950770205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001950770205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "b4060f45f9efd7bd8ce66c345d21bc8bef64a2dfb3082ec0da9393447dfb694e"
+    },
+    "target_work_qid": "Q141748689",
+    "target_work_title": "מגלת איכה מהזהר",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572028948,
+    "authority_urls": [
+      "https://www.sefaria.org/texts/Kabbalah?no_applink=1",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141748412",
+    "control_number": "990025843430205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990025843430205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "94abc66c32eaeab504e9c9d20ee3d46816f59cfa5b3f5b725394ad963ed8464c"
+    },
+    "target_work_qid": "Q141175535",
+    "target_work_title": "מגן אהרן",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678791,
+    "authority_urls": [
+      "https://www.nli.org.il/en/articles/NNL_ALEPH990002920510205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141748422",
+    "control_number": "990026929000205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990026929000205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "fdd20e1dae3c5001dd86277d33c823f47f30ef7fe7fb1913e3f30d3c69249473"
+    },
+    "target_work_qid": "Q141754646",
+    "target_work_title": "תפלה למשה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678893,
+    "authority_urls": [
+      "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990000568770205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141748426",
+    "control_number": "990027840460205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990027840460205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:9",
+      "source_sha256": "d685f4da1ebbd8ba87271e47c99f3dbac653a67c300946ec634d8551d2c46ceb"
+    },
+    "target_work_qid": "Q141990273",
+    "target_work_title": "דרוש אדם קדמון (מהדורה בתרא)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572088133,
+    "authority_urls": [
+      "https://www.nli.org.il/en/books/NNL_ALEPH990028773840205171/NLI",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ]
+  },
+  {
+    "qid": "Q141175735",
+    "control_number": "990000403370205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "55f211c073e9040365e87c7f3b58efc08100ca9a7ca348862ff4ebc8f8335b2e",
+    "property": "P921",
+    "value": "Q3850835",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000403370205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85081840.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "b51c1832c5cf16589e55153a9a97ba9db2e0cc94c52adf52ab2cf46d89a9f175"
+    },
+    "target_work_qid": "Q141175586",
+    "target_work_title": "שער שברי לוחות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573677132
+  },
+  {
+    "qid": "Q141746859",
+    "control_number": "990000543440205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000543440205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:6",
+      "source_sha256": "9c8bc52558ef03dfc512260501def121c41944d9285c17615137efa958ac3b25"
+    },
+    "target_work_qid": "Q142116314",
+    "target_work_title": "אלפסי זוטא",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573669520
+  },
+  {
+    "qid": "Q141746894",
+    "control_number": "990000568810205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000568810205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "9013107569a476fca735ac6b801020936144b48fc0f2e55cf5c75d7cfc755f53"
+    },
+    "target_work_qid": "Q141950163",
+    "target_work_title": "מדרש הגדול (במדבר)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052780
+  },
+  {
+    "qid": "Q141746948",
+    "control_number": "990000605740205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000605740205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "2b1363f64c83f305d5bdefbf47be9b0daf40e6297767a2215f42ff8e89ff2d3b"
+    },
+    "target_work_qid": "Q141950600",
+    "target_work_title": "ארחות חיים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572085663
+  },
+  {
+    "qid": "Q141746954",
+    "control_number": "990000612190205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000612190205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "a3fb67cb7697e318099cf19e897a6609fe8b9baa6df8feb30cbcdb78d2f134f8"
+    },
+    "target_work_qid": "Q141754973",
+    "target_work_title": "מדרש הגדול (בראשית, שמות, ויקרא, דברים)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573686778
+  },
+  {
+    "qid": "Q141746960",
+    "control_number": "990000620240205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000620240205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "9c8bc52558ef03dfc512260501def121c41944d9285c17615137efa958ac3b25"
+    },
+    "target_work_qid": "Q141755023",
+    "target_work_title": "תקוני הרי\"ף (נזיקין, מסכת בבא בתרא)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022449
+  },
+  {
+    "qid": "Q141746966",
+    "control_number": "990000633940205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000633940205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "ce5c62ecdb7f8ddb08392e516deedf2611a648541830cb0da9d613d4c5138d14"
+    },
+    "target_work_qid": "Q141755341",
+    "target_work_title": "שלחן מלכים (אורח חיים, יורה דעה)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574342465
+  },
+  {
+    "qid": "Q141747007",
+    "control_number": "990000696290205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000696290205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "0fbb7288220cc7b1af08192ae37332de9afa019716a4666544ba87588099ceea"
+    },
+    "target_work_qid": "Q141755177",
+    "target_work_title": "מדרש הגדול (בראשית)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052083
+  },
+  {
+    "qid": "Q141175743",
+    "control_number": "990000749240205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "66cc2f288807a3a28ae40caaa3f1b29a04f85a8a826baa30efa234ea898c93f2",
+    "property": "P921",
+    "value": "Q174370",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000749240205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85045109.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "26a5e494c24c6f61a84e24ac25d94ed9544052ff4c1acaeb3c0472f56caf4706"
+    },
+    "target_work_qid": "Q141952983",
+    "target_work_title": "תוצאות חיים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052935
+  },
+  {
+    "qid": "Q141747143",
+    "control_number": "990000818440205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000818440205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "0fbb7288220cc7b1af08192ae37332de9afa019716a4666544ba87588099ceea"
+    },
+    "target_work_qid": "Q141755177",
+    "target_work_title": "מדרש הגדול (בראשית)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052083
+  },
+  {
+    "qid": "Q141747153",
+    "control_number": "990000831830205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "c88ff1d883c720314070085a594b94a61a1e95544792f44ca83c86c883c22ce2",
+    "property": "P921",
+    "value": "Q861258",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000831830205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85121262.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "e15710bb042e5eeac59aaf09d4bf114bf14959c171bf110398b90306e06ffd83"
+    },
+    "target_work_qid": "Q141750593",
+    "target_work_title": "רשות לשחיטה שניתנה ל\"מרת איסוטה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572032122
+  },
+  {
+    "qid": "Q141747156",
+    "control_number": "990000842390205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "7727e784b2bba5eff128cdfbd67ee063d19ef9ca31b7abf3bf57b17b25caaf47",
+    "property": "P921",
+    "value": "Q180115",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000842390205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85109186.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "fbb0afaca74e633d1e7fe31815f83f860674722848b4834bd032100ed1fd30f1"
+    },
+    "target_work_qid": "Q141754962",
+    "target_work_title": "משקת שכורים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574451053
+  },
+  {
+    "qid": "Q141747185",
+    "control_number": "990000904220205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000904220205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "e1d6ed38d79b0cd68692f346e273e4da3b2447ee020253d9bfa9094b2ca7afbe"
+    },
+    "target_work_qid": "Q141755035",
+    "target_work_title": "דרכי משה הארוך (יורה דעה)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572077770
+  },
+  {
+    "qid": "Q141747186",
+    "control_number": "990000904290205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000904290205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "e1d6ed38d79b0cd68692f346e273e4da3b2447ee020253d9bfa9094b2ca7afbe"
+    },
+    "target_work_qid": "Q141754978",
+    "target_work_title": "דרכי משה הארוך (חשן משפט)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022372
+  },
+  {
+    "qid": "Q141747190",
+    "control_number": "990000914630205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000914630205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "fadcdc3c11578bfd5511586422e0bf4f1040dfb27ca5de70b391db43fed35936"
+    },
+    "target_work_qid": "Q141950206",
+    "target_work_title": "מדרש הגדול (ויקרא)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052800
+  },
+  {
+    "qid": "Q141747341",
+    "control_number": "990001121620205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001121620205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "0fbb7288220cc7b1af08192ae37332de9afa019716a4666544ba87588099ceea"
+    },
+    "target_work_qid": "Q141755177",
+    "target_work_title": "מדרש הגדול (בראשית)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052083
+  },
+  {
+    "qid": "Q141747346",
+    "control_number": "990001121850205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001121850205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "fadcdc3c11578bfd5511586422e0bf4f1040dfb27ca5de70b391db43fed35936"
+    },
+    "target_work_qid": "Q141950206",
+    "target_work_title": "מדרש הגדול (ויקרא)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052800
+  },
+  {
+    "qid": "Q141747347",
+    "control_number": "990001122020205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001122020205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "8ae900b9ae609223bde6685cca5168889c1e1208281c05e4919ed9e5883813bc"
+    },
+    "target_work_qid": "Q141175524",
+    "target_work_title": "מדרש הגדול (דברים)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049259
+  },
+  {
+    "qid": "Q141747361",
+    "control_number": "990001136500205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001136500205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "6c522b4ac3926127b677072722496eae816d21b6d59ce35292acf850dd418265"
+    },
+    "target_work_qid": "Q141990674",
+    "target_work_title": "משנה תורה (פרשנות)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572088001
+  },
+  {
+    "qid": "Q141747435",
+    "control_number": "990001147460205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001147460205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "8f884216dc1d4405044e91de9ad1cbaf153c45bd5ea763d476ec41210ba04445"
+    },
+    "target_work_qid": "Q141748935",
+    "target_work_title": "פרוש הלכות שחיטה בערבית, הסוף חסר",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572031591
+  },
+  {
+    "qid": "Q141747486",
+    "control_number": "990001209890205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001209890205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "fadcdc3c11578bfd5511586422e0bf4f1040dfb27ca5de70b391db43fed35936"
+    },
+    "target_work_qid": "Q141950206",
+    "target_work_title": "מדרש הגדול (ויקרא)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052800
+  },
+  {
+    "qid": "Q141747620",
+    "control_number": "990001324660205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001324660205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "e1d6ed38d79b0cd68692f346e273e4da3b2447ee020253d9bfa9094b2ca7afbe"
+    },
+    "target_work_qid": "Q141175523",
+    "target_work_title": "שלחן ערוך (ארח חיים)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049248
+  },
+  {
+    "qid": "Q141747685",
+    "control_number": "990001389640205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001389640205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "6c02562df7f3b3ef51e1f05a68019164df2a433d5a78418958bac07245cd4bff"
+    },
+    "target_work_qid": "Q141990723",
+    "target_work_title": "טור (חשן משפט) (פרשנות)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572088491
+  },
+  {
+    "qid": "Q141747783",
+    "control_number": "990001625330205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001625330205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "e1d6ed38d79b0cd68692f346e273e4da3b2447ee020253d9bfa9094b2ca7afbe"
+    },
+    "target_work_qid": "Q141754903",
+    "target_work_title": "דרכי משה (חשן משפט)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022269
+  },
+  {
+    "qid": "Q141747934",
+    "control_number": "990001689730205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001689730205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "9f1cb2ee5cdc79f3594c58be746c215e86dc1bf1d6fc94c243b4972b394688bb"
+    },
+    "target_work_qid": "Q141755354",
+    "target_work_title": "שלחן ערוך (יורה דעה, אבן העזר)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573671626
+  },
+  {
+    "qid": "Q141175885",
+    "control_number": "990001827870205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001827870205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "e1d6ed38d79b0cd68692f346e273e4da3b2447ee020253d9bfa9094b2ca7afbe"
+    },
+    "target_work_qid": "Q141175516",
+    "target_work_title": "משנה תורה (ספר מדע, אהבה, זמנים)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049227
+  },
+  {
+    "qid": "Q141748134",
+    "control_number": "990001836320205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "55f211c073e9040365e87c7f3b58efc08100ca9a7ca348862ff4ebc8f8335b2e",
+    "property": "P921",
+    "value": "Q3850835",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001836320205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85081840.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "19125e2a2ce66fede65ce40ea2356991cda6bf4ff4ad80c4f52753c551bb99c2"
+    },
+    "target_work_qid": "Q141755337",
+    "target_work_title": "רשימת מלאות וחסרות ופתוחות וסתומות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572080349
+  },
+  {
+    "qid": "Q141748162",
+    "control_number": "990001863380205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001863380205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "e1d6ed38d79b0cd68692f346e273e4da3b2447ee020253d9bfa9094b2ca7afbe"
+    },
+    "target_work_qid": "Q141952104",
+    "target_work_title": "שלחן ערוך (יורה דעה)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687769
+  },
+  {
+    "qid": "Q141175891",
+    "control_number": "990001875220205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001875220205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "e1d6ed38d79b0cd68692f346e273e4da3b2447ee020253d9bfa9094b2ca7afbe"
+    },
+    "target_work_qid": "Q141175523",
+    "target_work_title": "שלחן ערוך (ארח חיים)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049248
+  },
+  {
+    "qid": "Q141748168",
+    "control_number": "990001876060205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001876060205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "46ccbd5f88ae2770c496ab01694db1d27cf75793b64107f438bd7536f6a711eb"
+    },
+    "target_work_qid": "Q141755340",
+    "target_work_title": "משנה תורה (ספר קדושה, הלכות שחיטה)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052405
+  },
+  {
+    "qid": "Q141748169",
+    "control_number": "990001878160205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001878160205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "fadcdc3c11578bfd5511586422e0bf4f1040dfb27ca5de70b391db43fed35936"
+    },
+    "target_work_qid": "Q141950206",
+    "target_work_title": "מדרש הגדול (ויקרא)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052800
+  },
+  {
+    "qid": "Q141748170",
+    "control_number": "990001878530205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001878530205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "46ccbd5f88ae2770c496ab01694db1d27cf75793b64107f438bd7536f6a711eb"
+    },
+    "target_work_qid": "Q141755340",
+    "target_work_title": "משנה תורה (ספר קדושה, הלכות שחיטה)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052405
+  },
+  {
+    "qid": "Q141748176",
+    "control_number": "990001901250205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q202344",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001901250205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85085046.json"
+    ],
+    "supporting_note": {
+      "occurrence": "245:1",
+      "source_sha256": "0fbb7288220cc7b1af08192ae37332de9afa019716a4666544ba87588099ceea"
+    },
+    "target_work_qid": "Q141755177",
+    "target_work_title": "מדרש הגדול (בראשית)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052083
+  },
+  {
+    "qid": "Q141748274",
+    "control_number": "990001910770205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001910770205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "9c8bc52558ef03dfc512260501def121c41944d9285c17615137efa958ac3b25"
+    },
+    "target_work_qid": "Q141755040",
+    "target_work_title": "תקוני הרי\"ף (נזיקין)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022505
+  },
+  {
+    "qid": "Q141748279",
+    "control_number": "990001914650205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66cc2f288807a3a28ae40caaa3f1b29a04f85a8a826baa30efa234ea898c93f2",
+    "property": "P921",
+    "value": "Q174370",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001914650205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85045109.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "26a5e494c24c6f61a84e24ac25d94ed9544052ff4c1acaeb3c0472f56caf4706"
+    },
+    "target_work_qid": "Q141754923",
+    "target_work_title": "קצור חובות הלבבות של רבנו בחיי",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687808
+  },
+  {
+    "qid": "Q141748331",
+    "control_number": "990001946190205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001946190205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "03244e6f1dedaa88665d4c59c3496ae9dd8bc26a60c401f82a9561eaf9f8594d"
+    },
+    "target_work_qid": "Q141754960",
+    "target_work_title": "מלאכת שלמה (סדר טהרות)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022319
+  },
+  {
+    "qid": "Q141748406",
+    "control_number": "990002091070205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66cc2f288807a3a28ae40caaa3f1b29a04f85a8a826baa30efa234ea898c93f2",
+    "property": "P921",
+    "value": "Q174370",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990002091070205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85045109.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:6",
+      "source_sha256": "26a5e494c24c6f61a84e24ac25d94ed9544052ff4c1acaeb3c0472f56caf4706"
+    },
+    "target_work_qid": "Q141952983",
+    "target_work_title": "תוצאות חיים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052935
+  },
+  {
+    "qid": "Q141748430",
+    "control_number": "990032575610205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66cc2f288807a3a28ae40caaa3f1b29a04f85a8a826baa30efa234ea898c93f2",
+    "property": "P921",
+    "value": "Q174370",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990032575610205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85045109.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "d711c119e5c350ae33323c63f3e1e22694f554b06639ebab11f13c7acc67252c"
+    },
+    "target_work_qid": "Q142116350",
+    "target_work_title": "Conselhos de ética",
+    "first_creator_uid": 6935067,
+    "live_revision": 2568055393
+  },
+  {
+    "qid": "Q141747318",
+    "control_number": "990001089680205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001089680205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85070287.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "1b9e2da2b658f33688dd9a6a2eef3ae60d05cf1c90dc3aaee9759a09a76e72e4"
+    },
+    "target_work_qid": "Q141755343",
+    "target_work_title": "נוסחי שטרות וכתובות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572080928
+  },
+  {
+    "qid": "Q141748085",
+    "control_number": "990001777970205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "f94550f4af17a1a28c5bde6e1ac7a42162ff58744e4d0b85ee73d4c88c835d88",
+    "property": "P921",
+    "value": "Q848599",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001777970205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://id.loc.gov/authorities/subjects/sh85013332.json"
+    ],
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "48429eebf21eb12afd7cd56930139236264f33c893e5077588fc0ba002609ffd"
+    },
+    "target_work_qid": "Q141990666",
+    "target_work_title": "לעצור דם המילה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2564473696
+  },
+  {
+    "qid": "Q141746850",
+    "control_number": "990000463570205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "6e399f2787a0602f604bd89c19e077a5546c05698b6be5b96baa895cc23a0ec0",
+    "property": "P921",
+    "value": "Q1777205",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000463570205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:6",
+      "source_sha256": "287ee44a4eec3a1575ae49d0a43432f59ec7a756cc0364a14bafc3c4a1dc70f2"
+    },
+    "target_work_qid": "Q141755159",
+    "target_work_title": "כתנות אור",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052023,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Prayer"
+      },
+      {
+        "code": "x",
+        "value": "Judaism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007531656605171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85106125"
+    ]
+  },
+  {
+    "qid": "Q141746950",
+    "control_number": "990000610690205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "aeea3c19833d5c19fb43d5566b2d5dc17df60f5cea1bbe4cf9aae7a83ac59bed",
+    "property": "P921",
+    "value": "Q5421977",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000610690205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "46d89d6128a70a15597714b9acb7212c62526531db68a867487d8ebdeaf5342c"
+    },
+    "target_work_qid": "Q141755073",
+    "target_work_title": "כתבים שבתאיים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572076441,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Messiah"
+      },
+      {
+        "code": "x",
+        "value": "Judaism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007549065605171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747214",
+    "control_number": "990000952970205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "6e399f2787a0602f604bd89c19e077a5546c05698b6be5b96baa895cc23a0ec0",
+    "property": "P921",
+    "value": "Q1777205",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000952970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "053b196b76eb9113e34ec5504f9eeb64932c4899d168469af9487b76432f5382"
+    },
+    "target_work_qid": "Q141754982",
+    "target_work_title": "אליסף בן דעואל",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574451072,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Prayer"
+      },
+      {
+        "code": "x",
+        "value": "Judaism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007531656605171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85106125"
+    ]
+  },
+  {
+    "qid": "Q141747612",
+    "control_number": "990001304420205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "6e399f2787a0602f604bd89c19e077a5546c05698b6be5b96baa895cc23a0ec0",
+    "property": "P921",
+    "value": "Q1777205",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001304420205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:6",
+      "source_sha256": "d20df69f2f3e6459d2c48f5266894282bf11ddef1a565f22d4c3495ddd425fd1"
+    },
+    "target_work_qid": "Q141755366",
+    "target_work_title": "תולעת יעקב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052583,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Prayer"
+      },
+      {
+        "code": "x",
+        "value": "Judaism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007531656605171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85106125"
+    ]
+  },
+  {
+    "qid": "Q141748411",
+    "control_number": "990025656430205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "6e399f2787a0602f604bd89c19e077a5546c05698b6be5b96baa895cc23a0ec0",
+    "property": "P921",
+    "value": "Q1777205",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990025656430205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "e362ffc1803769ae808b54a4c8a5c9893cb8a49564721bf4afaf891da67fc7cc"
+    },
+    "target_work_qid": "Q141755366",
+    "target_work_title": "תולעת יעקב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052583,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Prayer"
+      },
+      {
+        "code": "x",
+        "value": "Judaism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007531656605171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85106125"
+    ]
+  },
+  {
+    "qid": "Q141747060",
+    "control_number": "990000763680205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "12f7d048f6c97b23d4968f235ccb667dba6a5cafe50e64dd2dcb27cd39289bae",
+    "property": "P921",
+    "value": "Q837795",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000763680205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:7",
+      "source_sha256": "e69790bbfd699f3f17f1a9577d18436d70f9d40ca118b0bd2bf1ea956198c483"
+    },
+    "target_work_qid": "Q141754949",
+    "target_work_title": "ארי נוהם",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574051124,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788205171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100947",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000763680205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747195",
+    "control_number": "990000928800205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "12f7d048f6c97b23d4968f235ccb667dba6a5cafe50e64dd2dcb27cd39289bae",
+    "property": "P921",
+    "value": "Q837795",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000928800205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "e69790bbfd699f3f17f1a9577d18436d70f9d40ca118b0bd2bf1ea956198c483"
+    },
+    "target_work_qid": "Q141755000",
+    "target_work_title": "דלאלה אלחאירין",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022408,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788205171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100947",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000928800205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747197",
+    "control_number": "990000932720205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "12f7d048f6c97b23d4968f235ccb667dba6a5cafe50e64dd2dcb27cd39289bae",
+    "property": "P921",
+    "value": "Q837795",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000932720205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "e69790bbfd699f3f17f1a9577d18436d70f9d40ca118b0bd2bf1ea956198c483"
+    },
+    "target_work_qid": "Q141175569",
+    "target_work_title": "ספר המעלות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574021253,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788205171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100947",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000932720205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747220",
+    "control_number": "990000987120205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "12f7d048f6c97b23d4968f235ccb667dba6a5cafe50e64dd2dcb27cd39289bae",
+    "property": "P921",
+    "value": "Q837795",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000987120205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "e69790bbfd699f3f17f1a9577d18436d70f9d40ca118b0bd2bf1ea956198c483"
+    },
+    "target_work_qid": "Q141755205",
+    "target_work_title": "ארון העדות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572079261,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788205171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100947",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000987120205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q134610828",
+    "control_number": "990001048690205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "12f7d048f6c97b23d4968f235ccb667dba6a5cafe50e64dd2dcb27cd39289bae",
+    "property": "P921",
+    "value": "Q837795",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001048690205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "e69790bbfd699f3f17f1a9577d18436d70f9d40ca118b0bd2bf1ea956198c483"
+    },
+    "target_work_qid": "Q141952216",
+    "target_work_title": "מפתחות לספר הכוזרי",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678342,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788205171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100947",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001048690205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747537",
+    "control_number": "990001255900205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "e79bc858b613a147ea58d243b8700ea3ac9b12955b3621f9347e62a6670754b9",
+    "property": "P921",
+    "value": "Q44722",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001255900205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:7",
+      "source_sha256": "ef387e388a0dcd6af8c726b9751bfe0459900e5d934702700a825e643b1cff33"
+    },
+    "target_work_qid": "Q141755192",
+    "target_work_title": "מולדות יצחק",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572078950,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish calendar"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007476137105171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85018839",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001255900205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141748085",
+    "control_number": "990001777970205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "e79bc858b613a147ea58d243b8700ea3ac9b12955b3621f9347e62a6670754b9",
+    "property": "P921",
+    "value": "Q44722",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001777970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:6",
+      "source_sha256": "90d9656f7a38bafbe42b39a38ad58f0238158e04961114db3da303c3b1bf4a4b"
+    },
+    "target_work_qid": "Q141755189",
+    "target_work_title": "עברונות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022576,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish calendar"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007476137105171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85018839",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001777970205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141748102",
+    "control_number": "990001794810205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "12f7d048f6c97b23d4968f235ccb667dba6a5cafe50e64dd2dcb27cd39289bae",
+    "property": "P921",
+    "value": "Q837795",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001794810205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "62455ba6cdd4c1e7fa9f6ff4cda32f0f01e7b6842b51918872f4dd8abefa3981"
+    },
+    "target_work_qid": "Q141991838",
+    "target_work_title": "מכתב מחזקיהו",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572092817,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788205171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100947",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001794810205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141748109",
+    "control_number": "990001804060205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "12f7d048f6c97b23d4968f235ccb667dba6a5cafe50e64dd2dcb27cd39289bae",
+    "property": "P921",
+    "value": "Q837795",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001804060205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "31190544c95e2446e7cf05ec19cf3446524771e07aea05dd73a86b9549307dbe"
+    },
+    "target_work_qid": "Q141755123",
+    "target_work_title": "אהל יעקב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022540,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788205171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100947",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001804060205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747152",
+    "control_number": "990000829710205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "7f3d81eb0817c1bf0e04af5bc5888c49fc70fb1f11190b307c81a05f8ced39c2",
+    "property": "P921",
+    "value": "Q5891",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000829710205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "6a4621f835699a7c4d588ccf77fe8cdea1a6e308b8aea05d1e6a5f5360cbd325"
+    },
+    "target_work_qid": "Q141754891",
+    "target_work_title": "מכלל יופי",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022261,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788805171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100849",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000829710205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747223",
+    "control_number": "990000990260205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "7f3d81eb0817c1bf0e04af5bc5888c49fc70fb1f11190b307c81a05f8ced39c2",
+    "property": "P921",
+    "value": "Q5891",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000990260205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "6a4621f835699a7c4d588ccf77fe8cdea1a6e308b8aea05d1e6a5f5360cbd325"
+    },
+    "target_work_qid": "Q141755165",
+    "target_work_title": "הגדרים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687087,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788805171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100849",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000990260205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141175787",
+    "control_number": "990001056990205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "7f3d81eb0817c1bf0e04af5bc5888c49fc70fb1f11190b307c81a05f8ced39c2",
+    "property": "P921",
+    "value": "Q5891",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001056990205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "6a4621f835699a7c4d588ccf77fe8cdea1a6e308b8aea05d1e6a5f5360cbd325"
+    },
+    "target_work_qid": "Q141950601",
+    "target_work_title": "תחלת דבר",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052837,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Philosophy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566788805171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85100849",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001056990205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141175790",
+    "control_number": "990001135400205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "6135c1e812edf99ee27b748a90eee5780f4e6197fd1dc62d9b6fff9acc103a6a",
+    "property": "P921",
+    "value": "Q5349597",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001135400205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "663a5eb4ce98cb6fee647dcc82ba4af3a8c47fce3d4eadeb814cf64219954150"
+    },
+    "target_work_qid": "Q141175520",
+    "target_work_title": "לוח מאמרי עין ישראל",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573683866,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Aggada"
+      },
+      {
+        "code": "v",
+        "value": "Indexes"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466528105171.jsonld",
+      "https://www.nli.org.il/he/books/NNL_ALEPH990012051020205171/NLI",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007523007405171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141748334",
+    "control_number": "990001950490205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q2917980",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001950490205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "9afb39e4e799080578767be85c1ba7b515b24fe267f8cf9068cb83cde6c0219e"
+    },
+    "target_work_qid": "Q141991805",
+    "target_work_title": "מחנות כהונה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687896,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Midrash"
+      },
+      {
+        "code": "v",
+        "value": "Commentaries"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007472216905171.jsonld",
+      "https://id.loc.gov/authorities/names/n80020342",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007286640705171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141746963",
+    "control_number": "990000631310205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "c4d3d42ed3a4f2ba6d3cd9eebc85ffcbcc6cd7333de9d57f7cb61a4c524d982f",
+    "property": "P921",
+    "value": "Q11190",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000631310205171",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "cb6132adfb78d615ff63bd4eeb13aac2ab0011e8e6b57fab99e17321ae026fcb"
+    },
+    "target_work_qid": "Q141754704",
+    "target_work_title": "פרקי משה",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Medicine"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022185,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000631310205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007553951205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141746994",
+    "control_number": "990000671420205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "4eeb9335576b12a0c7c2a4f70e32d976f82ff8fa3a5a98bc9ca542b6f7afef7c",
+    "property": "P921",
+    "value": "Q333",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000671420205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "668c1630ad9b97e955d1c1f64baa7faeb4417a9d2149161b14a11958f67a8521"
+    },
+    "target_work_qid": "Q141754884",
+    "target_work_title": "פרוש הלכות קדוש החודש שבמשנה תורה",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Astronomy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2572072814,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000671420205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007532798905171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747151",
+    "control_number": "990000829170205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "c4d3d42ed3a4f2ba6d3cd9eebc85ffcbcc6cd7333de9d57f7cb61a4c524d982f",
+    "property": "P921",
+    "value": "Q11190",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000829170205171",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "cb6132adfb78d615ff63bd4eeb13aac2ab0011e8e6b57fab99e17321ae026fcb"
+    },
+    "target_work_qid": "Q141754704",
+    "target_work_title": "פרקי משה",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Medicine"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022185,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000829170205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007553951205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747154",
+    "control_number": "990000834140205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "4eeb9335576b12a0c7c2a4f70e32d976f82ff8fa3a5a98bc9ca542b6f7afef7c",
+    "property": "P921",
+    "value": "Q333",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000834140205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "76164f3206994d16e5fa4c3eef4aae3fbd70a6fa7b5a992964034826a0268888"
+    },
+    "target_work_qid": "Q141754917",
+    "target_work_title": "עיון הכוכבים המשרתים",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Astronomy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2574030756,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000834140205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007532798905171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747207",
+    "control_number": "990000946000205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "cdba6dc33e22fb468026fce488b4a6dc484e9647345ee03901eb8fc3b0ee1693",
+    "property": "P921",
+    "value": "Q395",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000946000205171",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "611510d86567e74659717dc2df55ecda2aa7c28c978464b350fc4f025eb36559"
+    },
+    "target_work_qid": "Q141755002",
+    "target_work_title": "קצור מלאכת המספר",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Mathematics"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2574051548,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000946000205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007554689805171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747272",
+    "control_number": "990001053220205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "cdba6dc33e22fb468026fce488b4a6dc484e9647345ee03901eb8fc3b0ee1693",
+    "property": "P921",
+    "value": "Q395",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001053220205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "611510d86567e74659717dc2df55ecda2aa7c28c978464b350fc4f025eb36559"
+    },
+    "target_work_qid": "Q141754628",
+    "target_work_title": "תולדות יצחק",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Mathematics"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2572033131,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001053220205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007554689805171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747520",
+    "control_number": "990001240470205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "c4d3d42ed3a4f2ba6d3cd9eebc85ffcbcc6cd7333de9d57f7cb61a4c524d982f",
+    "property": "P921",
+    "value": "Q11190",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001240470205171",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "1cba0a1d63a416c0f3fb98e8f916d9907338fc5110a932a264e51521159ce551"
+    },
+    "target_work_qid": "Q141990365",
+    "target_work_title": "אלו הן האפוריסמי ... בלשון לטינו מחכמת הרפואה שחבר ... הרמב\"ם והעתקתים ללשון הקדש",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Medicine"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2568106083,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001240470205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007553951205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747539",
+    "control_number": "990001255910205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "cdba6dc33e22fb468026fce488b4a6dc484e9647345ee03901eb8fc3b0ee1693",
+    "property": "P921",
+    "value": "Q395",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001255910205171",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "611510d86567e74659717dc2df55ecda2aa7c28c978464b350fc4f025eb36559"
+    },
+    "target_work_qid": "Q141755231",
+    "target_work_title": "ספר המספר",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Mathematics"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687391,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001255910205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007554689805171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747680",
+    "control_number": "990001375760205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "4eeb9335576b12a0c7c2a4f70e32d976f82ff8fa3a5a98bc9ca542b6f7afef7c",
+    "property": "P921",
+    "value": "Q333",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001375760205171",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "4cd8fbf511f1d9c78e7471425751fd2875d4982f3ab4cf73ad6473515294b447"
+    },
+    "target_work_qid": "Q141754621",
+    "target_work_title": "חשבון מהלכות הכוכבים",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Astronomy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687412,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001375760205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007532798905171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141175810",
+    "control_number": "990001580110205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "c4d3d42ed3a4f2ba6d3cd9eebc85ffcbcc6cd7333de9d57f7cb61a4c524d982f",
+    "property": "P921",
+    "value": "Q11190",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001580110205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "d288891f7aeb056bf610770787ccd512a271e704a5e85d7c4809284ff98324fa"
+    },
+    "target_work_qid": "Q141175529",
+    "target_work_title": "אור הרופאים",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Medicine"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2573671618,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001580110205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007553951205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141748165",
+    "control_number": "990001868740205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "cdba6dc33e22fb468026fce488b4a6dc484e9647345ee03901eb8fc3b0ee1693",
+    "property": "P921",
+    "value": "Q395",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001868740205171",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "611510d86567e74659717dc2df55ecda2aa7c28c978464b350fc4f025eb36559"
+    },
+    "target_work_qid": "Q141953000",
+    "target_work_title": "מונה מספר",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Mathematics"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687788,
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001868740205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007554689805171.jsonld"
+    ]
   }
 ]

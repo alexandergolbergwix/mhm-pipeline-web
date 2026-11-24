@@ -101,6 +101,13 @@ def _source_patch(case, target, build_claim):
         pid, proof["value"], proof["type"], qualifiers=qualifiers,
         references=reference, reference_blocks=[reference], language=proof["language"] or "he",
     ))
+    if proof_text := proof.get("proof_text"):
+        evidence, = patch["references"]
+        evidence["snaks"]["P1683"] = [{
+            "snaktype": "value", "property": "P1683", "datatype": "monolingualtext",
+            "datavalue": {"type": "monolingualtext", "value": {"text": proof_text, "language": "en"}},
+        }]
+        evidence["snaks-order"].append("P1683")
     matches = matching_claims(target, pid, proof["value"], proof["qualifiers"], language=proof["language"])
     if not matches:
         return patch

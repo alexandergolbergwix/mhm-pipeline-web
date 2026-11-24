@@ -128,6 +128,7 @@ class RepairCycle:
         self.evidence_batch = job.params.get("_gila_scope") == "people_evidence_batch"
         self.authority_batch = job.params.get("_gila_scope") == "people_authority"
         self.source_evidence_batch = job.params.get("_gila_scope") == "sources_append_only"
+        self.subjects_only = job.params.get("_gila_subjects_only") is True
         self.people_only = self.evidence_batch or self.authority_batch or job.params.get("_gila_requirement") == 5
         self.has_preflight = self.corpus or self.evidence_batch or self.authority_batch or self.source_evidence_batch
         self.preflight_points = {
@@ -504,8 +505,11 @@ class RepairCycle:
             if inventory is None or self.source_evidence_batch:
                 if inventory is None:
                     inventory = corpus_inventory(cases)
+                source_cases = cases
+                if self.source_evidence_batch and self.subjects_only:
+                    source_cases = [row for row in cases if row.get("source_repair", {}).get("property") == "P921"]
                 plans.extend(await plan_sources(
-                    cases, records, check=check, progress=progress, inventory=inventory,
+                    source_cases, records, check=check, progress=progress, inventory=inventory,
                     additions_only=self.source_evidence_batch,
                 ))
             elif self.evidence_batch:

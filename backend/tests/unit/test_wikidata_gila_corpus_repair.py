@@ -115,7 +115,21 @@ def test_reviewed_subject_requires_exact_work_and_catalogue_link(monkeypatch):
     assert case["dependencies"] == {"Q1": 42, "Q3": 42}
     subject["subfields"].append({"code": "x", "value": "Subtopic"})
     assert "source_repair" not in check()
+    proof["heading_subfields"] = deepcopy(subject["subfields"])
+    proof["authority_urls"] = ["https://example.org/subject-heading"]
+    case = check()
+    assert case["source_repair"]["proof_text"] == "Shehitah — Subtopic"
+    patch = corpus.source_patches({**case, "control_number": CN}, work, repair_claim_builder())[0]
+    work["claims"]["P921"] = [{**patch, "id": "Q2$subject"}]
+    assert check()["verified"]
+    # A matching subject without the exact heading in the reference is insufficient.
+    patch["references"][0]["snaks"].pop("P1683")
+    assert check()["reason"] == "source_reference_missing"
+    assert check()["source_repair"]["proof_text"] == "Shehitah — Subtopic"
+    subject["subfields"][-1]["value"] = "Different topic"
+    assert "source_repair" not in check()
     subject["subfields"].pop()
+    proof.pop("heading_subfields")
     manuscript["claims"]["P1574"][0]["references"] = []
     assert check()["reason"] == "reviewed_work_scope_changed"
 

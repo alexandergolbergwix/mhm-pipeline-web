@@ -26,6 +26,7 @@ _SCAN_HOSTS = {
 }
 _ONLINE = re.compile(r"For online version(?: \((?:color|colour|bnw)\))?, click here\Z", re.I)
 _COPY_LIMITS = {"3", "5"}
+_TOPIC_SUBDIVISIONS = {"v", "x", "y", "z"}
 
 
 def _qualifiers(claim):
@@ -33,10 +34,14 @@ def _qualifiers(claim):
             for p in {r["property"] for r in claim["qualifiers"]}}
 
 
-def _source_reference(claim, cn, proof_urls=()):
+def _source_reference(claim, cn, proof_urls=(), proof_text=None):
     return any(
         any(s.get("datavalue", {}).get("value") == cn for s in r.get("snaks", {}).get("P3959", []))
         and set(proof_urls) <= {_snak_value(snak) for snak in r.get("snaks", {}).get("P854", [])}
+        and (not proof_text or any(
+            snak.get("datavalue", {}).get("value") == {"text": proof_text, "language": "en"}
+            for snak in r.get("snaks", {}).get("P1683", [])
+        ))
         for r in claim["references"]
     )
 
@@ -68,7 +73,7 @@ def _same_inscription_scope(left, right):
 
 
 def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=None,
-                qualifiers=None, kind=None, language=None, dependencies=(), proof_urls=()):
+                qualifiers=None, kind=None, language=None, dependencies=(), proof_urls=(), proof_text=None):
     """Retain every source occurrence and the exact evidence for eligible cases."""
     case = {
         "point": 8, "field": occurrence, "occurrence": occurrence, "source_field": occurrence,
@@ -89,7 +94,7 @@ def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=
     ):
         case["reason"] = "ambiguous_source_claim"
         return case
-    if existing and _source_reference(existing[0], cn, proof_urls):
+    if existing and _source_reference(existing[0], cn, proof_urls, proof_text):
         case.update(
             verified=True, reason="verified_source_assertion",
             verified_target_qid=entity["id"], verified_target_revision=entity["lastrevid"],
@@ -111,6 +116,7 @@ def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=
             "qualifiers": qualifiers, "type": kind, "language": language,
             "dependencies": {e["id"]: e["lastrevid"] for e in dependencies},
             **({"proof_urls": list(proof_urls)} if proof_urls else {}),
+            **({"proof_text": proof_text} if proof_text else {}),
         },
     )
     return case
@@ -169,11 +175,26 @@ def _reviewed_work_source(cn, occurrence, source, manuscript, proof, entities):
         or target.get("id") != proof["target_work_qid"]
     ):
         return source_case(cn, occurrence, source, "reviewed_work_scope_changed")
+    heading = " — ".join(
+        part["value"] for part in proof.get("heading_subfields", [])
+        if part["code"] in _TOPIC_SUBDIVISIONS or part["code"] == "a"
+    )
     return source_case(
         cn, occurrence, source, "reviewed_source_proof", entity=target, pid=pid,
         value=value, qualifiers=proof["qualifiers"], kind="item",
-        proof_urls=(proof["proof_url"],), dependencies=(manuscript, topic),
+        proof_urls=tuple(dict.fromkeys((proof["proof_url"], *proof.get("authority_urls", ())))),
+        proof_text=heading, dependencies=(manuscript, topic),
     )
+
+
+def _reviewed_work_heading(row, proof):
+    tag = row["tag"]
+    if {"650": "P921", "655": "P136"}.get(tag) != proof["property"] or marc.values(row, "2") != ["nli"]:
+        return False
+    heading = proof.get("heading_subfields")
+    if heading is not None:
+        return tag == "650" and heading == row["subfields"]
+    return not any(marc.values(row, code) for code in _TOPIC_SUBDIVISIONS)
 
 
 def _reviewed_source_case(cn, occurrence, source, entity, proof, entities):
@@ -327,11 +348,7 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
             if not source:
                 continue
             reviewed = reviewed_source_proof(cn, occurrence, source, source_entity, source_rows)
-            if reviewed and reviewed.get("target_work_qid") and (
-                {"650": "P921", "655": "P136"}.get(tag) != reviewed["property"]
-                or marc.values(row, "2") != ["nli"]
-                or any(marc.values(row, code) for code in ("v", "x", "y", "z"))
-            ):
+            if reviewed and reviewed.get("target_work_qid") and not _reviewed_work_heading(row, reviewed):
                 reviewed = None
             if tag in {"510", "581"}:
                 normalized = " ".join(source.split())
@@ -380,7 +397,7 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
                 yield source_case(cn, occurrence, source, "access_link_requires_holding_proof",
                                   entity=source_entity, pid=pid, value=source, kind="url")
             elif tag in {"650", "655"}:
-                qualified = scopes or any(marc.values(row, c) for c in ("v", "x", "y", "z"))
+                qualified = scopes or any(marc.values(row, c) for c in _TOPIC_SUBDIVISIONS)
                 value = None
                 if work and not qualified:
                     if tag == "650" and row["indicators"][0] in {" ", "0", "1", "2"}:
