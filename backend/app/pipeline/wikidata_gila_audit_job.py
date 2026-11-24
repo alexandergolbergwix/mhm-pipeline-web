@@ -27,6 +27,7 @@ from app.pipeline.run_job_service import finish_job, is_cancel_requested, update
 from app.pipeline.wikidata_gila_audit import build_gila_audit_report
 from app.pipeline.wikidata_gila_authority_cache import AuthorityEvidence, CACHE_KEY
 from app.pipeline.wikidata_gila_completion import build_gila_completion_packet
+from app.pipeline.wikidata_gila_exports import proven_claim_errors, verified_export
 from app.pipeline.wikidata_qid_ledger import (
     ledger_key_for_item,
     load_global_ledger,
@@ -96,6 +97,11 @@ def gila_record_fingerprint(records: list[dict]) -> str:
 
 def gila_cases(job: RunJob) -> list[dict]:
     return json.loads(zlib.decompress(b64decode(job.params["_gila_cases"])))
+
+
+def gila_audit_export(job: RunJob, kind: str) -> dict | None:
+    encoded = job.params.get("_gila_audit_exports")
+    return json.loads(zlib.decompress(b64decode(encoded))).get(kind) if encoded else None
 
 
 def gila_people_marc(job: RunJob) -> dict[str, dict]:
@@ -706,6 +712,10 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             packet["disposition_counts"][disposition] = (
                 packet["disposition_counts"].get(disposition, 0) + 1
             )
+        exports = {
+            "verified": verified_export(packet, additional_cases),
+            "proven-claim-errors": await proven_claim_errors(packet, entities, people_marc),
+        }
         packet["all_requirements_verified"] = all(
             point["status"] == "verified" for point in packet["email_points"]
         )
@@ -743,6 +753,9 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             job.params = {
                 **job.params,
                 "_gila_cases": compressed.decode(),
+                "_gila_audit_exports": b64encode(zlib.compress(json.dumps(
+                    exports, ensure_ascii=False, separators=(",", ":"),
+                ).encode())).decode(),
                 "_gila_people_marc": b64encode(zlib.compress(json.dumps(
                     people_marc, ensure_ascii=False, separators=(",", ":"),
                 ).encode())).decode(),
@@ -769,6 +782,10 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             }
             | {
                 "people_coverage": people_summary,
+                "audit_exports": {
+                    "verified_statements": exports["verified"]["matched_statement_count"],
+                    "proven_claim_errors": len(exports["proven-claim-errors"]["claims"]),
+                },
                 **({"authority_reads_reused": cache.reused} if cache is not None else {}),
                 "full_source_coverage": audit["full_source_coverage"],
                 "public_requested": len(seen),

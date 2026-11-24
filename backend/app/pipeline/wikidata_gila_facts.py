@@ -694,6 +694,7 @@ def compare_gila_source_facts(
                 live_candidates = [{"value": live_description.get("value")}]
             proposed = [row for row in candidates if _matches(fact, row)]
             live = [row for row in live_candidates if _matches(fact, row)]
+            verified_match_rows = live
             expected_value = fact.value
             if (fact.scope == "named_scribe" and len(proposed) == 1
                     and proposed[0].get("value_type") == "somevalue"
@@ -859,6 +860,7 @@ def compare_gila_source_facts(
                         target, cn, occurrence["title"], occurrence["author"],
                     ):
                         live_status = "present"
+                        verified_match_rows = scoped
             live_target_missing = live_entities is not None and (
                 not qid or qid not in live_entities
             )
@@ -903,6 +905,37 @@ def compare_gila_source_facts(
                 live_reason = reason
             if live_classification and proposal_status == "present":
                 reason = live_reason
+            exact_date = (
+                fact.property_id == "P571" and fact.forbids_circa and fact.value is not None
+                and len(live_candidates) == 1
+            )
+            reviewed_work = (
+                fact.property_id == "P1574" and fact.reviewed_identity_current
+                and bool(fact.qualifiers.get("P1932"))
+                and sum(same_occurrence(claim, fact.qualifiers) for claim in live_candidates) == 1
+            )
+            contradictions = []
+            if not live_target_missing and (exact_date or reviewed_work):
+                for claim in live_candidates:
+                    if not claim["claim_id"]:
+                        continue
+                    if exact_date and cn in full_source_controls and (
+                        _matches(replace(fact, forbids_circa=False), claim)
+                        and not _matches(fact, claim)
+                    ):
+                        contradictions.append({
+                            "statement_id": claim["claim_id"], "value": claim["value"],
+                            "error": "unsupported_circa_qualifier", "qualifier": "P1480",
+                            "qualifier_value": "Q5727902",
+                        })
+                    elif reviewed_work and exact_occurrence(claim, fact.qualifiers) and (
+                        isinstance(claim["value"], str) and re.fullmatch(r"Q[1-9][0-9]*", claim["value"])
+                        and claim["value"] != fact.value
+                    ):
+                        contradictions.append({
+                            "statement_id": claim["claim_id"], "value": claim["value"],
+                            "error": "work_link_conflicts_with_reviewed_source",
+                        })
             counts[f"proposal_{proposal_status}"] += 1
             counts[f"live_{live_status}"] += 1
             identity = json.dumps(
@@ -927,6 +960,11 @@ def compare_gila_source_facts(
                     "expected_unit": fact.unit,
                     "expected_forbids_circa": fact.forbids_circa,
                     "expected_author": fact.author_name,
+                    "verified_matches": [
+                        {"statement_id": row.get("claim_id"), "value": row["value"]}
+                        for row in verified_match_rows
+                    ] if live_status == "present" and live_provenance in {"source_bound", "not_applicable"} else [],
+                    "contradictions": contradictions,
                     "source_scoped": fact.source_scoped,
                     "proposal_status": proposal_status,
                     "live_status": live_status,

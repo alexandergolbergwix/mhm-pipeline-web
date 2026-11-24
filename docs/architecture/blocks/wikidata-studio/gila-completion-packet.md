@@ -67,6 +67,8 @@ It also shows current receipts from the repair job that started the final audit.
 The user can inspect the requirement from the same card.
 The card uses separate counts for mappings, passages, and receipts.
 
+See [manuscript audit exports](gila-audit-exports.md) for the two read-only downloads.
+
 ## Files and tests
 
 - `backend/app/pipeline/wikidata_gila_completion.py` defines the packet and its proof checks.

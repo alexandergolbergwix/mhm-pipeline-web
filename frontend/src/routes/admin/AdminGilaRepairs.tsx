@@ -2,7 +2,7 @@ import {useCallback, useEffect, useState} from "react";
 import {useLocation} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
-import {GilaRepairs, type AuditDisposition, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus, type CorpusPreflightResult, type PreflightCase, type PreflightStatus, type RepairScope} from "@/api/gilaRepairs";
+import {GilaRepairs, type AuditDisposition, type AuditExportKind, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus, type CorpusPreflightResult, type PreflightCase, type PreflightStatus, type RepairScope} from "@/api/gilaRepairs";
 import type {ReferenceRepairStatus, ReferenceScope} from "@/api/referenceRepairs";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
@@ -211,7 +211,7 @@ function AuditResult({
   auditBusy: boolean;
 }) {
   const [exportError, setExportError] = useState("");
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<AuditExportKind | "evidence" | null>(null);
   const hasRepeatedReferences = report.reference_blocks > 0;
 
   const verified = report.email_points.filter(row => row.status === "verified").length;
@@ -235,22 +235,23 @@ function AuditResult({
     && queue?.job?.status !== "running"
     && queue?.job?.status !== "succeeded";
 
-  async function exportEvidence() {
-    setExporting(true);
+  async function downloadAudit(kind: AuditExportKind | "evidence") {
+    setExporting(kind);
     setExportError("");
     try {
-      const evidence = await GilaRepairs.evidence(report.id);
+      const evidence = kind === "evidence" ? await GilaRepairs.evidence(report.id)
+        : await GilaRepairs.export(report.id, kind);
       const blob = new Blob([JSON.stringify(evidence, null, 2)], {type: "application/json"});
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `wikidata-audit-${report.id}.json`;
+      link.download = `wikidata-audit-${kind}-${report.id}.json`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
       setExportError(failureText(error));
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   }
 
@@ -272,8 +273,18 @@ function AuditResult({
         </button>}
         {report.case_count > 0 && <button className="button-ghost"
           onClick={() => onOpenCases("")}>Review open cases</button>}
-        <button className="button-ghost" disabled={exporting}
-          onClick={() => void exportEvidence()}>{exporting ? "Prepare evidence…" : "Download audit evidence"}</button>
+        <button className="button-ghost" disabled={exporting !== null}
+          onClick={() => void downloadAudit("evidence")}>
+          {exporting === "evidence" ? "Prepare evidence…" : "Download audit evidence"}
+        </button>
+        {report.audit_exports && <>
+          <button className="button-ghost" disabled={exporting !== null}
+            onClick={() => void downloadAudit("verified")}>Download verified-only export</button>
+          <button className="button-ghost" disabled={exporting !== null}
+            onClick={() => void downloadAudit("proven-claim-errors")}>
+            Download proven claim errors ({report.audit_exports.proven_claim_errors.toLocaleString()})
+          </button>
+        </>}
       </div>
     </div>
     <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">

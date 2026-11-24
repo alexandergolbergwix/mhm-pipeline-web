@@ -658,6 +658,14 @@ def plan_person_role_repair(
     return target["id"], statement, selected[0]["claim_id"] if selected else None
 
 
+def _verified_role_evidence(target, prop, claim):
+    return {
+        "property": prop, "verified_target_qid": target.get("id"),
+        "verified_target_revision": target.get("lastrevid"),
+        "verified_matches": [{"statement_id": claim.get("claim_id"), "value": claim["value"]}],
+    }
+
+
 def people_role_cases(
     raw, manuscript, live_entities, *, authority_rows=(), viaf_sources=None, gnd_sources=None,
     lc_headings=None, lc_death_years=None, mazal_headings=None, mazal_people=None, catalogue_records=None,
@@ -712,6 +720,7 @@ def people_role_cases(
                     "classification": "identity_or_scope_uncertain",
                     "reason": "verified_person_authority" if verified else "named_scribe_identity_unresolved",
                     "verified": verified, "authority_verified": verified, "role_verified": verified,
+                    **(_verified_role_evidence(target, "P11603", confirmed[0]) if verified else {}),
                 })
                 continue
             linked_proven = set()
@@ -837,6 +846,9 @@ def people_role_cases(
                 "point": 5, "field": marc.source_key(row), "source_field": marc.source_key(row),
                 "occurrence": marc.source_key(row), "source_value": display, "person_role": role,
                 "classification": "identity_or_scope_uncertain", "reason": reason,
+                **(_verified_role_evidence(
+                    target, ROLE_PROPERTIES.get(role, "P3342"), matches[0][0],
+                ) if (verified_link or preserved_uncertainty) and role_present and not exclusion else {}),
                 "verified": verified_link or preserved_uncertainty or exclusion,
                 "authority_verified": verified_link, "role_verified": role_present and (not uncertain or preserved_uncertainty),
             })

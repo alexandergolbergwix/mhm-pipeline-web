@@ -1,5 +1,6 @@
 """The administrator console for Gila's project-wide audit and repairs."""
 
+import asyncio
 import uuid
 from typing import Annotated, Literal
 
@@ -27,7 +28,7 @@ from app.models.run_job import (
     RunJob,
 )
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
-from app.pipeline.wikidata_gila_audit_job import KIND, gila_cases
+from app.pipeline.wikidata_gila_audit_job import KIND, gila_audit_export, gila_cases
 from app.pipeline.wikidata_gila_case_review import reviewable
 from app.pipeline.wikidata_publication_prepare_job import audited_batch_params
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
@@ -252,6 +253,19 @@ async def evidence(auth: Admin, db: Database, audit_id: uuid.UUID):
             if not row["case_id"].startswith("passage:")
         ],
     }
+
+
+@router.get("/exports")
+async def audit_export(
+    auth: Admin, db: Database, audit_id: uuid.UUID,
+    kind: Literal["verified", "proven-claim-errors"],
+):
+    run = await _lookup_run_with_access(db, _run_id(), auth)
+    report = await _require_report(db, run.id, audit_id)
+    data = await asyncio.to_thread(gila_audit_export, report, kind)
+    if data is None:
+        raise HTTPException(409, "Run a fresh audit to prepare this export.")
+    return {"audit_id": str(report.id), "finished_at": report.finished_at, "kind": kind, **data}
 
 
 @router.get("/cases")

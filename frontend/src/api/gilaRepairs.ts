@@ -68,6 +68,7 @@ export interface GilaReport {
     uncertainty_preserved: number;
   };
   all_requirements_verified: boolean;
+  audit_exports?: {verified_statements: number; proven_claim_errors: number};
   requirement_coverage: {
     public_reads: number;
     verified_claims: number;
@@ -146,6 +147,8 @@ export interface AutomaticRepairJob extends AuditJob {
   } | null;
 }
 
+export type AuditExportKind = "verified" | "proven-claim-errors";
+
 const endpoint = "/admin/wikidata-gila-repairs";
 export const GilaRepairs = {
   status: () => api.get<GilaStatus>(endpoint),
@@ -155,6 +158,9 @@ export const GilaRepairs = {
   preflight: (params: URLSearchParams) =>
     api.get<{items: PreflightCase[]; total: number}>(endpoint + "/preflight?" + params),
   evidence: (auditId: string) => api.get<unknown>(endpoint + "/evidence?" + new URLSearchParams({audit_id: auditId})),
+  export: (auditId: string, kind: AuditExportKind) => api.get<unknown>(
+    endpoint + "/exports?" + new URLSearchParams({audit_id: auditId, kind}),
+  ),
   cases: (params: URLSearchParams) => api.get<{items: GilaCase[]; total: number}>(endpoint + "/cases?" + params),
   latestCaseReview: (auditId: string, caseId: string) =>
     api.get<RunJobSnapshot | null>(endpoint + "/case-review?" +

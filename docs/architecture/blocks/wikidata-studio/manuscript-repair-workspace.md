@@ -73,6 +73,8 @@ Confirm the scope before you start or resume.
 The queue shows progress, outcomes, and items created by other accounts on the same page.
 The job tray opens the applicable queue in the workspace.
 
+Download the [verified-only export and the proven claim errors](gila-audit-exports.md) from the audit result.
+
 ## API and verification
 
 - `admin_gila_repairs.py` serves `POST /api/admin/wikidata-gila-repairs/prepare-batch` and `GET /api/admin/wikidata-gila-repairs/preparations`.

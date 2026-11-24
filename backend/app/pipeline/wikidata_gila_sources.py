@@ -88,7 +88,12 @@ def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=
         case["reason"] = "ambiguous_source_claim"
         return case
     if existing and _source_reference(existing[0], cn):
-        case.update(verified=True, reason="verified_source_assertion")
+        case.update(
+            verified=True, reason="verified_source_assertion",
+            verified_target_qid=entity["id"], verified_target_revision=entity["lastrevid"],
+            expected_qualifiers=qualifiers,
+            verified_matches=[{"statement_id": existing[0]["claim_id"], "value": value}],
+        )
         return case
     if pid == "P1684" and not existing and any(
         _same_inscription_scope({p: [v] for p, v in qualifiers.items()}, _qualifiers(claim))
