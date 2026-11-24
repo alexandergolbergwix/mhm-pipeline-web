@@ -15045,5 +15045,3254 @@
         "value": "PreferredLanguageHeading"
       }
     ]
+  },
+  {
+    "qid": "Q141746858",
+    "control_number": "990000539310205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q440562",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000539310205171",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "f5fd64750c175c18bbf4b986c6035573fd450df82158fc56b8dd1accd2e0923f"
+    },
+    "target_work_qid": "Q141991800",
+    "target_work_title": "מחברת התיג'אן המקוצרת בערבית",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572092212,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "x",
+        "value": "Grammar"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000539310205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007542518105171.jsonld",
+      "https://api-thoth-arch.lib.cam.ac.uk/server/api/core/bitstreams/b6168781-bf04-49fd-8d72-95a2265646b7/content",
+      "https://www.nli.org.il/he/articles/RAMBI990000843890705171/NLI"
+    ]
+  },
+  {
+    "qid": "Q141746949",
+    "control_number": "990000606310205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q440562",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000606310205171",
+    "supporting_note": {
+      "occurrence": "740:1",
+      "source_sha256": "f806a2f9b42144ec1d5dd15b2efa58aea33c9acd2d9d142eddf641a1ccf86800"
+    },
+    "target_work_qid": "Q141991799",
+    "target_work_title": "מחברת התיג'אן בעברית ובערבית",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572092165,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "x",
+        "value": "Grammar"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000606310205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007542518105171.jsonld",
+      "https://api-thoth-arch.lib.cam.ac.uk/server/api/core/bitstreams/b6168781-bf04-49fd-8d72-95a2265646b7/content",
+      "https://www.nli.org.il/he/articles/RAMBI990000843890705171/NLI"
+    ]
+  },
+  {
+    "qid": "Q141746955",
+    "control_number": "990000612200205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q440562",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000612200205171",
+    "supporting_note": {
+      "occurrence": "740:1",
+      "source_sha256": "1f7345cf9d496f2192d3d86cdc6ce5e4d8816c3a0b3b1b81172e543ca60497aa"
+    },
+    "target_work_qid": "Q141991801",
+    "target_work_title": "מחברת התיג'אן הארוכה בעברית",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572092240,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "x",
+        "value": "Grammar"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000612200205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007542518105171.jsonld",
+      "https://api-thoth-arch.lib.cam.ac.uk/server/api/core/bitstreams/b6168781-bf04-49fd-8d72-95a2265646b7/content",
+      "https://www.nli.org.il/he/articles/RAMBI990000843890705171/NLI"
+    ]
+  },
+  {
+    "qid": "Q141747141",
+    "control_number": "990000814890205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q440562",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000814890205171",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "c80a2e6fd7b745259f687571c961c75564e2da0b812f8c7975177a94a66b5922"
+    },
+    "target_work_qid": "Q141991800",
+    "target_work_title": "מחברת התיג'אן המקוצרת בערבית",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572092212,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "x",
+        "value": "Grammar"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000814890205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007542518105171.jsonld",
+      "https://api-thoth-arch.lib.cam.ac.uk/server/api/core/bitstreams/b6168781-bf04-49fd-8d72-95a2265646b7/content",
+      "https://www.nli.org.il/he/articles/RAMBI990000843890705171/NLI"
+    ]
+  },
+  {
+    "qid": "Q141747329",
+    "control_number": "990001111010205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q440562",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001111010205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "d9ccdf1409eb0ebc81b7bbbeb07770f37fd48b6a7a6101d2dfe079a161ae2924"
+    },
+    "target_work_qid": "Q141755168",
+    "target_work_title": "סדר הפרשיות ודקדוק עברי וארמי בלטינית",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572077364,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "x",
+        "value": "Grammar"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001111010205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007542518105171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747329",
+    "control_number": "990001111010205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q1982248",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001111010205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "d9ccdf1409eb0ebc81b7bbbeb07770f37fd48b6a7a6101d2dfe079a161ae2924"
+    },
+    "target_work_qid": "Q141755204",
+    "target_work_title": "מלון עברי-לטיני (אותיות לטיניות) למקרא, רשימת מלים נדירות במקרא",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572079234,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "v",
+        "value": "Dictionaries"
+      },
+      {
+        "code": "x",
+        "value": "Latin"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001111010205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007479130105171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747525",
+    "control_number": "990001244050205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q9288",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001244050205171",
+    "supporting_note": {
+      "occurrence": "500:7",
+      "source_sha256": "184c17f488e93fde6030b6a40d8d2f1a2b95a273a8cca6b34ae0d18d8e311f7d"
+    },
+    "target_work_qid": "Q141755209",
+    "target_work_title": "ספר הבדלות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2568100182,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "v",
+        "value": "Dictionaries"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001244050205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007546306605171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747537",
+    "control_number": "990001255900205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "23e678302631c1d809720d110beb089fb98c9dd9fa5892537e135b54fc843dd8",
+    "property": "P921",
+    "value": "Q5695906",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001255900205171",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "00826016c7b51250eb0e6a70916b74597c045ee2de1a18a0ea3142acd966f1a3"
+    },
+    "target_work_qid": "Q141755192",
+    "target_work_title": "מולדות יצחק",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574483454,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish astronomy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001255900205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007476137205171.jsonld",
+      "https://loc.gov/aba/publications/FreeLCSH/J.pdf"
+    ]
+  },
+  {
+    "qid": "Q141747595",
+    "control_number": "990001271940205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "23e678302631c1d809720d110beb089fb98c9dd9fa5892537e135b54fc843dd8",
+    "property": "P921",
+    "value": "Q5695906",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001271940205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "763934e76bcb50901964190b1f92c9325eac8c9527772e6b1afc982023368e4d"
+    },
+    "target_work_qid": "Q141992132",
+    "target_work_title": "צוה הקב\"ה לחשוב תקופות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538571,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish astronomy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001271940205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007476137205171.jsonld",
+      "https://loc.gov/aba/publications/FreeLCSH/J.pdf"
+    ]
+  },
+  {
+    "qid": "Q141747615",
+    "control_number": "990001319630205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "e9f34a42207b4ef63137fe057d4265795b188b77e0936d59c0ad4376e89cead3",
+    "property": "P921",
+    "value": "Q13955",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001319630205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "55ee3e8a8b0e290af305435077acf70021aaa50a9105758bdc90583ea61d0aef"
+    },
+    "target_work_qid": "Q141754947",
+    "target_work_title": "מלון ערבי-עברי",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572076011,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Arabic language"
+      },
+      {
+        "code": "v",
+        "value": "Dictionaries"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001319630205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007294709105171.jsonld",
+      "https://id.loc.gov/authorities/subjects/sh85006306"
+    ]
+  },
+  {
+    "qid": "Q141747657",
+    "control_number": "990001361600205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "23e678302631c1d809720d110beb089fb98c9dd9fa5892537e135b54fc843dd8",
+    "property": "P921",
+    "value": "Q5695906",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001361600205171",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "08a5e7cfac4469c98642ea9b09956b1d673c51bc5bc1c4fd9c3b4d3e9f6d7d5a"
+    },
+    "target_work_qid": "Q141754694",
+    "target_work_title": "הוראות וכללים לחשב עיבור השנים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574537617,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish astronomy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001361600205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007476137205171.jsonld",
+      "https://loc.gov/aba/publications/FreeLCSH/J.pdf"
+    ]
+  },
+  {
+    "qid": "Q141747899",
+    "control_number": "990001679060205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "23e678302631c1d809720d110beb089fb98c9dd9fa5892537e135b54fc843dd8",
+    "property": "P921",
+    "value": "Q5695906",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001679060205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "f171bc0fc570b5410e95fc338f938cda95856115b2efebfab84e2799ad527a20"
+    },
+    "target_work_qid": "Q141990822",
+    "target_work_title": "סדר העבור",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538429,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish astronomy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001679060205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007476137205171.jsonld",
+      "https://loc.gov/aba/publications/FreeLCSH/J.pdf"
+    ]
+  },
+  {
+    "qid": "Q141748085",
+    "control_number": "990001777970205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "23e678302631c1d809720d110beb089fb98c9dd9fa5892537e135b54fc843dd8",
+    "property": "P921",
+    "value": "Q5695906",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001777970205171",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "a7e2becfe6667f5bbb4142cb151c0b9c8dc56e0c9570c27616d1938b3b07a56a"
+    },
+    "target_work_qid": "Q141755189",
+    "target_work_title": "עברונות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574483283,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish astronomy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001777970205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007476137205171.jsonld",
+      "https://loc.gov/aba/publications/FreeLCSH/J.pdf"
+    ]
+  },
+  {
+    "qid": "Q141748095",
+    "control_number": "990001788690205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "23e678302631c1d809720d110beb089fb98c9dd9fa5892537e135b54fc843dd8",
+    "property": "P921",
+    "value": "Q5695906",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001788690205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "ce842397286432ba9dd22e3506e20f5b7072e2331a8df1e098100e2f64b12bb1"
+    },
+    "target_work_qid": "Q141748684",
+    "target_work_title": "לוחות, תקופות ומזלות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574537221,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish astronomy"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001788690205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007476137205171.jsonld",
+      "https://loc.gov/aba/publications/FreeLCSH/J.pdf"
+    ]
+  },
+  {
+    "qid": "Q141748135",
+    "control_number": "990001836700205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "db5b78269e68ef9e49ea3db5272dd36afc79bbb81e3a80f38bf42d44a847d5e3",
+    "property": "P921",
+    "value": "Q182651",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001836700205171",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "422b821445043395e49298fe1b9928df08b53c362b013a15abf6856678dd9e68"
+    },
+    "target_work_qid": "Q141990250",
+    "target_work_title": "בשנת אלפים ושבע מאות שנה וארבע ותשעים שנה לבריאת העולם",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572085300,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Samaritans"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001836700205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007489536505171.jsonld",
+      "https://archive.org/details/samaritanchronic00cran",
+      "https://www.bu.edu/sthlibrary/archives/james-d-purvis-collection-of-samaritana/exhibition-and-descriptions/"
+    ]
+  },
+  {
+    "qid": "Q141748139",
+    "control_number": "990001845770205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q440562",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001845770205171",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "6bfba7caf6b6f62fde0985b365992125416feadb93c7a66fb16041dbfcc2df86"
+    },
+    "target_work_qid": "Q141991801",
+    "target_work_title": "מחברת התיג'אן הארוכה בעברית",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572092240,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "x",
+        "value": "Grammar"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001845770205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007542518105171.jsonld",
+      "https://api-thoth-arch.lib.cam.ac.uk/server/api/core/bitstreams/b6168781-bf04-49fd-8d72-95a2265646b7/content",
+      "https://www.nli.org.il/he/articles/RAMBI990000843890705171/NLI"
+    ]
+  },
+  {
+    "qid": "Q141748410",
+    "control_number": "990025630180205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "e79bc858b613a147ea58d243b8700ea3ac9b12955b3621f9347e62a6670754b9",
+    "property": "P921",
+    "value": "Q44722",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990025630180205171",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "7499221328d2caf2bc4867121c2393431c1c54729af1b06735d6b5daf053fd23"
+    },
+    "target_work_qid": "Q141748533",
+    "target_work_title": "ים ערובי חצירות ותחומים ועניני עיבור",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574537135,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish calendar"
+      },
+      {
+        "code": "v",
+        "value": "Early works to 1800"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990025630180205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007476137105171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141746865",
+    "control_number": "990000550960205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000550960205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "e651a89839be291d72d104168b273a728ad7d90d20c7d3e0241c99fd5d3275f4"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "x",
+        "value": "Yemenite rite"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000550960205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007554973505171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747169",
+    "control_number": "990000885660205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "83a6ebda1522d490ea87b2ac6f11bde15ec75034865e939ddc6a8bd7aa172d6d",
+    "property": "P921",
+    "value": "Q961603",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000885660205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:10",
+      "source_sha256": "cc6ba3cd8e9ea115adfc53178ea5da9b6b6cc2c1a5cac2a28de4764be8fe310c"
+    },
+    "target_work_qid": "Q141992149",
+    "target_work_title": "צמח דוד",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574053265,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jews"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000885660205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007533728905171.jsonld",
+      "https://geschichtsquellen.de/werk/2103?s=en"
+    ]
+  },
+  {
+    "qid": "Q141747169",
+    "control_number": "990000885660205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "83a6ebda1522d490ea87b2ac6f11bde15ec75034865e939ddc6a8bd7aa172d6d",
+    "property": "P921",
+    "value": "Q2918095",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000885660205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:11",
+      "source_sha256": "00b6b84a3c269646b7b551ac9a5f68c2a5ec1b077cbf6de4e7d8f99c335b1426"
+    },
+    "target_work_qid": "Q141992149",
+    "target_work_title": "צמח דוד",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574053265,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jews"
+      },
+      {
+        "code": "z",
+        "value": "Europe"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000885660205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007547209405171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747170",
+    "control_number": "990000885680205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "83a6ebda1522d490ea87b2ac6f11bde15ec75034865e939ddc6a8bd7aa172d6d",
+    "property": "P921",
+    "value": "Q7330",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000885680205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:11",
+      "source_sha256": "bcb8491d42279a43ae78a55de97d92a49071b314aa5ec4a5eed00effb73e52fa"
+    },
+    "target_work_qid": "Q141991992",
+    "target_work_title": "ראיתי לכתוב בקיצור נמרץ ענין גזירה תתנ\"ו",
+    "first_creator_uid": 6935067,
+    "live_revision": 2564509568,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jews"
+      },
+      {
+        "code": "z",
+        "value": "Germany"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000885680205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007533722705171.jsonld",
+      "https://geschichtsquellen.de/werk/2103?s=en",
+      "https://sourcebooks.web.fordham.edu/basis/Shlomo%20Eidelberg%20-The%20Jews%20and%20the%20Crusaders%201977.pdf"
+    ]
+  },
+  {
+    "qid": "Q141747646",
+    "control_number": "990001351390205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q2297875",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001351390205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "4b60d1b616f11dc46f9daca0bac4f7dbe37b28aea5bdfa70005b6f7a5a58a1e3"
+    },
+    "target_work_qid": "Q142116342",
+    "target_work_title": "Compendio de diferentes materias",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574053313,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "x",
+        "value": "Relations"
+      },
+      {
+        "code": "x",
+        "value": "Christianity"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001351390205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007536167905171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141747777",
+    "control_number": "990001498020205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "83a6ebda1522d490ea87b2ac6f11bde15ec75034865e939ddc6a8bd7aa172d6d",
+    "property": "P921",
+    "value": "Q136563121",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001498020205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "b40a1c15ddbd8445516098ab7bad2fac4d94fb56fb81c95be8a67c3b322379a8"
+    },
+    "target_work_qid": "Q141754931",
+    "target_work_title": "זוכר נשמות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574537765,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jews"
+      },
+      {
+        "code": "z",
+        "value": "Italy"
+      },
+      {
+        "code": "z",
+        "value": "Turin"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001498020205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007572394305171.jsonld",
+      "https://www.academia.edu/42740107/Susan_Einbinder_Poetry_Prose_and_Pestilence_Joseph_Concio_and_Jewish_Responses_to_the_1630_Italian_Plague_in_Haviva_Yishai_ed_Shirat_Dvora_Essays_in_Honor_of_Professor_Dvora_Bregman_Beer_Sheva_Ben_Gurion_University_2019_73_101",
+      "https://www.pennpress.org/9781512822878/writing-plague/"
+    ]
+  },
+  {
+    "qid": "Q141747777",
+    "control_number": "990001498020205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "83a6ebda1522d490ea87b2ac6f11bde15ec75034865e939ddc6a8bd7aa172d6d",
+    "property": "P921",
+    "value": "Q3685582",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001498020205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "b40a1c15ddbd8445516098ab7bad2fac4d94fb56fb81c95be8a67c3b322379a8"
+    },
+    "target_work_qid": "Q141754931",
+    "target_work_title": "זוכר נשמות",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574537765,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jews"
+      },
+      {
+        "code": "z",
+        "value": "Italy"
+      },
+      {
+        "code": "z",
+        "value": "Chieri"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001498020205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007491141705171.jsonld",
+      "https://www.academia.edu/42740107/Susan_Einbinder_Poetry_Prose_and_Pestilence_Joseph_Concio_and_Jewish_Responses_to_the_1630_Italian_Plague_in_Haviva_Yishai_ed_Shirat_Dvora_Essays_in_Honor_of_Professor_Dvora_Bregman_Beer_Sheva_Ben_Gurion_University_2019_73_101",
+      "https://www.pennpress.org/9781512822878/writing-plague/"
+    ]
+  },
+  {
+    "qid": "Q141747812",
+    "control_number": "990001659100205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "83a6ebda1522d490ea87b2ac6f11bde15ec75034865e939ddc6a8bd7aa172d6d",
+    "property": "P921",
+    "value": "Q21051125",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001659100205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "cae3a5ba106ae789e7abcf25fb84c442b0b67f9d29762a1df18a6d17c1d2e0a9"
+    },
+    "target_work_qid": "Q141754936",
+    "target_work_title": "על הקדוש ר' שכנא",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574050920,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jews"
+      },
+      {
+        "code": "z",
+        "value": "Poland"
+      },
+      {
+        "code": "z",
+        "value": "Kraków"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001659100205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007495600605171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141748150",
+    "control_number": "990001857260205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "83a6ebda1522d490ea87b2ac6f11bde15ec75034865e939ddc6a8bd7aa172d6d",
+    "property": "P921",
+    "value": "Q3685570",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001857260205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "f4f1b01d0c597cce862acff6cf287e0e28bc3fcb59077594bc35819a1da6e342"
+    },
+    "target_work_qid": "Q141991966",
+    "target_work_title": "קינה על שרופי אנקונה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572094055,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jews"
+      },
+      {
+        "code": "z",
+        "value": "Italy"
+      },
+      {
+        "code": "z",
+        "value": "Ancona"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001857260205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007488979805171.jsonld",
+      "https://digital.library.leeds.ac.uk/14957/",
+      "https://www.nli.org.il/he/manuscripts/NNL_ALEPH990001857250205171/NLI"
+    ]
+  },
+  {
+    "qid": "Q141748172",
+    "control_number": "990001884800205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "83a6ebda1522d490ea87b2ac6f11bde15ec75034865e939ddc6a8bd7aa172d6d",
+    "property": "P921",
+    "value": "Q136563285",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001884800205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "3044599900f52be60a925bfcf614abc492a905e14545702d15bfa3fa7d04e263"
+    },
+    "target_work_qid": "Q141750401",
+    "target_work_title": "בעיקר רשימת אישים שעלו בגורל לטפל בנפטר (שמירתו וחפירת הקבר)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572031786,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jews"
+      },
+      {
+        "code": "z",
+        "value": "Italy"
+      },
+      {
+        "code": "z",
+        "value": "Venice"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001884800205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007559564505171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141748172",
+    "control_number": "990001884800205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "83a6ebda1522d490ea87b2ac6f11bde15ec75034865e939ddc6a8bd7aa172d6d",
+    "property": "P921",
+    "value": "Q136563285",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001884800205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "b1e1766f97f62ed503cb4a4f8cebfbfdc1d2d2f1f27880952d36a7aa6a891f1a"
+    },
+    "target_work_qid": "Q141750401",
+    "target_work_title": "בעיקר רשימת אישים שעלו בגורל לטפל בנפטר (שמירתו וחפירת הקבר)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572031786,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jews"
+      },
+      {
+        "code": "z",
+        "value": "Italy"
+      },
+      {
+        "code": "z",
+        "value": "Venice"
+      },
+      {
+        "code": "x",
+        "value": "History"
+      },
+      {
+        "code": "v",
+        "value": "Sources"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001884800205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007467094205171.jsonld"
+    ]
+  },
+  {
+    "qid": "Q141748342",
+    "control_number": "990001973970205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q2297875",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001973970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "d7495b939c2532d0984078be413e92030ab09af3b8a7ea491e8ef646e2fa8cd6"
+    },
+    "target_work_qid": "Q141754995",
+    "target_work_title": "ספר הזקוק",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574356396,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "x",
+        "value": "Relations"
+      },
+      {
+        "code": "x",
+        "value": "Christianity"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001973970205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007536167905171.jsonld",
+      "https://cris.biu.ac.il/en/publications/sefer-ha-ziquq-an-index-of-forbidden-hebrew-books-the-books-use-a/",
+      "https://www.nli.org.il/media/26037/vaticanhebmss.pdf"
+    ]
+  },
+  {
+    "qid": "Q141746863",
+    "control_number": "990000550950205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000550950205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "740:1",
+      "source_sha256": "c157abca34d03a8cc534d611bec228ea0b4741f9ff45d1e1808917f10cccc0fd"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000550950205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141746865",
+    "control_number": "990000550960205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000550960205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "e651a89839be291d72d104168b273a728ad7d90d20c7d3e0241c99fd5d3275f4"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000550960205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141746866",
+    "control_number": "990000551170205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000551170205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "740:1",
+      "source_sha256": "c157abca34d03a8cc534d611bec228ea0b4741f9ff45d1e1808917f10cccc0fd"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000551170205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141746880",
+    "control_number": "990000561490205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000561490205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "740:1",
+      "source_sha256": "c157abca34d03a8cc534d611bec228ea0b4741f9ff45d1e1808917f10cccc0fd"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000561490205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141746974",
+    "control_number": "990000649970205171",
+    "occurrence": "650:6:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000649970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:29",
+      "source_sha256": "2549dbaf20081d99b9aa677ccd24f9b3f29121603c5115e0bee64374b31712ce"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "x",
+        "value": "Yemenite rite"
+      },
+      {
+        "code": "x",
+        "value": "Liturgy"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000649970205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007554973305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141746974",
+    "control_number": "990000649970205171",
+    "occurrence": "650:10:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000649970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:29",
+      "source_sha256": "2549dbaf20081d99b9aa677ccd24f9b3f29121603c5115e0bee64374b31712ce"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000649970205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747199",
+    "control_number": "990000942930205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000942930205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "f7da6a6cee4858f06b2c4e806e3cffd4695ae7e198dcd453918fdbfdfd829dd5"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000942930205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747200",
+    "control_number": "990000943000205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000943000205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "5b5d144e126237fbd553a91b95dbaa27bb63a4d109cbf226e677a2c29dfd6a76"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000943000205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747225",
+    "control_number": "990000990320205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000990320205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "eefce9fef4b0e7c885e27c7f8f708ba1dc555bd8b2694d2d524dac3bb5bf0093"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000990320205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747279",
+    "control_number": "990001062460205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001062460205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "3e0864cc95a0ce1f93d39a22eb81d94121fb85a39270c0b351ba540ab84b94ae"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001062460205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747437",
+    "control_number": "990001153990205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001153990205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "e74ed369298fe33efb976b8c5047cb8f0891ac080f93ae394526401d8a1aa6e3"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001153990205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747439",
+    "control_number": "990001154090205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001154090205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "e74ed369298fe33efb976b8c5047cb8f0891ac080f93ae394526401d8a1aa6e3"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001154090205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747443",
+    "control_number": "990001154490205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001154490205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "e74ed369298fe33efb976b8c5047cb8f0891ac080f93ae394526401d8a1aa6e3"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001154490205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747445",
+    "control_number": "990001154530205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001154530205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "e74ed369298fe33efb976b8c5047cb8f0891ac080f93ae394526401d8a1aa6e3"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001154530205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141747629",
+    "control_number": "990001338390205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001338390205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "9453268b8ba268f0e301f1891edbe41efba4d1c5104dff3de909de8ad35c6108"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001338390205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q134593320",
+    "control_number": "990001780340205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001780340205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "83cdd3bd5888258b6a4e1e42ebbe3bbd2fda0f982efa2d15a2874a7892191fc2"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001780340205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141748126",
+    "control_number": "990001828180205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001828180205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "6bfc55d95faba49a247d70ef45bbe5b9875f1cfcce57e20c8462d41e854afb55"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001828180205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141748149",
+    "control_number": "990001856940205171",
+    "occurrence": "650:3:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001856940205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "ba559a4c99547a28239b494ae8672ba604c00922b0e0718ad073aec6918d480c"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001856940205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141748192",
+    "control_number": "990001902240205171",
+    "occurrence": "650:5:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001902240205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "ca89ad8d43410462f034d7b4f213ff9d9388c55bfd18424a982051a8339dccfd"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001902240205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141748308",
+    "control_number": "990001921540205171",
+    "occurrence": "650:6:1",
+    "source_sha256": "591a150ebd71b867a496f6be54794ada4aac1edb8ad469a3de7556d77dab4bca",
+    "property": "P921",
+    "value": "Q109313894",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001921540205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "97f8ae712790178a982ddc75f947b5e1b1e0a478c12d2bbb006f5166e98fef6b"
+    },
+    "target_work_qid": "Q141991935",
+    "target_work_title": "פעמון זהב ורמון",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538473,
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Judaism"
+      },
+      {
+        "code": "z",
+        "value": "Yemen (Republic)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001921540205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007466120305171.jsonld",
+      "https://www.nli.org.il/he/discover/music/jewish-music/piyut/articles/in-depth-look/piyut/et-shaarei-ratzon-rabbi-itzhak-vane",
+      "https://www.maharitz.co.il/?ArticleID=10165&CategoryID=321&Page=1",
+      "https://www.digitalcollections.manchester.ac.uk/view/MS-GASTER-HEBREW-ADD-00005/154"
+    ]
+  },
+  {
+    "qid": "Q141746945",
+    "control_number": "990000598840205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "6e399f2787a0602f604bd89c19e077a5546c05698b6be5b96baa895cc23a0ec0",
+    "property": "P921",
+    "value": "Q1777205",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000598840205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007531656605171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000598840205171.jsonld"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Prayer"
+      },
+      {
+        "code": "x",
+        "value": "Judaism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:8",
+      "source_sha256": "134c9be5951d8b6282135e63929b17276228427dfcf909732e9831c14bda7a52"
+    },
+    "target_work_qid": "Q141992007",
+    "target_work_title": "תכלאל (פרשנות)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572094822
+  },
+  {
+    "qid": "Q141748104",
+    "control_number": "990001799180205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "6e399f2787a0602f604bd89c19e077a5546c05698b6be5b96baa895cc23a0ec0",
+    "property": "P921",
+    "value": "Q1777205",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001799180205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007531656605171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001799180205171.jsonld"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Prayer"
+      },
+      {
+        "code": "x",
+        "value": "Judaism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "75c63ff6c992cc0cac9cbd98afb0d951b61bbfe1d0b5d80621060a4cc3f207df"
+    },
+    "target_work_qid": "Q141992060",
+    "target_work_title": "פרוש תכלאל",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572097229
+  },
+  {
+    "qid": "Q141748193",
+    "control_number": "990001902290205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "6e399f2787a0602f604bd89c19e077a5546c05698b6be5b96baa895cc23a0ec0",
+    "property": "P921",
+    "value": "Q1777205",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001902290205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007531656605171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001902290205171.jsonld"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Prayer"
+      },
+      {
+        "code": "x",
+        "value": "Judaism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "134c9be5951d8b6282135e63929b17276228427dfcf909732e9831c14bda7a52"
+    },
+    "target_work_qid": "Q141992060",
+    "target_work_title": "פרוש תכלאל",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572097229
+  },
+  {
+    "qid": "Q141747188",
+    "control_number": "990000913260205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000913260205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007533619105171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000913260205171.jsonld",
+      "https://www.sefaria.org/Shulchan_Arukh%2C_Yoreh_De'ah"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish law"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "8dedac1e72a84309304df8c441534f91ff38895a47dbf55da846410bf6a63463"
+    },
+    "target_work_qid": "Q141992063",
+    "target_work_title": "שלחן ערוך (יורה דעה) (פרשנות)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572097271
+  },
+  {
+    "qid": "Q141747194",
+    "control_number": "990000928230205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000928230205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007533619105171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000928230205171.jsonld"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish law"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "f88ad6f6121dbd91d15b5c2b7e566995de001d5bcfa071f4f64ad9f1834a8410"
+    },
+    "target_work_qid": "Q141754942",
+    "target_work_title": "מנחת חנניה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574537834
+  },
+  {
+    "qid": "Q141747520",
+    "control_number": "990001240470205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001240470205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007533619105171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001240470205171.jsonld"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish law"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:6",
+      "source_sha256": "46f2beb0d979c74ddb7dc9ef5532414d248a2281eb974fbbebbe17e1e4dfde77"
+    },
+    "target_work_qid": "Q141755236",
+    "target_work_title": "מרשה קהלת יעקב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573671596
+  },
+  {
+    "qid": "Q141747351",
+    "control_number": "990001127540205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001127540205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007533619105171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001127540205171.jsonld"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish law"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "374a5bcbe2331eff92b80d9093668cac42ec3c0af0629fcb7201a7cc1e3ca88c"
+    },
+    "target_work_qid": "Q141755346",
+    "target_work_title": "הלכות צדקה, ברכות, נדה, חלה, כלאים, ערלה, וסחורה בדברים האסורים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572081038
+  },
+  {
+    "qid": "Q141748134",
+    "control_number": "990001836320205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "4cf6b1a84a1ce788a4fa6ebc5861cb45ad2b68d084cdf2ed05410eec04315955",
+    "property": "P921",
+    "value": "Q17007184",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001836320205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007554971705171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001836320205171.jsonld",
+      "https://www.nli.org.il/he/archives/NNL_ARCHIVE_AL997014360086305171/NLI"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Scribes, Jewish (Jewish law)"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "9f1a071616721aa1520692adf05c590257f2cdce3c6f659a938c90f37f3fc492"
+    },
+    "target_work_qid": "Q141991993",
+    "target_work_title": "קרית ספר",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538534
+  },
+  {
+    "qid": "Q141747153",
+    "control_number": "990000831830205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "ecb8b7d947be3c092cdfb181e317d4a5ce2115f48f766028ffac95ac331362d5",
+    "property": "P921",
+    "value": "Q4220428",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000831830205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007560806005171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000831830205171.jsonld"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Women in Judaism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "e15710bb042e5eeac59aaf09d4bf114bf14959c171bf110398b90306e06ffd83"
+    },
+    "target_work_qid": "Q141750593",
+    "target_work_title": "רשות לשחיטה שניתנה ל\"מרת איסוטה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574537382
+  },
+  {
+    "qid": "Q141175888",
+    "control_number": "990001858880205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "dfa7c845303415b4c810b16e7fc26b337c1cccd66036ccdf291e5066186d32ab",
+    "property": "P921",
+    "value": "Q546842",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001858880205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007579344305171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001858880205171.jsonld",
+      "https://www.chabad.org/library/article_cdo/aid/383786/jewish/The-Laws-of-Visiting-the-Sick.htm"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Visiting the sick (Judaism)"
+      },
+      {
+        "code": "x",
+        "value": "Liturgy"
+      },
+      {
+        "code": "v",
+        "value": "Texts"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "f7bafb2bfbcbe83375bbf28c25a0777ada7691b8d159edd1ca3b833b0bd8370b"
+    },
+    "target_work_qid": "Q141175588",
+    "target_work_title": "תקנות חברת בקור חולים בוירונה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049342
+  },
+  {
+    "qid": "Q141175776",
+    "control_number": "990000864590205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "4216e7f0e42f25585534c1ed9b148326b072c70dabd44af219e18165fe8ad41c",
+    "property": "P921",
+    "value": "Q208398",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000864590205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007541186905171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000864590205171.jsonld",
+      "https://jewish-faculty.biu.ac.il/sites/jewish-faculty/files/shared/JSIJ24/haas.pdf"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Karaites"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "5eb71e7d7ccb6ec0c1bbd9463ce6a9dd30a0355153617ffce5279b41d73cbc10"
+    },
+    "target_work_qid": "Q141175531",
+    "target_work_title": "כתר תורה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574021244
+  },
+  {
+    "qid": "Q141747087",
+    "control_number": "990000792030205171",
+    "occurrence": "650:4:1",
+    "source_sha256": "39c4f42238a6a1455fdf11a4832b3265d6c7927f99622027877af01c7ae5a15d",
+    "property": "P921",
+    "value": "Q2086136",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000792030205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007529004905171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000792030205171.jsonld"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Jewish converts"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "5aa98bf6799cf6b8c5b8b811dfb7c238d01c5e60ec079df68563d0ad5e80fa82"
+    },
+    "target_work_qid": "Q141754972",
+    "target_work_title": "נפש הגר",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538053
+  },
+  {
+    "qid": "Q141748076",
+    "control_number": "990001761720205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "4216e7f0e42f25585534c1ed9b148326b072c70dabd44af219e18165fe8ad41c",
+    "property": "P921",
+    "value": "Q208398",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001761720205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007541186905171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001761720205171.jsonld",
+      "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990001396910205171/NLI",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001396910205171.jsonld"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Karaites"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "648126e482795cdedb3785a3da66497444a48e0e92fbc6ef3deb9c116f4b6779"
+    },
+    "target_work_qid": "Q141754637",
+    "target_work_title": "אגרת הוכוח",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572033367
+  },
+  {
+    "qid": "Q141746862",
+    "control_number": "990000550940205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "66dc18d1b1046d4017880750efe044a6925441d2a7987a19f158b9481d222f70",
+    "property": "P921",
+    "value": "Q7167830",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000550940205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000550940205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007472216905171.jsonld",
+      "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990000550940205171/NLI"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Midrash"
+      },
+      {
+        "code": "v",
+        "value": "Commentaries"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "740:1",
+      "source_sha256": "00cb69b2eaa854da706d4366c4d05958435c92dd44e37445dae1e6ec998f57b9"
+    },
+    "target_work_qid": "Q141992036",
+    "target_work_title": "שיח יצחק",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572096826
+  },
+  {
+    "qid": "Q134605231",
+    "control_number": "990000688750205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000688750205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000688750205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007293773005171.jsonld",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900",
+      "https://kotar.cet.ac.il/kotarapp/index/Chapter.aspx?nBookID=95451971&nTocEntryID=95455850"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Cabala"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "ff1b60a4f4179b55256d049c66661307a5c614906333dd1faedbdf3c5f4745ce"
+    },
+    "target_work_qid": "Q141755210",
+    "target_work_title": "את מאמרי חיים ויטל, מאמרים שאינם משלו המסודרים בסדר פרשיות התורה (קכה ע\"א-קסג ע\"ב), ופרושי האר\"י לזהר (בראשית)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572080545
+  },
+  {
+    "qid": "Q141747535",
+    "control_number": "990001252810205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "38fb30996cafbaf43ce732a4cf6f7bddd4e486689e2fe378d28e4826f59f5f7a",
+    "property": "P921",
+    "value": "Q178715",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001252810205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001252810205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987011060234905171.jsonld",
+      "https://www.nli.org.il/media/26037/vaticanhebmss.pdf"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Rhyme"
+      },
+      {
+        "code": "v",
+        "value": "Dictionaries"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "bffb075d7e312e58a686dcf932c135abcb66d74630ffd9fe6a4dd0b325e9585c"
+    },
+    "target_work_qid": "Q141991846",
+    "target_work_title": "ערמת חטים (ממנו)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572093050
+  },
+  {
+    "qid": "Q141747644",
+    "control_number": "990001350200205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "6135c1e812edf99ee27b748a90eee5780f4e6197fd1dc62d9b6fff9acc103a6a",
+    "property": "P921",
+    "value": "Q393148",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001350200205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001350200205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007293940205171.jsonld",
+      "https://www.nli.org.il/he/books/NNL_ALEPH990010256900205171/NLI"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Aggada"
+      },
+      {
+        "code": "v",
+        "value": "Commentaries"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "134dcc8e1b35bcbbebac59c57155ce7d275ebc3ad16e921054c87ffbcf8b4a43"
+    },
+    "target_work_qid": "Q141951704",
+    "target_work_title": "עין יעקב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538285
+  },
+  {
+    "qid": "Q141747645",
+    "control_number": "990001350210205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "6135c1e812edf99ee27b748a90eee5780f4e6197fd1dc62d9b6fff9acc103a6a",
+    "property": "P921",
+    "value": "Q393148",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001350210205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001350210205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007293940205171.jsonld",
+      "https://www.nli.org.il/he/books/NNL_ALEPH990010256900205171/NLI"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Aggada"
+      },
+      {
+        "code": "v",
+        "value": "Commentaries"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "134dcc8e1b35bcbbebac59c57155ce7d275ebc3ad16e921054c87ffbcf8b4a43"
+    },
+    "target_work_qid": "Q141951704",
+    "target_work_title": "עין יעקב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574538285
+  },
+  {
+    "qid": "Q141747785",
+    "control_number": "990001626410205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001626410205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001626410205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007293773005171.jsonld",
+      "https://www.academia.edu/27699371/",
+      "https://catalogue.bnf.fr/ark:/12148/cb119554900"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Cabala"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "d7cb3faec55600fcfb9c74fcfa4f1215029b87cf4f3501ebfacc61bb8d0ccf43"
+    },
+    "target_work_qid": "Q141754658",
+    "target_work_title": "יסודי תורת משה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572033804
+  },
+  {
+    "qid": "Q141747791",
+    "control_number": "990001641670205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "b93e216c701fef0a9d14bff6c083469efaf4af8c3dfa7518929a0e2071432437",
+    "property": "P921",
+    "value": "Q781402",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001641670205171&scope=KTIV&vid=KTIV",
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001641670205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007566778305171.jsonld",
+      "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990001641670205171/NLI"
+    ],
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Piyutim"
+      },
+      {
+        "code": "x",
+        "value": "History and criticism"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "ed2639da33278961ae6f7ce9eaa7f4a1359d2783bb06a30bcfc0ad9fa2f57399"
+    },
+    "target_work_qid": "Q141991998",
+    "target_work_title": "רשות לסדר עבודה על סדר אלפבית לק' שלמה ן' גבירול",
+    "first_creator_uid": 6935067,
+    "live_revision": 2564509673
   }
 ]
