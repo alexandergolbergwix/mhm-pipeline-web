@@ -34,6 +34,7 @@ For a reviewed subject or genre, the original record must support the specific w
 The audit requires the reviewed work title and a unique live work link that cites the same Ktiv record.
 The writer checks the first creator of the work and uses the current revisions of the manuscript, work, and topic.
 The audit requires the cited URL on the matching claim before it verifies the case.
+The [subject follow-up](../../../audits/2026-11-24-requirement-8-subject-follow-up.md) records the sources for the next group of subject claims.
 The [Weisz and Neubauer catalogue evidence](../../../audits/2026-11-24-weisz-edition-evidence.md), [inscription evidence](../../../audits/2026-11-24-inscription-proof-evidence.md), and [scan evidence](../../../audits/2026-11-24-requirement-8-scan-and-scope-evidence.md) describe the proof sources.
 The next proof batch adds [manuscript catalogue pages](../../../audits/2026-11-24-requirement-8-catalogue-pages.md), [Neubauer catalogue entries](../../../audits/2026-11-24-neubauer-additional-catalogue-evidence.md) and [transcribed colophons](../../../audits/2026-11-24-inscription-field-evidence.md).
 For an entry across several scan leaves, the claim links to its first leaf and the reference cites the leaf with the shelfmark.
