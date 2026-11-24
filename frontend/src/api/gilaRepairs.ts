@@ -112,7 +112,7 @@ export interface CorpusPreflightResult {
   requirements: Array<{point: number; counts: Partial<Record<PreflightStatus, number>>}>;
 }
 
-export type RepairScope = "people_and_sources" | "people_evidence_batch" | "people_authority";
+export type RepairScope = "people_and_sources" | "people_evidence_batch" | "people_authority" | "sources_append_only";
 
 export interface AutomaticRepairJob extends AuditJob {
   result: {

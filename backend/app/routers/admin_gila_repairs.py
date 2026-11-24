@@ -59,7 +59,7 @@ class RepairAllRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     people_links: dict[RepairQid, RepairQid] = Field(default_factory=dict, max_length=50)
     requirement: Literal[5] | None = None
-    scope: Literal["people_and_sources", "people_evidence_batch", "people_authority"] | None = None
+    scope: Literal["people_and_sources", "people_evidence_batch", "people_authority", "sources_append_only"] | None = None
 
 
 class PrepareRepair(AuditSelection):

@@ -715,6 +715,11 @@ export default function AdminGilaRepairs() {
             Repair people and current labels
           </button>
           <button className="button-ghost"
+            disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
+            onClick={() => void startAutomatic("sources_append_only")}>
+            Repair sources and inscriptions
+          </button>
+          <button className="button-ghost"
             disabled={!state || active || starting || automaticActive || startingAutomatic || Boolean(refreshError)}
             onClick={() => void start()}>
             {buildProgress ? "Rebuild in progress" : starting || active ? "Audit in progress"

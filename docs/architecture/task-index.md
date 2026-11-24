@@ -28,6 +28,7 @@
 | Prevent invalid new public items | [CREATE guards](blocks/wikidata-studio/creation-safety.md) + W-335/W-336; never infer absence from a conflict |
 | Audit Gila source facts or prepare historical repair proposals | [Gila source fidelity](blocks/wikidata-studio/gila-source-fidelity.md) + Rule W-305; canonical measurement is read-only |
 | Preflight and repair requirements 5 and 8 | [Corpus preflight](blocks/wikidata-studio/gila-corpus-repair.md) |
+| Add proof for catalogue citations, scans, genres, and inscriptions | [Add source evidence for requirement 8](blocks/wikidata-studio/gila-corpus-repair.md#add-source-evidence-for-requirement-8) |
 | Download verified manuscript data or proven claim errors | [Manuscript audit exports](blocks/wikidata-studio/gila-audit-exports.md) |
 | Audit the nine manuscript requirements and prepare a scoped repair | [Wikidata Manuscript Audit and Repair](blocks/wikidata-studio/admin-gila-repairs.md) |
 | Run all eligible manuscript repairs and verify the result | [Manuscript repair workspace](blocks/wikidata-studio/manuscript-repair-workspace.md) |

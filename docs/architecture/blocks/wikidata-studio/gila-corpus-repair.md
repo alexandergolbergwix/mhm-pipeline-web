@@ -5,6 +5,25 @@ The page sends `{"scope":"people_and_sources"}` to `POST /api/admin/wikidata-gil
 The existing `wikidata_gila_repair` job audits the corpus before and after the edits.
 The job uses the same audit rules for both reports.
 
+## Add source evidence for requirement 8
+
+Select **Repair sources and inscriptions** to run the same job with scope `sources_append_only`.
+The job audits the full MARC corpus before and after this repair.
+The job uses only source proposals for requirement 8.
+It adds a claim or appends evidence to an exact claim.
+It checks each plan for changes to existing claims, qualifiers, references, or labels before the first write.
+It uses the current item revision and checks the first creator before each write.
+
+The file `gila_reviewed_source_proof.json` binds each reviewed source to its control number, field occurrence, exact text hash, and Wikidata item.
+The audit requires a match for each of these values.
+For scan references, it also requires the exact existing claim ID and URL.
+For an autograph, it checks a separate MARC note and the live class item.
+The audit requires the cited URL on the matching claim before it verifies the case.
+The [Weisz and Neubauer catalogue evidence](../../../audits/2026-11-24-weisz-edition-evidence.md), [inscription evidence](../../../audits/2026-11-24-inscription-proof-evidence.md), and [scan evidence](../../../audits/2026-11-24-requirement-8-scan-and-scope-evidence.md) describe the proof sources.
+
+## Audit rules
+
+
 The audit uses full MARC to identify each person role and each source occurrence.
 `wikidata_gila_sources.py` retains MARC 510 and 581 citations, 590 record notes, 650 subjects, and 655 genres.
 It also retains 856 access links and 957 inscriptions.

@@ -45,6 +45,8 @@ def _source_patch(case, target, build_claim):
         {"property": "P248", "value": Q_KTIV, "type": "item", "value_namespace": "wikidata"},
         {"property": "P3959", "value": cn, "type": "external-id"},
         {"property": "P854", "value": nli_catalog_url(cn), "type": "url"},
+        *({"property": "P854", "value": url, "type": "url"} for url in proof.get("proof_urls", [])
+          if url != nli_catalog_url(cn)),
     ]
     qualifiers = [
         {"property": prop, "value": value, "type": "item" if prop == "P3831" else "string"}
@@ -70,8 +72,33 @@ def _exact_colophon(target, records):
     return ""
 
 
-async def plan_sources(cases, records, *, check, progress, inventory):
-    proposals = [c for c in cases if c.get("source_repair") or c["case_id"].startswith("historical:")]
+def source_additions_only(plan):
+    if plan.en_label is not None:
+        return False
+    existing = {
+        claim["id"]: claim for values in plan.target["claims"].values() for claim in values if claim.get("id")
+    }
+    for patch in plan.patches:
+        if "remove" in patch:
+            return False
+        if claim_id := patch.get("id"):
+            before = existing.get(claim_id)
+            if not before or (
+                {key: value for key, value in patch.items() if key != "references"}
+                != {key: value for key, value in before.items() if key != "references"}
+            ):
+                return False
+            references = before.get("references", [])
+            if patch.get("references", [])[:len(references)] != references:
+                return False
+    return True
+
+
+async def plan_sources(cases, records, *, check, progress, inventory, additions_only=False):
+    proposals = [
+        case for case in cases
+        if case.get("source_repair") or (not additions_only and case["case_id"].startswith("historical:"))
+    ]
     if not proposals:
         return []
     await progress("sources_plan", 0, len(proposals), "cases", "Check item revisions for source proposals.")

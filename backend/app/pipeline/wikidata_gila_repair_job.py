@@ -127,9 +127,12 @@ class RepairCycle:
         self.corpus = job.params.get("_gila_scope") == "people_and_sources"
         self.evidence_batch = job.params.get("_gila_scope") == "people_evidence_batch"
         self.authority_batch = job.params.get("_gila_scope") == "people_authority"
+        self.source_evidence_batch = job.params.get("_gila_scope") == "sources_append_only"
         self.people_only = self.evidence_batch or self.authority_batch or job.params.get("_gila_requirement") == 5
-        self.has_preflight = self.corpus or self.evidence_batch or self.authority_batch
-        self.preflight_points = (1, 5) if self.authority_batch else (5,) if self.evidence_batch else (5, 8)
+        self.has_preflight = self.corpus or self.evidence_batch or self.authority_batch or self.source_evidence_batch
+        self.preflight_points = {
+            "people_authority": (1, 5), "people_evidence_batch": (5,), "sources_append_only": (8,),
+        }.get(job.params.get("_gila_scope"), (5, 8))
         self.people_links = dict(job.params.get("_gila_people_links") or {})
         self.resolver = ExecutionCredentialResolver(
             job.params["_publication_credential"], publication_id=str(self.run_id),
@@ -183,9 +186,9 @@ class RepairCycle:
                             db, run_id=self.run_id, project_id=self.project_id,
                             kind=kind, created_by=self.actor, params={
                                 **(params or {}), "_gila_cycle_parent": str(self.id),
-                                **({"_gila_full_sources": True} if (self.corpus or self.people_only) and kind == JOB_KIND_WIKIDATA_GILA_AUDIT else {}),
+                                **({"_gila_full_sources": True} if (self.has_preflight or self.people_only) and kind == JOB_KIND_WIKIDATA_GILA_AUDIT else {}),
                                 **({"_gila_reuse_authority": True}
-                                   if self.authority_batch and kind == JOB_KIND_WIKIDATA_GILA_AUDIT else {}),
+                                   if (self.authority_batch or self.source_evidence_batch) and kind == JOB_KIND_WIKIDATA_GILA_AUDIT else {}),
                                 "_gila_cycle_step": phase, "repair_workspace": True,
                             },
                         )
@@ -419,9 +422,12 @@ class RepairCycle:
             from app.pipeline.wikidata_gila_people_evidence_batch import evidence_batch, keep_reviewed_targets
 
             cases, inventory, source_audit_id = evidence_batch(cases)
+        if self.source_evidence_batch:
+            cases = [row for row in cases if 8 in row["points"] and not row["case_id"].startswith("passage:")]
         open_ids = {
             row["case_id"] for row in cases
-            if row.get("person_role") or (self.corpus and 8 in row["points"]) or row.get("holding_label")
+            if row.get("person_role") or row.get("holding_label")
+            or ((self.corpus or self.source_evidence_batch) and 8 in row["points"])
         }
         counts: Counter[str] = Counter()
         self.result["people_batch"] = counts
@@ -478,7 +484,7 @@ class RepairCycle:
                 for qid, receipt in receipts.items()
                 if receipt["state"] in {"intent", "uncertain"} and open_ids.intersection(receipt["case_ids"])
             }
-        plans = await plan_people_batch(
+        plans = [] if self.source_evidence_batch else await plan_people_batch(
             cases, records, check=check, progress=progress, counts=counts,
             **({"inventory": inventory} if inventory is not None else {}), **planner_options,
         )
@@ -487,7 +493,10 @@ class RepairCycle:
 
             if inventory is None:
                 inventory = corpus_inventory(cases)
-                plans.extend(await plan_sources(cases, records, check=check, progress=progress, inventory=inventory))
+                plans.extend(await plan_sources(
+                    cases, records, check=check, progress=progress, inventory=inventory,
+                    additions_only=self.source_evidence_batch,
+                ))
             elif self.evidence_batch:
                 plans = keep_reviewed_targets(plans, inventory)
             elif self.authority_batch:
@@ -499,10 +508,15 @@ class RepairCycle:
                 plans = await confirm_corpus_plans(
                     plans, inventory, check=check, progress=progress, uncertain=uncertain,
                 )
+            if self.source_evidence_batch:
+                from app.pipeline.wikidata_gila_corpus_repair import source_additions_only
+
+                if not all(source_additions_only(plan) for plan in plans):
+                    raise ValueError("Source proof repairs must retain all existing claims and references.")
             await check_source()
             self.result["corpus_preflight"] = {
                 "records": len(records), "eligible_items": len(plans),
-                **({"source_audit_id": source_audit_id, "case_count": len(inventory)} if self.people_only else {}),
+                **({"source_audit_id": source_audit_id, "case_count": len(inventory)} if self.people_only or self.source_evidence_batch else {}),
                 "requirements": [
                     {"point": point, "counts": dict(Counter(
                         row["status"] for row in inventory.values() if point in row["points"]
@@ -519,7 +533,7 @@ class RepairCycle:
                 job.result = dict(self.result)
                 await db.commit()
             logger.info("Corpus preflight %s completed: %s.", self.id, self.result["corpus_preflight"])
-        with paced_wikidata_evidence_reads() if self.corpus or self.people_only else nullcontext():
+        with paced_wikidata_evidence_reads() if self.has_preflight or self.people_only else nullcontext():
             verified = await apply_planned_edits(
                 plans, credential=credential, check=check, check_source=check_source,
                 progress=progress, journal=journal, counts=counts, uncertain_qids=uncertain,
@@ -554,12 +568,12 @@ class RepairCycle:
             try:
                 verified_people_cases = await self.people_batch(audit)
             except (ValueError, RuntimeError) as exc:
-                if self.evidence_batch or self.authority_batch:
+                if self.evidence_batch or self.authority_batch or self.source_evidence_batch:
                     raise
                 logger.exception("The bulk person stage stopped.")
                 self.attention("people_evidence", str(exc))
         batch = self.result.get("people_batch", {})
-        if not self.corpus and not self.people_only and not (batch.get("uncertain") or batch.get("service_pause")):
+        if not self.has_preflight and not self.people_only and not (batch.get("uncertain") or batch.get("service_pause")):
             for scope in (() if self.people_links else ("original", "remaining")):
                 await self.references(scope, audit)
             repair_audit = audit

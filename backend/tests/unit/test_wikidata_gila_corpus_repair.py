@@ -190,3 +190,40 @@ async def test_holding_label_requires_the_original_occurrence_and_current_shelfm
     })
     assert not await corpus.plan_holding_labels([case], {CN: full}, check=AsyncMock(), inventory=inventory)
     assert inventory["source:holding"]["status"] == "needs_review"
+
+
+@pytest.mark.asyncio
+async def test_additions_only_preflight_omits_historical_removals(monkeypatch):
+    target = item()
+
+    async def load(reader, qids, items, check):
+        items["Q1"] = target
+
+    monkeypatch.setattr(corpus, "_load_items", load)
+    removal_plan = AsyncMock(side_effect=AssertionError("Read only additive source proposals."))
+    monkeypatch.setattr(corpus, "build_gila_repair_proposals", removal_plan)
+    exact = {**inscription(target), "qid": "Q1"}
+    historical = {"case_id": "historical:Q1", "qid": "Q1", "points": [8], "live_revision": 42}
+    rows = [exact, historical]
+    plans = await corpus.plan_sources(
+        rows, {CN: source()}, check=AsyncMock(), progress=AsyncMock(),
+        inventory=corpus.corpus_inventory(rows), additions_only=True,
+    )
+    assert [plan.case_ids for plan in plans] == [[exact["case_id"]]]
+    assert corpus.source_additions_only(plans[0])
+    plans[0].patches.append({"id": "Q1$source", "remove": ""})
+    assert not corpus.source_additions_only(plans[0])
+
+
+def test_reviewed_source_proof_requires_current_exact_marc_and_target(monkeypatch):
+    from app.pipeline.wikidata_gila_reviewed_sources import reviewed_source_proof
+    from hashlib import sha256
+
+    literal = "An exact catalogue citation"
+    proof = {"qid": "Q1", "source_sha256": sha256(literal.encode()).hexdigest()}
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_gila_reviewed_sources._reviewed_sources", lambda: {(CN, "581:1:1"): proof},
+    )
+    assert reviewed_source_proof(CN, "581:1:1", literal, item()) == proof
+    assert reviewed_source_proof(CN, "581:1:1", literal + ".", item()) is None
+    assert reviewed_source_proof(CN, "581:1:1", literal, item("Q2")) is None

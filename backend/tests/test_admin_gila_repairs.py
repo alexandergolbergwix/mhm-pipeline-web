@@ -38,6 +38,7 @@ def test_public_audit_snapshot_retains_exact_entities_across_batches(tmp_path):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scope", [
     {"requirement": 5}, {"scope": "people_evidence_batch"}, {"scope": "people_authority"},
+    {"scope": "sources_append_only"},
 ])
 async def test_automatic_repair_requires_admin_and_attaches_to_active_job(sample_run, db_session, monkeypatch, scope):
     client = sample_run["client"]

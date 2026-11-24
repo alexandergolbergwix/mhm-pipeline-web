@@ -11,6 +11,7 @@ from app.pipeline import marc_occurrences as marc
 from app.pipeline.marc_ingest import _COLOPHON_LABEL_RE, _TITLE_PAGE_PREFIX_RE, prepare_record_for_pipeline
 from app.pipeline.wikidata_gila_facts import _live_claims, _snak_value
 from app.pipeline.wikidata_gila_people import _heading, _work_target
+from app.pipeline.wikidata_gila_reviewed_sources import reviewed_source_items, reviewed_source_proof
 from app.pipeline.wikidata_source_choices import _claim_values
 from converter.wikidata.catalog_notes import is_catalog_note_placeholder
 from converter.wikidata.catalog_references import catalog_reference_code, catalog_reference_text
@@ -32,9 +33,10 @@ def _qualifiers(claim):
             for p in {r["property"] for r in claim["qualifiers"]}}
 
 
-def _source_reference(claim, cn):
+def _source_reference(claim, cn, proof_urls=()):
     return any(
         any(s.get("datavalue", {}).get("value") == cn for s in r.get("snaks", {}).get("P3959", []))
+        and set(proof_urls) <= {_snak_value(snak) for snak in r.get("snaks", {}).get("P854", [])}
         for r in claim["references"]
     )
 
@@ -66,7 +68,7 @@ def _same_inscription_scope(left, right):
 
 
 def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=None,
-                qualifiers=None, kind=None, language=None, dependencies=()):
+                qualifiers=None, kind=None, language=None, dependencies=(), proof_urls=()):
     """Retain every source occurrence and the exact evidence for eligible cases."""
     case = {
         "point": 8, "field": occurrence, "occurrence": occurrence, "source_field": occurrence,
@@ -87,7 +89,7 @@ def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=
     ):
         case["reason"] = "ambiguous_source_claim"
         return case
-    if existing and _source_reference(existing[0], cn):
+    if existing and _source_reference(existing[0], cn, proof_urls):
         case.update(
             verified=True, reason="verified_source_assertion",
             verified_target_qid=entity["id"], verified_target_revision=entity["lastrevid"],
@@ -108,9 +110,28 @@ def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=
             "qid": entity["id"], "revision": entity["lastrevid"], "property": pid, "value": value,
             "qualifiers": qualifiers, "type": kind, "language": language,
             "dependencies": {e["id"]: e["lastrevid"] for e in dependencies},
+            **({"proof_urls": list(proof_urls)} if proof_urls else {}),
         },
     )
     return case
+
+
+def _reviewed_source_case(cn, occurrence, source, entity, proof, entities):
+    pid, value = proof["property"], proof["value"]
+    qualifiers, language = proof["qualifiers"], proof.get("language")
+    exact = matching_claims(entity, pid, value, qualifiers, language=language)
+    if pid == "P1684" and not exact and entity.get("claims", {}).get(pid):
+        return source_case(cn, occurrence, source, "inscription_text_overlap")
+    if pid == "P953" and (len(exact) != 1 or exact[0]["claim_id"] != proof["claim_id"]):
+        return source_case(cn, occurrence, source, "access_link_requires_holding_proof")
+    dependency = entities.get(value) if proof["type"] == "item" else None
+    if proof["type"] == "item" and not dependency:
+        return source_case(cn, occurrence, source, "genre_scope_or_identity_required")
+    return source_case(
+        cn, occurrence, source, "reviewed_source_proof", entity=entity, pid=pid, value=value,
+        qualifiers=qualifiers, kind=proof["type"], language=language, proof_urls=(proof["proof_url"],),
+        dependencies=(dependency,) if dependency else (),
+    )
 
 
 def _quoted_inscription(row, source):
@@ -188,7 +209,7 @@ def source_topic_ids(records):
         if row["tag"] in {"650", "655"}
         for term in marc.values(row, "a")
         if (qid := (_static_genre_qid if row["tag"] == "655" else _static_subject_qid)(term))
-    }
+    } | reviewed_source_items()
 
 
 def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices):
@@ -227,6 +248,7 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
             source = source.strip()
             if not source:
                 continue
+            reviewed = reviewed_source_proof(cn, occurrence, source, source_entity, source_rows)
             if tag in {"510", "581"}:
                 normalized = " ".join(source.split())
                 if codes[normalized]:
@@ -244,8 +266,12 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
                         pid="P1343", value=proof["target_qid"], qualifiers={"P304": pages} if pages else {},
                         kind="item", dependencies=(publication,) if publication else (),
                     )
+                elif reviewed and not scopes:
+                    yield _reviewed_source_case(cn, occurrence, source, source_entity, reviewed, entities)
                 else:
                     yield source_case(cn, occurrence, source, "bibliographic_source_identity_unresolved")
+            elif reviewed and not scopes:
+                yield _reviewed_source_case(cn, occurrence, source, source_entity, reviewed, entities)
             elif tag == "590":
                 yield source_case(cn, occurrence, source, "catalogue_status_evidence")
             elif tag in {"500", "957"}:
