@@ -36,7 +36,8 @@ def test_public_audit_snapshot_retains_exact_entities_across_batches(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_automatic_repair_requires_admin_and_attaches_to_active_job(sample_run, db_session, monkeypatch):
+@pytest.mark.parametrize("scope", [{"requirement": 5}, {"scope": "people_evidence_batch"}])
+async def test_automatic_repair_requires_admin_and_attaches_to_active_job(sample_run, db_session, monkeypatch, scope):
     client = sample_run["client"]
     user = await db_session.get(User, sample_run["user_id"])
     monkeypatch.setattr(router, "_run_id", lambda: sample_run["run_id"])
@@ -56,7 +57,7 @@ async def test_automatic_repair_requires_admin_and_attaches_to_active_job(sample
     assert (await client.post(f"/api/runs/{sample_run['run_id']}/jobs", json={
         "kind": "wikidata_gila_repair", "params": {},
     })).status_code == 403
-    first = await client.post(endpoint, json={"requirement": 5})
+    first = await client.post(endpoint, json=scope)
     assert first.status_code == 200
     repeated = await client.post(endpoint)
     assert first.json()["id"] == repeated.json()["id"]
@@ -64,7 +65,9 @@ async def test_automatic_repair_requires_admin_and_attaches_to_active_job(sample
     job = await db_session.get(RunJob, spawn.call_args.args[0])
     assert job.params["_publication_credential"] == "fixture-envelope"
     assert job.params["_cycle"].startswith("gila-repair:")
-    assert job.params["_gila_requirement"] == 5
+    for key, value in scope.items():
+        assert job.params[f"_gila_{key}"] == value
+    assert (await client.post(endpoint, json={"scope": "people_and_sources"})).status_code == 409
     spawn.assert_called_once()
 
 

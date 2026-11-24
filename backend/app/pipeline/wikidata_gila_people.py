@@ -27,7 +27,8 @@ from app.pipeline.wikidata_gila_linked_people import (
 )
 from app.pipeline.wikidata_gila_mazal_viaf import viaf_matches, viaf_mazal_url
 from app.pipeline.wikidata_gila_reviewed_people import (
-    REVIEWED_WORK_TITLES, reviewed_linked_person_url, reviewed_primary_author,
+    REVIEWED_WORK_TITLES, reviewed_former_owner, reviewed_former_owner_url,
+    reviewed_linked_person_url, reviewed_primary_author,
 )
 from app.pipeline.wikidata_gila_scribe_colophons import (
     DELFOGIT_HEADING, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS,
@@ -728,7 +729,17 @@ def people_role_cases(
                         continue
                     linked_id, source_url = proof
                     candidate = entities.get(claim["value"], {})
-                    if linked_person_matches(candidate, linked_id) and has_linked_source(claim, cn, source_url):
+                    reviewed_author = (
+                        reviewed_primary_author(cn, row, variants, occurrences, linked_id)
+                        if role == "author" else None
+                    )
+                    if reviewed_author:
+                        if (
+                            target.get("id") == reviewed_author.work and reviewed_author.matches(candidate)
+                            and has_linked_source(claim, cn, source_url, reviewed_author.person.url)
+                        ):
+                            linked_proven.add(claim["value"])
+                    elif linked_person_matches(candidate, linked_id) and has_linked_source(claim, cn, source_url):
                         linked_proven.add(claim["value"])
                     elif role == "author" and (url := reviewed_linked_person_url(candidate, linked_id)) and has_linked_source(
                         claim, cn, source_url, url,
@@ -745,6 +756,15 @@ def people_role_cases(
                         claim["value"] for claim in _live_claims(target, "P50")
                         if reviewed.matches(entities.get(claim["value"], {}))
                         and has_linked_source(claim, cn, reviewed.person.url)
+                    )
+            if role == "former owner" and not uncertain and _eligible_role(row, variants, role):
+                owner = reviewed_former_owner(cn, record, occurrence, display)
+                if owner:
+                    linked_proven.update(
+                        claim["value"] for claim in _live_claims(target, "P3342")
+                        if _qualifier_values(claim, "P3831") == [Q_FORMER_OWNER_ROLE]
+                        and owner.matches(entities.get(claim["value"], {}))
+                        and has_linked_source(claim, cn, reviewed_former_owner_url(cn), owner.person.url)
                     )
             authority_proven = set(linked_proven)
             if role in _DATED_AUTHORITY_ROLES and not uncertain and not source_ids and not source_qids:

@@ -1,3 +1,4 @@
+from collections import Counter
 from copy import deepcopy
 from unittest.mock import AsyncMock
 
@@ -5,6 +6,7 @@ import pytest
 
 from app.pipeline import wikidata_gila_corpus_repair as corpus
 from app.pipeline.wikidata_gila_people_batch import PlannedEdit, repair_claim_builder, verify_claims
+from app.pipeline.wikidata_gila_people_evidence_batch import evidence_batch, keep_reviewed_targets
 from app.pipeline.wikidata_gila_sources import full_source_cases
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
 
@@ -98,3 +100,18 @@ def test_distinct_source_transcriptions_without_separate_folios_require_review()
     reviews = [row for row in rows if row["occurrence"].startswith("957:")]
     assert len(reviews) == 2
     assert all(row["reason"] == "inscription_text_overlap" and "source_repair" not in row for row in reviews)
+
+
+def test_people_evidence_batch_preserves_all_decisions_and_rejects_target_changes():
+    selected, inventory, _ = evidence_batch([])
+    assert not selected
+    assert Counter(row["person_role"] for row in inventory.values()) == {"author": 84, "scribe": 39, "former owner": 91}
+    assert all(row["reason"] == "case_absent_from_current_open_audit" for row in inventory.values())
+    case_id = next(iter(inventory))
+    decision = inventory[case_id]
+    case = {**decision, "qid": "Q2", "occurrence": decision["source_field"]}
+    selected, inventory, _ = evidence_batch([case, {**case, "case_id": "unrelated"}])
+    assert not selected
+    assert inventory[case_id]["reason"] == "source_occurrence_changed"
+    assert not keep_reviewed_targets([PlannedEdit(target=item("Q2"), patches=[], case_ids=[case_id], revisions={})], inventory)
+    assert inventory[case_id]["reason"] == "reviewed_target_changed"

@@ -58,7 +58,7 @@ class RepairAllRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     people_links: dict[RepairQid, RepairQid] = Field(default_factory=dict, max_length=50)
     requirement: Literal[5] | None = None
-    scope: Literal["people_and_sources"] | None = None
+    scope: Literal["people_and_sources", "people_evidence_batch"] | None = None
 
 
 class PrepareRepair(AuditSelection):
@@ -144,6 +144,8 @@ async def repair_all(auth: Admin, db: Database, body: RepairAllRequest | None = 
         job = await db.get(RunJob, exc.job_id)
         if job is None or job.created_by != auth.user.id:
             raise HTTPException(409, "Another administrator has an active repair job.") from exc
+        if body and body.scope and job.params.get("_gila_scope") != body.scope:
+            raise HTTPException(409, "A repair is active for a different scope.") from exc
     return serialise_job(job)
 
 

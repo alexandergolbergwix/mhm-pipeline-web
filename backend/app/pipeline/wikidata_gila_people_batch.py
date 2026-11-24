@@ -38,7 +38,8 @@ from app.pipeline.wikidata_gila_people import (
     _sole_work_for_added_author,
 )
 from app.pipeline.wikidata_gila_reviewed_people import (
-    REVIEWED_LINKED_PEOPLE, ReviewedWorkAuthor, reviewed_linked_person_url, reviewed_primary_author,
+    REVIEWED_LINKED_PEOPLE, ReviewedFormerOwner, ReviewedWorkAuthor, reviewed_former_owner,
+    reviewed_former_owner_url, reviewed_linked_person_url, reviewed_primary_author,
 )
 from app.pipeline.wikidata_gila_scribe_colophons import (
     ReviewedScribeNote, reviewed_scribe_exclusion, reviewed_scribe_source,
@@ -71,6 +72,7 @@ class PersonCase:
     dated_authority: bool = False
     reviewed_scribe: ReviewedScribeNote | None = None
     reviewed_author: ReviewedWorkAuthor | None = None
+    reviewed_owner: ReviewedFormerOwner | None = None
 
 
 def _source_fields(cases, records, *, include_reviewed=False):
@@ -101,19 +103,27 @@ def _source_fields(cases, records, *, include_reviewed=False):
 def source_cases(cases, records, bibs, frames=None):
     frames = frames or {}
     for case, cn, role, display, record, field, variants, occurrences in _source_fields(cases, records):
-        if proof := role_authority(
+        proof = role_authority(
             cn, field, variants, occurrences, role, record=record, bibs=bibs, frames=frames,
+        )
+        if role == "author" and _eligible_role(field, variants, role) and (
+            reviewed := reviewed_primary_author(cn, field, variants, occurrences, proof[0] if proof else "")
         ):
+            yield PersonCase(
+                case["case_id"], cn, case["qid"], role, display, "", proof[1] if proof else reviewed.person.url,
+                record, field, variants, occurrences, reviewed_author=reviewed,
+            )
+        elif proof:
             aid, source_url = proof
             yield PersonCase(
                 case["case_id"], cn, case["qid"], role, display, aid, source_url, record, field, variants, occurrences,
             )
-        elif role == "author" and _eligible_role(field, variants, role) and (
-            reviewed := reviewed_primary_author(cn, field, variants, occurrences)
+        elif role == "former owner" and _eligible_role(field, variants, role) and (
+            reviewed_owner := reviewed_former_owner(cn, record, case["occurrence"], display)
         ):
             yield PersonCase(
-                case["case_id"], cn, case["qid"], role, display, "", reviewed.person.url,
-                record, field, variants, occurrences, reviewed_author=reviewed,
+                case["case_id"], cn, case["qid"], role, display, "", reviewed_former_owner_url(cn),
+                record, field, variants, occurrences, reviewed_owner=reviewed_owner,
             )
 
 
@@ -215,7 +225,10 @@ def scoped_claim(case, person, target, build_claim):
     authority_urls = [case.source_url]
     if case.reviewed_scribe:
         authority_urls = list(case.reviewed_scribe.person.urls)
-    elif not case.reviewed_author and not linked_person_matches(person, case.authority):
+    elif reviewed := case.reviewed_author or case.reviewed_owner:
+        if reviewed.person.url != case.source_url:
+            authority_urls.append(reviewed.person.url)
+    elif not linked_person_matches(person, case.authority):
         reviewed_url = reviewed_linked_person_url(person, case.authority) if case.role == "author" else None
         authority_urls.append(reviewed_url or viaf_mazal_url(case.authority))
     if original and original["value"] == qid and has_linked_source(original, case.control, *authority_urls):
@@ -312,28 +325,37 @@ def _item_ids(entity, prop):
     return {value["id"] for value in _claim_values(entity, prop) if isinstance(value, dict) and value.get("id")}
 
 
-def plan_groups(proofs, candidates, entities, counts, viaf=None):
+def _preflight_reason(inventory, case_id, reason, *, review=False):
+    if inventory is not None:
+        inventory[case_id].update(reason=reason, status="needs_review" if review else "needs_evidence")
+
+
+def plan_groups(proofs, candidates, entities, counts, viaf=None, *, inventory=None):
     groups = defaultdict(list)
     for case in proofs:
-        reviewed = case.reviewed_scribe or case.reviewed_author
+        reviewed = case.reviewed_scribe or case.reviewed_author or case.reviewed_owner
         person_qid = reviewed.person.qid if reviewed else candidates.get(case.authority)
         person = entities.get(person_qid, {})
         target = target_for(case, entities.get(case.manuscript, {}), entities)
         signed = case.reviewed_scribe and case.reviewed_scribe.person.matches(person) and "Q5" in _item_ids(person, "P31")
         reviewed_link = case.role == "author" and reviewed_linked_person_url(person, case.authority)
-        primary_author = case.reviewed_author and case.reviewed_author.matches(person)
-        if not (signed or primary_author or reviewed_link or linked_person_matches(person, case.authority)) and (
+        exact_review = case.reviewed_author or case.reviewed_owner
+        if not (signed or (exact_review and exact_review.matches(person))
+                or reviewed_link or linked_person_matches(person, case.authority)) and (
             case.dated_authority or not viaf_matches(person, case.authority, (viaf or {}).get(case.authority))
         ):
             counts["no_exact_person"] += 1
+            if inventory is not None and inventory[case.case_id]["reason"] != "competing_public_person_matches":
+                _preflight_reason(inventory, case.case_id, "exact_public_person_match_unavailable")
         elif not target:
             counts["no_exact_target"] += 1
+            _preflight_reason(inventory, case.case_id, "exact_role_target_unavailable", review=True)
         else:
             groups[target["id"]].append((case, person))
     return groups
 
 
-def patches_for_group(group, target, build_claim, counts):
+def patches_for_group(group, target, build_claim, counts, *, inventory=None):
     """Combine sources for the same person claim and retain all case IDs."""
     patches = {}
     case_ids = defaultdict(list)
@@ -342,6 +364,7 @@ def patches_for_group(group, target, build_claim, counts):
         patch, reason = scoped_claim(case, person, target, build_claim)
         if reason:
             counts[reason] += 1
+            _preflight_reason(inventory, case.case_id, reason, review=True)
             continue
         prop = patch["mainsnak"]["property"]
         key = patch.get("id") or (prop, person["id"], _ROLE_QUALIFIERS.get(case.role))
@@ -359,7 +382,10 @@ def patches_for_group(group, target, build_claim, counts):
     if len(new_authors) > 1:
         conflicts.update(new_authors)
     for key in conflicts:
-        counts["conflicting_claim"] += len(case_ids.pop(key))
+        blocked = case_ids.pop(key)
+        counts["conflicting_claim"] += len(blocked)
+        for case_id in blocked:
+            _preflight_reason(inventory, case_id, "conflicting_claim", review=True)
         del patches[key]
     return list(patches.values()), [case_id for ids in case_ids.values() for case_id in ids]
 
@@ -381,7 +407,7 @@ def repair_claim_builder():
     return lambda statement: builder._build_claim(statement).get_json()
 
 
-async def plan_people_batch(cases, records, *, check, progress, counts):
+async def plan_people_batch(cases, records, *, check, progress, counts, inventory=None):
     """Resolve exact roles and prepare revision-bound patches without a login."""
     eligible_cases = [
         case for case in cases
@@ -418,6 +444,11 @@ async def plan_people_batch(cases, records, *, check, progress, counts):
     signed = list(reviewed_scribe_cases(eligible_cases, records))
     counts["reviewed_scribe_matches"] = len(signed)
     counts["source_matches"] = len(proofs) + len(signed)
+    if inventory is not None:
+        matched = {case.case_id for case in (*proofs, *signed)}
+        for case in eligible_cases:
+            if case["case_id"] not in matched and case["control_number"] not in bibs:
+                _preflight_reason(inventory, case["case_id"], "nli_catalogue_unavailable")
     if not proofs and not signed:
         return []
     await progress("people_plan", 0, len(proofs), "cases", "Match NLI authority IDs to existing Wikidata people.")
@@ -436,6 +467,7 @@ async def plan_people_batch(cases, records, *, check, progress, counts):
     }, viaf_progress)
     alternatives = await asyncio.to_thread(authority_items, {key for keys in viaf.values() for key in keys})
     candidates = {}
+    competing = set()
     for aid in identifiers:
         matches = direct.get(("P8189", aid)) or {
             qid for key in viaf.get(aid, ()) for qid in alternatives.get(key, ())
@@ -445,23 +477,28 @@ async def plan_people_batch(cases, records, *, check, progress, counts):
             matches = {reviewed.qid}
         if len(matches) == 1:
             candidates[aid] = next(iter(matches))
+        elif len(matches) > 1:
+            competing.add(aid)
+    for case in proofs:
+        if case.authority in competing:
+            _preflight_reason(inventory, case.case_id, "competing_public_person_matches", review=True)
     proofs.extend(signed)
     reader = ReferenceItemReader()
     entities = {}
     await _load_items(reader, {case.manuscript for case in proofs}, entities, check)
-    reviewed_people = {case.reviewed_author.person.qid for case in proofs if case.reviewed_author}
+    reviewed_people = {proof.person.qid for case in proofs for proof in (case.reviewed_author or case.reviewed_owner,) if proof}
     reviewed_people.update(case.reviewed_scribe.person.qid for case in signed)
     await _load_items(reader, set(candidates.values()) | reviewed_people | {
         qid for case in proofs if case.role == "author"
         for qid in _item_ids(entities.get(case.manuscript, {}), "P1574")
     }, entities, check)
-    groups = plan_groups(proofs, candidates, entities, counts, viaf)
+    groups = plan_groups(proofs, candidates, entities, counts, viaf, inventory=inventory)
     counts["target_items"] = len(groups)
     plans = []
     build_claim = repair_claim_builder()
     for qid, group in sorted(groups.items()):
         before = entities[qid]
-        patches, case_ids = patches_for_group(group, before, build_claim, counts)
+        patches, case_ids = patches_for_group(group, before, build_claim, counts, inventory=inventory)
         if not patches:
             continue
         sources = {qid}

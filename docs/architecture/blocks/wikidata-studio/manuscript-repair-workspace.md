@@ -30,6 +30,8 @@ The preparation worker binds each audited claim to the public revision it checke
 If the reference queue edits a public item, the job refreshes the audit before Publication.
 Conflicts in physical form or scribe identity require source review.
 
+Select **Repair 214 people cases** to preflight and repair the [reviewed cases for requirement 5](gila-people-evidence-batch.md).
+
 Open a requirement to see its verified count and remaining cases.
 Use the filters to find missing source facts, uncertain identities, and cases that need reference evidence.
 Use **Review with Kimi** to inspect the evidence for one supported case.

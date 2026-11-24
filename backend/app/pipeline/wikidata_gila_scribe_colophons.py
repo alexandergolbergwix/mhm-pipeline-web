@@ -1,7 +1,7 @@
 """Reviewed catalogue evidence for named manuscript scribes."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 
 from app.pipeline import marc_occurrences as marc
@@ -251,6 +251,11 @@ _REVIEWED_SCRIBE_SHIMON_MIZRAHI = ReviewedScribePerson(
 
 # Bind each identification to the full set of notes in the reviewed MARC field.
 _EXTRA_SCRIBE_NOTES = {
+    "990000551170205171": ReviewedScribeNote(
+        replace(_REVIEWED_SCRIBE_UZANI, urls=(*_REVIEWED_SCRIBE_UZANI.urls, "https://teman.org.il/content/11362")),
+        "700:1", "זכריה בן יוסף בן שלמה",
+        "9e367c9a9814ae4dcf0300bacd8454088d5d88756dddb75663a4d4d04a92af49",
+    ),
     "990001679060205171": ReviewedScribeNote(
         _REVIEWED_SCRIBE_SHIMON_MIZRAHI,
         "700:1", "מזרחי, שמעון בן יונה",

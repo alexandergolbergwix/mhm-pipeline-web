@@ -97,15 +97,19 @@ export interface PreflightCase {
   qid: string | null;
   control_number: string | null;
   source_field: string | null;
+  person_role?: string;
   reason: string;
   status: PreflightStatus;
 }
 
 export interface CorpusPreflightResult {
   records: number;
+  case_count?: number;
   eligible_items: number;
   requirements: Array<{point: number; counts: Partial<Record<PreflightStatus, number>>}>;
 }
+
+export type RepairScope = "people_and_sources" | "people_evidence_batch";
 
 export interface AutomaticRepairJob extends AuditJob {
   result: {
@@ -143,7 +147,8 @@ const endpoint = "/admin/wikidata-gila-repairs";
 export const GilaRepairs = {
   status: () => api.get<GilaStatus>(endpoint),
   start: () => api.post<AuditJob>(endpoint + "/start", {}),
-  repairAll: () => api.post<RunJobSnapshot>(endpoint + "/repair-all", {scope: "people_and_sources"}),
+  repairAll: (scope: RepairScope = "people_and_sources") =>
+    api.post<RunJobSnapshot>(endpoint + "/repair-all", {scope}),
   preflight: (params: URLSearchParams) =>
     api.get<{items: PreflightCase[]; total: number}>(endpoint + "/preflight?" + params),
   evidence: (auditId: string) => api.get<unknown>(endpoint + "/evidence?" + new URLSearchParams({audit_id: auditId})),

@@ -2,7 +2,7 @@ import {useCallback, useEffect, useState} from "react";
 import {useLocation} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
-import {GilaRepairs, type AuditDisposition, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus, type CorpusPreflightResult, type PreflightCase, type PreflightStatus} from "@/api/gilaRepairs";
+import {GilaRepairs, type AuditDisposition, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus, type CorpusPreflightResult, type PreflightCase, type PreflightStatus, type RepairScope} from "@/api/gilaRepairs";
 import type {ReferenceRepairStatus, ReferenceScope} from "@/api/referenceRepairs";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
@@ -88,6 +88,18 @@ const explanations: Record<string, string> = {
   manuscript_work_model_requires_decision: "Review the request to use both classes on one item. The project keeps the physical manuscript and its work in separate items.",
   item_has_other_creator: "Another account created this item. The manuscript repair system keeps it read-only.",
   inscription_text_overlap: "Compare the texts that share this inscription role and folio before an edit.",
+  exact_author_identity_required: "The work has a source-bound author name. Verify the person's authority record.",
+  exact_scribe_identity_required: "Verify the copyist's identity from the signed note and an authority source.",
+  public_provenance_and_identity_required: "Verify the named owner and the history of this copy in a public catalogue.",
+  competing_public_person_matches: "More than one Wikidata item matches the authority identifier.",
+  exact_public_person_match_unavailable: "The authority check found no unique verified Wikidata person.",
+  exact_role_target_unavailable: "The exact work or manuscript target still needs a check.",
+  exact_source_and_creator_verified: "The source, identity, and first creator passed the checks.",
+  source_occurrence_changed: "The source occurrence changed since the batch review.",
+  reviewed_target_changed: "The item target changed since the batch review.",
+  case_absent_from_current_open_audit: "This case is absent from the current open audit. Check its latest report.",
+  nli_catalogue_unavailable: "The worker could not read the NLI authority links for this record.",
+  conflicting_claim: "An existing statement conflicts with the proposed edit.",
 };
 
 function failureText(error: unknown) {
@@ -132,8 +144,11 @@ function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPrefli
     return () => { current = false; };
   }, [jobId, offset, open, point, status]);
   return <div className="space-y-2">
-    <h3 className="font-medium">Corpus preflight</h3>
-    <p className="text-sm muted">{summary.records.toLocaleString()} full MARC records · {summary.eligible_items.toLocaleString()} eligible project items</p>
+    <h3 className="font-medium">{summary.case_count == null ? "Corpus preflight" : "People evidence preflight"}</h3>
+    <p className="text-sm muted">
+      {summary.case_count == null ? `${summary.records.toLocaleString()} full MARC records` : `${summary.case_count.toLocaleString()} reviewed cases`}
+      {" · "}{summary.eligible_items.toLocaleString()} eligible project items
+    </p>
     {summary.requirements.map(row => <p className="text-sm muted" key={row.point}>
       Requirement {row.point} · {preflightStatuses.map(key =>
         `${(row.counts[key] ?? 0).toLocaleString()} ${preflightLabels[key].toLowerCase()}`).join(" · ")}
@@ -142,14 +157,14 @@ function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPrefli
       <summary className="cursor-pointer text-sm">Review preflight cases</summary>
       {open && <div className="mt-2 space-y-2 text-sm">
         <div className="flex flex-wrap gap-3">
-          <select aria-label="Preflight requirement" value={point} onChange={event => {
+          {summary.requirements.length > 1 && <select aria-label="Preflight requirement" value={point} onChange={event => {
             setPoint(event.target.value);
             setOffset(0);
           }}>
             <option value="">Both requirements</option>
             <option value="5">People, roles, and authority evidence</option>
             <option value="8">Sources, bibliography, and inscriptions</option>
-          </select>
+          </select>}
           <select aria-label="Preflight status" value={status} onChange={event => {
             setStatus(event.target.value);
             setOffset(0);
@@ -164,7 +179,9 @@ function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPrefli
               <thead><tr><th scope="col">Item</th><th scope="col">Source record</th><th scope="col">Decision</th></tr></thead>
               <tbody>{rows.items.map(row => <tr key={row.case_id} className="border-t border-glass-line">
                 <td className="py-2 pr-3">{row.qid ?? "—"}</td>
-                <td className="pr-3">{row.control_number ?? "—"} {row.source_field}</td>
+                <td className="pr-3">{row.control_number ?? "—"} {row.source_field}
+                  {row.person_role && <span className="block muted">{row.person_role}</span>}
+                </td>
                 <td>{preflightLabels[row.status]} · {explanations[row.reason] ?? row.reason.replaceAll("_", " ")}</td>
               </tr>)}</tbody>
             </table></div>
@@ -598,12 +615,12 @@ export default function AdminGilaRepairs() {
     }
   }
 
-  async function startAutomatic() {
+  async function startAutomatic(scope: RepairScope) {
     if (!state || startingAutomatic || automaticActive) return;
     setStartingAutomatic(true);
     setActionError("");
     try {
-      const repair = await GilaRepairs.repairAll();
+      const repair = await GilaRepairs.repairAll(scope);
       useRunJobs.getState().upsertJob(repair);
       useRunJobs.getState().ensurePolling();
       setState(value => value && {...value, automatic_repair: {
@@ -676,8 +693,13 @@ export default function AdminGilaRepairs() {
         <div className="flex flex-wrap gap-2">
           <button className="button-primary"
             disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
-            onClick={() => void startAutomatic()}>
+            onClick={() => void startAutomatic("people_and_sources")}>
             {automaticActive || startingAutomatic ? "Automatic repair in progress" : "Repair all eligible items"}
+          </button>
+          <button className="button-ghost"
+            disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
+            onClick={() => void startAutomatic("people_evidence_batch")}>
+            Repair 214 people cases
           </button>
           <button className="button-ghost"
             disabled={!state || active || starting || automaticActive || startingAutomatic || Boolean(refreshError)}
@@ -688,7 +710,7 @@ export default function AdminGilaRepairs() {
           </button>
         </div>
       </div>
-      <p className="text-sm muted">Repair all eligible items checks the full MARC corpus for requirements 5 and 8. The job verifies the evidence and creator before it applies each eligible edit.</p>
+      <p className="text-sm muted">The people batch checks the 214 reviewed author, scribe, and former-owner cases. The job applies the edits that pass the evidence and creator checks.</p>
       {automatic && <section id="automatic-manuscript-repair" tabIndex={-1}
         aria-label="Automatic manuscript repair" aria-live="polite"
         className="space-y-2 rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4">
@@ -739,7 +761,8 @@ export default function AdminGilaRepairs() {
                   <th className="py-2" scope="col">After</th>
                 </tr></thead>
                 <tbody>{automaticResult.requirement_comparison.filter(row =>
-                  !automaticResult.corpus_preflight || [5, 8].includes(row.point)).map(row =>
+                  !automaticResult.corpus_preflight ||
+                  automaticResult.corpus_preflight.requirements.some(summary => summary.point === row.point)).map(row =>
                   <tr className="border-t border-glass-line" key={row.point}>
                     <th className="py-2 pr-4 font-normal" scope="row">{row.title}</th>
                     <td className="whitespace-nowrap py-2 pr-4 tabular-nums">{coverageText(row.before)}</td>

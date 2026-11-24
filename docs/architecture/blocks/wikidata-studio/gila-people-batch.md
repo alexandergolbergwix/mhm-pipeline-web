@@ -4,6 +4,7 @@ The [corpus repair](gila-corpus-repair.md) uses this person plan in the `wikidat
 The job audits all nine requirements before and after the edits.
 Send `{"requirement": 5}` to the same administrator route to limit edits to requirement 5.
 The legacy `people_links` selection still uses the scoped Publication release.
+Use the [214-case preflight](gila-people-evidence-batch.md) for the reviewed author, scribe, and former owner cases.
 
 The bulk stage reads one NLI Alma JSON-LD record for each eligible manuscript.
 It validates the exact MMS ID and uses the full MARC record from the first audit.

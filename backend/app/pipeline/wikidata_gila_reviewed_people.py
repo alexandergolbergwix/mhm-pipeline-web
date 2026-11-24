@@ -1,8 +1,11 @@
 """Cross-references for reviewed NLI authorities with different identifiers."""
 
 from dataclasses import dataclass
+from hashlib import sha256
+from urllib.parse import urlencode
 
 from app.pipeline import marc_occurrences as marc
+from app.pipeline.wikidata_gila_catalogue_authority import NLI_SRU
 from app.pipeline.wikidata_source_choices import _claim_values
 
 
@@ -51,6 +54,19 @@ REVIEWED_LINKED_PEOPLE = {
         "Q142271125", "P8189", "987007520832505171", "https://www.nli.org.il/he/a-topic/987007520832505171",
         frozenset({"987007520832505171"}),
     ),
+    "987007308192805171": ReviewedLinkedPerson(
+        "Q125872350", None, "יעקב מארג'י",
+        "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007308192805171.jsonld",
+        frozenset({"987007308192805171"}), sitelink="hewiki",
+    ),
+    "987007496358505171": ReviewedLinkedPerson(
+        "Q120599174", "P244", "nb2008014478", "https://id.loc.gov/authorities/names/nb2008014478.html",
+        frozenset({"987007496358505171"}),
+    ),
+    "987007568307305171": ReviewedLinkedPerson(
+        "Q1949059", "P227", "119038927", "https://d-nb.info/gnd/119038927",
+        frozenset({"987007568307305171"}),
+    ),
 }
 
 
@@ -80,6 +96,8 @@ class ReviewedWorkAuthor:
     work: str
     heading: str
     person: ReviewedLinkedPerson
+    catalogue_id: str = ""
+    dates: str = ""
 
     def matches(self, candidate):
         return _matches_reviewed_person(candidate, self.person)
@@ -128,16 +146,100 @@ _REVIEWED_PRIMARY_AUTHORS = {
             frozenset(), sitelink="enwiki",
         ),
     ),
+    "990001737540205171": ReviewedWorkAuthor(
+        "Q141755001", "שוונטר, דניאל", ReviewedLinkedPerson(
+            "Q77509", "P227", "117417904", "https://www.deutsche-biographie.de/sfz45388.html",
+            frozenset({"987007312199205171"}),
+        ),
+    ),
+    "990001515370205171": ReviewedWorkAuthor(
+        "Q141755064", "פירוז, דניאל בן משה ירושלמי בן ישעיה", ReviewedLinkedPerson(
+            "Q142259384", "P973", "https://www.orientalstudies.ru/rus/images/pdf/belkina_2024.pdf#page=12",
+            "https://www.orientalstudies.ru/rus/images/pdf/belkina_2024.pdf#page=12", frozenset(),
+        ),
+    ),
+    "990000650360205171": ReviewedWorkAuthor(
+        "Q141754601", "מולן, יעקב בן משה", REVIEWED_LINKED_PEOPLE["987007265556505171"],
+        catalogue_id="987007265556505171", dates="1360-1427",
+    ),
+    "990001973970205171": ReviewedWorkAuthor(
+        "Q141754995", "רינטו די מודינה", ReviewedLinkedPerson(
+            "Q142065938", "P8034", "495/222282",
+            "https://www.nli.org.il/media/26037/vaticanhebmss.pdf#page=537", frozenset(),
+        ),
+    ),
 }
 
 
-def reviewed_primary_author(control, field, variants, occurrences):
+def reviewed_primary_author(control, field, variants, occurrences, catalogue_id=""):
     proof = _REVIEWED_PRIMARY_AUTHORS.get(control)
     if (
-        proof and marc.source_key(field) == "100:1"
-        and marc.values(field, "a") == [proof.heading]
+        proof and proof.catalogue_id == catalogue_id and marc.source_key(field) == "100:1"
+        and [name.strip().rstrip(",") for name in marc.values(field, "a")] == [proof.heading]
+        and (not proof.dates or marc.values(field, "d") == [proof.dates])
         and sum(other["tag"] == "100" for other, _ in occurrences) == 1
         and not any(marc.values(variant, code) for variant in variants for code in ("0", "1", "j", "t"))
     ):
         return proof
+    return None
+
+
+@dataclass(frozen=True)
+class ReviewedFormerOwner:
+    person: ReviewedLinkedPerson
+    occurrence: str
+    heading: str
+    note_occurrence: str
+    note_digest: str
+
+    def matches(self, candidate):
+        return _matches_reviewed_person(candidate, self.person)
+
+
+_REVIEWED_FORMER_OWNERS = {
+    "990001740360205171": ReviewedFormerOwner(
+        ReviewedLinkedPerson(
+            "Q303765", "P227", "101528258X", "https://d-nb.info/gnd/101528258X",
+            frozenset({"987007259574305171"}),
+        ),
+        "700:1", "כרמולי, אליקים", "561:2",
+        "967205f96b3d733467383851f692e82e72b8191eb2e8afea7d3c874a0a5b7cab",
+    ),
+    "990001347920205171": ReviewedFormerOwner(
+        ReviewedLinkedPerson(
+            "Q6726127", "P244", "nb2008026991",
+            "https://hdbg.eu/biografien/detail/ariel-loeb-ben-abraham-mer-berlin/10251", frozenset(),
+        ),
+        "700:2", "ברלין, ליב", "561:2",
+        "a3df68311f1cd0043b8526331b028f756ceffa93933b185d789ddd715e500abd",
+    ),
+    "990000953620205171": ReviewedFormerOwner(
+        ReviewedLinkedPerson(
+            "Q111081113", "P227", "1053150970", "https://etshaimmanuscripts.nl/about/",
+            frozenset({"987007501465505171"}),
+        ),
+        "700:1", "מונטיזינוס, דוד", "561:1",
+        "d559eb8dc0654680d13c7b851234e3693cc24537d9acd202e316168529592042",
+    ),
+}
+
+
+def reviewed_former_owner_url(control):
+    return NLI_SRU + "?" + urlencode({
+        "version": "1.2", "operation": "searchRetrieve",
+        "query": f"alma.mms_id={control}", "recordSchema": "marcxml",
+    })
+
+
+def reviewed_former_owner(control, record, occurrence, heading):
+    proof = _REVIEWED_FORMER_OWNERS.get(control)
+    if not proof or (proof.occurrence, proof.heading) != (occurrence, heading):
+        return None
+    for row in marc.occurrences(record, "561"):
+        if (marc.source_key(row) != proof.note_occurrence or row["indicators"][0] == "0"
+                or any(marc.values(row, code) for code in ("3", "5"))):
+            continue
+        notes = marc.values(row, "a")
+        if len(notes) == 1 and sha256(notes[0].encode()).hexdigest() == proof.note_digest:
+            return proof
     return None
