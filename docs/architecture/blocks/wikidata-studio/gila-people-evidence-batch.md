@@ -1,6 +1,6 @@
 # Preflight for the 214 people cases
 
-Select **Repair 214 people cases** in **Wikidata Manuscript Audit and Repair**.
+The administrator API retains the earlier 214-case scope. Use the [full preflight](gila-authority-and-label-repair.md) for a new run.
 This action starts one `wikidata_gila_repair` job with scope `people_evidence_batch`.
 The job runs a fresh audit, checks the evidence, applies eligible repairs, and audits the result.
 The page shows the preflight decisions and the before and after counts for requirement 5.

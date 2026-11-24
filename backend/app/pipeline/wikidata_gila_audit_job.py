@@ -19,12 +19,13 @@ from sqlalchemy import select
 from app.auth.admin import ROLE_ADMIN
 from app.db import session_scope
 from app.models.project import Membership, Project
-from app.models.run_job import JOB_KIND_WIKIDATA_GILA_AUDIT, RunJob
+from app.models.run_job import JOB_KIND_WIKIDATA_GILA_AUDIT, JOB_KIND_WIKIDATA_GILA_REPAIR, RunJob
 from app.models.user import User
 from app.pipeline.hmo_canonical_wikidata import filter_public_wikidata_items
 from app.pipeline.marc_verify_context import canonical_control_number, load_run_marc_records
 from app.pipeline.run_job_service import finish_job, is_cancel_requested, update_job_progress
 from app.pipeline.wikidata_gila_audit import build_gila_audit_report
+from app.pipeline.wikidata_gila_authority_cache import AuthorityEvidence, CACHE_KEY
 from app.pipeline.wikidata_gila_completion import build_gila_completion_packet
 from app.pipeline.wikidata_qid_ledger import (
     ledger_key_for_item,
@@ -325,6 +326,7 @@ def _case_inventory(packet, audit):
         "expected_author",
         "expected_value",
         "source_repair",
+        "holding_label",
         "expected_qualifiers",
         "expected_precision",
         "expected_calendar",
@@ -519,6 +521,29 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             ledger = await load_global_ledger(db, is_test=False)
             canonical = await _canonical_items(projection, run_id, snapshot, ledger)
             proof_authority = await load_authority_evidence(db, run_id)
+            fingerprint = gila_record_fingerprint(records)
+            cache = None
+            repair_receipts = []
+            parent_id = job.params.get("_gila_cycle_parent")
+            parent = await db.get(RunJob, uuid.UUID(parent_id)) if parent_id else None
+            if parent and parent.run_id == run_id and parent.kind == JOB_KIND_WIKIDATA_GILA_REPAIR:
+                if job.params.get("_gila_cycle_step") == "verify":
+                    repair_receipts = [
+                        {"qid": qid, "status": "verified", "corrected": True,
+                         "after_revision": receipt.get("after_revision")}
+                        for qid, receipt in (parent.params.get("_gila_people_receipts") or {}).items()
+                        if receipt.get("state") == "verified"
+                    ]
+                if job.params.get("_gila_reuse_authority"):
+                    stored = parent.params.get(CACHE_KEY)
+                    if stored is None:
+                        stored = await db.scalar(select(RunJob.params[CACHE_KEY]).where(
+                            RunJob.run_id == run_id,
+                            RunJob.kind == KIND,
+                            RunJob.status == "succeeded",
+                            RunJob.params[CACHE_KEY]["fingerprint"].as_string() == fingerprint,
+                        ).order_by(RunJob.finished_at.desc()).limit(1))
+                    cache = AuthorityEvidence.load(stored, fingerprint)
             source_job_id = job.params.get("_gila_people_source_audit")
             people_marc = None
             if source_job_id:
@@ -526,7 +551,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
                 if (source_job is None or source_job.run_id != run_id or source_job.kind != KIND
                     or source_job.status != "succeeded"
                     or source_job.params.get("_gila_cycle_parent") != job.params.get("_gila_cycle_parent")
-                    or source_job.params.get("_gila_source_fingerprint") != gila_record_fingerprint(records)):
+                    or source_job.params.get("_gila_source_fingerprint") != fingerprint):
                     raise ValueError("The MARC source changed since the first audit.")
                 people_marc = gila_people_marc(source_job)
         if people_marc is None:
@@ -546,6 +571,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             set(mappings.values())
             | set(seed["manifest"]["qids"])
             | {row["qid"] for row in inventory}
+            | {row["qid"] for row in repair_receipts}
         )
         known.update(
             item.get("existing_qid") for item in canonical if _live_qid(item.get("existing_qid"))
@@ -606,9 +632,14 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
                 "message": "Verify the NLI authority links cited on live statements.",
             })
 
-        linked_bibs = await read_linked_bibs(linked_controls, linked_progress)
-        linked_frames = await read_bibframes(frame_controls, linked_progress)
-        linked_viaf = await read_viaf_mazal(viaf_mazal_ids, linked_progress)
+        async def read(group, requested, fetch):
+            return await cache.read(group, requested, fetch, linked_progress) if cache else await fetch(
+                requested, linked_progress,
+            )
+
+        linked_bibs = await read("bibs", linked_controls, read_linked_bibs)
+        linked_frames = await read("frames", frame_controls, read_bibframes)
+        linked_viaf = await read("viaf", viaf_mazal_ids, read_viaf_mazal)
         from app.pipeline.wikidata_gila_gnd_evidence import cited_gnd_ids, read_gnd_sources
 
         gnd_ids = {identifier for qid in mappings.values() if qid in entities
@@ -639,6 +670,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             build_gila_completion_packet,
             audit,
             entities,
+            repair_receipts=repair_receipts,
             read_only_qids=frozenset(row["qid"] for row in inventory if not row["creator_matches"]),
         )
         cases = _case_inventory(packet, audit)
@@ -718,6 +750,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
                 "_gila_source_fingerprint": digest,
                 "_gila_build_revision": snapshot.revision,
                 "_gila_build_digest": snapshot.digest,
+                **({CACHE_KEY: cache.dump()} if cache is not None else {}),
             }
             await db.commit()
         await finish_job(
@@ -736,6 +769,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             }
             | {
                 "people_coverage": people_summary,
+                **({"authority_reads_reused": cache.reused} if cache is not None else {}),
                 "full_source_coverage": audit["full_source_coverage"],
                 "public_requested": len(seen),
                 "public_read": len(entities),

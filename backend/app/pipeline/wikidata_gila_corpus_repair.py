@@ -4,6 +4,7 @@ import asyncio
 from collections import defaultdict
 from copy import deepcopy
 
+from app.pipeline.wikidata_gila_audit import current_holding_label
 from app.pipeline.wikidata_gila_execution import repair_claims, semantic_entity
 from app.pipeline.wikidata_gila_people_batch import PlannedEdit, _load_items, repair_claim_builder
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals, validate_gila_repair_proposal
@@ -15,18 +16,18 @@ from converter.wikidata.item_models import WikidataStatement
 from converter.wikidata.property_mapping import Q_KTIV, nli_catalog_url
 
 
-def corpus_inventory(cases):
+def corpus_inventory(cases, points=frozenset({5, 8})):
     return {
         case["case_id"]: {
             "case_id": case["case_id"],
-            "points": [point for point in case["points"] if point in {5, 8}],
+            "points": [point for point in case["points"] if point in points],
             "qid": case["qid"] if "qid" in case else None,
             "control_number": case.get("control_number"),
             "source_field": case.get("source_field"),
             "reason": case.get("completion_reason") or case.get("reason") or "source_evidence_required",
             "status": "other_creator" if case.get("completion_reason") == "item_has_other_creator" else "needs_evidence",
         }
-        for case in cases if {5, 8}.intersection(case["points"])
+        for case in cases if points.intersection(case["points"])
         and not case["case_id"].startswith("passage:")
     }
 
@@ -110,6 +111,27 @@ async def plan_sources(cases, records, *, check, progress, inventory):
     return plans
 
 
+async def plan_holding_labels(cases, records, *, check, inventory):
+    candidates = [case for case in cases if case.get("holding_label") and case.get("qid")]
+    if not candidates:
+        return []
+    items = {}
+    await _load_items(ReferenceItemReader(), {case["qid"] for case in candidates}, items, check)
+    plans = []
+    for case in candidates:
+        qid = case["qid"]
+        revision = case.get("live_revision")
+        target = items.get(qid)
+        cn = case["control_number"]
+        if not _is_current(items, qid, revision) or (
+            current_holding_label(cn, records.get(cn), target) != case["holding_label"]
+        ):
+            inventory[case["case_id"]].update(status="needs_review", reason="source_or_target_revision_changed")
+            continue
+        plans.append(PlannedEdit(target, [], [case["case_id"]], {qid: revision}, en_label=case["holding_label"]))
+    return plans
+
+
 def _patch_key(patch):
     if patch.get("id"):
         return patch["id"]
@@ -119,6 +141,9 @@ def _patch_key(patch):
 def _merge_group(group):
     patches = {}
     revisions = {}
+    labels = {plan.en_label for plan in group if plan.en_label is not None}
+    if len(labels) > 1:
+        return None
     for plan in group:
         if any(revisions.get(key, value) != value for key, value in plan.revisions.items()):
             return None
@@ -152,7 +177,8 @@ def _merge_group(group):
                         references.append(reference)
                 patches[key] = combined
     return PlannedEdit(group[0].target, list(patches.values()),
-                       [case_id for plan in group for case_id in plan.case_ids], revisions)
+                       [case_id for plan in group for case_id in plan.case_ids], revisions,
+                       en_label=next(iter(labels), None))
 
 
 async def confirm_corpus_plans(plans, inventory, *, check, progress, uncertain):

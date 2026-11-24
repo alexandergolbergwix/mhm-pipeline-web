@@ -58,7 +58,7 @@ class RepairAllRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     people_links: dict[RepairQid, RepairQid] = Field(default_factory=dict, max_length=50)
     requirement: Literal[5] | None = None
-    scope: Literal["people_and_sources", "people_evidence_batch"] | None = None
+    scope: Literal["people_and_sources", "people_evidence_batch", "people_authority"] | None = None
 
 
 class PrepareRepair(AuditSelection):
@@ -152,7 +152,7 @@ async def repair_all(auth: Admin, db: Database, body: RepairAllRequest | None = 
 @router.get("/preflight")
 async def corpus_preflight(
     auth: Admin, db: Database, job_id: uuid.UUID,
-    point: Literal["5", "8"] | None = None,
+    point: Literal["1", "5", "8"] | None = None,
     status: Literal["eligible", "needs_evidence", "other_creator", "needs_review"] | None = None,
     offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
 ):

@@ -286,7 +286,7 @@ def apply_claims(entity, patches):
     return expected, additions, old_claim_ids
 
 
-def verify_claims(before, after, revision, patches):
+def verify_claims(before, after, revision, patches, *, en_label=None):
     if revision <= before["lastrevid"] or after.get("lastrevid") != revision:
         return False
     expected, additions, old_ids = apply_claims(before, patches)
@@ -301,15 +301,17 @@ def verify_claims(before, after, revision, patches):
             return False
         added["id"] = matches[0]
         old_ids.add(matches[0])
+    if en_label is not None:
+        expected["labels"]["en"] = {"value": en_label, "language": "en"}
     return semantic_entity(after) == semantic_entity(expected)
 
 
 class PersonRepairGateway(LiveRepairGateway):
-    def _write_parameters(self, qid, revision, claims, token):
-        data = super()._write_parameters(qid, revision, claims, token)
+    def _write_parameters(self, qid, revision, claims, token, en_label=None):
+        data = super()._write_parameters(qid, revision, claims, token, en_label)
         return {
             **data, "assertuser": GILA_CREATOR_NAME,
-            "summary": "Repair verified manuscript claims from NLI MARC and exact source evidence",
+            "summary": "Repair verified manuscript data from NLI MARC and exact source evidence",
         }
 
 
@@ -396,6 +398,7 @@ class PlannedEdit:
     patches: list[dict]
     case_ids: list[str]
     revisions: dict[str, int]
+    en_label: str | None = None
 
 
 def repair_claim_builder():
@@ -407,7 +410,7 @@ def repair_claim_builder():
     return lambda statement: builder._build_claim(statement).get_json()
 
 
-async def plan_people_batch(cases, records, *, check, progress, counts, inventory=None):
+async def plan_people_batch(cases, records, *, check, progress, counts, inventory=None, evidence=None):
     """Resolve exact roles and prepare revision-bound patches without a login."""
     eligible_cases = [
         case for case in cases
@@ -415,6 +418,18 @@ async def plan_people_batch(cases, records, *, check, progress, counts, inventor
         and all(case.get(key) for key in ("qid", "source_value", "control_number", "occurrence"))
     ]
     counts.update(open_cases=sum(case.get("points") == [5] and bool(case.get("person_role")) for case in cases))
+    if evidence is not None:
+        bound_ids = {
+            case["case_id"]
+            for case, _, role, _, _, row, variants, _ in _source_fields(
+                eligible_cases, records, include_reviewed=True,
+            )
+            if _eligible_role(row, variants, role)
+        }
+        for case in cases:
+            if case["points"] == [5] and case["case_id"] not in bound_ids:
+                _preflight_reason(inventory, case["case_id"], "role_or_source_scope_requires_review", review=True)
+        eligible_cases = [case for case in eligible_cases if case["case_id"] in bound_ids]
     controls = {case["control_number"] for case in eligible_cases}
     counts["supported_roles"] = len(eligible_cases)
 
@@ -422,7 +437,10 @@ async def plan_people_batch(cases, records, *, check, progress, counts, inventor
         await check()
         await progress("people_evidence", processed, total, "records", "Read NLI authority links for open person cases.")
 
-    bibs = await read_linked_bibs(controls, read_progress)
+    async def read(group, requested, fetch, report):
+        return await evidence.read(group, requested, fetch, report) if evidence else await fetch(requested, report)
+
+    bibs = await read("bibs", controls, read_linked_bibs, read_progress)
     counts["unavailable_catalogues"] = len(controls - bibs.keys())
     direct_proofs = list(source_cases(eligible_cases, records, bibs))
     direct_keys = {case.case_id for case in direct_proofs}
@@ -433,7 +451,7 @@ async def plan_people_batch(cases, records, *, check, progress, counts, inventor
         await progress("people_bibframe", processed, total, "records",
                        "Match original MARC fields to NLI BIBFRAME agents.")
 
-    frames = await read_bibframes({case["control_number"] for case in remaining}, frame_progress)
+    frames = await read("frames", {case["control_number"] for case in remaining}, read_bibframes, frame_progress)
     proofs = [*direct_proofs, *source_cases(remaining, records, bibs, frames)]
     counts["bibframe_matches"] = len(proofs) - len(direct_proofs)
     proven_ids = {case.case_id for case in proofs}
@@ -450,6 +468,8 @@ async def plan_people_batch(cases, records, *, check, progress, counts, inventor
             if case["case_id"] not in matched and case["control_number"] not in bibs:
                 _preflight_reason(inventory, case["case_id"], "nli_catalogue_unavailable")
     if not proofs and not signed:
+        if evidence is not None:
+            counts["reused_authority_reads"] = evidence.reused
         return []
     await progress("people_plan", 0, len(proofs), "cases", "Match NLI authority IDs to existing Wikidata people.")
     identifiers = {case.authority for case in proofs if case.authority}
@@ -460,11 +480,13 @@ async def plan_people_batch(cases, records, *, check, progress, counts, inventor
         await progress("people_viaf", processed, total, "identities",
                        "Check exact VIAF cross-references for NLI authorities.")
 
-    viaf = await read_viaf_mazal({
+    viaf = await read("viaf", {
         case.authority for case in proofs if case.authority and not case.dated_authority
         and not direct.get(("P8189", case.authority))
         and (case.role != "author" or case.authority not in REVIEWED_LINKED_PEOPLE)
-    }, viaf_progress)
+    }, read_viaf_mazal, viaf_progress)
+    if evidence is not None:
+        counts["reused_authority_reads"] = evidence.reused
     alternatives = await asyncio.to_thread(authority_items, {key for keys in viaf.values() for key in keys})
     candidates = {}
     competing = set()
@@ -558,6 +580,8 @@ async def apply_planned_edits(
 
         revision = before["lastrevid"]
         receipt = {"qid": qid, "revision": revision, "case_ids": case_ids, "claims": patches}
+        if plan.en_label is not None:
+            receipt["en_label"] = plan.en_label
         updated = None
         for attempt in range(3):
             if attempt:
@@ -573,7 +597,7 @@ async def apply_planned_edits(
             await journal("intent", receipt)
             logger.info("Person repair intent %s at revision %s for %s cases.", qid, revision, len(case_ids))
             try:
-                updated = await gateway.write(qid, revision, patches)
+                updated = await gateway.write(qid, revision, patches, en_label=plan.en_label)
                 break
             except WriteRejectedError as error:
                 await journal("rejected", {**receipt, "code": error.code})
@@ -604,7 +628,7 @@ async def apply_planned_edits(
                     break
                 await asyncio.sleep(delay)
                 fresh = await reader.fetch(qid)
-            if not verify_claims(before, fresh, updated, patches):
+            if not verify_claims(before, fresh, updated, patches, en_label=plan.en_label):
                 raise ValueError(f"The complete item read-back differs for {qid} at revision {updated}.")
         except Exception:
             await journal("uncertain", {**receipt, "after_revision": updated})
@@ -617,6 +641,7 @@ async def apply_planned_edits(
         logger.info("Person repair verified %s at revision %s for %s cases.", qid, updated, len(case_ids))
         counts["edited_items"] += 1
         counts["claims_written"] += len(patches)
+        counts["holding_labels_written"] += int(plan.en_label is not None)
         verified.extend(case_ids)
         written[qid] = updated
     await progress("corpus_apply", min(index + 1, len(plans)), len(plans), "items",

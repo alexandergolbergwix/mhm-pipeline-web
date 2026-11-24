@@ -370,6 +370,8 @@ def build_gila_completion_packet(
             "identity_reviews": sum(row.get("classification") == "identity_or_scope_uncertain" for row in case_rows),
             "pending_repairs": sum(row["disposition"] == "repair_required" for row in case_rows),
             "unchecked_passages": len(passage_rows),
+            "verified_repair_receipts": len(corrected),
+            "repair_receipts_needing_review": len(unproven),
             "records_without_passage_inventory": sum("source_passages" not in row for row in records),
             "model_decision": "The project uses separate physical manuscript and work items. Gila requested both classes on one item.",
         },

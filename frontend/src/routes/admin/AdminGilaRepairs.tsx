@@ -95,6 +95,7 @@ const explanations: Record<string, string> = {
   exact_public_person_match_unavailable: "The authority check found no unique verified Wikidata person.",
   exact_role_target_unavailable: "The exact work or manuscript target still needs a check.",
   exact_source_and_creator_verified: "The source, identity, and first creator passed the checks.",
+  role_or_source_scope_requires_review: "The source needs a check for the role or the part of the manuscript it describes.",
   source_occurrence_changed: "The source occurrence changed since the batch review.",
   reviewed_target_changed: "The item target changed since the batch review.",
   case_absent_from_current_open_audit: "This case is absent from the current open audit. Check its latest report.",
@@ -144,7 +145,7 @@ function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPrefli
     return () => { current = false; };
   }, [jobId, offset, open, point, status]);
   return <div className="space-y-2">
-    <h3 className="font-medium">{summary.case_count == null ? "Corpus preflight" : "People evidence preflight"}</h3>
+    <h3 className="font-medium">{summary.case_count == null ? "Corpus preflight" : "Repair preflight"}</h3>
     <p className="text-sm muted">
       {summary.case_count == null ? `${summary.records.toLocaleString()} full MARC records` : `${summary.case_count.toLocaleString()} reviewed cases`}
       {" · "}{summary.eligible_items.toLocaleString()} eligible project items
@@ -161,9 +162,10 @@ function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPrefli
             setPoint(event.target.value);
             setOffset(0);
           }}>
-            <option value="">Both requirements</option>
-            <option value="5">People, roles, and authority evidence</option>
-            <option value="8">Sources, bibliography, and inscriptions</option>
+            <option value="">All checked requirements</option>
+            {summary.requirements.map(({point: requirement}) =>
+              <option key={requirement} value={requirement}>Requirement {requirement}</option>
+            )}
           </select>}
           <select aria-label="Preflight status" value={status} onChange={event => {
             setStatus(event.target.value);
@@ -698,8 +700,8 @@ export default function AdminGilaRepairs() {
           </button>
           <button className="button-ghost"
             disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
-            onClick={() => void startAutomatic("people_evidence_batch")}>
-            Repair 214 people cases
+            onClick={() => void startAutomatic("people_authority")}>
+            Repair people and current labels
           </button>
           <button className="button-ghost"
             disabled={!state || active || starting || automaticActive || startingAutomatic || Boolean(refreshError)}
@@ -710,7 +712,7 @@ export default function AdminGilaRepairs() {
           </button>
         </div>
       </div>
-      <p className="text-sm muted">The people batch checks the 214 reviewed author, scribe, and former-owner cases. The job applies the edits that pass the evidence and creator checks.</p>
+      <p className="text-sm muted">This repair checks every open case for people and current holdings. It applies edits that pass the evidence and creator checks.</p>
       {automatic && <section id="automatic-manuscript-repair" tabIndex={-1}
         aria-label="Automatic manuscript repair" aria-live="polite"
         className="space-y-2 rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4">
@@ -743,6 +745,9 @@ export default function AdminGilaRepairs() {
             {" · "}{automaticResult.people_batch.edited_items ?? 0} project items edited
             {" · "}{automaticResult.people_batch.excluded_creator ?? 0} cases outside the creator scope
             {" · "}{automaticResult.people_batch.unavailable_catalogues ?? 0} catalogue records unavailable
+          </p>}
+          {automaticResult.people_batch?.reused_authority_reads != null && <p className="text-sm muted">
+            {automaticResult.people_batch.reused_authority_reads.toLocaleString()} authority reads reused in the preflight
           </p>}
           {automaticResult.evidence_review && <p className="text-sm muted">
             {automaticResult.evidence_review.checked} source cases reviewed
@@ -852,7 +857,20 @@ export default function AdminGilaRepairs() {
               aria-pressed={point === row.point} onClick={() => openCases(point === row.point ? null : row.point)}>
               <span className="block font-medium">{row.title}</span>
               <span className="mt-1 block text-xs muted">{labels[row.status]}</span>
-              {total > 0 && <span className="mt-1 block text-xs muted">
+              {row.point === 9 ? <span className="mt-1 block space-y-1 text-xs muted">
+                <span className="block">
+                  {report.requirement_coverage.public_reads.toLocaleString()} / {report.record_count.toLocaleString()} manuscript mappings verified
+                </span>
+                <span className="block">
+                  {report.requirement_coverage.unchecked_passages.toLocaleString()} source passages need proof
+                </span>
+                {report.requirement_coverage.verified_repair_receipts != null && <span className="block">
+                  {report.requirement_coverage.verified_repair_receipts.toLocaleString()} repair receipts verified in this audit
+                </span>}
+                {Boolean(report.requirement_coverage.repair_receipts_needing_review) && <span className="block">
+                  {report.requirement_coverage.repair_receipts_needing_review?.toLocaleString()} repair receipts need a new check
+                </span>}
+              </span> : total > 0 && <span className="mt-1 block text-xs muted">
                 {verified.toLocaleString()} / {total.toLocaleString()} cases verified ({(verified / total * 100).toFixed(1)}%)
               </span>}
               {row.ready_count != null && row.ready_count > 0 && <span className="mt-1 block text-xs muted">

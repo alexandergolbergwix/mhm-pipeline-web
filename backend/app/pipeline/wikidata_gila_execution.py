@@ -232,10 +232,13 @@ class LiveRepairGateway:
         self._read_item = read_item
         self._maxlag = maxlag
 
-    def _write_parameters(self, qid, revision, claims, token) -> dict:
+    def _write_parameters(self, qid, revision, claims, token, en_label=None) -> dict:
+        edit = {"claims": claims} if claims else {}
+        if en_label is not None:
+            edit["labels"] = {"en": {"value": en_label, "language": "en"}}
         return {
             "action": "wbeditentity", "id": qid, "baserevid": revision,
-            "data": json.dumps({"claims": claims}, ensure_ascii=False),
+            "data": json.dumps(edit, ensure_ascii=False),
             "summary": "Repair exact duplicate source references or "
             "a source-verified duplicate colophon",
             "token": token, "format": "json", "maxlag": self._maxlag,
@@ -275,7 +278,9 @@ class LiveRepairGateway:
 
         await asyncio.to_thread(check)
 
-    async def write(self, qid: str, revision: int, claims: list[dict[str, object]]) -> int:
+    async def write(
+        self, qid: str, revision: int, claims: list[dict[str, object]], *, en_label: str | None = None,
+    ) -> int:
         def send() -> int:
             login = self.uploader._login
             if login is None or login.mediawiki_api_url != API_URL:
@@ -292,7 +297,9 @@ class LiveRepairGateway:
             self.uploader._assert_modifiable(qid, stage="exact_repair_pre_write")
             response = session.post(
                 API_URL,
-                data=self._write_parameters(qid, revision, claims, token),
+                data=self._write_parameters(
+                    qid, revision, claims, token, **({"en_label": en_label} if en_label is not None else {}),
+                ),
                 allow_redirects=False,
                 timeout=30,
             )

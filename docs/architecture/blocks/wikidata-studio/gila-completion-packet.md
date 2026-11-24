@@ -60,6 +60,13 @@ A changed source, author, target, or manuscript link stops preparation.
 The current build versions are `source-aware-works-v26` and `hmo-wikidata-v29`.
 A fresh normal build must precede a public source update.
 
+## Requirement 9 on the audit page
+
+The card shows the number of verified manuscript mappings and the number of source passages that need proof.
+It also shows current receipts from the repair job that started the final audit.
+The user can inspect the requirement from the same card.
+The card uses separate counts for mappings, passages, and receipts.
+
 ## Files and tests
 
 - `backend/app/pipeline/wikidata_gila_completion.py` defines the packet and its proof checks.

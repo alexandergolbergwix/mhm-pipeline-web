@@ -73,6 +73,8 @@ export interface GilaReport {
     verified_claims: number;
     source_gaps: number;
     unchecked_passages: number;
+    verified_repair_receipts?: number;
+    repair_receipts_needing_review?: number;
     model_decision: string;
   };
   email_points: Array<{
@@ -109,7 +111,7 @@ export interface CorpusPreflightResult {
   requirements: Array<{point: number; counts: Partial<Record<PreflightStatus, number>>}>;
 }
 
-export type RepairScope = "people_and_sources" | "people_evidence_batch";
+export type RepairScope = "people_and_sources" | "people_evidence_batch" | "people_authority";
 
 export interface AutomaticRepairJob extends AuditJob {
   result: {
@@ -124,6 +126,7 @@ export interface AutomaticRepairJob extends AuditJob {
       edited_items?: number;
       excluded_creator?: number;
       unavailable_catalogues?: number;
+      reused_authority_reads?: number;
     };
     evidence_review?: {
       checked: number;

@@ -128,6 +128,8 @@ def test_correction_receipts_need_the_exact_current_entity_and_revision() -> Non
         _audit([]), {"Q1": _entity(), "Q2": _entity("Q2")}, repair_receipts=receipts
     )
     assert result["corrected_qids"] == ["Q1"]
+    assert result["requirement_coverage"]["verified_repair_receipts"] == 1
+    assert result["requirement_coverage"]["repair_receipts_needing_review"] == 1
     assert result["receipts_requiring_verification"] == [
         {
             "qid": "Q2",

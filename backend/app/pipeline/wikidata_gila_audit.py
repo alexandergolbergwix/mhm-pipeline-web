@@ -5,10 +5,11 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Iterable, Mapping
 
+from app.pipeline import marc_occurrences as marc
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
 from app.pipeline.wikidata_gila_authority_reads import MazalPersonAuthority
-from app.pipeline.wikidata_gila_facts import compare_gila_source_facts
+from app.pipeline.wikidata_gila_facts import _live_claims, _reference_status, compare_gila_source_facts
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals, entity_digest
 from app.pipeline.wikidata_source_coverage import source_passages
 from converter.wikidata.catalog_notes import is_catalog_note_placeholder
@@ -48,6 +49,32 @@ def _qualified(statement: Mapping[str, object], pid: str, value: str) -> bool:
         (q.get("property") or q.get("property_id")) == pid and q.get("value") == value
         for q in _rows(statement.get("qualifiers"))
     )
+
+
+def current_holding_label(cn, source, live) -> str | None:
+    if not source or not live:
+        return None
+    full = prepare_record_for_pipeline(dict(source))
+    if canonical_control_number(full.get("_control_number")) != cn or full.get("holding_subfield_reviews"):
+        return None
+    name = _text(full.get("holding_942_name"))
+    shelfmark = _text(full.get("holding_942_shelfmark"))
+    if not name or not shelfmark:
+        return None
+    exact = [
+        row for row in marc.occurrences(full, "942")
+        if [_text(value) for value in marc.values(row, "a")] == [name]
+        and [_text(value) for value in marc.values(row, "z")] == [shelfmark]
+    ]
+    if len(exact) != 1 or {row["value"] for row in _live_claims(live, "P3959")} != {cn}:
+        return None
+    claims = _live_claims(live, "P217")
+    if (
+        len(claims) != 1 or _text(claims[0]["value"]) != shelfmark
+        or _reference_status(claims, cn, live=True) != "source_bound"
+    ):
+        return None
+    return manuscript_en_label(shelfmark, name, full)
 
 
 def build_gila_audit_report(
@@ -140,12 +167,22 @@ def build_gila_audit_report(
         if not item:
             case(9, "present_not_transferred", "record", "manuscript_absent_from_proposal")
         holding_review = bool(record.get("holding_subfield_reviews"))
+        full_people_source = (people_marc or {}).get(cn)
+        expected_holding_label = None
+        if (full_source_coverage and (holding_review or not record.get("holding_942_shelfmark"))
+            and not record.get("reviewed_holding_occurrence")):
+            expected_holding_label = current_holding_label(cn, full_people_source, public_item)
+        holding_verified = bool(
+            expected_holding_label
+            and public_item.get("labels", {}).get("en", {}).get("value") == expected_holding_label
+        )
         if holding_review:
             case(
                 1,
                 "identity_or_scope_uncertain",
                 "942",
                 "holding_associations_require_original_occurrences",
+                verified=holding_verified,
             )
         shelfmark = _text(record.get("holding_942_shelfmark"))
         if shelfmark:
@@ -163,9 +200,20 @@ def build_gila_audit_report(
                 case(1, "present_not_transferred", "942", "structured_english_label_differs")
         else:
             if _text(raw.get("942$z")):
-                case(1, "identity_or_scope_uncertain", "942$z", "current_holding_requires_review")
+                case(1, "identity_or_scope_uncertain", "942$z", "current_holding_requires_review",
+                     verified=holding_verified)
             else:
-                case(1, "absent_in_source", "942$z", "no_current_942_shelfmark_in_source")
+                case(1, "absent_in_source", "942$z", "no_current_942_shelfmark_in_source",
+                     verified=holding_verified)
+
+        if expected_holding_label and not holding_verified:
+            for holding_case in cases:
+                if holding_case["reason"] in {
+                    "holding_associations_require_original_occurrences", "current_holding_requires_review",
+                    "no_current_942_shelfmark_in_source",
+                }:
+                    holding_case["holding_label"] = expected_holding_label
+                    holding_case["live_revision"] = public_item.get("lastrevid")
 
         if not record.get("extent") and record.get("907$n"):
             case(2, "identity_or_scope_uncertain", "907$n", "image_name_does_not_prove_form")
@@ -175,7 +223,6 @@ def build_gila_audit_report(
         ):
             case(4, "present_not_transferred", "001", "qualified_ktiv_membership_absent")
 
-        full_people_source = (people_marc or {}).get(cn)
         if full_people_source is not None:
             cases.extend(people_role_cases(
                 full_people_source, public_item, live_entities,

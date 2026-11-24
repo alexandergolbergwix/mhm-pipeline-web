@@ -1,11 +1,14 @@
 from collections import Counter
 from copy import deepcopy
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
 
 from app.pipeline import wikidata_gila_corpus_repair as corpus
-from app.pipeline.wikidata_gila_people_batch import PlannedEdit, repair_claim_builder, verify_claims
+from app.pipeline.wikidata_gila_audit import current_holding_label
+from app.pipeline.wikidata_gila_authority_cache import AuthorityEvidence
+from app.pipeline.wikidata_gila_people_batch import PersonRepairGateway, PlannedEdit, repair_claim_builder, verify_claims
 from app.pipeline.wikidata_gila_people_evidence_batch import evidence_batch, keep_reviewed_targets
 from app.pipeline.wikidata_gila_sources import full_source_cases
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
@@ -115,3 +118,75 @@ def test_people_evidence_batch_preserves_all_decisions_and_rejects_target_change
     assert inventory[case_id]["reason"] == "source_occurrence_changed"
     assert not keep_reviewed_targets([PlannedEdit(target=item("Q2"), patches=[], case_ids=[case_id], revisions={})], inventory)
     assert inventory[case_id]["reason"] == "reviewed_target_changed"
+
+
+@pytest.mark.asyncio
+async def test_authority_cache_reuses_exact_reads_and_retries_missing_evidence():
+    cache = AuthorityEvidence("original")
+    keys = frozenset({("P214", "123")})
+    fetch = AsyncMock(return_value={"A": keys})
+    assert await cache.read("viaf", {"A", "B"}, fetch, None) == {"A": keys}
+    snapshot = cache.dump()
+    resumed = AuthorityEvidence.load(snapshot, "original")
+    fetch.reset_mock()
+    fetch.return_value = {"B": keys}
+    assert await resumed.read("viaf", {"A", "B"}, fetch, None) == {"A": keys, "B": keys}
+    assert fetch.call_args.args[0] == {"B"}
+    assert resumed.reused == 1
+    assert AuthorityEvidence.load(snapshot, "changed").viaf == {}
+    snapshot["observed_at"] = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
+    assert AuthorityEvidence.load(snapshot, "original").viaf == {}
+
+
+def test_a_label_patch_keeps_other_labels_and_claims():
+    before = item()
+    before["labels"]["he"] = {"language": "he", "value": "ספר"}
+    after = deepcopy(before)
+    after["lastrevid"] += 1
+    after["labels"]["en"] = {"language": "en", "value": "Library. Ms. 5"}
+    assert verify_claims(before, after, 43, [], en_label="Library. Ms. 5")
+    after["labels"].pop("he")
+    assert not verify_claims(before, after, 43, [], en_label="Library. Ms. 5")
+    payload = PersonRepairGateway(None)._write_parameters("Q1", 42, [], "fixture", en_label="Library. Ms. 5")
+    assert payload["baserevid"] == 42
+    assert payload["data"] == '{"labels": {"en": {"value": "Library. Ms. 5", "language": "en"}}}'
+
+
+@pytest.mark.asyncio
+async def test_holding_label_requires_the_original_occurrence_and_current_shelfmark(monkeypatch):
+    full = {
+        "001": CN,
+        "942$a": "Test Library",
+        "942$z": "Ms. 5",
+        "marc_occurrences": [
+            {"tag": "001", "data": CN},
+            {"tag": "942", "indicators": [" ", " "],
+             "subfields": [{"code": "a", "value": "Test Library"}, {"code": "z", "value": "Ms. 5"}]},
+        ],
+    }
+    target = item()
+    target["claims"]["P217"] = [{
+        "id": "Q1$shelfmark", "rank": "normal",
+        "mainsnak": {"snaktype": "value", "datavalue": {"value": "Ms. 5"}},
+        "references": [{"snaks": {"P3959": [target["claims"]["P3959"][0]["mainsnak"]]}}],
+    }]
+    label = current_holding_label(CN, full, target)
+    assert label == "Test Library, Ms. 5"
+    case = {
+        "case_id": "source:holding", "points": [1], "qid": "Q1",
+        "control_number": CN, "holding_label": label, "live_revision": 42,
+    }
+    inventory = corpus.corpus_inventory([case], frozenset({1, 5}))
+
+    async def load(reader, qids, items, check):
+        items["Q1"] = target
+
+    monkeypatch.setattr(corpus, "_load_items", load)
+    plans = await corpus.plan_holding_labels([case], {CN: full}, check=AsyncMock(), inventory=inventory)
+    assert len(plans) == 1
+    assert plans[0].en_label == label
+    target["claims"]["P217"].append({
+        "rank": "normal", "mainsnak": {"snaktype": "value", "datavalue": {"value": "Ms. 8"}},
+    })
+    assert not await corpus.plan_holding_labels([case], {CN: full}, check=AsyncMock(), inventory=inventory)
+    assert inventory["source:holding"]["status"] == "needs_review"
