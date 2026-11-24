@@ -58,6 +58,52 @@ def test_exact_marc_inscription_keeps_the_role_folio_and_case_id():
     assert inscription(fresh)["reason"] == "ambiguous_source_claim"
 
 
+def test_reviewed_missing_scan_keeps_prior_links_and_holds_possible_duplicates(monkeypatch):
+    target = item()
+    url = "https://holder.example/scan/123"
+    proof_url = "https://holder.example/iiif/123/manifest"
+    earlier_url = "https://catalogue.example/search/123"
+    proof = {
+        "property": "P953", "value": url, "proof_url": proof_url, "type": "url",
+        "qualifiers": {}, "prior_access_urls": [earlier_url],
+    }
+    monkeypatch.setattr(
+        "app.pipeline.wikidata_gila_sources.reviewed_source_proof",
+        lambda *args: proof,
+    )
+    record = {
+        "001": CN, "marc_occurrences": [
+            {"tag": "856", "subfields": [{"code": "u", "value": url}]},
+        ],
+    }
+
+    def scan_case(entity):
+        row, = full_source_cases(CN, record, {}, entity, {}, {})
+        return {**row, "control_number": CN}
+
+    def url_claim(value, claim_id):
+        return {
+            "id": claim_id, "rank": "normal", "mainsnak": {
+                "datavalue": {"value": value}, "property": "P953", "snaktype": "value",
+            },
+        }
+
+    prior = url_claim(earlier_url, "Q1$catalogue")
+    target["claims"]["P953"] = [prior]
+    case = scan_case(target)
+    assert case["reason"] == "source_statement_missing"
+    patch = corpus._source_patch(case, target, repair_claim_builder())
+    assert corpus.source_additions_only(PlannedEdit(target, [patch], [], {"Q1": 42}))
+    assert "id" not in patch
+    after = deepcopy(target)
+    after["lastrevid"] += 1
+    after["claims"]["P953"].append({**patch, "id": "Q1$scan"})
+    assert verify_claims(target, after, after["lastrevid"], [patch])
+    assert scan_case(after)["verified"]
+    target["claims"]["P953"].append(url_claim(url.replace("https:", "http:"), "Q1$equivalent"))
+    assert scan_case(target)["reason"] == "access_link_requires_holding_proof"
+
+
 @pytest.mark.asyncio
 async def test_corpus_preflight_blocks_other_creators_and_merges_the_same_source_claim(monkeypatch):
     read = AsyncMock(side_effect=[GILA_CREATOR_UID, 999])

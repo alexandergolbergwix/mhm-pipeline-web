@@ -122,8 +122,18 @@ def _reviewed_source_case(cn, occurrence, source, entity, proof, entities):
     exact = matching_claims(entity, pid, value, qualifiers, language=language)
     if pid == "P1684" and not exact and entity.get("claims", {}).get(pid):
         return source_case(cn, occurrence, source, "inscription_text_overlap")
-    if pid == "P953" and (len(exact) != 1 or exact[0]["claim_id"] != proof["claim_id"]):
-        return source_case(cn, occurrence, source, "access_link_requires_holding_proof")
+    if pid == "P953":
+        if claim_id := proof.get("claim_id"):
+            confirmed = len(exact) == 1 and exact[0]["claim_id"] == claim_id
+        else:
+            other_urls = Counter(
+                _snak_value(claim["mainsnak"]) for claim in entity.get("claims", {}).get(pid, [])
+                if not exact or claim.get("id") != exact[0]["claim_id"]
+            )
+            prior_urls = proof.get("prior_access_urls")
+            confirmed = prior_urls is not None and other_urls == Counter(prior_urls)
+        if not confirmed:
+            return source_case(cn, occurrence, source, "access_link_requires_holding_proof")
     dependency = entities.get(value) if proof["type"] == "item" else None
     if proof["type"] == "item" and not dependency:
         return source_case(cn, occurrence, source, "genre_scope_or_identity_required")
