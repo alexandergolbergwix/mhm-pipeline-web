@@ -23,10 +23,12 @@ from app.pipeline.wikidata_gila_identity_evidence import (
     _viaf_identifier, _viaf_reference_ids, live_source_match, viaf_proves_person,
 )
 from app.pipeline.wikidata_gila_linked_people import (
-    ROLE_PROPERTIES, cited_bib_controls, has_linked_source, linked_person_matches, role_authority,
+    ROLE_PROPERTIES, _eligible_role, cited_bib_controls, has_linked_source, linked_person_matches, role_authority,
 )
 from app.pipeline.wikidata_gila_mazal_viaf import viaf_matches, viaf_mazal_url
-from app.pipeline.wikidata_gila_reviewed_people import reviewed_linked_person_url
+from app.pipeline.wikidata_gila_reviewed_people import (
+    REVIEWED_WORK_TITLES, reviewed_linked_person_url, reviewed_primary_author,
+)
 from app.pipeline.wikidata_gila_scribe_colophons import (
     DELFOGIT_HEADING, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS,
     MILHAUD_COLUMBIA, MILHAUD_DS_ID, MILHAUD_HEADING, MILHAUD_QID, MISATTRIBUTION,
@@ -211,7 +213,20 @@ def _author_target(row, record, manuscript, entities, cn):
     if len(titles) > 1:
         return {}
     title = titles[0] if titles else record.get("title")
-    return _work_target(manuscript, entities, _work_title_key(title), cn)
+    target = _work_target(manuscript, entities, _work_title_key(title), cn)
+    reviewed = REVIEWED_WORK_TITLES.get(cn)
+    if (
+        target or not reviewed or marc.source_key(row) != "100:1" or titles
+        or unicodedata.normalize("NFC", str(title)) != reviewed.source_title
+        or [name.strip().rstrip(",") for name in marc.values(row, "a")] != [reviewed.source_author]
+    ):
+        return target
+    links = _live_claims(manuscript, "P1574")
+    if {link["value"] for link in links} != {reviewed.work} or not all(
+        _reference_status([link], cn, live=True) == "source_bound" for link in links
+    ):
+        return {}
+    return _work_target(manuscript, entities, _work_title_key(reviewed.item_title), cn)
 
 
 def _actual_name(entity: Mapping, claim: Mapping) -> set[str]:
@@ -723,6 +738,14 @@ def people_role_cases(
                         claim, cn, source_url, viaf_mazal_url(linked_id),
                     ):
                         linked_proven.add(claim["value"])
+            if role == "author" and not uncertain and _eligible_role(row, variants, role):
+                reviewed = reviewed_primary_author(cn, row, variants, occurrences)
+                if reviewed and target.get("id") == reviewed.work:
+                    linked_proven.update(
+                        claim["value"] for claim in _live_claims(target, "P50")
+                        if reviewed.matches(entities.get(claim["value"], {}))
+                        and has_linked_source(claim, cn, reviewed.person.url)
+                    )
             authority_proven = set(linked_proven)
             if role in _DATED_AUTHORITY_ROLES and not uncertain and not source_ids and not source_qids:
                 pid = "P50" if role == "author" else "P11603" if role == "scribe" else "P3342"

@@ -1,5 +1,7 @@
 """Read exact person records from the GND service."""
 
+import asyncio
+import logging
 import re
 
 import httpx
@@ -7,6 +9,7 @@ import httpx
 from app.pipeline.wikidata_reference_reader import WIKIDATA_PUBLIC_USER_AGENT
 from app.pipeline.wikidata_source_choices import _claim_values
 
+logger = logging.getLogger(__name__)
 _GND_ID = r"[0-9]{7,10}[0-9X]?"
 
 
@@ -29,6 +32,17 @@ def cited_gnd_ids(entity):
     }
 
 
+async def _read_record(client, identifier):
+    url = f"https://lobid.org/gnd/{identifier}.json"
+    for delay in (1, 2):
+        try:
+            return await client.get(url)
+        except httpx.TransportError as exc:
+            logger.info("Retry GND authority %s after %s.", identifier, type(exc).__name__)
+            await asyncio.sleep(delay)
+    return await client.get(url)
+
+
 async def read_gnd_sources(identifiers):
     results = {}
     async with httpx.AsyncClient(
@@ -37,7 +51,7 @@ async def read_gnd_sources(identifiers):
         for identifier in sorted(identifiers):
             if not re.fullmatch(_GND_ID, identifier):
                 continue
-            response = await client.get(f"https://lobid.org/gnd/{identifier}.json")
+            response = await _read_record(client, identifier)
             if response.status_code == 404:
                 continue
             response.raise_for_status()

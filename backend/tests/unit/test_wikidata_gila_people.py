@@ -952,3 +952,83 @@ def test_reviewed_author_identity_refuses_a_conflicting_authority_id():
     )
     candidate["claims"]["P8189"].append(_claim("987007297464205171"))
     assert reviewed_linked_person_url(candidate, "987007310194705171") is None
+
+
+def test_reviewed_primary_author_requires_the_same_work_and_cited_identity():
+    from app.pipeline.wikidata_gila_people_batch import repair_claim_builder, scoped_claim, source_cases, target_for
+
+    cn = "990000798840205171"
+    fields = _field("100", ("a", "אזובי, שלמה בן יהודה")) + _field("245", ("a", "אגודת אזוב"))
+    record = parse_nli_records(_response(_record(fields, cn)), {cn})[cn]
+    case = {"case_id": "author", "control_number": cn, "qid": "Q10", "occurrence": "100:1",
+            "person_role": "author", "source_value": "אזובי, שלמה בן יהודה"}
+    proof, = source_cases([case], {cn: record}, {})
+    person = {"id": "Q107059242", "claims": {"P31": [_claim({"id": "Q5"})], "P269": [_claim("067065791")]}}
+    work = {"id": "Q141755114", "claims": {"P1476": [_claim({"text": "אגודת אזוב", "language": "he"})]}}
+    link = _claim({"id": work["id"]})
+    link["references"][0]["snaks"]["P3959"][0] = _snak(cn)
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(cn)], "P1574": [link]}}
+    entities = {work["id"]: work, person["id"]: person}
+    assert target_for(proof, manuscript, entities) is work
+    assert not people_role_cases(record, manuscript, entities)[0]["verified"]
+    claim, reason = scoped_claim(proof, person, work, repair_claim_builder())
+    assert reason is None
+    work["claims"]["P50"] = [claim]
+    assert people_role_cases(record, manuscript, entities)[0]["verified"]
+    person["claims"]["P269"] = [_claim("012345678")]
+    assert not people_role_cases(record, manuscript, entities)[0]["verified"]
+    assert not target_for(proof, manuscript, {work["id"]: {**work, "id": "Q11"}})
+
+
+def test_reviewed_work_title_requires_the_unique_source_link():
+    from app.pipeline.wikidata_gila_people import _author_target, _person_occurrences
+
+    cn = "990001722330205171"
+    fields = _field("100", ("a", "Fonseca, Isaac Aboab da")) + _field("245", ("a", "Sermão."))
+    record = parse_nli_records(_response(_record(fields, cn)), {cn})[cn]
+    row = _person_occurrences(record)[0][0]
+    work = {"id": "Q141755330", "claims": {"P1476": [_claim({"text": "דרשה", "language": "he"})]}}
+    link = _claim({"id": work["id"]})
+    link["references"][0]["snaks"]["P3959"] = [_snak(cn)]
+    manuscript = {"id": "Q10", "claims": {"P1574": [link]}}
+    assert _author_target(row, record, manuscript, {work["id"]: work}, cn) is work
+    manuscript["claims"]["P1574"].append(_claim({"id": "Q42"}))
+    assert not _author_target(row, record, manuscript, {work["id"]: work}, cn)
+
+
+@pytest.mark.parametrize(("title", "genre", "accepted"), [
+    ("אגרת אל הנמען", "Personal correspondence", True),
+    ("ספר הדרושים", "Personal correspondence", False),
+    ("אגרת אל הנמען", "Autograph manuscripts", False),
+])
+def test_recipient_needs_the_exact_role_on_a_letter(title, genre, accepted):
+    from app.pipeline.wikidata_gila_linked_people import bib_url
+    from app.pipeline.wikidata_gila_people_batch import source_cases
+
+    fields = _field("700", ("a", "Source Recipient"), ("e", "(אליו)"))
+    fields += _field("245", ("a", title)) + _field("655", ("a", genre))
+    record = parse_nli_records(_response(_record(fields)), {CONTROL})[CONTROL]
+    url = bib_url(CONTROL)
+    bib = {"@id": url, "contributor": [{"label": "Source Recipient",
+           "@id": url.split("/bibs/")[0] + "/authorities/987007265745205171"}]}
+    case = {"case_id": "recipient", "qid": "Q10", "control_number": CONTROL,
+            "occurrence": "700:1", "person_role": "recipient", "source_value": "Source Recipient"}
+    assert bool(list(source_cases([case], {CONTROL: record}, {CONTROL: bib}))) is accepted
+
+
+@pytest.mark.asyncio
+async def test_gnd_retries_a_disconnected_read(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    import httpx
+
+    from app.pipeline import wikidata_gila_gnd_evidence as gnd
+
+    response = httpx.Response(200)
+    get = AsyncMock(side_effect=[httpx.RemoteProtocolError("disconnected"), response])
+    wait = AsyncMock()
+    monkeypatch.setattr(gnd.asyncio, "sleep", wait)
+    result = await gnd._read_record(SimpleNamespace(get=get), "142126152")
+    assert result is response
+    assert get.await_count == 2
+    wait.assert_awaited_once_with(1)

@@ -4571,3 +4571,11 @@ A reviewed person entry can use a stable query or a fragment that locates the ex
 The review records the exact URL, person name, and manuscript scope before CREATE.
 The duplicate check reads all reviewed URL variants in batches of at most 64.
 A candidate or an unavailable check stops CREATE.
+
+## Rule W-385 — Retry interrupted GND reads
+
+The v864 audit stopped after the GND service closed its connection.
+Retry the same authority record twice after a transport error.
+The reader waits one second and then two seconds.
+The audit still requires the exact record and authority identifier.
+The last transport error stops the audit.

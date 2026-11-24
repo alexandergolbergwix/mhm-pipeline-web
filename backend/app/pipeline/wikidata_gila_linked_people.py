@@ -30,6 +30,7 @@ ROLE_PROPERTIES = {
     "mentioned": "P3342",
     "מאייר": "P110",
     "former owner": "P3342",
+    "recipient": "P3342",
     **{role: ROLE_TO_PID[role] for role in ("מעיר", "annotator", "חותם", "signatory", "illuminator")},
 }
 COPY_ROLE_PROPERTIES = frozenset(ROLE_PROPERTIES.values()) - {"P50"}
@@ -188,6 +189,18 @@ def role_authority(cn, row, variants, occurrences, role, *, record, bibs, frames
     """Return the bound authority ID and the source that proves the exact field."""
     if not _eligible_role(row, variants, role):
         return None
+    if role == "recipient":
+        from app.pipeline.wikidata_gila_people import _heading, _row_roles
+
+        if sum("recipient" in _row_roles(field, names) for field, names in occurrences) != 1:
+            return None
+        fields = marc.occurrences(record)
+        titles = [_heading(value) for field in fields if field["tag"] == "245" for value in marc.values(field, "a")]
+        genres = {_heading(value) for field in fields if field["tag"] == "655" for value in marc.values(field, "a")}
+        if len(titles) != 1 or titles[0].split()[:1] not in (["אגרת"], ["איגרת"], ["מכתב"]):
+            return None
+        if "personal correspondence" not in genres:
+            return None
     linked = linked_role_id(cn, row, variants, occurrences, role, bibs, record=record)
     exact = frame_person_id(row, occurrences, frames.get(cn, {}))
     if linked and exact and linked != exact:
