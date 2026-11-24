@@ -1430,3 +1430,5 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 241. **R241 — Check reviewed variants of a catalogue entry (W-384).** Keep the exact URL and source scope. Check aliases, query variants, and biography fragments in batches of at most 64. Stop CREATE when any check finds a candidate or fails.
 
 242. **R242 — Retry interrupted GND reads (W-385).** Retry a transport error twice. Require valid authority evidence. Keep the same rule in the [bulk people repair](gila-people-batch.md).
+
+243. **R243 — Compare current holding labels in Unicode NFC (W-386).** Compare the source and live labels in NFC. An equivalent label requires no edit.

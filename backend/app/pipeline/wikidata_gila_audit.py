@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Mapping
+from unicodedata import normalize
 
 from app.pipeline import marc_occurrences as marc
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
@@ -74,7 +75,7 @@ def current_holding_label(cn, source, live) -> str | None:
         or _reference_status(claims, cn, live=True) != "source_bound"
     ):
         return None
-    return manuscript_en_label(shelfmark, name, full)
+    return normalize("NFC", manuscript_en_label(shelfmark, name, full))
 
 
 def build_gila_audit_report(
@@ -172,10 +173,10 @@ def build_gila_audit_report(
         if (full_source_coverage and (holding_review or not record.get("holding_942_shelfmark"))
             and not record.get("reviewed_holding_occurrence")):
             expected_holding_label = current_holding_label(cn, full_people_source, public_item)
-        holding_verified = bool(
-            expected_holding_label
-            and public_item.get("labels", {}).get("en", {}).get("value") == expected_holding_label
-        )
+        holding_verified = False
+        if expected_holding_label:
+            public_label = public_item.get("labels", {}).get("en", {}).get("value") or ""
+            holding_verified = normalize("NFC", public_label) == expected_holding_label
         if holding_review:
             case(
                 1,

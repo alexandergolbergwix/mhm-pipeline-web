@@ -18,6 +18,7 @@ The planner checks each occurrence again. It also reads the current Wikidata per
 
 For a current holding, the full MARC must prove one exact association between the library and shelfmark.
 The audit checks the live catalogue identity, the one active shelfmark, its source reference, and the English label.
+It compares English labels in Unicode NFC. An equivalent label requires no edit.
 The audit counts an existing match when that proof resolves a gap in the flattened source.
 If only the English label differs, `plan_holding_labels` can propose that exact label.
 An ambiguous holding or conflicting shelfmark remains open.

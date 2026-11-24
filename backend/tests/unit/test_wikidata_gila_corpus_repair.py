@@ -156,12 +156,12 @@ def test_a_label_patch_keeps_other_labels_and_claims():
 async def test_holding_label_requires_the_original_occurrence_and_current_shelfmark(monkeypatch):
     full = {
         "001": CN,
-        "942$a": "Test Library",
+        "942$a": "Zu\u0308rich Library",
         "942$z": "Ms. 5",
         "marc_occurrences": [
             {"tag": "001", "data": CN},
             {"tag": "942", "indicators": [" ", " "],
-             "subfields": [{"code": "a", "value": "Test Library"}, {"code": "z", "value": "Ms. 5"}]},
+             "subfields": [{"code": "a", "value": "Zu\u0308rich Library"}, {"code": "z", "value": "Ms. 5"}]},
         ],
     }
     target = item()
@@ -171,7 +171,7 @@ async def test_holding_label_requires_the_original_occurrence_and_current_shelfm
         "references": [{"snaks": {"P3959": [target["claims"]["P3959"][0]["mainsnak"]]}}],
     }]
     label = current_holding_label(CN, full, target)
-    assert label == "Test Library, Ms. 5"
+    assert label == "Zürich Library, Ms. 5"
     case = {
         "case_id": "source:holding", "points": [1], "qid": "Q1",
         "control_number": CN, "holding_label": label, "live_revision": 42,

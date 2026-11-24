@@ -4579,3 +4579,10 @@ Retry the same authority record twice after a transport error.
 The reader waits one second and then two seconds.
 The audit still requires the exact record and authority identifier.
 The last transport error stops the audit.
+## Rule W-386 — Compare current holding labels in Unicode NFC
+
+The v867 repair sent a label that differed only in Unicode representation.
+Wikidata returned the original revision. The verifier stopped the batch.
+Convert the source label and the live label to NFC before comparison.
+Send the same NFC source label for an eligible edit.
+The audit can verify an equivalent live label with the same shelfmark proof.
