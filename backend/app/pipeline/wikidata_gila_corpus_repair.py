@@ -110,6 +110,14 @@ def _source_patch(case, target, build_claim):
     return original
 
 
+def source_patches(case, target, build_claim):
+    proof = case["source_repair"]
+    return [
+        _source_patch({**case, "source_repair": value}, target, build_claim)
+        for value in (proof, *proof.get("additional_claims", ()))
+    ]
+
+
 def _exact_colophon(target, records):
     codes = set(_claim_values(target, "P3959"))
     if len(codes) == 1:
@@ -168,7 +176,7 @@ async def plan_sources(cases, records, *, check, progress, inventory, additions_
             continue
         target = entities[qid]
         if proof:
-            patches = [_source_patch(case, target, build_claim)]
+            patches = source_patches(case, target, build_claim)
         else:
             proposals_at_revision = build_gila_repair_proposals(
                 {qid: target}, colophons_by_qid={qid: _exact_colophon(target, records)},

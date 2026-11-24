@@ -5223,5 +5223,1467 @@
     "prior_classes": [
       "Q87167"
     ]
+  },
+  {
+    "control_number": "990001818810205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748115",
+    "source_value": "Steinschneider, M., Catalogus Codicum Hebraeorum Bibliothecae Academiae Lugduno-Batavae (Leiden 1858).",
+    "edition_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/4221305",
+    "catalogue_entry": "54",
+    "shelfmark": "Ms. Or. 4792",
+    "catalogue": "Steinschneider Leiden 1858",
+    "source_sha256": "2567beceeb953c8b06d7119ad8e2b79cec6f1c12e7477fdd7538811472f50614",
+    "property": "P973",
+    "value": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/4221589",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/4221589",
+    "creator_uid": 6935067
+  },
+  {
+    "control_number": "990001819490205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748116",
+    "source_value": "Steinschneider, M., Catalogus Codicum Hebraeorum Bibliothecae Academiae Lugduno-Batavae (Leiden 1858).",
+    "edition_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/4221305",
+    "catalogue_entry": "82a–b",
+    "shelfmark": "Ms. Or. 4803",
+    "catalogue": "Steinschneider Leiden 1858",
+    "source_sha256": "2567beceeb953c8b06d7119ad8e2b79cec6f1c12e7477fdd7538811472f50614",
+    "property": "P973",
+    "value": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/4221636",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/4221636",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747943",
+    "shelfmark": "O. Cod. Hebr. 28",
+    "catalogue_entry": "XXVIII",
+    "catalogue": "Zetterstéen 1900",
+    "edition_url": "https://books.google.com/books?id=1vQ-AAAAYAAJ",
+    "value": "https://books.google.com/books?id=1vQ-AAAAYAAJ&pg=PA18",
+    "occurrence": "581:1:1",
+    "control_number": "990001704440205171",
+    "source_value": "Verzeichnis der hebraeischen und aramaeischen der Kgl. Universitaetsbibliothek zu Upsala, von K.V. Zettersteen, Lund 1900.",
+    "source_sha256": "f58a278e6d5aef06e4d4f3b68e79032e028a8ba57c98a7cca2d963980617b24e",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://books.google.com/books?id=1vQ-AAAAYAAJ&pg=PA18",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747944",
+    "shelfmark": "O. Cod. Hebr. 29",
+    "catalogue_entry": "XXIX",
+    "catalogue": "Zetterstéen 1900",
+    "edition_url": "https://books.google.com/books?id=1vQ-AAAAYAAJ",
+    "value": "https://books.google.com/books?id=1vQ-AAAAYAAJ&pg=PA18",
+    "occurrence": "581:1:1",
+    "control_number": "990001704450205171",
+    "source_value": "Verzeichnis der hebraeischen und aramaeischen der Kgl. Universitaetsbibliothek zu Upsala, von K.V. Zettersteen, Lund 1900.",
+    "source_sha256": "f58a278e6d5aef06e4d4f3b68e79032e028a8ba57c98a7cca2d963980617b24e",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://books.google.com/books?id=1vQ-AAAAYAAJ&pg=PA18",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747233",
+    "shelfmark": "Ms. Neof 32",
+    "catalogue_entry": "32",
+    "catalogue": "Sacerdote 1893",
+    "edition_url": "https://books.google.com/books?id=nMrkqNi1KTgC",
+    "value": "https://books.google.com/books?id=nMrkqNi1KTgC&pg=PP26",
+    "occurrence": "581:1:1",
+    "control_number": "990001011060205171",
+    "source_value": "Sacerdote, G., I codici ebraici della Pia Casa dei Neofiti in Roma, Rome 1893.",
+    "source_sha256": "58cd7501040979d6510f3145c99a276630cdf3ef4100908fdcf4b9c67bfce85c",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://books.google.com/books?id=nMrkqNi1KTgC&pg=PP26",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747234",
+    "shelfmark": "Ms. Neof 33",
+    "catalogue_entry": "33",
+    "catalogue": "Sacerdote 1893",
+    "edition_url": "https://books.google.com/books?id=nMrkqNi1KTgC",
+    "value": "https://books.google.com/books?id=nMrkqNi1KTgC&pg=PP25",
+    "occurrence": "581:1:1",
+    "control_number": "990001011110205171",
+    "source_value": "Sacerdote, G., I codici ebraici della Pia Casa dei Neofiti in Roma, Rome 1893.",
+    "source_sha256": "58cd7501040979d6510f3145c99a276630cdf3ef4100908fdcf4b9c67bfce85c",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://books.google.com/books?id=nMrkqNi1KTgC&pg=PP25",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747275",
+    "shelfmark": "Ms. Neof 34",
+    "catalogue_entry": "34",
+    "catalogue": "Sacerdote 1893",
+    "edition_url": "https://books.google.com/books?id=nMrkqNi1KTgC",
+    "value": "https://books.google.com/books?id=nMrkqNi1KTgC&pg=PP24",
+    "occurrence": "581:1:1",
+    "control_number": "990001057000205171",
+    "source_value": "Sacerdote, G., I codici ebraici della Pia Casa dei Neofiti in Roma, Rome 1893.",
+    "source_sha256": "58cd7501040979d6510f3145c99a276630cdf3ef4100908fdcf4b9c67bfce85c",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://books.google.com/books?id=nMrkqNi1KTgC&pg=PP24",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141175880",
+    "shelfmark": "Ms. A II 22",
+    "catalogue_entry": "Peyron XLII, p. 47",
+    "catalogue": "Peyron (1880)",
+    "edition_url": "https://archive.org/details/codiceshebraici00peyrgoog",
+    "value": "https://archive.org/details/codiceshebraici00peyrgoog/page/n103/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001748970205171",
+    "source_value": "B. Peyron, Codices Hebraici manu exarati regiae bibliothecae quae in Taurinensi Athenaeo asservatur (Rome-Turin-Florence, 1880), no. 42.",
+    "source_sha256": "ce2fef0ef948e9aedf3347fbb7d5ba1f3a4d0a147b6370404e1f1daa377556be",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/codiceshebraici00peyrgoog/page/n103/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747646",
+    "shelfmark": "Ms. X 893 Ab 71",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 1, 9–10",
+    "edition_url": "https://archive.org/details/ldpd_12138657_001",
+    "value": "https://archive.org/details/ldpd_12138657_001/page/n9/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001351390205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 9-10.",
+    "source_sha256": "1fe968b8d4efdd873577243b7736e6977ba6ec905c9433314292a3cc241b016d",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_001/page/n9/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747651",
+    "shelfmark": "Ms. X 893 J 5",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 1, 117",
+    "edition_url": "https://archive.org/details/ldpd_12138657_001",
+    "value": "https://archive.org/details/ldpd_12138657_001/page/n118/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001355820205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 117.",
+    "source_sha256": "495db241292d4ce63722c3af5261347c1a040cbcb8fb5373b0bdbd317f0cfc6a",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_001/page/n118/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747653",
+    "shelfmark": "Ms. X 893 K 15",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 1, 427",
+    "edition_url": "https://archive.org/details/ldpd_12138657_001",
+    "value": "https://archive.org/details/ldpd_12138657_001/page/n427/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001359170205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 427.",
+    "source_sha256": "0fd2abd5831682f4f7287753ae8e8fb5a89b90ff3bb8ae558391728544abc06d",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_001/page/n427/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747671",
+    "shelfmark": "Ms. X 893C J 55 vol. 6",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 1, 332",
+    "edition_url": "https://archive.org/details/ldpd_12138657_001",
+    "value": "https://archive.org/details/ldpd_12138657_001/page/n332/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001371830205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 332.",
+    "source_sha256": "1a79a05290315b8d0610edb7ff1804802edcff72b9628e5b4a96e45765e8be49",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_001/page/n332/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747673",
+    "shelfmark": "Ms. X 893C J 55 vol. 16",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 1, 344–347",
+    "edition_url": "https://archive.org/details/ldpd_12138657_001",
+    "value": "https://archive.org/details/ldpd_12138657_001/page/n344/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001371930205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 344-347.",
+    "source_sha256": "849ad1ea9b3c8c8a5e67113c57ab3143e67223f7350ef12a8cf5e991f59afdbe",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_001/page/n344/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747675",
+    "shelfmark": "Ms. X 893C J 55 vol. 25",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 1, 357",
+    "edition_url": "https://archive.org/details/ldpd_12138657_001",
+    "value": "https://archive.org/details/ldpd_12138657_001/page/n357/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001372120205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 357.",
+    "source_sha256": "2a1c91c3e0604698683f120ea3ee5f231582f9ff737cee252dd93726e33a94c4",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_001/page/n357/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747676",
+    "shelfmark": "Ms. X 893C J 55 vol. 28",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 1, 360",
+    "edition_url": "https://archive.org/details/ldpd_12138657_001",
+    "value": "https://archive.org/details/ldpd_12138657_001/page/n360/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001372150205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 360.",
+    "source_sha256": "feec03a6578230e70efae2ed61b59b9c5b825210bee7dbe74b350df0179f6ae9",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_001/page/n360/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747678",
+    "shelfmark": "Ms. X 893.19 Se 31",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 2, 732",
+    "edition_url": "https://archive.org/details/ldpd_12138657_002",
+    "value": "https://archive.org/details/ldpd_12138657_002/page/n250/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001373740205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 732.",
+    "source_sha256": "a576d6cc2827eeacdb7e5e766b7ca08ab2e67fd09509e3ac484d0859b5b5325b",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_002/page/n250/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141175794",
+    "shelfmark": "Or. 2228",
+    "catalogue": "Margoliouth (1899)",
+    "catalogue_entry": "Volume 1, no. 183",
+    "edition_url": "https://archive.org/details/p1catalogueofheb00brituoft",
+    "value": "https://archive.org/details/p1catalogueofheb00brituoft/page/n150/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001205840205171",
+    "source_value": "G. Margoliouth, Catalogue of the Hebrew and Samaritan Manuscripts in the British Museum (London, 1899-1935, 4 vols), no. 183",
+    "source_sha256": "13fb34cbaad3c6d25b1c7ba12946edd1448c49a5dd610fa2961599c4c7f21104",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/p1catalogueofheb00brituoft/page/n150/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747677",
+    "shelfmark": "Ms. X 893.1 PI M 58",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 2, 735",
+    "edition_url": "https://archive.org/details/ldpd_12138657_002",
+    "value": "https://archive.org/details/ldpd_12138657_002/page/n253/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001372730205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 735.",
+    "source_sha256": "cca467610c339f3b5f6c83a922fb14cd7735c7faf5cc20b65e0ff1a8d22a4653",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_002/page/n253/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747696",
+    "shelfmark": "Ms. X 893 T 721",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 2, 822",
+    "edition_url": "https://archive.org/details/ldpd_12138657_002",
+    "value": "https://archive.org/details/ldpd_12138657_002/page/n340/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001416510205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 822.",
+    "source_sha256": "1f0f8fd1f24ac2b41042e1365c4a06c29633656bd0e427e449ce5cc7ac15a030",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_002/page/n340/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747670",
+    "shelfmark": "Ms. X 893 Z 8 vol. 1 no. 16",
+    "catalogue": "Mendelsohn, Columbia University",
+    "catalogue_entry": "Volume 2, 873",
+    "edition_url": "https://archive.org/details/ldpd_12138657_002",
+    "value": "https://archive.org/details/ldpd_12138657_002/page/n391/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001371270205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 873.",
+    "source_sha256": "86242a176c8de9a06a331ea6143424d78787e206d6b5aa2c2ca881ad1ee0faec",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_002/page/n391/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747655",
+    "shelfmark": "Ms. X 893 M 5844",
+    "catalogue_entry": "Volume 2, 773",
+    "catalogue": "Mendelsohn, Columbia University",
+    "edition_url": "https://archive.org/details/ldpd_12138657_002",
+    "value": "https://archive.org/details/ldpd_12138657_002/page/n291/mode/1up",
+    "occurrence": "581:1:1",
+    "control_number": "990001360700205171",
+    "source_value": "I. Mendelsohn, Descriptive catalogue of Semitic manuscripts (mostly Hebrew) in the libraries of Columbia University (typewritten PH 3857, F 17153, F 18337), no. 773.",
+    "source_sha256": "00128abc4bfdc66247b7d9c24814432795a2884fcc9e1c3de69ba134ffb5b895",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/ldpd_12138657_002/page/n291/mode/1up",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141175787",
+    "shelfmark": "Add. 27109",
+    "catalogue_entry": "Volume 3, no. 923, p. 232",
+    "catalogue": "Margoliouth (1915)",
+    "edition_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/4223985",
+    "value": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/4224239",
+    "occurrence": "581:1:1",
+    "control_number": "990001056990205171",
+    "source_value": "G. Margoliouth, Catalogue of the Hebrew and Samaritan manuscripts in the British Museum (London, 1899-1935, 4 vols)",
+    "source_sha256": "ffdcae2d3619ce9bef99f88eb12f4a2fbbf5c7dd2152b16b26b95f3d4db514c0",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/4224239",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747084",
+    "shelfmark": "Cod. Parm. 2254",
+    "catalogue": "De Rossi (1803)",
+    "catalogue_entry": "Volume 1, no. 28, p. 12",
+    "edition_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/7392366",
+    "value": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392393",
+    "occurrence": "581:1:1",
+    "control_number": "990000790160205171",
+    "source_value": "J. B. De-Rossi, Mss. codices hebraici Biblioth I. B. De-Rossi (Parmae, 1803), no. 28.",
+    "source_sha256": "89b255386d27caf72bc06cf5387c950d751e1ee68860d7f4cc6a0d0d8145fa5a",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392393",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747003",
+    "shelfmark": "Cod. Parm. 1937",
+    "catalogue": "De Rossi (1803)",
+    "catalogue_entry": "Volume 1, no. 75, p. 38",
+    "edition_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/7392366",
+    "value": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392419",
+    "occurrence": "581:1:1",
+    "control_number": "990000687740205171",
+    "source_value": "J. B. De-Rossi, Mss. codices hebraici Biblioth I. B. De-Rossi (Parmae, 1803), no. 75.",
+    "source_sha256": "754cf93f82197e15c49955a56ab5ef058f4d2987f0da183fc977cb8d68ca18d6",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392419",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747014",
+    "shelfmark": "Cod. Parm. 1945",
+    "catalogue": "De Rossi (1803)",
+    "catalogue_entry": "Volume 1, no. 105, p. 68",
+    "edition_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/7392366",
+    "value": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392449",
+    "occurrence": "581:1:1",
+    "control_number": "990000705510205171",
+    "source_value": "J. B. De-Rossi, Mss. codices hebraici Biblioth I. B. De-Rossi (Parmae, 1803), no. 105.",
+    "source_sha256": "86c80e3f16e0a9e1ce32b5a821ceab13cf5c9d4e427ea260c7c2bb1a6c9812dd",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392449",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747277",
+    "shelfmark": "Cod. Parm. 2284",
+    "catalogue": "De Rossi (1803)",
+    "catalogue_entry": "Volume 3, no. 1109, p. 66",
+    "edition_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/7391932",
+    "value": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392001",
+    "occurrence": "581:2:1",
+    "control_number": "990001059010205171",
+    "source_value": "J. B. De-Rossi, Mss. codices hebraici Biblioth I. B. De-Rossi (Parmae, 1803), no. 1109.",
+    "source_sha256": "5282e409d2388d2568b2edf617ad5bc59f01e6520fcf660cf89a8cb0b6ec546e",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392001",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747214",
+    "shelfmark": "Cod. Parm. 2912",
+    "catalogue": "De Rossi (1803)",
+    "catalogue_entry": "Volume 3, no. 1158, p. 82",
+    "edition_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/7391932",
+    "value": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392017",
+    "occurrence": "581:1:1",
+    "control_number": "990000952970205171",
+    "source_value": "J. B. De-Rossi, Mss. codices hebraici Biblioth I. B. De-Rossi (Parmae, 1803), no. 1158.",
+    "source_sha256": "0dc8827b18ff7570e19ec2043a65f0c337d4f6f2c175804f53b4aa5543ce49af",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392017",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141747015",
+    "shelfmark": "Cod. Parm. 2214",
+    "catalogue": "De Rossi (1803)",
+    "catalogue_entry": "Volume 3, no. 1251, p. 126",
+    "edition_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/7391932",
+    "value": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392061",
+    "occurrence": "581:1:1",
+    "control_number": "990000727400205171",
+    "source_value": "J. B. De-Rossi, Mss. codices hebraici Biblioth I. B. De-Rossi (Parmae, 1803), no. 1251.",
+    "source_sha256": "59b3063e36747be551a6bf61faac459ff3ccaee762e47fec438469d5b9efb83b",
+    "property": "P973",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/7392061",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141746908",
+    "control_number": "990000576790205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "fabb446005c3026f34c238540cd4420bb52c4a2824ea9f1d0a7812b6792bf06b",
+    "property": "P31",
+    "value": "Q9026959",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000576790205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "9595df6c95d820468dacccf2de2b01954a96fbba2613a49c0e3824b3031dd42a"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571954241,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746986",
+    "control_number": "990000665230205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "fabb446005c3026f34c238540cd4420bb52c4a2824ea9f1d0a7812b6792bf06b",
+    "property": "P31",
+    "value": "Q9026959",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000665230205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:2",
+      "source_sha256": "af62abb71b763f3c069617239c776ae15cafe120b4169e42aecad0d3950e3861"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574421718,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729",
+      "Q48498"
+    ]
+  },
+  {
+    "qid": "Q141747097",
+    "control_number": "990000801730205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "fabb446005c3026f34c238540cd4420bb52c4a2824ea9f1d0a7812b6792bf06b",
+    "property": "P31",
+    "value": "Q9026959",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000801730205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "3be12395312575004651d0d153aa63d605ae16c4510baff14af7de9c0c42ca48"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574405271,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747233",
+    "control_number": "990001011060205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "fabb446005c3026f34c238540cd4420bb52c4a2824ea9f1d0a7812b6792bf06b",
+    "property": "P31",
+    "value": "Q9026959",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001011060205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "33e6eb56a561879f92e0c18404422a8e830fa9e2b5649b239f0a6b89f93ef70e"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574405617,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747234",
+    "control_number": "990001011110205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "fabb446005c3026f34c238540cd4420bb52c4a2824ea9f1d0a7812b6792bf06b",
+    "property": "P31",
+    "value": "Q9026959",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001011110205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "e5d58e630580eb91f6797a3e316ab46f3efd63d8c46cc3bf45cb368ea6c23838"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574421896,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748102",
+    "control_number": "990001794810205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "fabb446005c3026f34c238540cd4420bb52c4a2824ea9f1d0a7812b6792bf06b",
+    "property": "P31",
+    "value": "Q9026959",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001794810205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "23f5b580e2e51b2b6585c446d8cf59a1c82ea1b54b8b42e1e65b267f449ba211"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574406981,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746933",
+    "control_number": "990000589830205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000589830205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "297a12912a1f87734e85d2ac155bf1f4097905d420e45492d65e90c7fb8bbac4"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574421470,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747188",
+    "control_number": "990000913260205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000913260205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:7",
+      "source_sha256": "9e0f1c96959207d6d236df006b7c8d6bf2a024dd84315992c57497340fc6e097"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574379612,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747262",
+    "control_number": "990001039100205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001039100205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "2151304178534b5e09a26a2df247c18cd1a4a33bab08d384cc547d7ce834852c"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571966745,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747303",
+    "control_number": "990001084070205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001084070205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "a4f9b52adac143beddea9bd168ba417d0d3227a9cf25d893075251b67e490b0e"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049482,
+    "prior_classes": [
+      "Q87167"
+    ]
+  },
+  {
+    "qid": "Q141747507",
+    "control_number": "990001219330205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001219330205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "df5adc81aac486870aba1bf0ee4766298405ef40ba39fd865baa3cbdee40722c"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574406314,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747525",
+    "control_number": "990001244050205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001244050205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "c7c57de63049036ba548fabb6abf12a1ebc774abc946aa4c8ea29f5112160d57"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572007891,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747597",
+    "control_number": "990001273110205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001273110205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "72722fc152256deaa41f508dbebb3f0539ffe5f7ae76c9192e98112c1f859fd2"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049568,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747602",
+    "control_number": "990001287260205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001287260205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "69e73f25a79c23411e758328d028c6ba3a1a3378a051d3ca3d35a593e4c5f5da"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574406548,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747673",
+    "control_number": "990001371930205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001371930205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "b990455dc39edcb46d10f5ec9064f4d5ecc781247d1456db4d7ddc2e76e80752"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574422456,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747776",
+    "control_number": "990001492570205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001492570205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "62bfeac5d1b3b4e47ceba3d0da710800b781aafdbef40f1fffbcebbed86a387c"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573685636,
+    "prior_classes": [
+      "Q87167"
+    ]
+  },
+  {
+    "qid": "Q141748086",
+    "control_number": "990001778280205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001778280205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "7a995719953e5ff825967d8ea2db91ff438453418707814f9b51d115192c43da"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572016230,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746860",
+    "control_number": "990000543450205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000543450205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "e299a9ff8f236e68ac0f435743bc28ce510ac757880dace1335a7cbefc05d810"
+    },
+    "target_work_qid": "Q141754605",
+    "target_work_title": "הלכות שחיטה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573686592
+  },
+  {
+    "qid": "Q141746860",
+    "control_number": "990000543450205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "c88ff1d883c720314070085a594b94a61a1e95544792f44ca83c86c883c22ce2",
+    "property": "P921",
+    "value": "Q861258",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000543450205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "e299a9ff8f236e68ac0f435743bc28ce510ac757880dace1335a7cbefc05d810"
+    },
+    "target_work_qid": "Q141754605",
+    "target_work_title": "הלכות שחיטה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573686592
+  },
+  {
+    "qid": "Q141746973",
+    "control_number": "990000645310205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000645310205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "93ef5295e27c77044ff75aedb03f13fa475dbefd34a4b8c3cfa52c096d7f4425"
+    },
+    "target_work_qid": "Q141754916",
+    "target_work_title": "זבחי שלמי",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573686790
+  },
+  {
+    "qid": "Q141746985",
+    "control_number": "990000665220205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000665220205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "e95bf101460f90ea0e091c3150b9f8bc085b795dc909358b52ce6e9b8529620a"
+    },
+    "target_work_qid": "Q141952989",
+    "target_work_title": "אדרת אליהו",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022713
+  },
+  {
+    "qid": "Q141746986",
+    "control_number": "990000665230205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000665230205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "346e3339587c7af2df8d7b0e66b9b73adeb65cde7c131629777bf3bda85ed6fe"
+    },
+    "target_work_qid": "Q141755388",
+    "target_work_title": "צפנת פענח",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022646
+  },
+  {
+    "qid": "Q141746993",
+    "control_number": "990000669660205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000669660205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "e5fa453d3af9698debf0a9f82ad0fc70e2eecd1ac7b4e21ea762145f67d08a1a"
+    },
+    "target_work_qid": "Q141754953",
+    "target_work_title": "זר זהב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022308
+  },
+  {
+    "qid": "Q141746997",
+    "control_number": "990000677150205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000677150205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "84a2c1619afd8a43daa31f7acf8d538249977bcae104a091afc0c956c12a3826"
+    },
+    "target_work_qid": "Q141754681",
+    "target_work_title": "קבץ מאמרים על הזהר ועל התורה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573677684
+  },
+  {
+    "qid": "Q141747017",
+    "control_number": "990000738230205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000738230205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "41463073d432dd6eb86d5b624b812d7ecbbac0439181d49c42e8ab8c81d38d02"
+    },
+    "target_work_qid": "Q141754954",
+    "target_work_title": "מפתח הזהר",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573686823
+  },
+  {
+    "qid": "Q141747063",
+    "control_number": "990000773730205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000773730205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "6752979250927b25f2207a8c36c9893a7bac263b7b1fe14f95d90599efec25c5"
+    },
+    "target_work_qid": "Q141754993",
+    "target_work_title": "משנה תורה (ספר קדושה)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022399
+  },
+  {
+    "qid": "Q141747093",
+    "control_number": "990000798890205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "5a749800ed8ce63e50980b4ca1e840548a113e4953ebb7981473161f9189d0d4",
+    "property": "P921",
+    "value": "Q60797",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000798890205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "6200234c284f4fe4e1a25960a2c18b2080a5e487a2bbf2f2c15bd5d528d11aeb"
+    },
+    "target_work_qid": "Q141755114",
+    "target_work_title": "אגודת אזוב",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574342436
+  },
+  {
+    "qid": "Q141747161",
+    "control_number": "990000848100205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "da72bf5bbca4ca33b822955cfbbf9e5b84e4e0fa5e5e68cf9d30054109fac58b",
+    "property": "P136",
+    "value": "Q25372",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000848100205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "8941616c878f5efe4af96331d4e92d5e00be051a4010ea503a22c2287a0b0810"
+    },
+    "target_work_qid": "Q141755385",
+    "target_work_title": "צחות בדיחותא דקדושין",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574052609
+  },
+  {
+    "qid": "Q141747214",
+    "control_number": "990000952970205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "66cc2f288807a3a28ae40caaa3f1b29a04f85a8a826baa30efa234ea898c93f2",
+    "property": "P921",
+    "value": "Q174370",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000952970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "053b196b76eb9113e34ec5504f9eeb64932c4899d168469af9487b76432f5382"
+    },
+    "target_work_qid": "Q141754982",
+    "target_work_title": "אליסף בן דעואל",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572075066
+  },
+  {
+    "qid": "Q141175785",
+    "control_number": "990001039720205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001039720205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "4e41356c78dc37b1623d5e35963c8815d16d8be5d552f05121d4b3353b52ebbc"
+    },
+    "target_work_qid": "Q141997154",
+    "target_work_title": "שתיל פורח",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678330
+  },
+  {
+    "qid": "Q141747267",
+    "control_number": "990001042260205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001042260205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "b991d09888d59aec487370922bbdaf04113b3214a7b3664f1d3874b7fe1dc423"
+    },
+    "target_work_qid": "Q141755052",
+    "target_work_title": "ירח יקר",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022516
+  },
+  {
+    "qid": "Q141747350",
+    "control_number": "990001124870205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001124870205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "12709c9bc2f6d7e210c16d5b0dde22ac89a2b87ed467b2bc472a618b2bb6a963"
+    },
+    "target_work_qid": "Q141755008",
+    "target_work_title": "חכמת נשים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687288
+  },
+  {
+    "qid": "Q141747638",
+    "control_number": "990001347920205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001347920205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "d6d80f669bd00b8bc3761b252fc3ee52ca7240fb17dd507a474619fe661f51da"
+    },
+    "target_work_qid": "Q141754713",
+    "target_work_title": "דרכי משה הארוך (אורח חיים ויורה דעה)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022191
+  },
+  {
+    "qid": "Q141747776",
+    "control_number": "990001492570205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "f023c0e983232f0d21b725183e2093bcbfbe8ca936c27bf0ca96c79766628fd2",
+    "property": "P921",
+    "value": "Q1123131",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001492570205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "2e1a4acca521e9809752f87317a020093e2596d9fa3e4f80cc2be40dd38337dc"
+    },
+    "target_work_qid": "Q142116353",
+    "target_work_title": "Dialogos theologicos",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573670467
+  },
+  {
+    "qid": "Q141747952",
+    "control_number": "990001719610205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "a6f10bde1cb3b4d0c3a51b3bf3746c41920093f27b8c5a9f438e31903810099e",
+    "property": "P136",
+    "value": "Q482",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001719610205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "344ee937a810c40ddcafe8900a27b5190b85bf2168399af1e7ae658633a6c66a"
+    },
+    "target_work_qid": "Q141754934",
+    "target_work_title": "קינות על מות מרי מלכת אנגליה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574342387
+  },
+  {
+    "qid": "Q141175880",
+    "control_number": "990001748970205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "a6f10bde1cb3b4d0c3a51b3bf3746c41920093f27b8c5a9f438e31903810099e",
+    "property": "P136",
+    "value": "Q482",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001748970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "a3b19f9d7f27ef8950bacdcbaa5907d1200770aded2e42298ff7bd3613df9250"
+    },
+    "target_work_qid": "Q141362121",
+    "target_work_title": "שירי תהלה לנכבדי בית סאבוי",
+    "first_creator_uid": 6935067,
+    "live_revision": 2571950221
+  },
+  {
+    "qid": "Q141748188",
+    "control_number": "990001901770205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001901770205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "f26ad764dfc923271f0b4f66ef0cc517fe0a72ca59c755085bfd654339490e50"
+    },
+    "target_work_qid": "Q141755033",
+    "target_work_title": "משנה תורה (ספר זרעים, עבודה, קרבנות)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022491
+  },
+  {
+    "qid": "Q141748275",
+    "control_number": "990001911540205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001911540205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "ee03e3ad0881d2cae607dd4a465ed771b5c1b3e8687ec2c5fb2d99d19f92142e"
+    },
+    "target_work_qid": "Q141754675",
+    "target_work_title": "תקוני הרי\"ף",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022158
+  },
+  {
+    "qid": "Q141748278",
+    "control_number": "990001913460205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "a0954de6be938559af3fd8d774892ef7daaa8195a2c2edffbe8d99a1b6f432be",
+    "property": "P921",
+    "value": "Q123006",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001913460205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "a52e3759a5483cf98fd13fdaa76015e93ed74c30f6ea71a12f13a8a6fb473ab5"
+    },
+    "target_work_qid": "Q141754921",
+    "target_work_title": "זהר הרקיע",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022277
+  },
+  {
+    "qid": "Q141748437",
+    "control_number": "990034232700205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "9a861c8afa077f483855682045c1afa5361deba95d03436e643c6b90b8a9b6c2",
+    "property": "P921",
+    "value": "Q107427",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990034232700205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "4b7574e9730fbb7f3fc4d7455f1e45c0291213d698e1ce4c741efa8976801856"
+    },
+    "target_work_qid": "Q141755344",
+    "target_work_title": "שלחן מלכים (יורה דעה)",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574342482
+  },
+  {
+    "qid": "Q141747085",
+    "control_number": "990000790230205171",
+    "occurrence": "650:2:1",
+    "source_sha256": "f023c0e983232f0d21b725183e2093bcbfbe8ca936c27bf0ca96c79766628fd2",
+    "property": "P921",
+    "value": "Q1123131",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000790230205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "d436061496b8646ce31b8ec83229c9b430f677d8d430856c9abd7ac7fad17409"
+    },
+    "target_work_qid": "Q141755331",
+    "target_work_title": "קול סכל ושאגת אריה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678040
+  },
+  {
+    "qid": "Q141747099",
+    "control_number": "990000804310205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "a6f10bde1cb3b4d0c3a51b3bf3746c41920093f27b8c5a9f438e31903810099e",
+    "property": "P136",
+    "value": "Q482",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000804310205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "dc32b90a8ea9418e2a8d829f610159475c5d758277c97296d3d8ac095cb43068"
+    },
+    "target_work_qid": "Q141754957",
+    "target_work_title": "גן המלך",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574022312
+  },
+  {
+    "qid": "Q141747156",
+    "control_number": "990000842390205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "dd88a8acc4f28bc6cf19f637932ff3a2eb03a61009babbf6ffd71869c303efab",
+    "property": "P136",
+    "value": "Q170539",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000842390205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "fbb0afaca74e633d1e7fe31815f83f860674722848b4834bd032100ed1fd30f1"
+    },
+    "target_work_qid": "Q141754962",
+    "target_work_title": "משקת שכורים",
+    "first_creator_uid": 6935067,
+    "live_revision": 2568179552
+  },
+  {
+    "qid": "Q141748306",
+    "control_number": "990001917110205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "b93e216c701fef0a9d14bff6c083469efaf4af8c3dfa7518929a0e2071432437",
+    "property": "P136",
+    "value": "Q781402",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001917110205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "cbd1821e4e15cd42fa1e1057743651aae45d5749683fd49edd92dd9fdd08e3ee"
+    },
+    "target_work_qid": "Q141754927",
+    "target_work_title": "פיוטים לכל השנה",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573687821
+  },
+  {
+    "qid": "Q141747479",
+    "control_number": "990001205430205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001205430205171",
+    "source_sha256": "dabeda93b14e43968b91871bc7d7655978416ff2839a2dca9f3677156662973e",
+    "value": "\"נשלם זה הכתובים בעזרת האל וברחמיו ביום רביעי בשלושה עשר לחדש תמוז שנת אתתקיו על שם התלמידים הטובים האהובים החטובים אברם וזכריא ודויד בני שלמה בן דויד הידוע אלטביעה ה' יזכה אותם להגות בו ולדקדק בעניניו ולגלות מצפוניו ויזכה אותם לכל מדה טובה ולשמחת בית השאובה אנס\"ל אני העבד הצעיר הקל הנקל קטן הסופרים צעיר התלמידים המתאבק בעפר רגלי החכמים אברהם ב' רב יוסף בן סעדיה הידוע ונ\"ה ה' ימחול לי על כל מה ששגיתי וטעיתי ונסתר מעיני כמאמר רבינו דויד מלך ישראל שגיאות מי יבין מנסתרות נקיני [...] ייי צורי וגואלי ש'ו'ש'ר'ש' ב'מ'ש' ל' כ'י' ע'מ'ר'א.",
+    "language": "he",
+    "qualifiers": {
+      "P7416": "138ב",
+      "P3831": "Q372474"
+    },
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747626",
+    "control_number": "990001328680205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001328680205171",
+    "source_sha256": "b4b6e1cc0d8f4988d7d752d946f4e06f4861662e7a436fcee5401b9875d66c0e",
+    "value": "במתא קדיה' בני עמר.",
+    "language": "arc",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "קנג ע\"ב"
+    }
+  },
+  {
+    "qid": "Q141748062",
+    "control_number": "990001738930205171",
+    "occurrence": "500:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001738930205171",
+    "source_sha256": "42225c29803b61ed3f72449715748fe2b4d24c617cca04113dfe554a33465c69",
+    "value": "ספר זכרון תרועה מקרא קדש סדר ענין תקיעת שופר בראש השנה ודברים שייכים ליום הכפורים. פה סיינה שנת התנ\"ז\"",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q1339862"
+    },
+    "verification_only": true
+  },
+  {
+    "qid": "Q141748135",
+    "control_number": "990001836700205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001836700205171",
+    "source_sha256": "48b432f75cb6f82f787c9ab5512201c24046cf70464949b0821c68d2fde405e9",
+    "value": "\"הוה הכלול מן כתב זה ספר הימים ... בחמשה ימים מן חדש התשעי אשר היא שנת ששה ועשרים ואלף לממלכת ישמעאל [=1617] על יד העבד המס[כן] טביה בן פינחס שמש כנשת שכם הקדושה",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474"
+    },
+    "verification_only": true
+  },
+  {
+    "qid": "Q141175787",
+    "control_number": "990001056990205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "proof_url": "https://searcharchives.bl.uk/catalog/032-003370327",
+    "source_sha256": "29ab1986f317713e7db7e0518442f0719b79a2afc547699d4acb4fdcf90c9fb5",
+    "value": "והשלמתיה כפי המכוון פה ק\"ק אסטי בחדש השלישי בשנת שלש מאות וששים ושש לאלף הששי",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "92א"
+    },
+    "additional_inscriptions": [
+      {
+        "value": "נכתב ונשלם פה ק\"ק אסטי תמוז שס\"ה לפ\"ק שלי הצעיר יוסף קונציו",
+        "qualifiers": {
+          "P3831": "Q372474",
+          "P7416": "91ב"
+        },
+        "language": "he",
+        "proof_url": "https://searcharchives.bl.uk/catalog/032-003370327"
+      }
+    ]
+  },
+  {
+    "qid": "Q141746907",
+    "control_number": "990000574500205171",
+    "occurrence": "856:2:1",
+    "property": "P953",
+    "type": "url",
+    "qualifiers": {},
+    "source_sha256": "7bfea5474f5488935c5cab8d877e1a38c3290432b4d4760acc709d9fa72a15bf",
+    "first_creator_uid": 6935067,
+    "shelfmark": "Ms. H 74 A",
+    "value": "https://www.bibliotheque-numerique-aiu.org/idurl/1/28751",
+    "proof_url": "https://www.bibliotheque-numerique-aiu.org/viewer/28751/?offset=",
+    "prior_access_urls": [
+      "https://bvmm.irht.cnrs.fr/mirador/index.php?manifest=https://bvmm.irht.cnrs.fr/iiif/32069/manifest"
+    ]
+  },
+  {
+    "qid": "Q141748115",
+    "control_number": "990001818810205171",
+    "occurrence": "856:1:1",
+    "property": "P953",
+    "type": "url",
+    "qualifiers": {},
+    "source_sha256": "6b9721475177cf74fb75dd37843db4992b517535c936c2622acae91932319f6c",
+    "first_creator_uid": 6935067,
+    "shelfmark": "Ms. Or. 4792",
+    "value": "https://digitalcollections.universiteitleiden.nl/view/item/3780367",
+    "proof_url": "https://digitalcollections.universiteitleiden.nl/iiif_manifest/item%3A3780367/manifest",
+    "prior_access_urls": []
   }
 ]

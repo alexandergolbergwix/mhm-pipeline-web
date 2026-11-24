@@ -48,3 +48,12 @@ Three original entries match the shelfmark and distinctive evidence in the MARC 
 | Q141175809 | Ms. 173 | Entry 173 identifies the Carpentras New Year rite, Élie Delpuget, and the date 5408. [Page 272](https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_98_4716?pageId=T1_272) |
 
 Entry 128 matches the original description. The target item has a different first creator. The review retains it as source evidence. Entry 245 requires an exact catalogue match.
+
+## Steinschneider, 1858
+
+Witkam's inventory maps the modern Leiden shelfmarks to the exact pages in the original 1858 catalogue. The Frankfurt scans confirm the historical numbers and the contents in the MARC records. [Original catalogue](https://sammlungen.ub.uni-frankfurt.de/freimann/content/titleinfo/4221305) · [Witkam inventory](https://bibliography.mk.iq/files/bcf28845b7a6369f.pdf)
+
+| Wikidata item | Current shelfmark | Proof |
+| --- | --- | --- |
+| Q141748115 | Ms. Or. 4792 | Warner 54 names the work and its author, Elijah ben Judah Tishbi. [Page 252](https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/4221589) |
+| Q141748116 | Ms. Or. 4803 | Hebrew 82 identifies the Psalms copy in two parts. [Page 299](https://sammlungen.ub.uni-frankfurt.de/freimann/content/pageview/4221636) |

@@ -1,0 +1,7 @@
+# Leiden and AIU scan evidence
+
+The full MARC record for Ktiv `990001818810205171` links to Leiden resource `3780367`. The university's current viewer gives *Pe'er*, shelfmark Or. 4792. Its IIIF manifest supplies 200 canvases. The project created Wikidata item Q141748115. The item has the exact Ktiv ID and lacks an access statement for this scan. [Leiden viewer](https://digitalcollections.universiteitleiden.nl/view/item/3780367) · [Leiden IIIF manifest](https://digitalcollections.universiteitleiden.nl/iiif_manifest/item%3A3780367/manifest)
+
+Ktiv `990000574500205171` lists the Alliance Israélite Universelle copy of *Sefer ha-Peli'ah* in a second MARC 856 occurrence. The holder identifies shelfmark MSH074A and 277 images. The first creator and exact Ktiv identifier match Q141746907. The repair adds the holder URL and preserves the access statement for the separate IRHT URL. [AIU catalogue](https://www.bibliotheque-numerique-aiu.org/idurl/1/28751) · [AIU viewer](https://www.bibliotheque-numerique-aiu.org/viewer/28751/?offset=)
+
+The British Library lists some original digital copies as unavailable. Its catalogue identifies Or. 12354, but the image service did not return an accessible manifest for this audit. Keep its existing source and open case. [British Library catalogue](https://searcharchives.bl.uk/catalog/032-003381130) · [Digital access notice](https://www.bl.uk/collection/digitised-manuscripts-archives)

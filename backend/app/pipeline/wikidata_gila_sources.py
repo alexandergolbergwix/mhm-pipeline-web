@@ -116,8 +116,72 @@ def source_case(cn, occurrence, source, reason, *, entity=None, pid=None, value=
     return case
 
 
+def _reviewed_inscriptions(cn, occurrence, source, entity, proof):
+    inscriptions = [proof, *proof["additional_inscriptions"]]
+    folios = {row["qualifiers"].get("P7416") for row in inscriptions}
+    if None in folios or "" in folios or len(folios) != len(inscriptions):
+        return source_case(cn, occurrence, source, "inscription_text_overlap")
+    permitted_claims = {
+        match["claim_id"]
+        for row in inscriptions
+        for match in matching_claims(
+            entity, "P1684", row["value"], row["qualifiers"], language=row["language"],
+        )
+    }
+    if any(claim.get("id") not in permitted_claims for claim in entity.get("claims", {}).get("P1684", [])):
+        return source_case(cn, occurrence, source, "inscription_text_overlap")
+    cases = [
+        source_case(
+            cn, occurrence, source, "reviewed_source_proof", entity=entity, pid="P1684",
+            value=row["value"], qualifiers=row["qualifiers"], kind="monolingualtext",
+            language=row["language"], proof_urls=(row["proof_url"],),
+        )
+        for row in inscriptions
+    ]
+    pending = [row for row in cases if not row["verified"]]
+    if not pending:
+        return {
+            **cases[0],
+            "verified_matches": [
+                {**match, "qualifiers": row["expected_qualifiers"]}
+                for row in cases for match in row["verified_matches"]
+            ],
+        }
+    if any(not row.get("source_repair") for row in pending):
+        return source_case(cn, occurrence, source, "inscription_text_overlap")
+    first, *others = pending
+    return {
+        **first,
+        "source_repair": {
+            **first["source_repair"],
+            "additional_claims": [row["source_repair"] for row in others],
+        },
+    }
+
+
+def _reviewed_work_source(cn, occurrence, source, manuscript, proof, entities):
+    pid, value = proof["property"], proof["value"]
+    target = _work_target(manuscript, entities, _work_title_key(proof["target_work_title"]), cn)
+    topic = entities.get(value)
+    if (
+        not proof.get("supporting_note") or not topic
+        or pid not in {"P921", "P136"} or proof["type"] != "item"
+        or target.get("id") != proof["target_work_qid"]
+    ):
+        return source_case(cn, occurrence, source, "reviewed_work_scope_changed")
+    return source_case(
+        cn, occurrence, source, "reviewed_source_proof", entity=target, pid=pid,
+        value=value, qualifiers=proof["qualifiers"], kind="item",
+        proof_urls=(proof["proof_url"],), dependencies=(manuscript, topic),
+    )
+
+
 def _reviewed_source_case(cn, occurrence, source, entity, proof, entities):
     pid, value = proof["property"], proof["value"]
+    if proof.get("target_work_qid"):
+        return _reviewed_work_source(cn, occurrence, source, entity, proof, entities)
+    if pid == "P1684" and proof.get("additional_inscriptions"):
+        return _reviewed_inscriptions(cn, occurrence, source, entity, proof)
     qualifiers, language = proof["qualifiers"], proof.get("language")
     exact = matching_claims(entity, pid, value, qualifiers, language=language)
     if proof.get("verification_only") and (
@@ -263,6 +327,12 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
             if not source:
                 continue
             reviewed = reviewed_source_proof(cn, occurrence, source, source_entity, source_rows)
+            if reviewed and reviewed.get("target_work_qid") and (
+                {"650": "P921", "655": "P136"}.get(tag) != reviewed["property"]
+                or marc.values(row, "2") != ["nli"]
+                or any(marc.values(row, code) for code in ("v", "x", "y", "z"))
+            ):
+                reviewed = None
             if tag in {"510", "581"}:
                 normalized = " ".join(source.split())
                 if codes[normalized]:

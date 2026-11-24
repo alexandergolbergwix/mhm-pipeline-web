@@ -58,6 +58,68 @@ def test_exact_marc_inscription_keeps_the_role_folio_and_case_id():
     assert inscription(fresh)["reason"] == "ambiguous_source_claim"
 
 
+def test_reviewed_colophons_require_each_folio_before_verification():
+    target = item()
+    proof = {
+        "property": "P1684", "value": "ונשלמה המלאכה", "qualifiers": {"P3831": "Q372474", "P7416": "ב"},
+        "type": "monolingualtext", "language": "he", "proof_url": corpus.nli_catalog_url(CN),
+        "additional_inscriptions": [{
+            "value": "תם ונשלם", "qualifiers": {"P3831": "Q372474", "P7416": "ג"},
+            "language": "he", "proof_url": corpus.nli_catalog_url(CN),
+        }],
+    }
+
+    def check(entity):
+        return _reviewed_source_case(CN, "957:1:1", "Two colophons", entity, proof, {})
+
+    case = {**check(target), "control_number": CN}
+    patches = corpus.source_patches(case, target, repair_claim_builder())
+    assert len(patches) == 2
+    assert corpus.source_additions_only(PlannedEdit(target, patches, [], {"Q1": 42}))
+    fresh = deepcopy(target)
+    fresh["lastrevid"] += 1
+    fresh["claims"]["P1684"] = [{**patches[0], "id": "Q1$first"}]
+    assert not check(fresh)["verified"]
+    assert len(corpus.source_patches({**check(fresh), "control_number": CN}, fresh, repair_claim_builder())) == 1
+    fresh["claims"]["P1684"].append({**patches[1], "id": "Q1$second"})
+    assert verify_claims(target, fresh, fresh["lastrevid"], patches)
+    assert len(check(fresh)["verified_matches"]) == 2
+    fresh["claims"]["P1684"].append({**patches[0], "id": "Q1$duplicate"})
+    assert "source_repair" not in check(fresh)
+    assert not check(fresh)["verified"]
+
+
+def test_reviewed_subject_requires_exact_work_and_catalogue_link(monkeypatch):
+    manuscript, work, topic = item(), item("Q2"), item("Q3")
+    control_snak = {"datavalue": {"value": CN}, "snaktype": "value"}
+    manuscript["claims"]["P1574"] = [{
+        "id": "Q1$work", "mainsnak": {"datavalue": {"value": {"id": "Q2"}}},
+        "references": [{"snaks": {"P3959": [control_snak]}}],
+    }]
+    work["claims"]["P1476"] = [{"mainsnak": {"datavalue": {"value": {"text": "הלכות שחיטה"}}}}]
+    proof = {
+        "target_work_qid": "Q2", "target_work_title": "הלכות שחיטה",
+        "supporting_note": {"occurrence": "500:1"}, "property": "P921", "value": "Q3", "type": "item",
+        "qualifiers": {}, "proof_url": corpus.nli_catalog_url(CN),
+    }
+    monkeypatch.setattr("app.pipeline.wikidata_gila_sources.reviewed_source_proof", lambda *args: proof)
+    subject = {"tag": "650", "subfields": [{"code": "a", "value": "Shehitah"}, {"code": "2", "value": "nli"}]}
+    record = {"001": CN, "marc_occurrences": [subject]}
+
+    def check():
+        case, = full_source_cases(CN, record, {}, manuscript, {"Q2": work, "Q3": topic}, {})
+        return case
+
+    case = check()["source_repair"]
+    assert case["qid"] == "Q2"
+    assert case["dependencies"] == {"Q1": 42, "Q3": 42}
+    subject["subfields"].append({"code": "x", "value": "Subtopic"})
+    assert "source_repair" not in check()
+    subject["subfields"].pop()
+    manuscript["claims"]["P1574"][0]["references"] = []
+    assert check()["reason"] == "reviewed_work_scope_changed"
+
+
 def test_verification_only_inscription_requires_the_existing_reference():
     target = item()
     case = inscription(target)

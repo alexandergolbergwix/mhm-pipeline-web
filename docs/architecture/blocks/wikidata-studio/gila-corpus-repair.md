@@ -27,12 +27,20 @@ Any unexpected access URL, including an equivalent URL, holds the case for revie
 The writer preserves the existing access claims.
 For manuscript form, the audit checks a separate MARC note and the live class item.
 For proof that only confirms an existing inscription, it requires the exact live claim and reference.
+For a MARC occurrence with several reviewed inscriptions, the worker prepares each exact quotation with its distinct folio.
+The audit verifies the occurrence when all its quotations have their matching claims and references.
+An unexpected or duplicate inscription holds the entire occurrence for review.
+For a reviewed subject or genre, the original record must support the specific work.
+The audit requires the reviewed work title and a unique live work link that cites the same Ktiv record.
+The writer checks the first creator of the work and uses the current revisions of the manuscript, work, and topic.
 The audit requires the cited URL on the matching claim before it verifies the case.
 The [Weisz and Neubauer catalogue evidence](../../../audits/2026-11-24-weisz-edition-evidence.md), [inscription evidence](../../../audits/2026-11-24-inscription-proof-evidence.md), and [scan evidence](../../../audits/2026-11-24-requirement-8-scan-and-scope-evidence.md) describe the proof sources.
 The next proof batch adds [manuscript catalogue pages](../../../audits/2026-11-24-requirement-8-catalogue-pages.md), [Neubauer catalogue entries](../../../audits/2026-11-24-neubauer-additional-catalogue-evidence.md) and [transcribed colophons](../../../audits/2026-11-24-inscription-field-evidence.md).
 For an entry across several scan leaves, the claim links to its first leaf and the reference cites the leaf with the shelfmark.
 The corpus preflight also uses the [bibliography proof](../../../audits/2026-11-24-catalogue-entry-concordance-evidence.md).
 The [holder and illumination proof](../../../audits/2026-11-24-r8-holder-and-illumination-evidence.md) and [inscription proof](../../../audits/2026-11-24-inscription-corpus-preflight.md) identify the exact source fields.
+The [work and form proof](../../../audits/2026-11-24-r8-autograph-illustration-scope.md) and [inscription scope review](../../../audits/2026-11-24-inscription-scope-followup.md) document the reviewed targets.
+The [catalogue pages](../../../audits/2026-11-24-bibliography-page-and-shelfmark-evidence.md), [Leiden edition proof](../../../audits/2026-11-24-catalogue-entry-concordance-evidence.md), and [holder scan proof](../../../audits/2026-11-24-r8-leiden-and-aiu-scans.md) identify the exact locations.
 
 ## Audit rules
 
