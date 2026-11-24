@@ -113,20 +113,20 @@ def test_reviewed_subject_requires_exact_work_and_catalogue_link(monkeypatch):
     case = check()["source_repair"]
     assert case["qid"] == "Q2"
     assert case["dependencies"] == {"Q1": 42, "Q3": 42}
-    subject["subfields"].append({"code": "x", "value": "Subtopic"})
+    subject["subfields"].append({"code": "z", "value": "Krako\u0301w"})
     assert "source_repair" not in check()
     proof["heading_subfields"] = deepcopy(subject["subfields"])
     proof["authority_urls"] = ["https://example.org/subject-heading"]
     case = check()
-    assert case["source_repair"]["proof_text"] == "Shehitah — Subtopic"
+    assert case["source_repair"]["proof_text"] == "Shehitah — Kraków"
     patch = corpus.source_patches({**case, "control_number": CN}, work, repair_claim_builder())[0]
     work["claims"]["P921"] = [{**patch, "id": "Q2$subject"}]
     assert check()["verified"]
     # A matching subject without the exact heading in the reference is insufficient.
     patch["references"][0]["snaks"].pop("P1683")
     assert check()["reason"] == "source_reference_missing"
-    assert check()["source_repair"]["proof_text"] == "Shehitah — Subtopic"
-    subject["subfields"][-1]["value"] = "Different topic"
+    assert check()["source_repair"]["proof_text"] == "Shehitah — Kraków"
+    subject["subfields"][-1]["value"] = "Kraków"
     assert "source_repair" not in check()
     subject["subfields"].pop()
     proof.pop("heading_subfields")

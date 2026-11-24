@@ -62,6 +62,7 @@ An automatic match also needs a record that describes one work.
 A reviewed match can use an exact contents note to identify a work in a collection.
 For a reviewed subdivided subject, the worker compares the complete ordered MARC 650 field with the proof.
 The subject reference includes the catalogue record, the authority URLs, and the complete heading in P1683.
+The worker puts the P1683 text in Unicode NFC to match Wikidata. The MARC check uses the original subfields.
 The audit checks those values together in one reference on the exact subject claim.
 The subject-only repair option restricts edits to P921 and keeps the full audit for verification.
 Subject-only repairs send the administrator reference queue limit of `maxlag=100`.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from collections.abc import Mapping
+from unicodedata import normalize
 from urllib.parse import urlsplit
 
 from app.pipeline import marc_occurrences as marc
@@ -183,7 +184,7 @@ def _reviewed_work_source(cn, occurrence, source, manuscript, proof, entities):
         cn, occurrence, source, "reviewed_source_proof", entity=target, pid=pid,
         value=value, qualifiers=proof["qualifiers"], kind="item",
         proof_urls=tuple(dict.fromkeys((proof["proof_url"], *proof.get("authority_urls", ())))),
-        proof_text=heading, dependencies=(manuscript, topic),
+        proof_text=normalize("NFC", heading), dependencies=(manuscript, topic),
     )
 
 
