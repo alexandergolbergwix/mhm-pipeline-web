@@ -74,6 +74,53 @@ async def test_automatic_repair_requires_admin_and_attaches_to_active_job(sample
     spawn.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_source_preflight_download_uses_saved_marc_audit(sample_run, db_session, monkeypatch):
+    run_id = sample_run["run_id"]
+    user = await db_session.get(User, sample_run["user_id"])
+    monkeypatch.setattr(router, "_run_id", lambda: run_id)
+    cn = "990000403370205171"
+    field = {
+        "tag": "590", "occurrence": 1, "indicators": [" ", " "],
+        "subfields": [{"code": "a", "value": "Temporary catalogue record"}],
+    }
+    saved_marc = b64encode(zlib.compress(json.dumps({cn: {"marc_occurrences": [field]}}).encode())).decode()
+    audit = RunJob(
+        id=uuid.uuid4(), project_id=sample_run["project_id"], run_id=run_id, created_by=user.id,
+        kind=worker.KIND, status="succeeded", result={}, params={"_gila_people_marc": saved_marc},
+    )
+    repair = RunJob(
+        id=uuid.uuid4(), project_id=sample_run["project_id"], run_id=run_id, created_by=user.id,
+        kind="wikidata_gila_repair", status="succeeded",
+        result={"corpus_preflight": {
+            "source_archive": True, "baseline_audit_id": str(audit.id), "source_audit_id": str(audit.id),
+        }},
+        params={
+            "_publication_credential": "private-envelope",
+            "_gila_corpus_preflight": [{
+                "case_id": "source:note", "control_number": cn, "points": [8], "occurrence": "590:1:1",
+                "status": "source_metadata", "outcome": "unresolved",
+            }],
+        },
+    )
+    db_session.add_all([audit, repair])
+    await db_session.commit()
+    endpoint = "/api/admin/wikidata-gila-repairs/preflight"
+    client = sample_run["client"]
+    params = {"job_id": str(repair.id), "archive": "true"}
+    assert (await client.get(endpoint, params=params)).status_code == 403
+    user.role = "admin"
+    await db_session.commit()
+    response = await client.get(endpoint, params=params)
+    assert response.status_code == 200
+    assert response.json()["cases"][0]["marc"] == field
+    assert response.json()["cases"][0]["outcome"] == "unresolved"
+    assert "private-envelope" not in response.text
+    page = await client.get(endpoint, params={"job_id": str(repair.id), "status": "source_metadata"})
+    assert page.status_code == 200
+    assert page.json()["total"] == 1
+
+
 def test_automatic_repair_selects_only_the_exact_audited_claim():
     correct = {"property": "P571", "value": "+1650-00-00T00:00:00Z", "precision": 9}
     wrong_precision = {**correct, "precision": 11}

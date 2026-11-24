@@ -1,6 +1,6 @@
 # Manuscript audit exports
 
-The audit result on **Wikidata Manuscript Audit and Repair** provides two JSON downloads.
+The audit result on **Wikidata Manuscript Audit and Repair** provides the following JSON downloads.
 Run a fresh audit to prepare the downloads for an older report.
 
 - **Download verified-only export** includes verified manuscript mappings and verified checks.
@@ -12,7 +12,11 @@ Run a fresh audit to prepare the downloads for an older report.
   The claim must cite the same catalogue record. The report holds other source references for review.
   The first creator check must return UID `6935067`. An unavailable result excludes the item.
 
-The audit saves both downloads with the completed snapshot.
+The audit saves these two downloads with the completed snapshot.
+The source repair job also provides **Download preflight and MARC evidence**.
+This download includes every source case, its decision, and the original MARC field from the saved audit.
+It contains the final audit outcome when verification is complete.
+See the [source preflight](gila-corpus-repair.md#add-source-evidence-for-requirement-8) for the archive endpoint.
 The reports include the audit ID and time. The error report also includes the proof source and statement ID.
 The downloads read the saved snapshot and make no Wikidata changes.
 A repair still needs current source, revision, and creator checks.

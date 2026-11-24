@@ -120,6 +120,10 @@ def _reviewed_source_case(cn, occurrence, source, entity, proof, entities):
     pid, value = proof["property"], proof["value"]
     qualifiers, language = proof["qualifiers"], proof.get("language")
     exact = matching_claims(entity, pid, value, qualifiers, language=language)
+    if proof.get("verification_only") and (
+        len(exact) != 1 or not _source_reference(exact[0], cn, (proof["proof_url"],))
+    ):
+        return source_case(cn, occurrence, source, "reviewed_existing_source_changed")
     if pid == "P1684" and not exact and entity.get("claims", {}).get(pid):
         return source_case(cn, occurrence, source, "inscription_text_overlap")
     if pid == "P953":

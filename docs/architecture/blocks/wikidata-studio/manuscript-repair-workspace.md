@@ -32,7 +32,8 @@ Conflicts in physical form or scribe identity require source review.
 
 Select **Repair people and current labels** for the [full authority and holding preflight](gila-authority-and-label-repair.md).
 
-Select **Repair sources and inscriptions** to add [source evidence for requirement 8](gila-corpus-repair.md#add-source-evidence-for-requirement-8).
+Select **Preflight and repair all sources** to check every open [requirement 8 case](gila-corpus-repair.md#add-source-evidence-for-requirement-8).
+Select **Download preflight and MARC evidence** to save the case decisions and exact source fields.
 
 Open a requirement to see its verified count and remaining cases.
 Use the filters to find missing source facts, uncertain identities, and cases that need reference evidence.

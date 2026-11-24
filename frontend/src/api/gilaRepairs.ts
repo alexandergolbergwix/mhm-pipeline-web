@@ -92,7 +92,8 @@ export interface GilaStatus {
   report: GilaReport | null;
 }
 
-export type PreflightStatus = "eligible" | "needs_evidence" | "other_creator" | "needs_review";
+export type PreflightStatus = "eligible" | "needs_evidence" | "other_creator" | "needs_review"
+  | "source_metadata" | "already_verified";
 
 export interface PreflightCase {
   case_id: string;
@@ -101,13 +102,16 @@ export interface PreflightCase {
   control_number: string | null;
   source_field: string | null;
   person_role?: string;
+  source_value?: string | null;
   reason: string;
   status: PreflightStatus;
+  outcome?: "verified" | "unresolved";
 }
 
 export interface CorpusPreflightResult {
   records: number;
   case_count?: number;
+  source_archive?: boolean;
   eligible_items: number;
   requirements: Array<{point: number; counts: Partial<Record<PreflightStatus, number>>}>;
 }
@@ -157,6 +161,8 @@ export const GilaRepairs = {
     api.post<RunJobSnapshot>(endpoint + "/repair-all", {scope}),
   preflight: (params: URLSearchParams) =>
     api.get<{items: PreflightCase[]; total: number}>(endpoint + "/preflight?" + params),
+  preflightArchive: (jobId: string) =>
+    api.get<unknown>(endpoint + "/preflight?" + new URLSearchParams({job_id: jobId, archive: "true"})),
   evidence: (auditId: string) => api.get<unknown>(endpoint + "/evidence?" + new URLSearchParams({audit_id: auditId})),
   export: (auditId: string, kind: AuditExportKind) => api.get<unknown>(
     endpoint + "/exports?" + new URLSearchParams({audit_id: auditId, kind}),

@@ -28,7 +28,7 @@ from app.models.run_job import (
     RunJob,
 )
 from app.pipeline.run_job_service import ActiveJobError, create_job, serialise_job
-from app.pipeline.wikidata_gila_audit_job import KIND, gila_audit_export, gila_cases
+from app.pipeline.wikidata_gila_audit_job import KIND, gila_audit_export, gila_cases, gila_people_marc
 from app.pipeline.wikidata_gila_case_review import reviewable
 from app.pipeline.wikidata_publication_prepare_job import audited_batch_params
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
@@ -154,15 +154,39 @@ async def repair_all(auth: Admin, db: Database, body: RepairAllRequest | None = 
 async def corpus_preflight(
     auth: Admin, db: Database, job_id: uuid.UUID,
     point: Literal["1", "5", "8"] | None = None,
-    status: Literal["eligible", "needs_evidence", "other_creator", "needs_review"] | None = None,
+    status: Literal["eligible", "needs_evidence", "other_creator", "needs_review", "source_metadata", "already_verified"] | None = None,
     offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
+    archive: bool = False,
 ):
     run = await _lookup_run_with_access(db, _run_id(), auth)
-    rows = await db.scalar(select(RunJob.params["_gila_corpus_preflight"]).where(
+    saved = (await db.execute(select(
+        RunJob.params["_gila_corpus_preflight"], RunJob.result["corpus_preflight"],
+    ).where(
         RunJob.id == job_id, RunJob.run_id == run.id, RunJob.kind == JOB_KIND_WIKIDATA_GILA_REPAIR,
-    ))
-    if rows is None:
+    ))).one_or_none()
+    if saved is None or saved[0] is None:
         raise HTTPException(404, "The corpus preflight is unavailable.")
+    rows, summary = saved
+    if archive:
+        from app.pipeline.wikidata_gila_corpus_repair import source_preflight_archive
+
+        if not summary or not summary.get("source_archive"):
+            raise HTTPException(404, "The source preflight archive is unavailable.")
+        audit_ids = {uuid.UUID(summary[key]) for key in ("source_audit_id", "baseline_audit_id")}
+        audits = (await db.scalars(select(RunJob).where(
+            RunJob.id.in_(audit_ids), RunJob.run_id == run.id, RunJob.kind == KIND,
+            RunJob.status == "succeeded",
+        ))).all()
+        if {audit.id for audit in audits} != audit_ids:
+            raise HTTPException(404, "The source audit for this archive is unavailable.")
+
+        def archive_cases():
+            records = {str(audit.id): gila_people_marc(audit) for audit in audits}
+            return source_preflight_archive(
+                rows, records[summary["source_audit_id"]], records[summary["baseline_audit_id"]],
+            )
+
+        return {"job_id": str(job_id), **summary, "cases": await asyncio.to_thread(archive_cases)}
     selected = [
         row for row in rows
         if (point is None or int(point) in row["points"]) and (status is None or status == row["status"])

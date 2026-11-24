@@ -2997,5 +2997,2231 @@
     "shelfmark": "Ms. 142",
     "creator_uid": 6935067,
     "catalogue": "Neubauer Jews' College"
+  },
+  {
+    "qid": "Q141746871",
+    "control_number": "990000554010205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "שכח ע\"\"ב"
+    },
+    "value": "ותשלם מלאכת הקודש...היום יום רביעי לחדש אייר של שנת אתתקנו שנין לשטרות [=1645] במאתא רדאע ונכתב על יד ... זכריה בן יוסף בן סעדיה בן שלמה",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000554010205171",
+    "source_sha256": "05c7ce7c70a28596638314c93738a96fd689f274ce875ce5fb0bb7ce329ca3ea",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141746961",
+    "control_number": "990000621640205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "רמד ע\"\"א"
+    },
+    "value": "הותחלה הכתיבה ביום כ\"ז לר\"ח מרחשון ונגמרה ביום ד' לר\"ח טבת שנת אל' גנת' אגוז' ירדתי לפ\"ק [=תל\"ז] נאם הצעיר ... שמחה ... בא\"א כמ\"ע חננאל",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000621640205171",
+    "source_sha256": "048d4037ac38536abfb80f17ee7a7b8a0f37c232fe90da5d6253a30f1eabac0b",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747152",
+    "control_number": "990000829710205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "קצ ע\"\"ב"
+    },
+    "value": "ותהי השלמת מלאכתי פה בק\"ק דטרוקי יום א' יג לאלול שנת שצ\"ב ... נאם יאשיהו בן לא\"א מוהר\"ר יהודא עזרי",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000829710205171",
+    "source_sha256": "39c7b22c739b984c105b0e4e80b110a0897f9a7eddd3ef3bc6f266820b2b998b",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747637",
+    "control_number": "990001347470205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474"
+    },
+    "value": "נשלם בטובה ... בשנת ותראה אות'ו כי ט'ו'ב' ה'ו'א לפ\"ק [=תכ\"ח] ... על כן חתמתי שמי על ספר ... ע\"ה שלמה בן אברהם אזראד",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001347470205171",
+    "source_sha256": "07402c240a575e0faedabb4fc123b84cc41864abf7d89396e4ba045aadb76923"
+  },
+  {
+    "qid": "Q141175801",
+    "control_number": "990001360630205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "arc",
+    "qualifiers": {
+      "P3831": "Q372474"
+    },
+    "value": "תרין אלפים יו\"ד",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001360630205171",
+    "source_sha256": "80660fed7da85776e52bf905dd47d7b8df8d6581c036c773cf1d5e0c3243f9a7"
+  },
+  {
+    "qid": "Q141748078",
+    "control_number": "990001761840205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474"
+    },
+    "value": "אלף ותשע מאות ואחד ושמונים לשטרות",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001761840205171",
+    "source_sha256": "52f596bff8b2bf804ec2ac2b9d787b40c4fcaa5fd6ac3d3dec8543a29f4b5ad1"
+  },
+  {
+    "qid": "Q141175891",
+    "control_number": "990001875220205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "רפט ע\"\"ב"
+    },
+    "value": "נשלם ... בשמונה עשר לחדש אדר בשנת אלפים וחמש שנים לשטרות במקום פרז מקלט י\"ו והכותב ... סעדיה בא\"מ שלמה ביר' סעדיה ... הידוע אלקיסי",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001875220205171",
+    "source_sha256": "b49a23e2befe81ecfda0991b399baf3dd199cb23175f9137c1a93d2eccffe596",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141748273",
+    "control_number": "990001909500205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "la",
+    "qualifiers": {
+      "P3831": "Q372474"
+    },
+    "value": "1679 DIELUS FINIS A 7.",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001909500205171",
+    "source_sha256": "f1ea25e713ed62b94c318b1c795b57346408925ac2ba3fd9e809e0f85717e4ae"
+  },
+  {
+    "qid": "Q141748279",
+    "control_number": "990001914650205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474"
+    },
+    "value": "כתבתי זה הספר לשם ... מרדכי שער אריה בכמ\"ה משה יצ\"ו, והשלמתיהו יום צום אסתר הש\"ץ",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001914650205171",
+    "source_sha256": "508956d650c54c7e0e49d1df4b83f09a25084f69536d9787996b8265dc398b42"
+  },
+  {
+    "qid": "Q141748412",
+    "control_number": "990025843430205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "קטו ע\"\"ב"
+    },
+    "value": "אודה לאל ... להתחיל ולגמור העתקת ספ' המהולל הזה מגן אהרן ע\"י תלמידו ... יצחק בכ\"מ חת שושן היום י\"ב לח' סיון שפח",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990025843430205171",
+    "source_sha256": "62acf70303388909b43ad19c42e1bdb75e219a84f4114fc6dae6b788b3117f50",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141748419",
+    "control_number": "990026143620205171",
+    "occurrence": "957:1:1",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "qualifiers": {
+      "P3831": "Q372474"
+    },
+    "value": "... השפ\"ה ליצי' ... []ד בן דוד אלמסורי",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990026143620205171",
+    "source_sha256": "abad78980661eb0f6fd71a716d2ab38deffe5fb59657b4ee7087ccde4379b40a"
+  },
+  {
+    "control_number": "990000589820205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141746932",
+    "source_value": "A. M. Halevy, Catalogue des manuscrits et incunables de l'ecole rabbinique de France, REJ 79 (1924) pp. 1-27; REJ 80 (1925) pp. 81-87",
+    "edition_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440",
+    "catalogue_entry": "100",
+    "shelfmark": "Ms. 100",
+    "catalogue": "Halévy 1924",
+    "source_sha256": "46bb6221993a20b2e3f0dc19adbc7b8900b3387df12ba5628c1eaf0ed587c42a",
+    "property": "P973",
+    "value": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_18",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_18",
+    "creator_uid": 6935067
+  },
+  {
+    "control_number": "990000589830205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141746933",
+    "source_value": "A. M. Halevy, Catalogue des manuscrits et incunables de l'ecole rabbinique de France, REJ 79 (1924) pp. 1-27; REJ 80 (1925) pp. 81-87",
+    "edition_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440",
+    "catalogue_entry": "106",
+    "shelfmark": "Ms. 106",
+    "catalogue": "Halévy 1924",
+    "source_sha256": "46bb6221993a20b2e3f0dc19adbc7b8900b3387df12ba5628c1eaf0ed587c42a",
+    "property": "P973",
+    "value": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_19",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_19",
+    "creator_uid": 6935067
+  },
+  {
+    "control_number": "990001831030205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748127",
+    "source_value": "A. M. Halevy, Catalogue des manuscrits et incunables de l'ecole rabbinique de France, REJ 79 (1924) pp. 1-27; REJ 80 (1925) pp. 81-87",
+    "edition_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440",
+    "catalogue_entry": "24",
+    "shelfmark": "Ms. 24",
+    "catalogue": "Halévy 1924",
+    "source_sha256": "46bb6221993a20b2e3f0dc19adbc7b8900b3387df12ba5628c1eaf0ed587c42a",
+    "property": "P973",
+    "value": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_4",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_4",
+    "creator_uid": 6935067
+  },
+  {
+    "control_number": "990001831070205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748128",
+    "source_value": "A. M. Halevy, Catalogue des manuscrits et incunables de l'ecole rabbinique de France, REJ 79 (1924) pp. 1-27; REJ 80 (1925) pp. 81-87",
+    "edition_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440",
+    "catalogue_entry": "27",
+    "shelfmark": "Ms. 27",
+    "catalogue": "Halévy 1924",
+    "source_sha256": "46bb6221993a20b2e3f0dc19adbc7b8900b3387df12ba5628c1eaf0ed587c42a",
+    "property": "P973",
+    "value": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_5",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_5",
+    "creator_uid": 6935067
+  },
+  {
+    "control_number": "990001831110205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748129",
+    "source_value": "A. M. Halevy, Catalogue des manuscrits et incunables de l'ecole rabbinique de France, REJ 79 (1924) pp. 1-27; REJ 80 (1925) pp. 81-87",
+    "edition_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440",
+    "catalogue_entry": "31",
+    "shelfmark": "Ms. 31",
+    "catalogue": "Halévy 1924",
+    "source_sha256": "46bb6221993a20b2e3f0dc19adbc7b8900b3387df12ba5628c1eaf0ed587c42a",
+    "property": "P973",
+    "value": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_5",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_5",
+    "creator_uid": 6935067
+  },
+  {
+    "control_number": "990001831120205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748130",
+    "source_value": "A. M. Halevy, Catalogue des manuscrits et incunables de l'ecole rabbinique de France, REJ 79 (1924) pp. 1-27; REJ 80 (1925) pp. 81-87",
+    "edition_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440",
+    "catalogue_entry": "32",
+    "shelfmark": "Ms. 32",
+    "catalogue": "Halévy 1924",
+    "source_sha256": "46bb6221993a20b2e3f0dc19adbc7b8900b3387df12ba5628c1eaf0ed587c42a",
+    "property": "P973",
+    "value": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_6",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1924_num_79_157_5440?pageId=T1_6",
+    "creator_uid": 6935067
+  },
+  {
+    "control_number": "990001793970205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748101",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "414",
+    "shelfmark": "Ms. 414",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/525/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/525/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 525,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=86"
+  },
+  {
+    "control_number": "990001855990205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748147",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "17",
+    "shelfmark": "Ms. 17",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/506/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/506/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 506,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=11"
+  },
+  {
+    "control_number": "990001856020205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748148",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "19",
+    "shelfmark": "Ms. 19",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/506/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/506/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 506,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=11"
+  },
+  {
+    "control_number": "990001856120205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141175887",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "29",
+    "shelfmark": "Ms. 29",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/507/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/507/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 507,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=15"
+  },
+  {
+    "control_number": "990001857260205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748150",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "122",
+    "shelfmark": "Ms. 122",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/514/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/514/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 514,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=44"
+  },
+  {
+    "control_number": "990001857360205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748151",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "201",
+    "shelfmark": "Ms. 201",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/515/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/515/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 515,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=46"
+  },
+  {
+    "control_number": "990001857740205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748153",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "229",
+    "shelfmark": "Ms. 229",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/517/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/517/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 517,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=55"
+  },
+  {
+    "control_number": "990001858080205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748155",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "241",
+    "shelfmark": "Ms. 241",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/519/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/519/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 519,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=59"
+  },
+  {
+    "control_number": "990001858880205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141175888",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "316",
+    "shelfmark": "Ms. 316",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/523/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/523/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 523,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=79"
+  },
+  {
+    "control_number": "990001859230205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748157",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "413",
+    "shelfmark": "Ms. 413",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/525/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/525/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 525,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=85"
+  },
+  {
+    "control_number": "990001860230205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141748158",
+    "source_value": "C. Roth, Catalogue of Manuscripts in the Roth Collection, Philadelphia, 1950 (Reprint from: Alexander Marx Jubilee Volume)",
+    "edition_url": "https://archive.org/details/20191115alexanderaiarx",
+    "catalogue_entry": "717",
+    "shelfmark": "Ms. 717",
+    "catalogue": "Roth 1950",
+    "source_sha256": "fed918c48f3c40de0b2b17e9fe2934b262d4fab349a606675290b8af8c5f93d1",
+    "property": "P973",
+    "value": "https://archive.org/details/20191115alexanderaiarx/page/531/mode/1up",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://archive.org/details/20191115alexanderaiarx/page/531/mode/1up",
+    "creator_uid": 6935067,
+    "printed_page": 531,
+    "identity_url": "https://explore.library.leeds.ac.uk/multimedia/16519/MS_164_Roth.pdf#page=108"
+  },
+  {
+    "qid": "Q141747234",
+    "control_number": "990001011110205171",
+    "occurrence": "856:2:1",
+    "source_sha256": "e6a838f6263c872e873f8adbef39556c9a2e0271f99b76b0f531e75839021f96",
+    "property": "P953",
+    "value": "https://digi.vatlib.it/view/MSS_Neofiti.33",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://digi.vatlib.it/iiif/MSS_Neofiti.33/manifest.json",
+    "shelfmark": "Ms. Neof 33",
+    "first_creator_uid": 6935067,
+    "live_revision": 2574405632,
+    "claim_id": "Q141747234$ACB46D9E-2E1A-4FFA-9B57-86AF1D085380"
+  },
+  {
+    "qid": "Q141747941",
+    "control_number": "990001698390205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "fdbadcfa6457f50519aa4e1c88a95db6536eb35f22c876613ff4793e37749f0c",
+    "property": "P953",
+    "value": "https://haab-digital.klassik-stiftung.de/viewer/image/1644807637/",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://haab-digital.klassik-stiftung.de/viewer/api/v1/records/1644807637/manifest/",
+    "shelfmark": "Ms. Oct. 157",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572014042,
+    "prior_access_urls": []
+  },
+  {
+    "qid": "Q141747649",
+    "control_number": "990001354970205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "0ba69f5a3a1c58348f6efdaa1f739e1b356cbce8176407173702af299c0e299e",
+    "property": "P953",
+    "value": "https://archive.org/details/ldpd_16001069_000",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://clio.columbia.edu/catalog/8557233",
+    "claim_id": "Q141747649$53328425-A87C-4B2D-BAF9-3D046ABDB7F7",
+    "shelfmark": "Ms. X 893 H 459",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572010424,
+    "archive_id": "ldpd_16001069_000",
+    "physical_catalog_id": "8557233",
+    "physical_oclc": "707726041"
+  },
+  {
+    "qid": "Q141747653",
+    "control_number": "990001359170205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "40ea7d752f7c17a6a0763ae587897975a1720218fc1c768dad2740bc760a6527",
+    "property": "P953",
+    "value": "https://archive.org/details/ldpd_15492588_000",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://clio.columbia.edu/catalog/7633515",
+    "claim_id": "Q141747653$9E9D5348-CB75-4D6B-9B3E-338C729BA066",
+    "shelfmark": "Ms. X 893 K 15",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572010520,
+    "archive_id": "ldpd_15492588_000",
+    "physical_catalog_id": "7633515",
+    "physical_oclc": "505249436"
+  },
+  {
+    "qid": "Q141747670",
+    "control_number": "990001371270205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "93bd5b5c8a5a1a57d1c8b7bc8bf42286712311406429a4bae8227a82f6321d17",
+    "property": "P953",
+    "value": "https://archive.org/details/ldpd_16001048_000",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://clio.columbia.edu/catalog/8306206",
+    "claim_id": "Q141747670$30417ABD-3910-46EC-AC6D-78821064D60D",
+    "shelfmark": "Ms. X 893 Z 8 vol. 1 no. 16",
+    "first_creator_uid": 6935067,
+    "live_revision": 2572011091,
+    "archive_id": "ldpd_16001048_000",
+    "physical_catalog_id": "8306206",
+    "physical_oclc": "694519277"
+  },
+  {
+    "qid": "Q141747671",
+    "control_number": "990001371830205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "7701b5a2b6cdfdae8e5329c7353d7c162febc66140fe1795de6e162bc531df46",
+    "property": "P953",
+    "value": "https://archive.org/details/ldpd_17229167_000",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://clio.columbia.edu/catalog/7460999",
+    "claim_id": "Q141747671$B56BE3CB-E01E-48CF-A0D3-5900C327FB71",
+    "shelfmark": "Ms. X 893C J 55 vol. 6",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573733416,
+    "archive_id": "ldpd_17229167_000",
+    "physical_catalog_id": "7460999",
+    "physical_oclc": "461327615"
+  },
+  {
+    "qid": "Q141747673",
+    "control_number": "990001371930205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "0ef9ccec46c043e018ebbd5597bf69bb4062292505ae0ebcebfdfe41d75cb83a",
+    "property": "P953",
+    "value": "https://archive.org/details/ldpd_17230217_000",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://clio.columbia.edu/catalog/7461905",
+    "claim_id": "Q141747673$A8F13EE4-0F0D-4064-AAD3-98417310372B",
+    "shelfmark": "Ms. X 893C J 55 vol. 16",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573733424,
+    "archive_id": "ldpd_17230217_000",
+    "physical_catalog_id": "7461905",
+    "physical_oclc": "462089865"
+  },
+  {
+    "qid": "Q141747675",
+    "control_number": "990001372120205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "8b5d03822d0597944086df99fa9ae4fd919109d88000272c8e6fd3680d4fa326",
+    "property": "P953",
+    "value": "https://archive.org/details/ldpd_17327309_000",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://clio.columbia.edu/catalog/7461932",
+    "claim_id": "Q141747675$10E6219B-1E21-4450-BDAE-9678E4204B1C",
+    "shelfmark": "Ms. X 893C J 55 vol. 25",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573733435,
+    "archive_id": "ldpd_17327309_000",
+    "physical_catalog_id": "7461932",
+    "physical_oclc": "462090419"
+  },
+  {
+    "qid": "Q141747676",
+    "control_number": "990001372150205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "293e07c0633ec387aae345ac69824e5b91584d3bb3262b50af4802c81eac435b",
+    "property": "P953",
+    "value": "https://archive.org/details/ldpd_17327314_000",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://clio.columbia.edu/catalog/7461943",
+    "claim_id": "Q141747676$BDE59880-484C-4699-8B5A-3D1F159BACE3",
+    "shelfmark": "Ms. X 893C J 55 vol. 28",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573733546,
+    "archive_id": "ldpd_17327314_000",
+    "physical_catalog_id": "7461943",
+    "physical_oclc": "462089921"
+  },
+  {
+    "qid": "Q141747696",
+    "control_number": "990001416510205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "cacdceb520d556df12faa5af3089d375483c2ea2f42e13c467e680709db2ad5a",
+    "property": "P953",
+    "value": "https://archive.org/details/ldpd_15304515_000",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://clio.columbia.edu/catalog/8138838",
+    "claim_id": "Q141747696$5AB47466-829F-4391-B6F3-3E56ACEE63EA",
+    "shelfmark": "Ms. X 893 T 721",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573510164,
+    "archive_id": "ldpd_15304515_000",
+    "physical_catalog_id": "8138838",
+    "physical_oclc": "677980583"
+  },
+  {
+    "qid": "Q141748436",
+    "control_number": "990034170610205171",
+    "occurrence": "856:1:1",
+    "source_sha256": "62676937edd574da6a576fec2cdf9fa6b6ab50f5849ae8140b26c7629a62fbfb",
+    "property": "P953",
+    "value": "https://archive.org/details/ldpd_11536929_000",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://clio.columbia.edu/catalog/9160970",
+    "claim_id": "Q141748436$5A9BB12D-C91B-40DB-BB96-87C4AA14157D",
+    "shelfmark": "Ms. X 893C J 55 vol. 37",
+    "first_creator_uid": 6935067,
+    "live_revision": 2573733669,
+    "archive_id": "ldpd_11536929_000",
+    "physical_catalog_id": "9160970",
+    "physical_oclc": "769741837"
+  },
+  {
+    "control_number": "990000574500205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141746907",
+    "source_value": "M. Schwab, Les manuscrits et les incunables hebreux de la Bibliotheque de l'Alliance Israelite (in: REJ, 49 (1904) p. 74-88; 270-296).",
+    "edition_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_98_4716",
+    "catalogue_entry": "74",
+    "shelfmark": "Ms. H 74 A",
+    "catalogue": "Schwab 1904",
+    "source_sha256": "40e104cfbc508aa300d1d70f59ffeb3503b07128d63cd15ec6ff640b71ac9580",
+    "property": "P973",
+    "value": "https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_98_4716?pageId=T1_280",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_98_4716?pageId=T1_280",
+    "creator_uid": 6935067
+  },
+  {
+    "control_number": "990001498020205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141747777",
+    "source_value": "M. Schwab, Les manuscrits et les incunables hebreux de la Bibliotheque de l'Alliance Israelite (in: REJ, 49 (1904) p. 74-88; 270-296).",
+    "edition_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_97_4698",
+    "catalogue_entry": "139",
+    "shelfmark": "Ms. 139",
+    "catalogue": "Schwab 1904",
+    "source_sha256": "40e104cfbc508aa300d1d70f59ffeb3503b07128d63cd15ec6ff640b71ac9580",
+    "property": "P973",
+    "value": "https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_97_4698?pageId=T1_87",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_97_4698?pageId=T1_87",
+    "creator_uid": 6935067
+  },
+  {
+    "control_number": "990001499320205171",
+    "occurrence": "581:1:1",
+    "qid": "Q141175809",
+    "source_value": "M. Schwab, Les manuscrits et les incunables hebreux de la Bibliotheque de l'Alliance Israelite (in: REJ, 49 (1904) p. 74-88; 270-296).",
+    "edition_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_98_4716",
+    "catalogue_entry": "173",
+    "shelfmark": "Ms. 173",
+    "catalogue": "Schwab 1904",
+    "source_sha256": "40e104cfbc508aa300d1d70f59ffeb3503b07128d63cd15ec6ff640b71ac9580",
+    "property": "P973",
+    "value": "https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_98_4716?pageId=T1_272",
+    "qualifiers": {},
+    "type": "url",
+    "proof_url": "https://www.persee.fr/doc/rjuiv_0484-8616_1904_num_49_98_4716?pageId=T1_272",
+    "creator_uid": 6935067
+  },
+  {
+    "qid": "Q141175735",
+    "control_number": "990000403370205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000403370205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "c9684724f4e3c0ea6be31690e665aeb97b1ff6f7f6a37fa33fd6843bab29c8dd"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573684447,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746857",
+    "control_number": "990000538930205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000538930205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "2eac8af12e6c5920389fde40c0ae24534b8b75750575e261af8149b976de47f5"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571951668,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746867",
+    "control_number": "990000552160205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000552160205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "44b7bac764418a7db7d2f011145baa557ceb1025136c017d9aff6cd50e2590c5"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574404905,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746868",
+    "control_number": "990000552170205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000552170205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:6",
+      "source_sha256": "44b7bac764418a7db7d2f011145baa557ceb1025136c017d9aff6cd50e2590c5"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574404915,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746872",
+    "control_number": "990000558260205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000558260205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "1eac4eaa3a545ee1ea8571a081c6fb500fd657f502624aa30f40a2db8e85ac3f"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571952264,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746876",
+    "control_number": "990000559760205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000559760205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:8",
+      "source_sha256": "328486629cbc8e93e632562f6c3daef8b493df65edb3472ea56b43d585ea16a4"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573684480,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746892",
+    "control_number": "990000566780205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000566780205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "891f2e9a8e6f95cc005b22557b8d74c9c2c48036ae2f310e736eaeec0f2292f7"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574404975,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746949",
+    "control_number": "990000606310205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000606310205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "c86ba8ef91e90654b6345a262a230a6c7ca3bd3dba7b07eca90801e76dda9536"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571955144,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746951",
+    "control_number": "990000610900205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000610900205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "6b64869d4e17f387206bde7e62f752e59244433a5481ac256492a5aca7d69806"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573740823,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746955",
+    "control_number": "990000612200205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000612200205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "1cd487382e48a9fefcfa860f05d55f18b27e84ab3c5792e1f6df265b2015ba0b"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573740834,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746962",
+    "control_number": "990000629890205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000629890205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "795b8320fa804d7de6674aea28027be777062d02535e88393dd7a49130604204"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571955714,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746969",
+    "control_number": "990000638790205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000638790205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "1dbb2c6fcb47d1bd8f3997ef2ed5360d3d2dcf9d89f71e833d558ca7fb1e9d2f"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571953344,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746981",
+    "control_number": "990000654100205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000654100205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "7c635a069a9e4e2f9642e9b293ccd05743eb3cbfbd735a8cd243ef215b648767"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574379308,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746985",
+    "control_number": "990000665220205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000665220205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "d525c14b0ac96005f1b949bd5b108bb66a605f82a3e45ed5ab71a78859c50d3d"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574405191,
+    "prior_classes": [
+      "Q87167",
+      "Q33308141",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746986",
+    "control_number": "990000665230205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000665230205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "d525c14b0ac96005f1b949bd5b108bb66a605f82a3e45ed5ab71a78859c50d3d"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574379351,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141746996",
+    "control_number": "990000672460205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000672460205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "e9068091f3e9026bc86a798ee9a366e2985cdd179f080b7cb70e8c75af654009"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571958467,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747162",
+    "control_number": "990000856190205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000856190205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "341f1a2e9678de01c5082b104ce87b0c0557bfd1c142f657ba13f86450c808cc"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574405277,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141175773",
+    "control_number": "990000860360205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000860360205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "d525c14b0ac96005f1b949bd5b108bb66a605f82a3e45ed5ab71a78859c50d3d"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573678184,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747192",
+    "control_number": "990000920390205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000920390205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "b9024e43362aba4e36ca967af523ce650afa57642d36522bbc5a5b2575dc949f"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574379640,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747193",
+    "control_number": "990000927450205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000927450205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "d0253f20daa9562c3e146c39ca2fe4b83e2733c06189893be2eae8dd47b6b6e8"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574405322,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747208",
+    "control_number": "990000946070205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000946070205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574379716,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747228",
+    "control_number": "990000999120205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000999120205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571964282,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747273",
+    "control_number": "990001053950205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001053950205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "0fcb2c9c1430e843f749a5e2accac6d1b1fc91fcce77b3aafa7ed5aa96a79cb3"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571967580,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747304",
+    "control_number": "990001084110205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001084110205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "44c422615c666145f1a05141a442076f6b519fb138c9580a2f646a1d42bf8815"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574379853,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747476",
+    "control_number": "990001204270205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001204270205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574405748,
+    "prior_classes": [
+      "Q87167",
+      "Q720106"
+    ]
+  },
+  {
+    "qid": "Q141747495",
+    "control_number": "990001216170205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001216170205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "d525c14b0ac96005f1b949bd5b108bb66a605f82a3e45ed5ab71a78859c50d3d"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572007278,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141749918",
+    "control_number": "990001219050205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001219050205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "015e0f067156373ef8e628ac3a1eccd999ece63253ad76e46f55845405350081"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574407236,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747506",
+    "control_number": "990001219060205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001219060205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574406249,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141362081",
+    "control_number": "990001253400205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001253400205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571950019,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747543",
+    "control_number": "990001261200205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001261200205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574406532,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747589",
+    "control_number": "990001267610205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001267610205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "7f62770012504b244a42016ffa7a191f9748923944b305c4ae6ee27b3b15b9c7"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049561,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747591",
+    "control_number": "990001270070205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001270070205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "f42474c899de03f1d4b4bdad557a041f5bff9a477ed3ca760fe58649de336900"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572008634,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747592",
+    "control_number": "990001270550205171",
+    "occurrence": "655:3:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001270550205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "0fcb2c9c1430e843f749a5e2accac6d1b1fc91fcce77b3aafa7ed5aa96a79cb3"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572008678,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747595",
+    "control_number": "990001271940205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001271940205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572008776,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747623",
+    "control_number": "990001327160205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001327160205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "309bface14a9895791a2d8e1658149861d6674309d3029aac595d650017ed6b7"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574380041,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747630",
+    "control_number": "990001339510205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001339510205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572009850,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747653",
+    "control_number": "990001359170205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001359170205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "0620cd10edea8591314f22210c50c96778ad8cd341b0401849d0c9100a3bcabb"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572010520,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747657",
+    "control_number": "990001361600205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001361600205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "3105e3a3a419d3f0a5d9a1eda88881844037964f38360396f1889c06ba059c81"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572010635,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747683",
+    "control_number": "990001381470205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001381470205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "bdca6b6a83f6df85c6d0a2fd643ced7ac217007bd42cae2dea4f44a9fc9d8274"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574021850,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747696",
+    "control_number": "990001416510205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001416510205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "6d8cd40f81e7c3fcef50fe179493ba5a234a8a5c35c436833bf36b64d24665a8"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573510164,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141747774",
+    "control_number": "990001492200205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001492200205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "156fd0b4772586a7e14d7fab3bc871ee210bb22204abba986908f8a122f3e47e"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573670460,
+    "prior_classes": [
+      "Q87167"
+    ]
+  },
+  {
+    "qid": "Q141747784",
+    "control_number": "990001625570205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001625570205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "015e0f067156373ef8e628ac3a1eccd999ece63253ad76e46f55845405350081"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574406754,
+    "prior_classes": [
+      "Q87167",
+      "Q33308141"
+    ]
+  },
+  {
+    "qid": "Q141747790",
+    "control_number": "990001629740205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001629740205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574406912,
+    "prior_classes": [
+      "Q87167"
+    ]
+  },
+  {
+    "qid": "Q141747953",
+    "control_number": "990001721960205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001721960205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "58b1cb29715efeafeb80f6596de8fc087edc1d6d3d8cc98c00f0fe24a788022f"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572014488,
+    "prior_classes": [
+      "Q87167"
+    ]
+  },
+  {
+    "qid": "Q141748058",
+    "control_number": "990001731860205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001731860205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "4f72e3cbbc3907481cad7ab85ac4c1bf5261e62e5712d8c74ec5b7a99b6947c1"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573685705,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748059",
+    "control_number": "990001737470205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001737470205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572014733,
+    "prior_classes": [
+      "Q87167",
+      "Q720106"
+    ]
+  },
+  {
+    "qid": "Q141748061",
+    "control_number": "990001738610205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001738610205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "7c2cbdc4ce0950ff235c958ca1afb2f03d5ff075ad2e624c660f5d68722530fd"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573733586,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748062",
+    "control_number": "990001738930205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001738930205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "ff75e87abb3e82dc885a06c62e23f0ae0da3f91e671d9283718ba811576c9f7d"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572020274,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141175880",
+    "control_number": "990001748970205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001748970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "d525c14b0ac96005f1b949bd5b108bb66a605f82a3e45ed5ab71a78859c50d3d"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571948925,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748072",
+    "control_number": "990001758470205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001758470205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "cd8c92932cdbc938289b5b5d2a7541de6a922d69828766c1a01ef07b099a5bc7"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573741115,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748080",
+    "control_number": "990001767770205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001767770205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "9002ac0a75f958aee3da8fd2bd6992679ed999b9d0cb989de7e34df907449471"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574380265,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748084",
+    "control_number": "990001775480205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001775480205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "fdd8520a457229417fa5a386bb91ddaf2ac143c3d03972ac2af7a4aff42f0644"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572016105,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748085",
+    "control_number": "990001777970205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001777970205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573622392,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748092",
+    "control_number": "990001785780205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001785780205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "4617383373ea01b7690823a3b271610e1e21719e183efb222618488648d54b80"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574021914,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748095",
+    "control_number": "990001788690205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001788690205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:5",
+      "source_sha256": "b90b12299038ca8f95e260a3e2a0e44c9f4733e40b07a162ba0371ae79890559"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574406952,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748103",
+    "control_number": "990001797580205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001797580205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "d23385c3b7fdf35656a83bd2337b208a4cd92f940bee179449a96b8a291cf557"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573979712,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748108",
+    "control_number": "990001801810205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001801810205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "242811589aad30b29e68e55d1ddb007ebb4ce6ce2e3cc96c62bd0e1b78193308"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572023162,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748109",
+    "control_number": "990001804060205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001804060205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "e7d466dd907e401aff48d435d678285b7bbc0c58829bf29ee8e2059f1aeb7a0a"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574406991,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748116",
+    "control_number": "990001819490205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001819490205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "cbfb8bab662e80c533d0a2f922d63a78304d46857c163c2bca200f876d26c04f"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572023255,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748127",
+    "control_number": "990001831030205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001831030205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "b26bfb1d221a5689a8a5d1ec9ed01eeeaeacbd5ec451e5fa00a2e85eaa5edec7"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573733598,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748128",
+    "control_number": "990001831070205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001831070205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "f141f319f4243b7a19518f0072404728c1b61e9bfb241719fcbcd174c11f6358"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573733609,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748139",
+    "control_number": "990001845770205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001845770205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "957:1",
+      "source_sha256": "121dea9efd61a6f87beb726a3e5a467c439b8805d75c093e50a20dda2bab04c1"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573741392,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748143",
+    "control_number": "990001850070205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001850070205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "015e0f067156373ef8e628ac3a1eccd999ece63253ad76e46f55845405350081"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049611,
+    "prior_classes": [
+      "Q87167",
+      "Q720106"
+    ]
+  },
+  {
+    "qid": "Q141748162",
+    "control_number": "990001863380205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001863380205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "6d8728240c4a3b2fb45acd4ac9459b65514b82a088a039aef65562e34417d416"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573741420,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748306",
+    "control_number": "990001917110205171",
+    "occurrence": "655:2:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001917110205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:4",
+      "source_sha256": "d525c14b0ac96005f1b949bd5b108bb66a605f82a3e45ed5ab71a78859c50d3d"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574380470,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748321",
+    "control_number": "990001929740205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001929740205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:7",
+      "source_sha256": "530fa606d976e12d6f9779cf6fc6f057be27322d5ba24e71b44a3da2db559b15"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572024746,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141748403",
+    "control_number": "990001989170205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001989170205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "5e95184f0d4280c3ff48fbbebbb552784a44be723fe3ca25f9ce821b94cd4ecf"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574049673,
+    "prior_classes": [
+      "Q87167",
+      "Q123172729"
+    ]
+  },
+  {
+    "qid": "Q141175899",
+    "control_number": "990025903200205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990025903200205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "ffabc48cbc7afdcd45ca8e9357adf0012c4b9521670214680a44d04581da6dfb"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2571949423,
+    "prior_classes": [
+      "Q87167",
+      "Q720106"
+    ]
+  },
+  {
+    "qid": "Q141754509",
+    "control_number": "990025916320205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990025916320205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "3c3c8ad01d099496f1ae270f95723061c91c05fdf5f4c3e37ee594fb8c6e011f"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572033972,
+    "prior_classes": [
+      "Q87167",
+      "Q720106"
+    ]
+  },
+  {
+    "qid": "Q141748415",
+    "control_number": "990025934540205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990025934540205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "2d7e83a3a7b4ab4580cd46a203232616c9a7775313a8880154d7afd2afc09241"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2574030706,
+    "prior_classes": [
+      "Q87167",
+      "Q720106"
+    ]
+  },
+  {
+    "qid": "Q141748443",
+    "control_number": "990035844820205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990035844820205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "a348cb348941a56fd19a25b8377ba99c7f3b5a58010d4a898dffdfb5bc9c1056"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2572029161,
+    "prior_classes": [
+      "Q87167"
+    ]
+  },
+  {
+    "qid": "Q141748445",
+    "control_number": "990036375040205171",
+    "occurrence": "655:1:1",
+    "source_sha256": "e6138d8c60a7315ca3a55769ec19702bdcbecc1ff2c409bd9a9c3eb12b4be773",
+    "property": "P31",
+    "value": "Q48498",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990036375040205171&scope=KTIV&vid=KTIV",
+    "supporting_note": {
+      "occurrence": "500:1",
+      "source_sha256": "4b370e7497ae945b093eb81cedafc26e2c4b6964d9d32aae06f7aed569a70723"
+    },
+    "first_creator_uid": 6935067,
+    "live_revision": 2573966873,
+    "prior_classes": [
+      "Q87167"
+    ]
   }
 ]

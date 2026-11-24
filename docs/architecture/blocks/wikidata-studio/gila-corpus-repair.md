@@ -7,8 +7,13 @@ The job uses the same audit rules for both reports.
 
 ## Add source evidence for requirement 8
 
-Select **Repair sources and inscriptions** to run the same job with scope `sources_append_only`.
+Select **Preflight and repair all sources** to run the same job with scope `sources_append_only`.
 The job audits the full MARC corpus before and after this repair.
+The preflight checks every open requirement 8 case.
+It retains cases from the previous full audit when the source fingerprint and Studio build match.
+It records an existing statement that passes a new proof check as verified before repair.
+The final audit must confirm a case explicitly before the job records a verified outcome.
+The before and after comparison uses the previous full audit when the source and build match.
 The job uses only source proposals for requirement 8.
 It adds a claim or appends evidence to an exact claim.
 It checks each plan for changes to existing claims, qualifiers, references, or labels before the first write.
@@ -20,11 +25,14 @@ For scan references, it also requires the exact existing claim ID and URL.
 For a missing scan link, the proof identifies the complete copy and the reviewed set of other access URLs.
 Any unexpected access URL, including an equivalent URL, holds the case for review.
 The writer preserves the existing access claims.
-For an autograph, it checks a separate MARC note and the live class item.
+For manuscript form, the audit checks a separate MARC note and the live class item.
+For proof that only confirms an existing inscription, it requires the exact live claim and reference.
 The audit requires the cited URL on the matching claim before it verifies the case.
 The [Weisz and Neubauer catalogue evidence](../../../audits/2026-11-24-weisz-edition-evidence.md), [inscription evidence](../../../audits/2026-11-24-inscription-proof-evidence.md), and [scan evidence](../../../audits/2026-11-24-requirement-8-scan-and-scope-evidence.md) describe the proof sources.
 The next proof batch adds [manuscript catalogue pages](../../../audits/2026-11-24-requirement-8-catalogue-pages.md), [Neubauer catalogue entries](../../../audits/2026-11-24-neubauer-additional-catalogue-evidence.md) and [transcribed colophons](../../../audits/2026-11-24-inscription-field-evidence.md).
 For an entry across several scan leaves, the claim links to its first leaf and the reference cites the leaf with the shelfmark.
+The corpus preflight also uses the [bibliography proof](../../../audits/2026-11-24-catalogue-entry-concordance-evidence.md).
+The [holder and illumination proof](../../../audits/2026-11-24-r8-holder-and-illumination-evidence.md) and [inscription proof](../../../audits/2026-11-24-inscription-corpus-preflight.md) identify the exact source fields.
 
 ## Audit rules
 
@@ -55,6 +63,11 @@ The job saves the complete preflight before the first edit.
 The `GET /api/admin/wikidata-gila-repairs/preflight` route returns pages of decisions to administrators with project access.
 Each decision includes the case, target, and reason.
 The page shows the preflight counts while the edit stage runs.
+Use **Download preflight and MARC evidence** to save the complete case list.
+The `archive=true` option on the preflight route returns the decisions and original fields from the pinned audits.
+It includes catalogue status notes, sources that need review, and final outcomes when the job has them.
+The export retains each field's indicators and ordered subfields.
+Catalogue status notes stay in the original audit total.
 
 The worker checks the project creator UID before each write.
 It keeps the item revision, claim patch, and case IDs in the write intent.

@@ -4,6 +4,7 @@ import asyncio
 from collections import defaultdict
 from copy import deepcopy
 
+from app.pipeline import marc_occurrences as marc
 from app.pipeline.wikidata_gila_audit import current_holding_label
 from app.pipeline.wikidata_gila_execution import repair_claims, semantic_entity
 from app.pipeline.wikidata_gila_people_batch import PlannedEdit, _load_items, repair_claim_builder
@@ -30,6 +31,50 @@ def corpus_inventory(cases, points=frozenset({5, 8})):
         for case in cases if points.intersection(case["points"])
         and not case["case_id"].startswith("passage:")
     }
+
+
+def source_corpus_inventory(cases, previous_cases=(), already_verified=frozenset()):
+    current = {case["case_id"]: case for case in cases}
+    combined = {case["case_id"]: case for case in previous_cases}
+    combined.update(current)
+    inventory = corpus_inventory(combined.values(), frozenset({8}))
+    for case_id, row in inventory.items():
+        case = combined[case_id]
+        row["occurrence"] = case.get("occurrence") or case.get("source_field")
+        row["source_value"] = case.get("source_value")
+        if case_id not in current:
+            row["source_snapshot"] = "baseline"
+            if case_id in already_verified:
+                row.update(status="already_verified", reason="verified_before_write")
+            else:
+                row.update(status="needs_review", reason="case_changed_since_last_audit")
+        elif row["reason"] == "catalogue_status_evidence":
+            row["status"] = "source_metadata"
+    return inventory
+
+
+def source_preflight_archive(rows, records, previous_records):
+    def index_fields(snapshot, control_numbers):
+        return {
+            cn: {marc.source_key(field): field for field in marc.occurrences(snapshot[cn])}
+            for cn in control_numbers if cn in snapshot
+        }
+
+    baseline_ids = {row["control_number"] for row in rows if row.get("source_snapshot") == "baseline"}
+    current_ids = {row["control_number"] for row in rows if row.get("source_snapshot") != "baseline"}
+    previous = index_fields(previous_records, baseline_ids)
+    current = index_fields(records, current_ids)
+    result = []
+    for row in rows:
+        cn, occurrence = row["control_number"], row.get("occurrence") or ""
+        snapshot = previous if row.get("source_snapshot") == "baseline" else current
+        fields = snapshot.get(cn, {})
+        result.append({
+            **row,
+            "marc": fields.get(occurrence) or fields.get(occurrence.rsplit(":", 1)[0]),
+            "source_url": nli_catalog_url(cn) if cn else None,
+        })
+    return result
 
 
 def _is_current(entities, qid, rev):

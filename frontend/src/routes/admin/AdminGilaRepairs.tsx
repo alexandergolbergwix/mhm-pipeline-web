@@ -101,6 +101,10 @@ const explanations: Record<string, string> = {
   case_absent_from_current_open_audit: "This case is absent from the current open audit. Check its latest report.",
   nli_catalogue_unavailable: "The worker could not read the NLI authority links for this record.",
   conflicting_claim: "An existing statement conflicts with the proposed edit.",
+  catalogue_status_evidence: "The MARC note describes the catalogue record.",
+  verified_before_write: "The source matches the existing statement.",
+  case_changed_since_last_audit: "Review the saved source and the current audit.",
+  reviewed_existing_source_changed: "The reviewed claim or its reference changed.",
 };
 
 function failureText(error: unknown) {
@@ -118,17 +122,49 @@ const preflightLabels: Record<PreflightStatus, string> = {
   needs_evidence: "Needs evidence",
   other_creator: "Read-only item",
   needs_review: "Needs review",
+  source_metadata: "Source metadata",
+  already_verified: "Verified before repair",
 };
 
 const preflightStatuses: PreflightStatus[] = ["eligible", "needs_evidence", "other_creator", "needs_review"];
 
-function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPreflightResult}) {
+function downloadJson(data: unknown, name: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function CorpusPreflight({jobId, summary, finished}: {
+  jobId: string; summary: CorpusPreflightResult; finished: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [point, setPoint] = useState("");
   const [status, setStatus] = useState("");
   const [offset, setOffset] = useState(0);
   const [rows, setRows] = useState<{items: PreflightCase[]; total: number} | null>(null);
   const [error, setError] = useState("");
+  const [archiveError, setArchiveError] = useState("");
+  const [exportingArchive, setExportingArchive] = useState(false);
+  const statuses: PreflightStatus[] = summary.source_archive
+    ? [...preflightStatuses, "source_metadata", "already_verified"]
+    : preflightStatuses;
+
+  async function downloadArchive() {
+    setExportingArchive(true);
+    setArchiveError("");
+    try {
+      downloadJson(await GilaRepairs.preflightArchive(jobId), `wikidata-source-preflight-${jobId}.json`);
+    } catch (failure) {
+      setArchiveError(failureText(failure));
+    } finally {
+      setExportingArchive(false);
+    }
+  }
+
   useEffect(() => {
     if (!open) return;
     let current = true;
@@ -143,7 +179,7 @@ function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPrefli
       if (current) setError(failureText(failure));
     });
     return () => { current = false; };
-  }, [jobId, offset, open, point, status]);
+  }, [finished, jobId, offset, open, point, status]);
   return <div className="space-y-2">
     <h3 className="font-medium">{summary.case_count == null ? "Corpus preflight" : "Repair preflight"}</h3>
     <p className="text-sm muted">
@@ -151,9 +187,12 @@ function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPrefli
       {" · "}{summary.eligible_items.toLocaleString()} eligible project items
     </p>
     {summary.requirements.map(row => <p className="text-sm muted" key={row.point}>
-      Requirement {row.point} · {preflightStatuses.map(key =>
+      Requirement {row.point} · {statuses.map(key =>
         `${(row.counts[key] ?? 0).toLocaleString()} ${preflightLabels[key].toLowerCase()}`).join(" · ")}
     </p>)}
+    {summary.source_archive && <button className="button-ghost" disabled={exportingArchive}
+      onClick={() => void downloadArchive()}>Download preflight and MARC evidence</button>}
+    {archiveError && <p role="alert" className="text-danger">{archiveError}</p>}
     <details onToggle={event => setOpen(event.currentTarget.open)}>
       <summary className="cursor-pointer text-sm">Review preflight cases</summary>
       {open && <div className="mt-2 space-y-2 text-sm">
@@ -172,7 +211,7 @@ function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPrefli
             setOffset(0);
           }}>
             <option value="">All results</option>
-            {Object.entries(preflightLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+            {statuses.map(key => <option key={key} value={key}>{preflightLabels[key]}</option>)}
           </select>
         </div>
         {error ? <p role="alert" className="text-danger">{error}</p>
@@ -183,8 +222,13 @@ function CorpusPreflight({jobId, summary}: {jobId: string; summary: CorpusPrefli
                 <td className="py-2 pr-3">{row.qid ?? "—"}</td>
                 <td className="pr-3">{row.control_number ?? "—"} {row.source_field}
                   {row.person_role && <span className="block muted">{row.person_role}</span>}
+                  {row.source_value && <span className="block muted" dir="auto">{row.source_value}</span>}
                 </td>
-                <td>{preflightLabels[row.status]} · {explanations[row.reason] ?? row.reason.replaceAll("_", " ")}</td>
+                <td>{preflightLabels[row.status]} · {explanations[row.reason] ?? row.reason.replaceAll("_", " ")}
+                  {row.outcome && <span className="block muted">
+                    {row.outcome === "verified" ? "Verified in final audit" : "Remains open"}
+                  </span>}
+                </td>
               </tr>)}</tbody>
             </table></div>
             {rows.total === 0 ? <p>No cases match these filters.</p> : <div className="flex flex-wrap items-center gap-2">
@@ -241,13 +285,7 @@ function AuditResult({
     try {
       const evidence = kind === "evidence" ? await GilaRepairs.evidence(report.id)
         : await GilaRepairs.export(report.id, kind);
-      const blob = new Blob([JSON.stringify(evidence, null, 2)], {type: "application/json"});
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `wikidata-audit-${kind}-${report.id}.json`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      downloadJson(evidence, `wikidata-audit-${kind}-${report.id}.json`);
     } catch (error) {
       setExportError(failureText(error));
     } finally {
@@ -717,7 +755,7 @@ export default function AdminGilaRepairs() {
           <button className="button-ghost"
             disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
             onClick={() => void startAutomatic("sources_append_only")}>
-            Repair sources and inscriptions
+            Preflight and repair all sources
           </button>
           <button className="button-ghost"
             disabled={!state || active || starting || automaticActive || startingAutomatic || Boolean(refreshError)}
@@ -748,7 +786,8 @@ export default function AdminGilaRepairs() {
           Next retry at {new Date(automatic.progress.next_attempt_at).toLocaleString()}
         </p>}
         {automaticResult && <>
-          {automaticResult.corpus_preflight && <CorpusPreflight key={automatic.id} jobId={automatic.id} summary={automaticResult.corpus_preflight} />}
+          {automaticResult.corpus_preflight && <CorpusPreflight key={automatic.id} jobId={automatic.id}
+            summary={automaticResult.corpus_preflight} finished={automatic.status === "succeeded"} />}
           {automaticResult.corpus_verified?.map(row => <p key={row.point} className="text-sm">
             Requirement {row.point} · {row.cases.toLocaleString()} repaired cases verified
           </p>)}

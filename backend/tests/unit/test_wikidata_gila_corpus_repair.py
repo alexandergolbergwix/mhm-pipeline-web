@@ -10,7 +10,7 @@ from app.pipeline.wikidata_gila_audit import current_holding_label
 from app.pipeline.wikidata_gila_authority_cache import AuthorityEvidence
 from app.pipeline.wikidata_gila_people_batch import PersonRepairGateway, PlannedEdit, repair_claim_builder, verify_claims
 from app.pipeline.wikidata_gila_people_evidence_batch import evidence_batch, keep_reviewed_targets
-from app.pipeline.wikidata_gila_sources import full_source_cases
+from app.pipeline.wikidata_gila_sources import _reviewed_source_case, full_source_cases
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
 
 CN = "990000403370205171"
@@ -56,6 +56,49 @@ def test_exact_marc_inscription_keeps_the_role_folio_and_case_id():
     assert inscription(fresh)["verified"]
     fresh["claims"]["P1684"][0]["rank"] = "deprecated"
     assert inscription(fresh)["reason"] == "ambiguous_source_claim"
+
+
+def test_verification_only_inscription_requires_the_existing_reference():
+    target = item()
+    case = inscription(target)
+    proof = {**case["source_repair"], "verification_only": True, "proof_url": corpus.nli_catalog_url(CN)}
+    args = CN, case["occurrence"], case["source_value"], target, proof, {}
+    assert _reviewed_source_case(*args)["reason"] == "reviewed_existing_source_changed"
+    patch = corpus._source_patch(case, target, repair_claim_builder())
+    target["claims"]["P1684"] = [{**patch, "id": "Q1$inscription"}]
+    assert _reviewed_source_case(*args)["verified"]
+    target["claims"]["P1684"][0]["references"] = []
+    assert "source_repair" not in _reviewed_source_case(*args)
+
+
+def test_source_preflight_keeps_metadata_and_prior_cases_with_exact_marc():
+    old_field = {
+        "tag": "581", "occurrence": 1, "indicators": [" ", " "],
+        "subfields": [{"code": "a", "value": "Catalogue, 1886"}, {"code": "3", "value": "Part two"}],
+    }
+    note = {
+        "tag": "590", "occurrence": 1, "indicators": [" ", " "],
+        "subfields": [{"code": "a", "value": "Temporary catalogue record"}],
+    }
+    records = {CN: {"marc_occurrences": [note]}}
+    previous_records = {CN: {"marc_occurrences": [old_field]}}
+    common = {"points": [8], "control_number": CN}
+    current = [{
+        **common, "case_id": "source:note", "occurrence": "590:1:1",
+        "source_value": "Temporary catalogue record", "reason": "catalogue_status_evidence",
+    }]
+    previous = [{
+        **common, "case_id": "source:old", "occurrence": "581:1:1", "source_value": "Catalogue, 1886",
+    }]
+    inventory = corpus.source_corpus_inventory(current, previous, {"source:old"})
+    assert inventory["source:note"]["status"] == "source_metadata"
+    assert inventory["source:old"]["status"] == "already_verified"
+    archive = {row["case_id"]: row for row in corpus.source_preflight_archive(
+        list(inventory.values()), records, previous_records,
+    )}
+    assert archive["source:note"]["marc"] == note
+    assert archive["source:old"]["marc"] == old_field
+    assert CN in archive["source:old"]["source_url"]
 
 
 def test_reviewed_missing_scan_keeps_prior_links_and_holds_possible_duplicates(monkeypatch):
