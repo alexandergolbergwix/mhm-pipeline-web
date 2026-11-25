@@ -351,6 +351,42 @@
       ]
     }
   ],
+  "990001079140205171": [
+    {
+      "qid": "Q141747297",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "44bbd94dfb2565241dcf4800de8bb2c45c990f7583a1df5a8eff7efb5f5eea96",
+        "245:1": "f7cfafa5f042494dd7433aa953bcd3b8a7bc3e9fa7334797893a2f64d57beb0a",
+        "300:1": "f184a892259e1e07a594e9fa6145eb70f87a9687359ea7b2b27574aa2c78468f",
+        "500:1": "03874503afb74893c0c288986a4aacd8d028f407dc4fc53620a3df695753b9ac",
+        "500:2": "ca7c73291e5d0591a76a48c87e6ec762ed0a9bfe3a0441512e01b86f372c2f74",
+        "942:1": "f3cd6c447c48eb9b4f4f877b35cdf3ca18e0741732de9984e8ad0510347ee715"
+      },
+      "works": [
+        {
+          "value": "Q141748763",
+          "target_title": "סליחות לי\"ז תמוז וצום גדליה, י' בטבת וקינות לתשעה באב",
+          "title": "סליחות לי\"ז תמוז וצום גדליה, י' בטבת וקינות לתשעה באב",
+          "folio": "1א-73א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001079140205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL28461538/full/1100,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL28461758/full/1100,/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141747297$9D253938-E264-4BC3-972B-9BD197B67666",
+            "sha256": "b681fe54d76b6d7c58227aa06c9025684c835b7003eb183bca4b59bea587e52b"
+          }
+        }
+      ]
+    }
+  ],
   "990001091240205171": [
     {
       "qid": "Q141747319",
@@ -858,6 +894,41 @@
       ]
     }
   ],
+  "990001391780205171": [
+    {
+      "qid": "Q141747687",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "d3ff715f53d3d5388fbb084d62fe9f34a0e9e0a7489b828164600e7d807c7c33",
+        "245:1": "89b7ae360f4634fc740f8a67049466c70250e2f9d69239c4b18803c04fc9314c",
+        "300:1": "dc37d07da065b841f90b676c62d5ed7d413c74b7a70dbe6fc4c720aae8cbac0a",
+        "500:1": "6292f93210af306e94f3f18cd8a67df0a0fee77ed7c5400053bdc64de588cf99",
+        "942:1": "5f0914849098b8aaac5342a6adca490059f33e7eb4851ffab8f337e129330c23"
+      },
+      "works": [
+        {
+          "value": "Q141175527",
+          "target_title": "תרגום ערבי לתורה",
+          "title": "תרגום ערבי לתורה",
+          "folio": "2ב-98ב",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001391780205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL34536813/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL34536945/full/1450,/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141747687$225ABB23-98E3-4FCE-8EF1-E67A338C1AD8",
+            "sha256": "eea8f3ea4d84f737fa7f15252c06a72353616d21ea4cc10945d1f3201b913a25"
+          }
+        }
+      ]
+    }
+  ],
   "990001675340205171": [
     {
       "qid": "Q141747816",
@@ -915,6 +986,81 @@
       ]
     }
   ],
+  "990001698390205171": [
+    {
+      "qid": "Q141747941",
+      "uniform_fields": [
+        "730:1",
+        "730:2",
+        "730:3",
+        "730:4"
+      ],
+      "fields": {
+        "730:1": "0b331263404795cd2e70a65430a53aaffd193dcb7d80c70c30d52fa24c53616f",
+        "730:2": "cd7c653d4a22e9978f03c47c74692ffd096824e604b05ea1e47bd98284c48e00",
+        "730:3": "ebd5c74058c64d144669f8dcd242a5e8959158aa68b24d1bb35e4595016edd69",
+        "730:4": "23722f25f376c8064333331e6338fd792af6d26a04d0871e4b5b88fded568d86",
+        "245:1": "4c3ddf59e4f599b89eb857778a2963234447dd0622471ab03baddfa537ff8634",
+        "500:1": "3bcc4266554c729d13fbbc4c02a1ee4a5860fa8944a960a418db946ad3dcd901",
+        "856:1": "0aff58ee21b758552d65703765c3bde4c21c46463c9c0340e724f62d4a9fe34d",
+        "942:1": "a716dcb1605d99377d166d9415744b81a5563859a72e6070bab74bdbdbcccdcb"
+      },
+      "works": [
+        {
+          "value": "Q141990861",
+          "target_title": "כתובים (תהלים קיז, קמג)",
+          "title": "כתובים (תהלים קיז, קמג)",
+          "folio": "1ב (תהלים קמג:י); 6ב (תהלים קיז)",
+          "covers": [
+            "730:1",
+            "730:2"
+          ],
+          "urls": [
+            "https://haab-digital.klassik-stiftung.de/viewer/api/v1/records/1644807637/manifest/",
+            "https://haab-digital.klassik-stiftung.de/viewer/api/v1/records/1644807637/files/images/1626926670_0008.tif",
+            "https://haab-digital.klassik-stiftung.de/viewer/api/v1/records/1644807637/files/images/1626926670_0013.tif"
+          ],
+          "extend": {
+            "id": "Q141747941$D0E01AB6-F651-4929-BF48-7EB79CCE563E",
+            "sha256": "3c2a40659a6a8491dff16836a3802ffca8f2cb41d7638bb8a315b73734a740fa"
+          }
+        }
+      ]
+    }
+  ],
+  "990001756350205171": [
+    {
+      "qid": "Q141748071",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "500:1": "30aca01ccba2759c839a8903308c11248221f921b82f9a58a2a4fb70ee2fc0a0",
+        "856:1": "f62535dcf025728eff7deef278dce55ac7e80f9ffbe7aecbf5bcd8fed55f78df",
+        "942:1": "6603b84d3d76a8333e7461d4746c36c4ca66c9e046147540d1f9ab5d9536e18f",
+        "942:3": "94d135efec1866177130c75ca8a7c3ca7f5cbdf4f987e66f1eab0b0c5b1b96ea"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "folio": "1ב-16א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://content.staatsbibliothek-berlin.de/dc/PPN1010818872.mets.xml",
+            "https://content.staatsbibliothek-berlin.de/dc/PPN1010818872-00000004/full/max/0/default.jpg",
+            "https://content.staatsbibliothek-berlin.de/dc/PPN1010818872-00000033/full/max/0/default.jpg",
+            "https://content.staatsbibliothek-berlin.de/dc/PPN1010818872-00000034/full/max/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
   "990001792130205171": [
     {
       "qid": "Q141748099",
@@ -940,6 +1086,42 @@
             "https://cja.huji.ac.il/browser.php?id=37632&mode=set",
             "https://api.vam.ac.uk/v2/object/O1364152"
           ]
+        }
+      ]
+    }
+  ],
+  "990001819490205171": [
+    {
+      "qid": "Q141748116",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0014488a8d9494ca457cc67d1482eb086d697415f86854b3db1ee8aa58223f7f",
+        "245:1": "bcfafa100f6aa78066a13c9d860290d06b9fa6a25e6f7c857dc6a5481c78c9a9",
+        "300:1": "b8f896ab5b97f47e62d0812564ba1a5c821e00a9c7058e131488912a64979ad2",
+        "500:1": "eea8ac7b5083d9782cbe20f2ca6fb5b0fd2404345d47faf5c657894ff986c8b3",
+        "942:1": "3a42fedd581024a9a3c0d5dac62f283f295e2c7de7ec5fc457cfd97030a5639f"
+      },
+      "works": [
+        {
+          "value": "Q141748699",
+          "target_title": "מזמור עג-הסוף, מזמור קן",
+          "title": "מזמור עג-הסוף, מזמור קן",
+          "folio": "1א-177א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001819490205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL223469046/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL223470156/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL223470158/full/1450,/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141748116$B2E52B95-1294-49B9-A6B2-9E7F0AFA277A",
+            "sha256": "18f65c48a21ad9794722f55803654b1c6907c749340ce55f3861ebb5dfbac100"
+          }
         }
       ]
     }

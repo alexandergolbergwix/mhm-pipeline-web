@@ -60,6 +60,7 @@ The repair adds the range to the existing work claim.
 [Columbia catalogue](https://clio.columbia.edu/catalog/17229167) · [Scanned folio 93a](https://archive.org/download/ldpd_17229167_000/ldpd_17229167_000.pdf#page=199)
 
 The [second review](../../../audits/2026-11-25-marc-730-second-review.md) records additional scan evidence and cases that need more proof.
+The [third review](../../../audits/2026-11-25-marc-730-third-review.md) records five more reviewed items.
 
 ## Exact corrections
 
