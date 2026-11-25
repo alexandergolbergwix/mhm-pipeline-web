@@ -174,6 +174,218 @@
       ]
     }
   ],
+  "990000842550205171": [
+    {
+      "qid": "Q141747157",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "15e4a7a3169ce885eb9670e192d522e475a1d2da745d34eb554828d91b997a05",
+        "245:1": "5111cc50249eda285ebd3270f5f3e039a73ccc15070a0c73713299375833beae",
+        "300:1": "2d65f5404a9554514d9ea88bf7fe5acdb22dc15e144474e12fcc5396649c4d09",
+        "500:1": "e314fb1213c420a2abd5cc1ed47d831aea3df192c1ba9cf4536d7e2c6628dce9",
+        "500:2": "06ccb9ddf751147b67bc984c0ee2717fce43315dae4f3fe5538df11afda33ead",
+        "740:1": "9c3c42777e2dcb10f2a2ec882bc1e49aa4eb7dda4ca533fda97f64178aea63a0",
+        "942:1": "4416a0b831935eb48c78b9a552519f78f4a74368ce915e3d62fa653fa1d91d3e"
+      },
+      "works": [
+        {
+          "value": "Q141990375",
+          "target_title": "אלקוראן (בתרגום: לוי, יעקב בן ישראל)",
+          "title": "אלקוראן (בתרגום: לוי, יעקב בן ישראל)",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990000842550205171/NLI",
+            "https://iiif.nli.org.il/IIIFv21/FL50236711/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL50236725/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL50236728/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL50237364/full/1450,/0/default.jpg"
+          ],
+          "folio": "1א-100א",
+          "extend": {
+            "id": "Q141747157$D707D866-A719-4496-A4DA-3E7969995B01",
+            "sha256": "7781852a5e1ec5441f4d965da023373fb15d106c86b03f6a60a948fc66500135"
+          }
+        }
+      ]
+    }
+  ],
+  "990000880550205171": [
+    {
+      "qid": "Q141175777",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "d3ff715f53d3d5388fbb084d62fe9f34a0e9e0a7489b828164600e7d807c7c33",
+        "245:1": "89b7ae360f4634fc740f8a67049466c70250e2f9d69239c4b18803c04fc9314c",
+        "300:1": "5fc799fb54dc66793adb4195674538f6ec9456ae9e3da6124b01fba5e62b04a5",
+        "500:1": "ff97d8eaf99699f061091c3207924c424dd75db364c4d3522a1f0055e47ba399",
+        "942:1": "38512c275c48cb08333b5f08671c311df7c69b41f480f3994e07a4c5e9f51dd1"
+      },
+      "works": [
+        {
+          "value": "Q141175527",
+          "target_title": "תרגום ערבי לתורה",
+          "title": "תרגום ערבי לתורה",
+          "folio": "2א-280ב",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.bodleian.ox.ac.uk/iiif/manifest/6ecb9a25-0c22-41c6-9a73-52eedd7978ea.json",
+            "https://iiif.bodleian.ox.ac.uk/iiif/canvas/93d135db-1c45-44fe-802b-cc2470283993.json",
+            "https://iiif.bodleian.ox.ac.uk/iiif/canvas/d77c5af0-38a1-4282-b39d-d27bc6061a11.json"
+          ],
+          "extend": {
+            "id": "Q141175777$00C0A892-50F9-4611-BAC3-CE94A6B8D85B",
+            "sha256": "72c825821acffaf025c208a5d8741fb05397ae0179625c9274ccdea43753d301"
+          }
+        }
+      ]
+    }
+  ],
+  "990001015950205171": [
+    {
+      "qid": "Q141747237",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "b4e39fe7556148577f6ecc6a15c0852b790fcdb796728a4a80f70c34d6155873",
+        "245:1": "696da3b876d2a677acf0df9e0b193fc996be2d1730c5b9a7ad40d523b85ef9f9",
+        "300:1": "15bbc3a0e5bcd4d2c21230f16896d0de8af50d99a27d42a8d0df508565e1c552",
+        "500:1": "6d33d27dd58a2209663c5d78dc4e7d24952cf2f26b2e18d1ed3d048d033352a0",
+        "500:2": "ee3c646214e1fb67a8646b903c25ad8fe0ac7e95536635e2706e91947221ce78",
+        "942:1": "3de334d18f8080c0d0b6baacc45a361dc7eecab2d3231cc4c64d189bb5d33f0f"
+      },
+      "works": [
+        {
+          "value": "Q4577",
+          "target_title": "Book of Job",
+          "title": "ספר איוב",
+          "folio": "64א-145א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990001015950205171/NLI",
+            "https://iiif.nli.org.il/IIIFv21/FL28554393/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL28554589/full/1450,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001065130205171": [
+    {
+      "qid": "Q141747285",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "a2ebf83bcc56091f99418da277dce323d8d33d3c0e1c6824826d22b391147e6b",
+        "245:1": "a340112abe5cfe9fb4cd56639dd981bbbfe40e612056ab515c7e72d2d4ff1087",
+        "300:1": "eb88bd7731d87ac4ea4e501dd534696cbe75c034659aa8f2d98614d718542f74",
+        "500:1": "11f0324bb899311fccd72e8c479db02ae3c2f7bd518213abd1d518bf7eec373b",
+        "942:1": "00b7a5fd5aad627e93726b01a22019db4583cbfecaafc41887d156951e214253"
+      },
+      "works": [
+        {
+          "value": "Q141748747",
+          "target_title": "סדר אשמורות מכל חדש אלול ועשרת ימי תשובה",
+          "title": "סדר אשמורות מכל חדש אלול ועשרת ימי תשובה",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990001065130205171/NLI",
+            "https://iiif.nli.org.il/IIIFv21/FL163500307/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL163500952/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL163500955/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL163500957/full/1450,/0/default.jpg"
+          ],
+          "folio": "1א-202א"
+        }
+      ]
+    }
+  ],
+  "990001066960205171": [
+    {
+      "qid": "Q141747290",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "d815e1f9bdfae7319d7cb8cc203ee06b7c79a707eda252e78fbce9331a05871e",
+        "245:1": "b74bdfd9ed77008911dc8dbb91b47a8c66856281553f1f5ebffda52d72292ec4",
+        "300:1": "ca15cd3dd4e7690ed4bc03b81344d0e685ce816e21d36a9f15eacd31641a1131",
+        "500:1": "954a2dcc2e3a6cb757b45b65b15241d9ed19f5d88bcf81d859c6e1e2b6eed7a5",
+        "500:2": "710e959086c607e5ae5be195ef8edcccb65b46bb01b0fe1543945e14082406df",
+        "500:3": "3c0e606a8c6eb1141b80c1fef8ee14ec2649f46713d896ee535e64a6dca0cdb7",
+        "500:4": "195a1ceb6725d8de352ba0435bc040f55c3cfe531f59fef6114283d6330b771b",
+        "942:1": "bbeb575f668abe6a0efce4e02c03d318ede725f9eaf49070e977e0204d996884",
+        "942:2": "8a12d4320c07d86efce25ee8ed8a2cae623ba71617ffa0ca0a871b0d531d9273"
+      },
+      "works": [
+        {
+          "value": "Q141748759",
+          "target_title": "סדר קריאת שמע על המטה",
+          "title": "סדר קריאת שמע על המטה",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990001066960205171/NLI",
+            "https://iiif.nli.org.il/IIIFv21/FL137726297/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL137726302/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL137726319/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL137726321/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL137726328/full/1450,/0/default.jpg"
+          ],
+          "folio": "4א-15א"
+        }
+      ]
+    }
+  ],
+  "990001134600205171": [
+    {
+      "qid": "Q141747356",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "46e627b51b908a266e309f7f353b56f96eff7e804872b602a2dba6468511c342",
+        "245:1": "7fe14428594ea03775136ef87a03580e7e9d79dc8c73647da9cbd7acc8606b3c",
+        "300:1": "7a436804e071ef666d91d70f84f56f702225d86aa0ed61276553a8426d0310a0",
+        "500:1": "16477def8ca80fc7e45a078f36fe2a2549c6109ffadc51a3e52382e806d4c1ff",
+        "500:2": "e591edc4daafd46801da1d26606c98c198d980fb3e6c18a3e7aac02d2b9d55da",
+        "500:3": "9515c7de6ea4fe3ef3684637274edb307314f2318a047d7215a96041dc32702d",
+        "942:1": "34f868cf9b950354b91fae9d71c2d040a1105fa07e9f75637e61e21b546951ce"
+      },
+      "works": [
+        {
+          "value": "Q33279195",
+          "target_title": "Bavli Bava Metzi'a",
+          "title": "תלמוד בבלי סדר נזיקין (בבא מציעא, קטע)",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/he/manuscripts/NNL_ALEPH990001134600205171/NLI",
+            "https://iiif.nli.org.il/IIIFv21/FL144767571/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL144767658/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL144768317/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL144768334/full/1450,/0/default.jpg"
+          ],
+          "folio": "1א-34ב"
+        }
+      ]
+    }
+  ],
   "990001204270205171": [
     {
       "qid": "Q141747476",
@@ -199,6 +411,69 @@
             "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001204270205171&scope=KTIV&vid=KTIV",
             "https://searcharchives.bl.uk/catalog/040-003359343",
             "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001204270205171-1/manifest"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001204990205171": [
+    {
+      "qid": "Q141747477",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "8441f6bcc96e38ea581c65f84d8a7ca4ee17e4f735016d0cb5d27f969188f201",
+        "245:1": "b2925945b53f1222c362e59241680c7b3f6db4c870fade3a190f6e165ba14b96",
+        "300:1": "ee99a65be2500d6d7388a8550147b4b4afaf82a7647591fd81627aa157c08b4f",
+        "500:1": "e794e29e658acf412d6289ceb9842100f8f1dc4909be3b54490e3d6d95700838",
+        "942:1": "aecf6d9fcecc616a64e1e67acd5e2b916726cf40f6437dc830e41ac1211daf00"
+      },
+      "works": [
+        {
+          "value": "Q9184",
+          "target_title": "Book of Genesis",
+          "title": "בראשית",
+          "folio": "4א-152א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/040-003948063",
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001204990205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL26412626/full/1000,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL26413084/full/1000,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001205430205171": [
+    {
+      "qid": "Q141747479",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "f0b6d3dcb2cfd7623818bdae8debc540ebba7e52e56861803da649042bce5de1",
+        "245:1": "3133177fe4691c9f587775d4bcf9cf768f7af0930121c432be3e817492b22139",
+        "300:1": "c9bd6f88c72efd5755a74aa031439803d4e1463aec61139fee87e02523cd343c",
+        "500:1": "cf030a552782356921b56cae099a92ab77954383591bf531febf7844935727b2",
+        "942:1": "6a5eee68163b45c0ad714f3c9e0f22a837ad0874da80c712209918606dea4d4e"
+      },
+      "works": [
+        {
+          "value": "Q208190",
+          "target_title": "Ketuvim",
+          "title": "כתובים",
+          "folio": "1ב-138ב",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003376492",
+            "https://iiif.nli.org.il/IIIFv21/FL28471626/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL28472190/full/1450,/0/default.jpg"
           ]
         }
       ]
@@ -236,6 +511,152 @@
             "https://searcharchives.bl.uk/catalog/032-003375113",
             "https://searcharchives.bl.uk/catalog/032-003375114",
             "https://searcharchives.bl.uk/catalog/032-003375115"
+          ],
+          "parallel_work_values": [
+            "Q141175590",
+            "Q141175591"
+          ]
+        },
+        {
+          "value": "Q141175591",
+          "target_title": "תרגום רס\"ג לתורה",
+          "title": "תרגום רס\"ג לתורה",
+          "folio": "Or 2228: 28v–300v; Or 2229: 1r–207v; Or 2230: 1v–110v",
+          "covers": [
+            "730:2"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003375113",
+            "https://searcharchives.bl.uk/catalog/032-003375114",
+            "https://searcharchives.bl.uk/catalog/032-003375115"
+          ],
+          "parallel_work_values": [
+            "Q141175590",
+            "Q34990"
+          ],
+          "extend": {
+            "id": "Q141175794$5BF936C5-2794-43BF-B0E7-F2AB89CC7B30",
+            "sha256": "5c9cc85cb747573b60204d2dfac915f9dea2659b1d7402c83b61d74481786b5c"
+          }
+        },
+        {
+          "value": "Q141175590",
+          "target_title": "תרגום אונקלוס לתורה",
+          "title": "תרגום אונקלוס לתורה",
+          "folio": "Or 2228: 28v–300v; Or 2229: 1r–207v; Or 2230: 1v–110v",
+          "covers": [
+            "730:3"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003375113",
+            "https://searcharchives.bl.uk/catalog/032-003375114",
+            "https://searcharchives.bl.uk/catalog/032-003375115"
+          ],
+          "parallel_work_values": [
+            "Q141175591",
+            "Q34990"
+          ],
+          "extend": {
+            "id": "Q141175794$53635784-9AA9-44AE-85A5-C514C5ECDE1C",
+            "sha256": "e74f784e90bfc9f7e1fbf4fca36bb262c3b97520601a9496184c5f52a7089e1f"
+          }
+        }
+      ]
+    }
+  ],
+  "990001207830205171": [
+    {
+      "qid": "Q141747484",
+      "uniform_fields": [
+        "730:1",
+        "730:2"
+      ],
+      "fields": {
+        "730:1": "5bbb853b0bad8745ee35f7cfef37497350a466f42552eb7542bd54243c6a448f",
+        "730:2": "60e13196f85124bfef57103768aa528384dd9354db45667037bf04d0812d228a",
+        "245:1": "db2cefdc6c08aae8ce6336c4dfc7b9a0dc275e52836ff97f0d40d678c35863b9",
+        "300:1": "f780f5c86d0d46e4599b77ff44888d4e498a1e6519a21a9f28dbe06a4959c53d",
+        "500:1": "501a69950dc7bd0322b129760314cca7a6f992d050ba22e49ba9af6503a4fc6e",
+        "500:4": "ce49fe3be43201ffc22d150535127fb86512aac193aa401b856fc09cafca93f7",
+        "942:1": "daa6214f345d4b9da0c986af6a074eee13cd087a7c23bb0e61d236a3cbedf8bb"
+      },
+      "works": [
+        {
+          "value": "Q245248",
+          "target_title": "Twelve Minor Prophets",
+          "title": "תרי עשר (יונה-מלאכי)",
+          "folio": "1ב-260ב",
+          "covers": [
+            "730:2"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003375120",
+            "https://iiif.nli.org.il/IIIFv21/FL30465373/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL30470921/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL30470934/full/1450,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001209580205171": [
+    {
+      "qid": "Q141747485",
+      "uniform_fields": [
+        "730:1",
+        "730:2"
+      ],
+      "fields": {
+        "730:1": "91f200b47037159eb4264b0c2123df92b2541ece4dc02059ac34b366ba59a50b",
+        "730:2": "f43bd7f3c42f7dc857f68cef664f5790d311f7c1cb71eea16c8207f1eec74ede",
+        "245:1": "93940ad99d4b9c7f467ca7dcad4537206de580972bb9b7558bc5a65b7d8ab2d3",
+        "500:1": "51f4f83eef5bb74ee5eadb8352b27cc9acfc47404d3eab69766f27e4b444e640",
+        "500:2": "3a3af22d72720a1ce83cda900f40e06e59b05a9a9f93fa43e91bf90214b4326b",
+        "740:1": "319e90787f1c45a2091914c0e584b93656fd0697ce9344c0c7cc09b12ef9450c",
+        "740:2": "eb86b5b62a959300082f7b23e576eed7cc8eda394f1d904facc1d1ca327b1670",
+        "942:1": "f3ef2d1fbadbbfb4893804177b0987652500e48066c017bf07a4f72e533b5d45"
+      },
+      "works": [
+        {
+          "value": "Q141990683",
+          "target_title": "נביאים (מלכים א-ב)",
+          "title": "נביאים (מלכים א-ב)",
+          "folio": "1ב-319ב",
+          "covers": [
+            "730:2"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003376083",
+            "https://iiif.nli.org.il/IIIFv21/FL31360507/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL31361268/full/1450,/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141747485$C009E933-B8C5-4A1D-A20F-BEE3550293D2",
+            "sha256": "2d42ed8b2af89fb4b3baf7b8986b84ed4a25385ba6a8959ee503fdfcee62be9c"
+          },
+          "parallel_work_values": [
+            "Q141992116"
+          ]
+        },
+        {
+          "value": "Q141992116",
+          "target_title": "תרגום ערבי לנביאים (מלכים א-ב)",
+          "title": "תרגום ערבי לנביאים (מלכים א-ב)",
+          "folio": "1ב-319ב",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003376083",
+            "https://iiif.nli.org.il/IIIFv21/FL31360507/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL31361268/full/1450,/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141747485$EAE040AA-3F6F-4C90-806E-A6E0F029F500",
+            "sha256": "304001f6f4fbc3bbfe4f8bb9c28e4ed6068fe854c8c8d581de6bade59e22379b"
+          },
+          "parallel_work_values": [
+            "Q141990683"
           ]
         }
       ]
@@ -269,6 +690,41 @@
           "extend": {
             "id": "Q141747522$495E526F-F6B7-423F-A114-52A0B0519911",
             "sha256": "59fc460247b6e159948646e6b655a68a6ce6282a128ba7ca0e3b884e1b0042c6"
+          }
+        }
+      ]
+    }
+  ],
+  "990001286970205171": [
+    {
+      "qid": "Q141175799",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "d3ff715f53d3d5388fbb084d62fe9f34a0e9e0a7489b828164600e7d807c7c33",
+        "245:1": "89b7ae360f4634fc740f8a67049466c70250e2f9d69239c4b18803c04fc9314c",
+        "300:1": "81d2d389d50ec536af0f547426dfd59c0639d82564c5c1f4b935c0d01ee7264d",
+        "500:1": "66eaa9ec6cfb3fc66ac84bc0b1e8c0074919af3cdf674c88f1f9063d8ebf7ce9",
+        "942:2": "952686217d06a28531103c5e6cdd0164268304131aae12b4a4e0d1b427fc06f9"
+      },
+      "works": [
+        {
+          "value": "Q141175527",
+          "target_title": "תרגום ערבי לתורה",
+          "title": "תרגום ערבי לתורה",
+          "folio": "עמ' 2-232",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001286970205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL52284261/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL52284379/full/1450,/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141175799$9C037AB4-9245-4AD5-A8D7-0C7CBCB6A810",
+            "sha256": "51eac180daa2d7bd12f5e1dbd5b0ab7a7b760ecb9d64a4d79c44f141de3bae10"
           }
         }
       ]
@@ -451,6 +907,40 @@
             "https://cja.huji.ac.il/browser.php?id=37632&mode=set",
             "https://api.vam.ac.uk/v2/object/O1364152"
           ]
+        }
+      ]
+    }
+  ],
+  "990001831070205171": [
+    {
+      "qid": "Q141748128",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "44bbd94dfb2565241dcf4800de8bb2c45c990f7583a1df5a8eff7efb5f5eea96",
+        "245:1": "420e489df14d7f96e2b23be6ccc1501a379b545c2bbd74b0023410640d22884e",
+        "300:1": "88d91c6fd905c17af7718ef752246855e6d974c91758953cf4d941fb841f3577",
+        "500:1": "62fbe752227e62d41302e0f0f8cbc1c883c3964a9beffe0219cf3fd4631f6d53",
+        "942:1": "5f6edfd021cec83c3dca9d5c7a50db5e4eda432fc272fe976c4a135dd839d82c"
+      },
+      "works": [
+        {
+          "value": "Q141755220",
+          "target_title": "סליחות",
+          "title": "סדר האשמורות מעשרת ימי תשובה",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990001831070205171/NLI",
+            "https://iiif.nli.org.il/IIIFv21/FL61235694/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL61235696/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL61235698/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL61235903/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL61235904/full/1450,/0/default.jpg"
+          ],
+          "folio": "1א-198ב"
         }
       ]
     }

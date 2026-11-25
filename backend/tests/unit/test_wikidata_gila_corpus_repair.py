@@ -188,6 +188,20 @@ def test_reviewed_uniform_title_adds_folio_without_replacing_the_claim(monkeypat
     fresh["claims"]["P1574"] = [patch]
     assert result(record, fresh)["verified"]
 
+    parallel = corpus.source_patches({
+        "control_number": CN, "source_repair": {
+            "property": "P1574", "value": "Q3", "type": "item", "language": None,
+            "qualifiers": {"P1932": "Translation", "P958": "3a-8b"}, "proof_urls": [cited_url],
+        },
+    }, fresh, builder)[0]
+    parallel["id"] = "Q1$translation"
+    fresh["claims"]["P1574"].append(parallel)
+    assert not uniform_titles._work_evidence(CN, fresh, work, proof)
+    with_parallel = {**proof, "parallel_work_values": ["Q3"]}
+    assert uniform_titles._work_evidence(CN, fresh, work, with_parallel)["verified"]
+    parallel["references"] = []
+    assert not uniform_titles._work_evidence(CN, fresh, work, with_parallel)
+
     changed = deepcopy(record)
     changed["marc_occurrences"][1]["subfields"][0]["value"] = "A different work, folios 3a-8b"
     assert not result(changed, manuscript)

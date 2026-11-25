@@ -37,10 +37,15 @@ def _work_evidence(cn, manuscript, entity, proof):
     folio = proof.get("folio")
     qualifiers = {"P1932": title, **({"P958": folio} if folio else {})}
     accepted_titles = {_text(title), *map(_text, proof.get("equivalent_titles", ()))}
+    parallel = frozenset(proof.get("parallel_work_values", ()))
     links = _live_claims(manuscript, "P1574")
     related = [row for row in links if row["value"] == entity["id"] or any(
         (q["property"] == "P1932" and _text(q["value"]) in accepted_titles)
-        or (folio and q["property"] == "P958" and _text(q["value"]) == _text(folio))
+        or (
+            folio and q["property"] == "P958" and _text(q["value"]) == _text(folio)
+            and not (row["value"] in parallel and row["claim_id"]
+                     and _reference_status([row], cn, live=True) == "source_bound")
+        )
         for q in row["qualifiers"]
     )]
     if not folio:
@@ -114,6 +119,7 @@ def reviewed_uniform_title(cn, record, matched_fields, manuscript, entities):
                for key, value in review["fields"].items()):
             return {}
         proofs = review["works"]
+        reviewed_values = {proof["value"] for proof in proofs}
         covered = Counter(key for proof in proofs for key in proof["covers"])
         if (
             not matched_keys <= review["fields"].keys()
@@ -121,6 +127,8 @@ def reviewed_uniform_title(cn, record, matched_fields, manuscript, entities):
             or any(not proof["covers"] for proof in proofs)
             or not covered <= Counter(matched_keys)
             or len({(proof["value"], proof.get("folio")) for proof in proofs}) != len(proofs)
+            or any(not set(proof.get("parallel_work_values", ())) <= reviewed_values - {proof["value"]}
+                   for proof in proofs)
         ):
             return {}
         checks = [_work_evidence(cn, manuscript, entities.get(proof["value"]), proof) for proof in proofs]

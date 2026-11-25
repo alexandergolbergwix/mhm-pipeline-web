@@ -38,6 +38,9 @@ The worker adds a sourced P1574 claim if the work and scope have no competing ac
 It can add P958 and a reference to one confirmed work claim with no folios.
 It keeps the claim ID and every old qualifier and reference.
 A conflicting claim needs a separate exact review of its ID and full digest before the worker can give it deprecated rank.
+Separate reviewed texts can share the same folios.
+The evidence can name parallel work IDs from the same review.
+The worker still checks the catalogue reference and rejects a conflicting title.
 The worker confirms the first creator before it edits an item.
 This scope excludes item creation and statement removal.
 
@@ -55,6 +58,8 @@ The repair gives that exact prior claim deprecated rank and retains its data.
 The Columbia scan shows the Carpentras prayer on folios 93a–119a.
 The repair adds the range to the existing work claim.
 [Columbia catalogue](https://clio.columbia.edu/catalog/17229167) · [Scanned folio 93a](https://archive.org/download/ldpd_17229167_000/ldpd_17229167_000.pdf#page=199)
+
+The [second review](../../../audits/2026-11-25-marc-730-second-review.md) records additional scan evidence and cases that need more proof.
 
 ## Exact corrections
 
