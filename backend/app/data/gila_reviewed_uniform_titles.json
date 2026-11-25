@@ -351,6 +351,39 @@
       ]
     }
   ],
+  "990001091240205171": [
+    {
+      "qid": "Q141747319",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "83f851eacc1c5a983b080159d1214577620d5c167c8670a6b58cfa92239566f7",
+        "245:1": "910caeb0e33311e6490c66ab6e1fad2315dc1c3dceb20ba45e0ee9a41791218f",
+        "500:1": "43eb5ff23e55aa1558193d78ee8ec167aad50f20e028aa5827e39ee3c60d02b3",
+        "500:2": "84189d2872e815e8b1125459853368d64b5bd8b4e401d2fb2ec41dbeecc0ab4f",
+        "500:4": "d57db7578c16110fd2f7d76374d959267d94b193b42bfc7d54af030144bceb52",
+        "500:5": "a8dd4ab79ff1e58b5481975052823666a7994439728faee033dbe8120be85930",
+        "942:1": "63f03e25353aff8f51ea87ab86af6b25c12d50a349841e4cb1e7fc0e54389c90"
+      },
+      "works": [
+        {
+          "value": "Q179058",
+          "target_title": "Lamentations",
+          "title": "מגילת איכה (קטעים)",
+          "folio": "1ב-42א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://sammlungen.ub.uni-frankfurt.de/freimann/download/pdf/6194601",
+            "https://iiif.nli.org.il/IIIFv21/FL55939196/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL55939298/full/1450,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
   "990001134600205171": [
     {
       "qid": "Q141747356",
