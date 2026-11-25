@@ -155,6 +155,33 @@ def test_repair_cycle_selects_maxlag_for_its_write_scope(scope, subjects_only, e
 
 
 @pytest.mark.asyncio
+async def test_full_repair_loads_the_final_audit_archive_when_no_item_needs_an_edit():
+    cycle = RepairCycle(SimpleNamespace(
+        id=uuid.uuid4(), run_id=uuid.uuid4(), project_id=uuid.uuid4(), created_by=uuid.uuid4(),
+        params={
+            "_publication_credential": "fixture-envelope", "_cycle": "fixture-cycle",
+            "_gila_scope": "all_requirements",
+        },
+    ))
+    result = {
+        "email_points": [{"point": 5, "title": "People and roles", "status": "manual_review",
+                          "counts": {"manual_review": 1}}],
+        "reference_blocks": 0,
+    }
+    audit = SimpleNamespace(id=uuid.uuid4(), status="succeeded", result=result)
+    final = SimpleNamespace(id=uuid.uuid4(), status="succeeded", result=result, params={})
+    cycle.stage = AsyncMock(side_effect=[audit, final])
+    cycle.result["people_batch"] = {"items_verified": 0}
+    cycle.people_batch = AsyncMock(return_value=set())
+
+    await cycle.run()
+
+    assert cycle.stage.await_args.kwargs["full"] is True
+    assert cycle.result["audit_id"] == str(final.id)
+    assert cycle.result["people_batch"]["cases_verified"] == 0
+
+
+@pytest.mark.asyncio
 async def test_repair_cycle_rebuilds_then_runs_both_repair_scopes_and_verifies():
     cycle = RepairCycle(SimpleNamespace(
         id=uuid.uuid4(), run_id=uuid.uuid4(), project_id=uuid.uuid4(), created_by=uuid.uuid4(),

@@ -748,19 +748,18 @@ class RepairCycle:
                 await self.publication(repair_audit, evidence)
             except ValueError as exc:
                 self.attention("publication", str(exc))
+        exact_final_proof = (
+            self.corpus or self.source_evidence_batch or self.contents_only or self.reviewed_work_links
+        )
         final = await self.stage(
             JOB_KIND_WIKIDATA_GILA_AUDIT, "verify", "Recheck all nine requests against live Wikidata.",
             {"_gila_people_source_audit": str(audit.id)},
-            full=bool(verified_people_cases) or self.source_evidence_batch or self.contents_only,
+            full=bool(verified_people_cases) or exact_final_proof,
         )
         if final.status != "succeeded":
             raise ValueError(final.error or "The verification audit did not finish.")
         if "people_batch" in self.result:
             from app.pipeline.wikidata_gila_audit_job import gila_cases
-
-            exact_final_proof = (
-                self.corpus or self.source_evidence_batch or self.contents_only or self.reviewed_work_links
-            )
 
             open_ids = (
                 {row["case_id"] for row in await asyncio.to_thread(gila_cases, final)}
