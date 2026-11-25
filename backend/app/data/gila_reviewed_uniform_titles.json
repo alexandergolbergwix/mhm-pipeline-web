@@ -613,5 +613,35 @@
         }
       ]
     }
+  ],
+  "990035844820205171": [
+    {
+      "qid": "Q141748443",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "5dd5118d2e45957e848e3f08c3389d825471699048481bda0e8b4d713cb1cef6",
+        "300:1": "7ee11436a42cfa10534d5662fda4c60cc28459ca68ba4c86a3186d5a21287ccf",
+        "500:1": "1dd1dabcc844b2f2dfafac4b126a651df052d2fd43238595b0626ad34364a67b",
+        "500:2": "3428fcb18df889eb1458156257d905f7aee90224e55f4f8002d196ea0d021458",
+        "740:1": "6b2cad22e172ebb7921f23805b8a37bfeeb33ee2826dbaea77986fc6a80647e0",
+        "942:1": "2be4e062852b345196074d0dcd658eabdc82fe6f3973a4fb28826a69d81f7207"
+      },
+      "works": [
+        {
+          "value": "Q141990826",
+          "target_title": "ותודיענו משפטי צדקך ותלמדנו לעשות חקי רצונך",
+          "title": "ותודיענו משפטי צדקך ותלמדנו לעשות חקי רצונך",
+          "folio": "1ב",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990035844820205171"
+          ]
+        }
+      ]
+    }
   ]
 }
