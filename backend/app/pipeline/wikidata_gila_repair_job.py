@@ -436,7 +436,10 @@ class RepairCycle:
                 previous_cases = await asyncio.to_thread(gila_cases, self.source_baseline)
                 export = await asyncio.to_thread(gila_audit_export, audit, "verified")
                 already_verified = {row["case_id"] for row in (export or {}).get("verified_checks", [])}
-            inventory = source_corpus_inventory(cases, previous_cases, already_verified)
+            inventory = source_corpus_inventory(
+                cases, previous_cases, already_verified,
+                reconciliations=audit.params.get("_gila_citation_reconciliations", ()),
+            )
         open_ids = {
             row["case_id"] for row in cases
             if row.get("person_role") or row.get("holding_label")
@@ -669,7 +672,8 @@ class RepairCycle:
                     rows = job.params["_gila_corpus_preflight"]
                     if self.source_evidence_batch:
                         job.params = {**job.params, "_gila_corpus_preflight": [
-                            {**row, "outcome": "verified" if row["case_id"] in verified_source_ids else "unresolved"}
+                            {**row, "outcome": "verified"
+                             if row.get("original_case_id", row["case_id"]) in verified_source_ids else "unresolved"}
                             for row in rows
                         ]}
                         await db.commit()

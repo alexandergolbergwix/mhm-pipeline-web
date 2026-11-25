@@ -332,9 +332,12 @@ def build_gila_audit_report(
         ):
             case(7, "identity_or_scope_uncertain", "041/500", "verify_language_scope_against_scan")
 
+        citation_reconciliations = []
         if full_source_coverage:
-            for source_row in full_source_cases(cn, full_people_source, record, public_item,
-                                                live_entities or {}, reviewed_catalogs):
+            for source_row in full_source_cases(
+                cn, full_people_source, record, public_item, live_entities or {}, reviewed_catalogs,
+                citation_reconciliations=citation_reconciliations,
+            ):
                 cases.append(source_row)
                 totals[source_row["classification"]] += 1
             qid = (qids_by_cn or {}).get(cn)
@@ -384,6 +387,7 @@ def build_gila_audit_report(
                 "catalog_references": [
                     dict(reference) for reference in _rows(record.get("catalog_references"))
                 ],
+                "citation_reconciliations": citation_reconciliations,
                 "cases": cases,
                 "full_people_source": full_people_source is not None,
                 "source_passages": source_passages(raw),

@@ -18294,5 +18294,181 @@
     "target_work_title": "רשות לסדר עבודה על סדר אלפבית לק' שלמה ן' גבירול",
     "first_creator_uid": 6935067,
     "live_revision": 2564509673
+  },
+  {
+    "qid": "Q141746849",
+    "control_number": "990000463550205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "4d033c932e78318d76bf4e111db201bbb26b0225a3fda1b28559f2ba6aeb0a0c",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "אתחיל לכתוב ספר כנפי יונה ... יום ד' כ\"ו חשון שפט לפ\"ק ... הק' נפתלי בר שמואל הלוי איש גינץ מק\"ק פרנקפורט דמיין",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "בראש כה\"\"י"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000463550205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747174",
+    "control_number": "990000894670205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "e2006e87cd74feb385634e399217cab5679e2f6d7d895e2a5ef479db2f73feb7",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "שלים ספר ב' ממדרש חמדת ימים ... במעלי בשבא דהוא עסרין וז' יומין לירח תמוז שנת אתתקפ\"ג [=1672] ספרא חלשא ומסכינא משה בן אברהם הידוע מן בני משתא ... ונכתב על שם התלמיד חסן ן' כ'לף",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "בסוף כה\"\"י"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000894670205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747528",
+    "control_number": "990001249850205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "045cd233dc0bc319e829f599c8c579156cc1924d0d4a52f4f1a20978ba345961",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "נגמר יום ששי דהוא מעלי שבא דהוא שתת עסר יומין בירח אייר שנת אתתקיב שנין לשטארי [=1601] במאתא קרית לדאן כתב יתיה העבד ... אברהם בירב א' מ' יהודה אלגמוה כתב יתיה לנפשיה",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "239"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001249850205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747530",
+    "control_number": "990001249930205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "0e9f8297d73d99e280d471d136b1679d9983d3fffd41b23b5254b1c3c8f32003",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "ספרא חלשא ומסכינא שלמה בירב אבא ישראל רית' בירב הבא יוסף זלה\"ה ונכתב לשם החבר ... סיידי מוסא אבן מרי סעיד אלג'בארי ... [ותהי] השלמת המלאכה ... יום ששי רביעי לחדש אדר שני שנת אתתקע\"ב [=1661] במאתא שעב אלחג'ר",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "270"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001249930205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141175799",
+    "control_number": "990001286970205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "08e5f74777e46b921e61e6dd6045248903649a16d926b14215b5dc8c4e021bdc",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "שלים ... בארבעה בשבא בירח אלול שנת אתתקצ\"ג [=1682] במאתא דלאג מן בלאד אלימאניה והיתה התחלתו במאתא עאשר ... ספרא חלשא ומסכינא מעודד בן שלום בן יפת הידוע אלגהסי כתבתי אותו לי",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "232"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001286970205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747610",
+    "control_number": "990001304360205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "f5f4fd7e04ca2763d9112ddd0dd88bfc9befb7ceb91956369a5b896d1afeb560",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "ותהי השלמתו היום יום ד' כ\"ב למספר בני ישראל ת\"ה לפ\"ק בסדר קדושים תהיו",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "436"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001304360205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747619",
+    "control_number": "990001324600205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "4c27ae5d3842133addcdf2b69cfe3f46301ab21360a34ffe0f036a91aa43bf85",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "נשלם זה הסידור ... ביום שלישי בחדש אלול שנת אתתקס\"ה שנין לשטרות במאתא דאר עמר ... ונכתב על שם החבר הטוב ... שלמה הכהן בן יוסף הכהן ... ספרא חלשא ומסכינא ... סעדיה בן מעודד בן סעדיה בן יוסף",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "435"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001324600205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747628",
+    "control_number": "990001338380205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "7fb2d222bffd59386a49efd2c8751409f619fd633b2ab750f72d06bd357fa9ce",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "ונכתב לקדש אלפליחי ... נשלם זה המדרש בארבעה בשבא דהוא עשרין ותרין יומין לירח אלול שלשנת אלפא ותשע מאה וארבעין ותשע שנין לשטרות במתא רדאע",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "414"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001338380205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141747636",
+    "control_number": "990001347290205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "91a581f02352d136ec1ba20adbdf9aa59de6d81a00cdc14958d52d78d4b642ed",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "נשלם ... ביום אחד בשבת שהוא יום שני משני ימי ראש חדש אלול שנת אתתקיז שנין לשטרות [=1606] ... נכתב על שם ... סעדיה בן שלמה בן דוד הידוע אלטביעה",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "348"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001347290205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q141748328",
+    "control_number": "990001937770205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "c7ad12fdfc4710669341d91d0ffa01ac13688443bf6b54f673311cbd4a8b89c8",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "וכאן תמאסר אלך אלסדור יום אלכמיס דואכ'ל ארבעת איאם בחדש אדר שני שלשנת אתתקלו שנין לשטרי השפ\"ה ליצירה במאתא בית ברירה מן קרא בלאד אלאחבוב ... נכתב על שם ... יונה בן מעודד ... והכותב ... יוסף בן סעדיא בן דוד בן משה אלשרפי",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "249"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001937770205171",
+    "verification_only": true
+  },
+  {
+    "qid": "Q134605231",
+    "control_number": "990000688750205171",
+    "occurrence": "957:1:1",
+    "source_sha256": "c1da5aea605b60b9efa678f1dd195f49d7a60db96b8c8575dcd97f3b99ddb012",
+    "property": "P1684",
+    "type": "monolingualtext",
+    "language": "he",
+    "value": "ותהי השלמת הספר הזה ביום כח ניסן שנת נ'ש'ב'ע'ה' בטוב ביתך לפ\"ג ... נאום המעתיק ראובן אמארילייו",
+    "qualifiers": {
+      "P3831": "Q372474",
+      "P7416": "קצה ע\"\"א"
+    },
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000688750205171",
+    "verification_only": true
   }
 ]

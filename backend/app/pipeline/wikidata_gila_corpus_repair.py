@@ -33,7 +33,7 @@ def corpus_inventory(cases, points=frozenset({5, 8})):
     }
 
 
-def source_corpus_inventory(cases, previous_cases=(), already_verified=frozenset()):
+def source_corpus_inventory(cases, previous_cases=(), already_verified=frozenset(), *, reconciliations=()):
     current = {case["case_id"]: case for case in cases}
     combined = {case["case_id"]: case for case in previous_cases}
     combined.update(current)
@@ -50,6 +50,15 @@ def source_corpus_inventory(cases, previous_cases=(), already_verified=frozenset
                 row.update(status="needs_review", reason="case_changed_since_last_audit")
         elif row["reason"] == "catalogue_status_evidence":
             row["status"] = "source_metadata"
+    for citation in reconciliations:
+        cn, occurrence = citation["control_number"], citation["occurrence"]
+        case_id = f"source:{cn}:evidence:{occurrence}"
+        original = citation["original_occurrence"]
+        inventory[case_id] = {
+            **citation, "case_id": case_id, "points": [8], "source_field": occurrence,
+            "reason": "legacy_citation_reconciled", "status": "source_metadata",
+            "original_case_id": f"source:{cn}:evidence:{original}",
+        }
     return inventory
 
 
@@ -66,7 +75,8 @@ def source_preflight_archive(rows, records, previous_records):
     current = index_fields(records, current_ids)
     result = []
     for row in rows:
-        cn, occurrence = row["control_number"], row.get("occurrence") or ""
+        cn = row["control_number"]
+        occurrence = row.get("original_occurrence") or row.get("occurrence") or ""
         snapshot = previous if row.get("source_snapshot") == "baseline" else current
         fields = snapshot.get(cn, {})
         result.append({

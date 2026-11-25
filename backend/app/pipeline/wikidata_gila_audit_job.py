@@ -672,6 +672,10 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             repair_linked_frames=linked_frames,
             repair_linked_viaf=linked_viaf,
         )
+        citation_reconciliations = [
+            {**citation, "control_number": record["control_number"], "qid": record["qid"]}
+            for record in audit["records"] for citation in record.get("citation_reconciliations", ())
+        ]
         packet = await asyncio.to_thread(
             build_gila_completion_packet,
             audit,
@@ -679,6 +683,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             repair_receipts=repair_receipts,
             read_only_qids=frozenset(row["qid"] for row in inventory if not row["creator_matches"]),
         )
+        packet["requirement_coverage"]["reconciled_legacy_citations"] = len(citation_reconciliations)
         cases = _case_inventory(packet, audit)
         person_cases = [row for record in audit["records"] for row in record["cases"] if row.get("person_role")]
         people_summary = {
@@ -753,6 +758,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             job.params = {
                 **job.params,
                 "_gila_cases": compressed.decode(),
+                "_gila_citation_reconciliations": citation_reconciliations,
                 "_gila_audit_exports": b64encode(zlib.compress(json.dumps(
                     exports, ensure_ascii=False, separators=(",", ":"),
                 ).encode())).decode(),

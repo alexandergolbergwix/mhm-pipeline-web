@@ -312,7 +312,11 @@ def source_topic_ids(records):
     } | reviewed_source_items()
 
 
-def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices):
+def _citation_text(text):
+    return " ".join(normalize("NFC", text).replace('""', '"').split())
+
+
+def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices, *, citation_reconciliations=None):
     if not raw:
         yield source_case(cn, "001:full-source", cn, "full_marc_unavailable")
         return
@@ -326,6 +330,7 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
         if (quotation := _quoted_inscription(row, source.strip()))
     ]
     full_citations = Counter()
+    citation_occurrences = {}
     codes = Counter(
         " ".join(catalog_reference_text(ref).split())
         for ref in (project_record.get("catalog_references") or []) if isinstance(ref, Mapping)
@@ -357,6 +362,10 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
                     codes[normalized] -= 1
                     continue
                 full_citations[normalized] += 1
+                citation = _citation_text(source)
+                aliases = {citation, *(segment.strip() for segment in citation.split(";"))}
+                for alias in aliases - {""}:
+                    citation_occurrences.setdefault(alias, set()).add(occurrence)
                 choice = catalog_choices.get((tag, source))
                 if choice and choice["target_identity_current"] and not scopes:
                     proof = choice["proof"]
@@ -412,4 +421,12 @@ def full_source_cases(cn, raw, project_record, entity, entities, catalog_choices
                     dependencies=tuple(e for e in (source_entity, entities.get(value)) if e),
                 )
     for ordinal, text in enumerate(sorted((legacy_citations - full_citations).elements()), 1):
-        yield source_case(cn, f"581:project:{ordinal}", text, "citation_differs_from_full_marc")
+        occurrence = f"581:project:{ordinal}"
+        originals = citation_occurrences.get(_citation_text(text), set())
+        if len(originals) == 1 and citation_reconciliations is not None:
+            original, = originals
+            citation_reconciliations.append({
+                "occurrence": occurrence, "source_value": text, "original_occurrence": original,
+            })
+        else:
+            yield source_case(cn, occurrence, text, "citation_differs_from_full_marc")

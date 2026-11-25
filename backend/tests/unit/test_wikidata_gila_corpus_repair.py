@@ -58,6 +58,36 @@ def test_exact_marc_inscription_keeps_the_role_folio_and_case_id():
     assert inscription(fresh)["reason"] == "ambiguous_source_claim"
 
 
+def test_legacy_citation_reconciles_only_to_one_original_occurrence():
+    field = {
+        "tag": "581", "occurrence": 1, "indicators": [" ", " "],
+        "subfields": [{"code": "a", "value": "Café catalogue; entry 14"}],
+    }
+    record = {"001": CN, "marc_occurrences": [field]}
+    legacy = {"catalog_references": [
+        {"source_field": "581", "text": text}
+        for text in ("Cafe\u0301 catalogue", "entry 14", "unmatched reference")
+    ]}
+    reconciled = []
+    cases = list(full_source_cases(CN, record, legacy, item(), {}, {}, citation_reconciliations=reconciled))
+    assert [case["source_value"] for case in cases] == ["Café catalogue; entry 14", "unmatched reference"]
+    assert all(not case["verified"] and "source_repair" not in case for case in cases)
+    assert len(reconciled) == 2
+    assert {row["original_occurrence"] for row in reconciled} == {"581:1:1"}
+    inventory = corpus.source_corpus_inventory(
+        (), reconciliations=[{**row, "control_number": CN, "qid": "Q1"} for row in reconciled],
+    )
+    entries = corpus.source_preflight_archive(list(inventory.values()), {CN: record}, {})
+    assert {row["original_case_id"] for row in entries} == {f"source:{CN}:evidence:581:1:1"}
+    assert all(row["marc"] == field and row["status"] == "source_metadata" for row in entries)
+
+    record["marc_occurrences"].append({**field, "occurrence": 2})
+    reconciled.clear()
+    cases = list(full_source_cases(CN, record, legacy, item(), {}, {}, citation_reconciliations=reconciled))
+    assert not reconciled
+    assert len(cases) == 5
+
+
 def test_reviewed_colophons_require_each_folio_before_verification():
     target = item()
     proof = {

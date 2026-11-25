@@ -102,6 +102,7 @@ const explanations: Record<string, string> = {
   nli_catalogue_unavailable: "The worker could not read the NLI authority links for this record.",
   conflicting_claim: "An existing statement conflicts with the proposed edit.",
   catalogue_status_evidence: "The MARC note describes the catalogue record.",
+  legacy_citation_reconciled: "The legacy citation matches an original MARC field. The audit counts that field once.",
   verified_before_write: "The source matches the existing statement.",
   case_changed_since_last_audit: "Review the saved source and the current audit.",
   reviewed_existing_source_changed: "The reviewed claim or its reference changed.",

@@ -51,7 +51,10 @@ The audit uses full MARC to identify each person role and each source occurrence
 `wikidata_gila_sources.py` retains MARC 510 and 581 citations, 590 record notes, 650 subjects, and 655 genres.
 It also retains 856 access links and 957 inscriptions.
 For MARC 500, it checks explicit title-page text.
-It preserves citations that differ from the saved projection.
+It preserves saved citations that differ from full MARC.
+If a legacy citation matches exactly one original field or semicolon segment, the preflight links it to that occurrence.
+The archive includes the legacy text and the full original field.
+The audit counts the original occurrence once and keeps ambiguous and unmatched citations open.
 A bibliography summary and its source fact contribute one case for the same occurrence.
 The audit retains other passages in the evidence inventory.
 
@@ -95,4 +98,5 @@ The worker reads back the complete item after the edit and verifies the claim ch
 The final audit reports the verified counts and percentages for both requirements.
 The scope has no item creation path. It reuses only verified existing identities.
 
-`test_wikidata_gila_corpus_repair.py` checks exact inscriptions, duplicate claim protection, and first creator scope.
+`test_wikidata_gila_corpus_repair.py` checks exact inscriptions, citation reconciliation, duplicate claim protection, and first creator scope.
+The [citation and scope batch](../../../audits/2026-11-25-requirement-8-repair-batch.md) records the catalogue, work, and folio checks.
