@@ -211,6 +211,9 @@ function CorpusPreflight({jobId, summary, finished}: {
       Requirement {row.point} · {statuses.map(key =>
         `${(row.counts[key] ?? 0).toLocaleString()} ${preflightLabels[key].toLowerCase()}`).join(" · ")}
     </p>)}
+    {summary.unchecked_passages != null && summary.unchecked_passages > 0 && <p className="text-sm muted">
+      Requirement 9 · {summary.unchecked_passages.toLocaleString()} source passages still need exact Wikidata evidence
+    </p>}
     {summary.source_archive && <button className="button-ghost" disabled={exportingArchive}
       onClick={() => void downloadArchive()}>Download preflight and MARC evidence</button>}
     {archiveError && <p role="alert" className="text-danger">{archiveError}</p>}
@@ -775,7 +778,7 @@ export default function AdminGilaRepairs() {
         <div className="flex flex-wrap gap-2">
           <button className="button-primary"
             disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
-            onClick={() => void startAutomatic("people_and_sources")}>
+            onClick={() => void startAutomatic("all_requirements")}>
             {automaticActive || startingAutomatic ? "Automatic repair in progress" : "Repair all eligible items"}
           </button>
           <button className="button-ghost"
@@ -807,7 +810,7 @@ export default function AdminGilaRepairs() {
           </button>
         </div>
       </div>
-      <p className="text-sm muted">This repair checks every open case for people and current holdings. It applies edits that pass the evidence and creator checks.</p>
+      <p className="text-sm muted">The repair checks all nine requirements. It applies source-proven edits to items the project created.</p>
       {automatic && <section id="automatic-manuscript-repair" tabIndex={-1}
         aria-label="Automatic manuscript repair" aria-live="polite"
         className="space-y-2 rounded-xl border border-glass-line bg-[var(--surface-inset)] p-4">

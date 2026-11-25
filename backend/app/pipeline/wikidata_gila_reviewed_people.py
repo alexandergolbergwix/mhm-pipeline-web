@@ -116,6 +116,10 @@ class ReviewedWorkTitle:
 
 
 REVIEWED_WORK_TITLES = {
+    **dict.fromkeys(("990001191230205171", "990001238980205171"), ReviewedWorkTitle(
+        "Q141175558", "מנחת יהודה", "מנחת יהודה : פרוש על שמואל, מלכים וישעיהו",
+        "חנין, יהודה בן יעקב",
+    )),
     "990001029260205171": ReviewedWorkTitle(
         "Q141755039", "בעל ברית אברם", "בעל ברית אברהם", "אזולאי, אברהם בן מרדכי",
     ),
@@ -139,7 +143,18 @@ _HAMMERSCHLAG = ReviewedLinkedPerson(
     "Q142259340", "P973", "https://cja.huji.ac.il/?f=maker_name&id=660&mode=treefriend",
     "https://cja.huji.ac.il/?f=maker_name&id=660&mode=treefriend", frozenset(),
 )
+_HANIN = ReviewedWorkAuthor(
+    "Q141175558", "חנין, יהודה בן יעקב",
+    ReviewedLinkedPerson(
+        "Q118186113", "P8189", "987007595556205171",
+        "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007595556205171.jsonld",
+        frozenset({"987007595556205171"}),
+    ),
+    dates="1540 בערך-1619 בערך",
+)
+
 _REVIEWED_PRIMARY_AUTHORS = {
+    **dict.fromkeys(("990001191230205171", "990001238980205171"), _HANIN),
     "990000413570205171": ReviewedWorkAuthor(
         "Q141755350", "אליהו בן אשר",
         ReviewedLinkedPerson(

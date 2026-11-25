@@ -1,12 +1,18 @@
-# Corpus preflight for requirements 5 and 8
+# Corpus preflight and one-click repairs
 
-Select **Repair all eligible items** on the manuscript audit page.
-The page sends `{"scope":"people_and_sources"}` to `POST /api/admin/wikidata-gila-repairs/repair-all`.
-The existing `wikidata_gila_repair` job audits the corpus before and after the edits.
-The preflight uses the full MARC cases for both requirements.
-It reuses authority reads for the same source fingerprint.
-The combined job excludes historical proposals that remove claims.
-The final audit must verify a case before the job reports it as verified.
+**Repair all eligible items** sends scope `all_requirements` to the existing repair endpoint.
+One `wikidata_gila_repair` job checks all nine requirements against a full MARC audit.
+The job reads NLI bibliographic links and BIBFRAME in parallel within their request limits.
+It prepares the people, work, holding, and source edits before any edit on Wikidata.
+The job reuses authority evidence with the same source fingerprint.
+It records the proof for qualified Ktiv membership, explicit MARC language codes, and explicit physical forms when the source supports the claim.
+It keeps the model decision and unchecked passages visible in the audit.
+The requirement 9 summary includes the count of unchecked passages.
+Those passage rows stay in the original audit archive.
+The job preserves claim IDs, qualifiers, and references and does not create items.
+The writer checks the first creator and current revision before every edit.
+The final audit reports before and after counts for all nine requirements.
+The earlier `people_and_sources` scope still covers requirements 5 and 8.
 
 ## Add source evidence for requirement 8
 
@@ -102,7 +108,6 @@ The worker checks the project creator UID before each write.
 It keeps the item revision, claim patch, and case IDs in the write intent.
 Each edit uses the exact base revision.
 The worker reads back the complete item after the edit and verifies the claim change.
-The final audit reports the verified counts and percentages for both requirements.
 The scope has no item creation path. It reuses only verified existing identities.
 
 `test_wikidata_gila_corpus_repair.py` checks exact inscriptions, citation reconciliation, duplicate claim protection, and first creator scope.

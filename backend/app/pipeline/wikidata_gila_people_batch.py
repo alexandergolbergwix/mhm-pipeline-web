@@ -425,7 +425,9 @@ def repair_claim_builder():
     return lambda statement: builder._build_claim(statement).get_json()
 
 
-async def plan_people_batch(cases, records, *, check, progress, counts, inventory=None, evidence=None):
+async def plan_people_batch(
+    cases, records, *, check, progress, counts, inventory=None, evidence=None, parallel_authorities=False,
+):
     """Resolve exact roles and prepare revision-bound patches without a login."""
     eligible_cases = [
         case for case in cases
@@ -455,23 +457,32 @@ async def plan_people_batch(cases, records, *, check, progress, counts, inventor
     async def read(group, requested, fetch, report):
         return await evidence.read(group, requested, fetch, report) if evidence else await fetch(requested, report)
 
-    bibs = await read("bibs", controls, read_linked_bibs, read_progress)
-    counts["unavailable_catalogues"] = len(controls - bibs.keys())
-    direct_proofs = list(source_cases(eligible_cases, records, bibs))
-    direct_keys = {case.case_id for case in direct_proofs}
-    remaining = [case for case in eligible_cases if case["case_id"] not in direct_keys]
-
     async def frame_progress(processed, total):
         await check()
         await progress("people_bibframe", processed, total, "records",
                        "Match original MARC fields to NLI BIBFRAME agents.")
 
-    frames = await read("frames", {case["control_number"] for case in remaining}, read_bibframes, frame_progress)
-    proofs = [*direct_proofs, *source_cases(remaining, records, bibs, frames)]
-    counts["bibframe_matches"] = len(proofs) - len(direct_proofs)
+    if parallel_authorities:
+        async with asyncio.TaskGroup() as group:
+            bib_task = group.create_task(read("bibs", controls, read_linked_bibs, read_progress))
+            frame_task = group.create_task(read("frames", controls, read_bibframes, frame_progress))
+        bibs, frames = bib_task.result(), frame_task.result()
+    else:
+        bibs = await read("bibs", controls, read_linked_bibs, read_progress)
+    counts["unavailable_catalogues"] = len(controls - bibs.keys())
+    direct_proofs = list(source_cases(eligible_cases, records, bibs))
+    direct_keys = {case.case_id for case in direct_proofs}
+    remaining = [case for case in eligible_cases if case["case_id"] not in direct_keys]
+    if not parallel_authorities:
+        frames = await read("frames", {case["control_number"] for case in remaining}, read_bibframes, frame_progress)
+    proofs = list(source_cases(eligible_cases, records, bibs, frames)) if parallel_authorities else [
+        *direct_proofs, *source_cases(remaining, records, bibs, frames),
+    ]
+    counts["bibframe_matches"] = len({case.case_id for case in proofs} - direct_keys)
     proven_ids = {case.case_id for case in proofs}
-    dated = await dated_source_cases([case for case in remaining if case["case_id"] not in proven_ids],
-                                     records, bibs, frames)
+    dated = await dated_source_cases(
+        [case for case in remaining if case["case_id"] not in proven_ids], records, bibs, frames,
+    )
     counts["dated_matches"] = len(dated)
     proofs.extend(dated)
     signed = list(reviewed_scribe_cases(eligible_cases, records))

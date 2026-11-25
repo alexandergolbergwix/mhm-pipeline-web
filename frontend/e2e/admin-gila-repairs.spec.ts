@@ -77,6 +77,7 @@ test("one click starts an automatic repair and the page restores its result", as
   }}));
   await page.route("**/api/admin/wikidata-gila-repairs/repair-all", route => {
     expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({scope: "all_requirements"});
     launched += 1;
     return route.fulfill({json: {...job, status: "queued", progress}});
   });

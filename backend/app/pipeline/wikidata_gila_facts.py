@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from wikibaseintegrator.wbi_config import config as wikibase_config
 
+from app.pipeline import marc_occurrences as marc
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.marc_verify_context import canonical_control_number
 from converter.wikidata.catalog_notes import is_catalog_note_placeholder
@@ -19,6 +20,7 @@ from converter.wikidata.item_builder import WikidataItemBuilder
 from converter.wikidata.item_models import snak_identity
 from converter.wikidata.property_mapping import (
     LANG_TO_QID,
+    Q_KTIV,
     Q_MANUSCRIPT,
     Q_MANUSCRIPT_CODEX,
     Q_MANUSCRIPT_FRAGMENT,
@@ -632,6 +634,59 @@ def _reference_status(
     return "source_bound"
 
 
+
+def _full_marc_item_repair(cn, fact, record, entity):
+    """Require an explicit field on the exact manuscript before an item claim can change."""
+    from app.pipeline.wikidata_gila_sources import source_case
+
+    if (
+        fact.property_id not in {"P31", "P361", "P407"}
+        or not record or record.get("001") != cn or not entity.get("id")
+        or {row["value"] for row in _live_claims(entity, "P3959")} != {cn}
+    ):
+        return {}
+    pid, value = fact.property_id, fact.value
+    active = _live_claims(entity, pid)
+    if pid == "P361":
+        if value != Q_KTIV:
+            return {}
+        field = "001"
+    elif pid == "P407":
+        language_fields = marc.occurrences(record, "041")
+        if not language_fields or any(
+            row["indicators"][1] != " " or any(marc.values(row, code) for code in ("2", "3", "5"))
+            for row in language_fields
+        ):
+            return {}
+        codes = {code.lower().strip() for row in language_fields for code in marc.values(row, "a")}
+        if not codes or codes - LANG_TO_QID.keys():
+            return {}
+        languages = {LANG_TO_QID[code] for code in codes}
+        if value not in languages or {row["value"] for row in active} - languages:
+            return {}
+        field = "041"
+    else:
+        # Require an explicit physical form instead of a title or extent heuristic.
+        forms = {"scrolls": Q_SCROLL, "manuscript fragments": Q_MANUSCRIPT_FRAGMENT}
+        stated = {
+            forms[term] for row in marc.occurrences(record, "655")
+            if row["indicators"][0] == " " and not any(
+                marc.values(row, code) for code in ("3", "5", "b", "c", "v", "x", "y", "z")
+            )
+            for text in marc.values(row, "a") if (term := _text(text).casefold()) in forms
+        }
+        if stated != {value} or any(
+            row["value"] in _INCOMPATIBLE_FORMS.get(value, ()) for row in active
+        ):
+            return {}
+        field = "655"
+
+    return source_case(
+        cn, field, fact.source_value, "explicit_full_marc_item_claim",
+        entity=entity, pid=pid, value=value, qualifiers=fact.qualifiers, kind="item",
+    ).get("source_repair", {})
+
+
 def compare_gila_source_facts(
     marc_records: Iterable[Mapping[str, object]],
     items: Iterable[Mapping[str, object]],
@@ -962,6 +1017,11 @@ def compare_gila_source_facts(
                 if repair := reviewed_contents.get("source_repair"):
                     expected_value = repair["value"]
                     live_status = "present" if live else "missing"
+            source_repair = reviewed_contents.get("source_repair")
+            if not source_repair and (
+                live_status == "missing" or live_status == "present" and live_provenance == "missing"
+            ) and not live_target_missing and not fact.evidence_only:
+                source_repair = _full_marc_item_repair(cn, fact, full_marc, entity)
             provenance_review = any(
                 status
                 in {"missing", "ambiguous_flat", "invalid", "source_mismatch", "group_mismatch"}
@@ -1049,8 +1109,7 @@ def compare_gila_source_facts(
                         {"statement_id": row.get("claim_id"), "value": row["value"]}
                         for row in verified_match_rows
                     ] if live_status == "present" and live_provenance in {"source_bound", "not_applicable"} else []),
-                    **({"source_repair": reviewed_contents["source_repair"]}
-                       if reviewed_contents.get("source_repair") else {}),
+                    **({"source_repair": source_repair} if source_repair else {}),
                     "contradictions": contradictions,
                     "source_scoped": fact.source_scoped,
                     "proposal_status": proposal_status,

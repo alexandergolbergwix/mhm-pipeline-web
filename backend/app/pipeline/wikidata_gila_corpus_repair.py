@@ -1,13 +1,13 @@
 """Prepare a complete, creator-checked repair plan before the first write."""
 
 import asyncio
-from collections import defaultdict
+from collections import Counter, defaultdict
 from copy import deepcopy
 
 from app.pipeline import marc_occurrences as marc
 from app.pipeline.wikidata_gila_audit import current_holding_label
 from app.pipeline.wikidata_gila_execution import repair_claims, semantic_entity
-from app.pipeline.wikidata_gila_people_batch import PlannedEdit, _load_items, repair_claim_builder
+from app.pipeline.wikidata_gila_people_batch import PlannedEdit, _load_items, plan_people_batch, repair_claim_builder
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals, validate_gila_repair_proposal
 from app.pipeline.wikidata_gila_sources import matching_claims, source_colophon
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
@@ -203,10 +203,12 @@ def source_additions_only(plan, *, allow_folio=False):
 
 
 async def plan_sources(cases, records, *, check, progress, inventory, additions_only=False, reviewed_corrections=False):
+    """Select rank corrections, other proposals, or both with reviewed_corrections=None."""
     proposals = [
         case for case in cases
         if case.get("source_repair") or (not additions_only and case["case_id"].startswith("historical:"))
-        if bool(case.get("source_repair", {}).get("retire_claim")) == reviewed_corrections
+        if reviewed_corrections is None
+        or bool(case.get("source_repair", {}).get("retire_claim")) == reviewed_corrections
     ]
     if not proposals:
         return []
@@ -234,7 +236,7 @@ async def plan_sources(cases, records, *, check, progress, inventory, additions_
         label = description = None
         if proof:
             patches = source_patches(case, target, build_claim)
-            if reviewed_corrections:
+            if proof.get("retire_claim"):
                 previous = next((claim for claim in target["claims"].get(proof["property"], [])
                                  if claim.get("id") == proof["retire_claim"]), None)
                 if (
@@ -281,6 +283,60 @@ async def plan_holding_labels(cases, records, *, check, inventory):
             continue
         plans.append(PlannedEdit(target, [], [case["case_id"]], {qid: revision}, en_label=case["holding_label"]))
     return plans
+
+
+
+async def plan_full_corpus(cases, records, *, check, progress, counts, inventory, evidence):
+    """Read independent evidence in parallel and combine plans before any write."""
+    async def source_progress(*_):
+        # The person planner reports live progress while the source reads run.
+        await check()
+
+    async with asyncio.TaskGroup() as group:
+        people = group.create_task(plan_people_batch(
+            cases, records, check=check, progress=progress, counts=counts,
+            inventory=inventory, evidence=evidence, parallel_authorities=True,
+        ))
+        sources = group.create_task(plan_sources(
+            cases, records, check=check, progress=source_progress, inventory=inventory,
+            additions_only=True, reviewed_corrections=None,
+        ))
+        labels = group.create_task(plan_holding_labels(
+            [row for row in cases if not row.get("source_repair")],
+            records, check=check, inventory=inventory,
+        ))
+    return [*people.result(), *sources.result(), *labels.result()]
+
+
+def preserves_claim_evidence(plan):
+    """Require each patch to preserve the statement and its existing evidence."""
+    def payloads(rows):
+        return Counter(repr(semantic_entity(row)) for row in rows)
+
+    existing = {
+        claim["id"]: claim for rows in plan.target["claims"].values() for claim in rows if claim.get("id")
+    }
+    for patch in plan.patches:
+        if "remove" in patch:
+            return False
+        if not (claim_id := patch.get("id")):
+            continue
+        original = existing.get(claim_id)
+        if not original or (
+            payloads(original.get("references", [])) - payloads(patch.get("references", []))
+            or any(
+                payloads(snaks) - payloads(patch.get("qualifiers", {}).get(pid, []))
+                for pid, snaks in original.get("qualifiers", {}).items()
+            )
+        ):
+            return False
+        old_snak, new_snak = original["mainsnak"], patch["mainsnak"]
+        if semantic_entity(old_snak) != semantic_entity(new_snak) and not (
+            old_snak["property"] == new_snak["property"] == "P11603"
+            and old_snak["snaktype"] == "somevalue" and new_snak["snaktype"] == "value"
+        ):
+            return False
+    return True
 
 
 def _patch_key(patch):

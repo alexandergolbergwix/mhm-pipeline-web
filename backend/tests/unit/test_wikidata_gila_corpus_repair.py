@@ -587,3 +587,33 @@ def test_reviewed_source_proof_requires_current_exact_marc_and_target(monkeypatc
     assert reviewed_source_proof(CN, "581:1:1", literal, item()) == proof
     assert reviewed_source_proof(CN, "581:1:1", literal + ".", item()) is None
     assert reviewed_source_proof(CN, "581:1:1", literal, item("Q2")) is None
+
+
+def test_corpus_guard_requires_all_existing_evidence():
+    target = item()
+    original = target["claims"]["P3959"][0]
+    original["references"] = [{"snaks": {"P854": [{"url": "https://example.org/record"}]}}] * 2
+    original["qualifiers"] = {"P1932": [{"text": "Catalogue spelling"}]}
+    patch = {**original, "rank": "deprecated"}
+    plan = PlannedEdit(target, [patch], ["case"], {"Q1": 42})
+    assert corpus.preserves_claim_evidence(plan)
+    assert not corpus.preserves_claim_evidence(PlannedEdit(
+        target, [{**patch, "references": original["references"][:1]}], ["case"], {"Q1": 42},
+    ))
+    assert not corpus.preserves_claim_evidence(PlannedEdit(
+        target, [{"id": original["id"], "remove": ""}], ["case"], {"Q1": 42},
+    ))
+
+
+def test_marc_language_repair_requires_text_language_of_the_exact_manuscript():
+    from app.pipeline.wikidata_gila_facts import SourceFact, _full_marc_item_repair
+
+    field = {"tag": "041", "ind1": "1", "ind2": " ", "subfields": [
+        {"code": "a", "value": "heb"}, {"code": "h", "value": "ara"},
+    ]}
+    record = {"001": CN, "marc_occurrences": [field]}
+    claim = SourceFact("041", "P407", "Q9288", source_value="heb")
+    assert _full_marc_item_repair(CN, claim, record, item())["value"] == "Q9288"
+    assert not _full_marc_item_repair(CN, SourceFact("041", "P407", "Q13955"), record, item())
+    field["subfields"].append({"code": "3", "value": "preface"})
+    assert not _full_marc_item_repair(CN, claim, record, item())

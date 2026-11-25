@@ -124,12 +124,13 @@ export interface PreflightCase {
 export interface CorpusPreflightResult {
   records: number;
   case_count?: number;
+  unchecked_passages?: number;
   source_archive?: boolean;
   eligible_items: number;
   requirements: Array<{point: number; counts: Partial<Record<PreflightStatus, number>>}>;
 }
 
-export type RepairScope = "people_and_sources" | "people_evidence_batch" | "people_authority" | "sources_append_only"
+export type RepairScope = "all_requirements" | "people_and_sources" | "people_evidence_batch" | "people_authority" | "sources_append_only"
   | "holdings_and_contents" | "contents";
 
 export interface AutomaticRepairJob extends AuditJob {
@@ -175,7 +176,7 @@ const endpoint = "/admin/wikidata-gila-repairs";
 export const GilaRepairs = {
   status: () => api.get<GilaStatus>(endpoint),
   start: () => api.post<AuditJob>(endpoint + "/start", {}),
-  repairAll: (scope: RepairScope = "people_and_sources") =>
+  repairAll: (scope: RepairScope = "all_requirements") =>
     api.post<RunJobSnapshot>(endpoint + "/repair-all", {scope}),
   preflight: (params: URLSearchParams) =>
     api.get<{items: PreflightCase[]; total: number}>(endpoint + "/preflight?" + params),
