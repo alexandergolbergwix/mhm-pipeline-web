@@ -129,6 +129,7 @@ def build_gila_audit_report(
     from app.pipeline.wikidata_gila_people import people_role_cases
     from app.pipeline.wikidata_gila_sources import full_source_cases, source_colophon
     from converter.wikidata.content_projection import _work_title_key  # noqa: PLC0415
+    from converter.wikidata.work_candidates import uniform_title_matches
 
     sources = list(marc_records)
     materialized = list(items)
@@ -349,11 +350,10 @@ def build_gila_audit_report(
                     str(candidate.get("reason") or "work_candidate_requires_review"),
                 )
                 if full_source_coverage and str(candidate.get("source_field", "")).casefold() in {"related_works", "730"}:
-                    title = _work_title_key(candidate.get("raw_title") or candidate.get("title"))
-                    matches = [
-                        row for row in marc.occurrences(full_people_source or {}, "730")
-                        if title in {_work_title_key(value) for value in marc.values(row, "a")}
-                    ]
+                    matches = uniform_title_matches(
+                        marc.occurrences(full_people_source or {}, "730"),
+                        candidate.get("raw_title") or candidate.get("title"),
+                    )
                     if matches:
                         cases[-1].update(
                             reason="uniform_title_requires_component_proof", source_field="730", marc_730=matches,
@@ -519,11 +519,28 @@ def build_gila_audit_report(
 
         for fact in fact_comparison["facts"]:
             cn = fact["control_number"]
-            if reviewed_corrections().get(cn, {}).get("fact_id") != fact["fact_id"]:
+            proof = reviewed_corrections().get(cn)
+            if not proof or proof["property"] != fact["property"]:
+                continue
+            source = (people_marc or {}).get(cn)
+            holding = None
+            if fact["property"] == "P217":
+                if fact["source_field"] != "942" or fact["expected_qualifiers"]:
+                    continue
+                previous_values = {
+                    _text(value)
+                    for row in marc.occurrences(source or {}, "942")
+                    if marc.source_key(row) == proof["previous_field"]
+                    for value in marc.values(row, "z")
+                }
+                if fact["expected_value"] not in {proof["value"], *previous_values}:
+                    continue
+                holding = current_holding(cn, source)
+            elif proof["fact_id"] != fact["fact_id"]:
                 continue
             evidence = reviewed_case(
-                cn, (people_marc or {}).get(cn), (live_entities or {}).get(fact.get("qid")),
-                live_entities or {}, fact_id=fact["fact_id"],
+                cn, source, (live_entities or {}).get(fact.get("qid")),
+                live_entities or {}, holding=holding, fact_id=proof.get("fact_id"),
             )
             if evidence.get("verified"):
                 counts = fact_comparison["counts"]
@@ -533,7 +550,9 @@ def build_gila_audit_report(
                     live_status="present", live_provenance="source_bound", live_reason="verified_source_assertion",
                     expected_value=evidence["expected_value"], verified_matches=evidence["verified_matches"],
                 )
-            elif evidence.get("source_repair"):
+                if holding:
+                    fact["source_value"] = holding[1]
+            elif fact["property"] == "P1574" and evidence.get("source_repair"):
                 fact["source_repair"] = evidence["source_repair"]
     return {
         "mode": "read_only_local_proposal",

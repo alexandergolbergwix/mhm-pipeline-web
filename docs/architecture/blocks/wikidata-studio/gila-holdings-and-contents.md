@@ -18,6 +18,8 @@ It preserves multiple current rows for scope review.
 The source includes the indicators and ordered subfields.
 The Wikidata projection retains this evidence when a flattened related title matches it.
 The audit also restores the original occurrences for cases from a saved Studio build.
+Both paths standardize quotation marks for the title match.
+The report retains the original MARC text.
 A uniform title still needs proof that the manuscript contains the named part before the worker can propose a P1574 link.
 The audit keeps MARC 730 part and language data visible in the case details.
 [MARC 730](https://www.loc.gov/marc/bibliographic/bd730.html)
@@ -27,6 +29,8 @@ The audit keeps MARC 730 part and language data visible in the case details.
 `wikidata_gila_holdings_contents.py` checks the full source fields and the exact prior claim.
 The reviewed data is in `gila_reviewed_holdings_and_contents.json`.
 For a shelfmark, the prior number must match its reviewed historical or catalogue field.
+The audit credits the current number after it verifies the reviewed source and the live claim.
+It keeps the ID of the check from the saved Studio build.
 For a contents link, the audit checks the exact folio, title, and work target.
 The planner adds the sourced current claim and puts the superseded claim at deprecated rank.
 It keeps the old claim ID, value, qualifiers, and references.

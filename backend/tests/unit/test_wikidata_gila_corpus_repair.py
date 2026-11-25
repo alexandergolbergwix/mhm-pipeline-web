@@ -5,14 +5,18 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.pipeline import marc_occurrences as marc
 from app.pipeline import wikidata_gila_corpus_repair as corpus
-from app.pipeline.wikidata_gila_audit import current_holding_label
+from app.pipeline import wikidata_gila_holdings_contents as holdings_contents
+from app.pipeline.wikidata_gila_audit import build_gila_audit_report, current_holding_label
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.wikidata_gila_authority_cache import AuthorityEvidence
 from app.pipeline.wikidata_gila_people_batch import PersonRepairGateway, PlannedEdit, repair_claim_builder, verify_claims
 from app.pipeline.wikidata_gila_people_evidence_batch import evidence_batch, keep_reviewed_targets
 from app.pipeline.wikidata_gila_sources import _reviewed_source_case, full_source_cases
+from app.pipeline.wikidata_source_choices import digest
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
+from converter.wikidata.property_mapping import nli_catalog_url
 
 CN = "990000403370205171"
 
@@ -124,6 +128,63 @@ def test_uniform_title_occurrences_retain_named_parts_and_language():
     assert [row["occurrence"] for row in record["uniform_title_occurrences"]] == [1, 2]
     assert [row["subfields"] for row in record["uniform_title_occurrences"]] == [row["subfields"] for row in fields]
     assert [row["indicators"][1] for row in record["uniform_title_occurrences"]] == [" ", "2"]
+    report = build_gila_audit_report(
+        [{"001": CN}],
+        [{"local_id": "manuscript", "records": [CN], "entity_type": "manuscript",
+          "work_candidate_evidence": [{"raw_title": 'תנ""ך', "source_field": "RELATED_WORKS",
+                                       "accepted": False}]}],
+        people_marc={CN: record}, full_source_coverage=True,
+    )
+    case = next(case for case in report["records"][0]["cases"] if case.get("marc_730"))
+    assert case["marc_730"] == record["uniform_title_occurrences"]
+    assert case["source_field"] == "730"
+    assert "source_repair" not in case
+
+
+def test_shelfmark_fact_uses_the_reviewed_current_number_after_the_edit(monkeypatch):
+    def holding(indicator, shelfmark):
+        return {"tag": "942", "indicators": [indicator, " "],
+                "subfields": [{"code": "a", "value": "Library"}, {"code": "z", "value": shelfmark}]}
+
+    old = holding("4", "Acc. 8")
+    source_full = {
+        "marc_occurrences": [{"tag": "001", "data": CN}, old, holding("1", "Ms. 5"), {
+            "tag": "710", "subfields": [{"code": "a", "value": "Library"},
+                                       {"code": "e", "value": "current owner"}],
+        }],
+    }
+    marc.attach(source_full)
+    previous, current = marc.occurrences(source_full, "942")
+    proof = {
+        "qid": "Q1", "property": "P217", "value": "Ms. 5", "qualifiers": {}, "type": "string",
+        "source_field": marc.source_key(current), "source_sha256": digest(current),
+        "previous_field": marc.source_key(previous), "previous_field_sha256": digest(previous),
+    }
+    monkeypatch.setattr(holdings_contents, "reviewed_corrections", lambda: {CN: proof})
+    live = item()
+    live["claims"]["P217"] = [{
+        "id": "Q1$shelfmark", "mainsnak": {"snaktype": "value", "datavalue": {"value": "Ms. 5"}},
+        "references": [{"snaks": {
+            "P3959": [live["claims"]["P3959"][0]["mainsnak"]],
+            "P854": [{"snaktype": "value", "datavalue": {"value": nli_catalog_url(CN)}}],
+        }}],
+    }]
+
+    def audit(legacy_shelfmark):
+        report = build_gila_audit_report(
+            [{"001": CN, "holding_942_name": "Library", "holding_942_shelfmark": legacy_shelfmark}],
+            [], qids_by_cn={CN: "Q1"}, live_entities={"Q1": live},
+            people_marc={CN: source_full}, full_source_coverage=True,
+        )
+        return next(fact for fact in report["fact_comparison"]["facts"] if fact["property"] == "P217")
+
+    checked = audit("Acc. 8")
+    assert checked["live_status"] == "present"
+    assert checked["live_provenance"] == "source_bound"
+    assert checked["expected_value"] == checked["source_value"] == "Ms. 5"
+    assert checked["verified_matches"] == [{"statement_id": "Q1$shelfmark", "value": "Ms. 5"}]
+    assert "source_repair" not in checked
+    assert audit("Unrelated number")["live_status"] != "present"
 
 
 def test_reviewed_colophons_require_each_folio_before_verification():

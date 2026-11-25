@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
+from unicodedata import normalize
 
 from converter.rdf.rdf_helpers import (
     is_descriptive_content_title,
@@ -34,6 +36,25 @@ _WORK_NOUN_RE = re.compile(
     r"תיקון|שיר|קינ|סליח|לוח|שמות|קבל|חשב|ליקוט|תוצ|שער|מאמר|ענין|עניין|"
     r"הלכ|מנהג|כתב|עתק|תרגום|מדרש|תלמוד|משנ|גמר|מסכת|תולדות|ביאור|קובץ|אגר"
 )
+
+_UNIFORM_TITLE_QUOTES = str.maketrans('״“”', '"""')
+
+
+def uniform_title_matches(
+    occurrences: Iterable[Mapping[str, object]], title: object,
+) -> list[Mapping[str, object]]:
+    def key(value: object) -> str:
+        nfc = normalize("NFC", str(value or "")).translate(_UNIFORM_TITLE_QUOTES)
+        return " ".join(nfc.replace('""', '"').split()).rstrip(" ,.;:/-").strip('" ').casefold()
+
+    title_key = key(title)
+    if not title_key:
+        return []
+    return [
+        row for row in occurrences
+        if any(subfield["code"] == "a" and key(subfield["value"]) == title_key
+               for subfield in row["subfields"])
+    ]
 
 
 @dataclass(frozen=True)

@@ -1141,7 +1141,7 @@ class ManuscriptProjectionMixin:
         # Bare related_works titles must not mint local CREATE works without
         # MARC 505/500 / approved NER / authority / known-QID evidence — that
         # path produced WORK_WITHOUT_SOURCE_EVIDENCE and blocked Studio rebuild.
-        from converter.wikidata.work_candidates import assess_work_candidate  # noqa: PLC0415
+        from converter.wikidata.work_candidates import assess_work_candidate, uniform_title_matches  # noqa: PLC0415
 
         from converter.wikidata.work_link_specificity import (  # noqa: PLC0415
             refine_exemplar_work_qid,
@@ -1156,14 +1156,7 @@ class ManuscriptProjectionMixin:
                 rw_dict.get("source_field") or rw_dict.get("field") or "related_works"
             ).strip() or "related_works"
             if source_field.casefold() in {"related_works", "730"}:
-                uniform_titles = [
-                    row for row in record.get("uniform_title_occurrences", ())
-                    if any(
-                        subfield["code"] == "a"
-                        and subfield["value"].strip().strip(_QUOTE_CHARS + ".").casefold() == rw_title.casefold()
-                        for subfield in row["subfields"]
-                    )
-                ]
+                uniform_titles = uniform_title_matches(record.get("uniform_title_occurrences", ()), rw_title)
                 if uniform_titles:
                     evidence = {
                         "raw_title": rw_title, "source_field": "730", "accepted": False,
