@@ -71,6 +71,83 @@
       ]
     }
   ],
+  "990000606310205171": [
+    {
+      "qid": "Q141746949",
+      "uniform_fields": [
+        "730:1",
+        "730:2",
+        "730:3"
+      ],
+      "fields": {
+        "730:1": "2376dab25a7eb31b9c6050ec87b350b480b743be3af1cd2c4965db70db2bbbb0",
+        "730:2": "c48b15695482d67dd332951e359e6916a7a4f3346d5882456c5ae9d60fd655cb",
+        "730:3": "3e9f23c28c6dcc25bfcd3f552e0adb75829927f74acb81be8a5ac31ec1aeabe2",
+        "245:1": "2a64ae92eec28e2b1063f8bbc9180dfff2a900621371f35d8ce4cc96a81d584d",
+        "300:1": "b470dc0824e4f0e918b10019e29a24236a2cf065c2ed2a2642963565f1596991",
+        "500:2": "c5c834c03ad9b0a7a70be3f95191fbad69f2d96c8fb5df33c60511d54b04fe5d",
+        "500:6": "b79004ad403f575fedc3796a2a72b687fd644791fe0e579bc5bf52fd4c5f1298",
+        "500:7": "0e3782e65c1296f40520fa97ba79355b237a55df9a22799373f273c711a8500e",
+        "942:1": "94bab7d936a27c0b42aa5f9fe945478d688050827f237ad59eddadf93a5de36f"
+      },
+      "works": [
+        {
+          "value": "Q34990",
+          "target_title": "Torah",
+          "title": "תורה (בראשית–שמות)",
+          "folio": "Genesis 1:1–Exodus 40:38 (NLI IIIF frames 14–196)",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000606310205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL46071365/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL46071547/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q141175527",
+            "Q1508627"
+          ]
+        },
+        {
+          "value": "Q1508627",
+          "target_title": "Targum Onkelos",
+          "title": "תרגום אונקלוס (בראשית–שמות)",
+          "folio": "Genesis 1:1–Exodus 40:38 (NLI IIIF frames 14–196)",
+          "covers": [
+            "730:2"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000606310205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL46071365/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL46071547/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q141175527",
+            "Q34990"
+          ]
+        },
+        {
+          "value": "Q141175527",
+          "target_title": "תרגום ערבי לתורה",
+          "title": "תרגום רס״ג לתורה (בראשית–שמות)",
+          "folio": "Genesis 1:1–Exodus 40:38 (NLI IIIF frames 14–196)",
+          "covers": [
+            "730:3"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000606310205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL46071365/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL46071547/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q1508627",
+            "Q34990"
+          ]
+        }
+      ]
+    }
+  ],
   "990000612200205171": [
     {
       "qid": "Q141746955",
@@ -141,6 +218,97 @@
             "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000758110205171",
             "https://iiif.nli.org.il/IIIFv21/FL79580375/full/1450,/0/default.jpg"
           ]
+        }
+      ]
+    }
+  ],
+  "990000814890205171": [
+    {
+      "qid": "Q141747141",
+      "uniform_fields": [
+        "730:1",
+        "730:2",
+        "730:3",
+        "730:4"
+      ],
+      "fields": {
+        "730:1": "d3ff715f53d3d5388fbb084d62fe9f34a0e9e0a7489b828164600e7d807c7c33",
+        "730:2": "c48b15695482d67dd332951e359e6916a7a4f3346d5882456c5ae9d60fd655cb",
+        "730:3": "3bbef99aca0a11c084876ab26c6dda276706adeb6b4bd584cf839577752ed3ca",
+        "730:4": "ad32f6c83fa1fda732206ef0075f03c79ef4525d89adec60a333786dad8bb606",
+        "245:1": "2a64ae92eec28e2b1063f8bbc9180dfff2a900621371f35d8ce4cc96a81d584d",
+        "300:1": "8e7234c78062e465aed167dcf051b9f721e00418d4978727700f9d335e3c7553",
+        "500:2": "70e8c4ae6fd15e06c044b62cbac18c276166c47ca9bfa9e8341c1e602570063c",
+        "500:4": "2d20973ba15b9095398e5e298c7dec6be5827a319de0a33dbc9e53825be23956",
+        "500:6": "eba18c6ed31ba426aa7604cb08bdef55722fb32de7b7a792ed62bb3f3fe9ecb0",
+        "942:1": "8adc6e312d5b013e25784c858bedaeb0d26419f2d485f85ada1e3bd6138e6193"
+      },
+      "works": [
+        {
+          "value": "Q141175527",
+          "target_title": "תרגום ערבי לתורה",
+          "title": "תרגום רס״ג לתורה (בראשית–שמות)",
+          "folio": "Genesis 1:1–Exodus 40:38 (NLI IIIF frames 23–221)",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000814890205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL155331022/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL155331126/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL155331220/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q1508627"
+          ]
+        },
+        {
+          "value": "Q1508627",
+          "target_title": "Targum Onkelos",
+          "title": "תרגום אונקלוס (בראשית–שמות)",
+          "folio": "Genesis 1:1–Exodus 40:38 (NLI IIIF frames 23–221)",
+          "covers": [
+            "730:2"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000814890205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL155331022/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL155331126/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL155331220/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q141175527"
+          ]
+        },
+        {
+          "value": "Q9184",
+          "target_title": "Book of Genesis",
+          "title": "בראשית",
+          "folio": "Genesis 1:1–50:26 (NLI IIIF frames 23–127)",
+          "covers": [
+            "730:3"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000814890205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL155331022/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL155331126/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": []
+        },
+        {
+          "value": "Q9190",
+          "target_title": "Exodus",
+          "title": "שמות",
+          "folio": "Exodus 1:1–40:38 (NLI IIIF frames 127–221)",
+          "covers": [
+            "730:4"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000814890205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL155331126/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL155331220/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": []
         }
       ]
     }
@@ -275,6 +443,44 @@
             "https://www.nli.org.il/en/manuscripts/NNL_ALEPH990001015950205171/NLI",
             "https://iiif.nli.org.il/IIIFv21/FL28554393/full/1450,/0/default.jpg",
             "https://iiif.nli.org.il/IIIFv21/FL28554589/full/1450,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001016240205171": [
+    {
+      "qid": "Q141747238",
+      "uniform_fields": [
+        "730:1",
+        "730:2",
+        "730:3"
+      ],
+      "fields": {
+        "730:1": "9f1334f9b875ebba884c087e46ba3f65e3c6aaa99d05757a231650a877b14dfd",
+        "730:2": "caedce52f44631b0193b708276f1ca75c1e732b03d4071ded9a4bc9f93b79e88",
+        "730:3": "79b452602e8d5ba1721b3d92e2c4a3b4281077f49d17d62e76e3443ebbe30df9",
+        "245:1": "0922fd2192bf4ddfe1f2ba76906c764529826bfc75a308fd7778b898529ce5dc",
+        "300:1": "025123adcde280b47145ff3eb20c76e718a4842377d0f56cf59ab9b876423db9",
+        "500:1": "20dd6ae9752b59520bac2ea32e8be5569391547a7d541826b4baf97c4ea60109",
+        "500:2": "ac2f09e9d3db85482629889a926bb3a3271165a20ed9ca1a39a924363a5aa915",
+        "500:3": "546213473b3dcfc2dc0cf22d16d157784888d35029ab692af1d1660f6de87ca8",
+        "942:1": "64df2f2ad0b5be52fba0b7492de823012db0fbe1039757b862c007f377c9b141"
+      },
+      "works": [
+        {
+          "value": "Q51670",
+          "target_title": "Song of Songs",
+          "title": "שיר השירים (א:יג-ח:יד)",
+          "folio": "1א-64א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/FL28017910/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL28017929/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL28018128/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL28018131/full/1150,/0/default.jpg"
           ]
         }
       ]
@@ -548,6 +754,38 @@
       ]
     }
   ],
+  "990001205540205171": [
+    {
+      "qid": "Q141747480",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "c793ff297073d2206f2ef1df782a8d01ea4cc8d80849a166de8de94900f9321a",
+        "245:1": "091f1373d4021fc64e93c35bca2ac81ea8a418096078a9d75a4c7e41521babd3",
+        "300:1": "baaee146a531a1dc1d697fb9a0d33b85b2e8a1a496d3b391f425feac1f77a373",
+        "500:1": "f162ab643a8db32bf88d01ee43bcbdc9c9f2f2d6ecf0936f0ec29bc7d2153993",
+        "942:1": "49d1777f167dd645528af27676e2e2bd47d9a78cd4ddc1e3e5fd4e2402a5218e"
+      },
+      "works": [
+        {
+          "value": "Q141362113",
+          "target_title": "תרגום ארמי לכתובים (דברי הימים)",
+          "title": "תרגום ארמי לכתובים (דברי הימים)",
+          "folio": "2א-62א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003376055",
+            "https://iiif.nli.org.il/IIIFv21/FL26799176/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL26799468/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL26799469/full/1150,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
   "990001205840205171": [
     {
       "qid": "Q141175794",
@@ -633,6 +871,58 @@
       ]
     }
   ],
+  "990001207530205171": [
+    {
+      "qid": "Q141747483",
+      "uniform_fields": [
+        "730:1",
+        "730:2"
+      ],
+      "fields": {
+        "730:1": "6a362b8f93cc3987c2239f088b24c75e0202ba8c6a5e911946f2c6b9436a5aa3",
+        "730:2": "de0a2344432f43ab25354932a3550a2903e38faba9bc0449b99db184ca30fbab",
+        "100:1": "0351f8eff059c2e0cf79c9f6a5ce8194a53ba0c8239fa46924a630e059f76413",
+        "245:1": "adf7b9bd2422c26b4bd6e164550eb0419a1fd62cc9dc21fe7c18e5be5f8e9a34",
+        "300:1": "ceb6ed483972c399d485458f07f60a0347f424a8cd965fa37c620b965b48bb88",
+        "500:1": "c2af3680fcb6182688f3402d22beb869d1ff587ccceeaf461523102168f633c0",
+        "942:1": "aa14da71ae3fc60d2674fe73081f0817e6c87cc996e5185a855e915d9c50ccad"
+      },
+      "works": [
+        {
+          "value": "Q42614",
+          "target_title": "Deuteronomy",
+          "title": "דברים כו:ב-כט:ה, כט:ט-לד:יב",
+          "folio": "1ב-157ב",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003375754",
+            "https://iiif.nli.org.il/IIIFv21/FL31304969/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL31305572/full/1150,/0/default.jpg"
+          ]
+        },
+        {
+          "value": "Q141755386",
+          "target_title": "פרוש התורה ליפת בן עלי (דברים כו-לד)",
+          "title": "פרוש התורה ליפת בן עלי (דברים כו-לד)",
+          "folio": "1ב-159א",
+          "covers": [
+            "730:2"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003375754",
+            "https://iiif.nli.org.il/IIIFv21/FL31304969/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL31305578/full/1150,/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141747483$1BD96A0A-8930-43B7-B79E-AC1CEDDF063F",
+            "sha256": "58666ee40b47916545aed001835822c604c62d24fa58cccd09ab78c73db39036"
+          }
+        }
+      ]
+    }
+  ],
   "990001207830205171": [
     {
       "qid": "Q141747484",
@@ -647,7 +937,8 @@
         "300:1": "f780f5c86d0d46e4599b77ff44888d4e498a1e6519a21a9f28dbe06a4959c53d",
         "500:1": "501a69950dc7bd0322b129760314cca7a6f992d050ba22e49ba9af6503a4fc6e",
         "500:4": "ce49fe3be43201ffc22d150535127fb86512aac193aa401b856fc09cafca93f7",
-        "942:1": "daa6214f345d4b9da0c986af6a074eee13cd087a7c23bb0e61d236a3cbedf8bb"
+        "942:1": "daa6214f345d4b9da0c986af6a074eee13cd087a7c23bb0e61d236a3cbedf8bb",
+        "500:2": "2f0e92bbf28b739b3f6af8592a75d23d8ec0ae6028c88549f244f16b35401d3c"
       },
       "works": [
         {
@@ -664,6 +955,25 @@
             "https://iiif.nli.org.il/IIIFv21/FL30470921/full/1450,/0/default.jpg",
             "https://iiif.nli.org.il/IIIFv21/FL30470934/full/1450,/0/default.jpg"
           ]
+        },
+        {
+          "value": "Q141755389",
+          "target_title": "פרוש נביאים ליפת בן עלי (יונה-מלאכי) בערבית",
+          "title": "פרוש נביאים ליפת בן עלי (יונה-מלאכי) בערבית",
+          "folio": "1ב-261א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003375120",
+            "https://iiif.nli.org.il/IIIFv21/FL30465373/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL30470934/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL30470948/full/1450,/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141747484$F9F565E7-EA3E-4FAF-BC90-F93024488ACD",
+            "sha256": "9e2bbaaf1521a715972ef6f6e57e9f0e6261b7004d6fa6487664d3b2c31fcc19"
+          }
         }
       ]
     }
@@ -929,6 +1239,93 @@
       ]
     }
   ],
+  "990001402040205171": [
+    {
+      "qid": "Q141747694",
+      "uniform_fields": [
+        "730:1",
+        "730:2",
+        "730:3"
+      ],
+      "fields": {
+        "730:1": "dea53abc0cda007b4bda750f382b6b005e0de102e3e742581671cbf7ddd5ef1a",
+        "730:2": "8d728a6a2dbaea0052283b3c5a5609bd2a7a4731774ae421c57f86f644270873",
+        "730:3": "8593a8fea485de361a1f206b84cce038ec9cfc15fd72e95c149fa4b616cec021",
+        "245:1": "26c99785dd73414870c056d21e97af729d7cfb26f5899f79f7c36efebfc6bd5a",
+        "300:1": "6869d7d5cae556e98c3efb6ae89b95cbc583e833314af2ff64d37c1d7282044e",
+        "500:1": "356f5aea66377f55c9bec866296154f0f99b8dec9dadc5a418d9e093553f9cca",
+        "500:2": "28e196d9cfad645780a8b6557a7138c42cd5c284bb35e83eec39f3944f74a31e",
+        "500:3": "18a7c67bcc1334cc4b1d50ebaa18ebb951c06def1985c5a6424a7afac271c571",
+        "942:1": "b55573b746d69683238f01d5033e38153131f58b0c15c5641f7cbb11c710b94a",
+        "942:2": "9337e858292df36abd595b3dedd87ee2b9dfbd6bfdf811cc5340877bd9a572b4"
+      },
+      "works": [
+        {
+          "value": "Q141175527",
+          "target_title": "תרגום ערבי לתורה",
+          "title": "תרגום רס״ג לתורה (ויקרא–דברים)",
+          "folio": "Leviticus 1:1–Deuteronomy 34:12 (Or. 549: NLI IIIF frames 15–158; Or. 550: frames 3–168)",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001402040205171-2/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL34541758/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL34541901/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001402040205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL34541521/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL34541694/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q1508627",
+            "Q34990"
+          ]
+        },
+        {
+          "value": "Q34990",
+          "target_title": "Torah",
+          "title": "תורה (ויקרא–דברים)",
+          "folio": "Leviticus 1:1–Deuteronomy 34:12 (Or. 549: NLI IIIF frames 15–158; Or. 550: frames 3–168)",
+          "covers": [
+            "730:2"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001402040205171-2/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL34541758/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL34541901/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001402040205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL34541521/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL34541694/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q141175527",
+            "Q1508627"
+          ]
+        },
+        {
+          "value": "Q1508627",
+          "target_title": "Targum Onkelos",
+          "title": "תרגום אונקלוס (ויקרא–דברים)",
+          "folio": "Leviticus 1:1–Deuteronomy 34:12 (Or. 549: NLI IIIF frames 15–158; Or. 550: frames 3–168)",
+          "covers": [
+            "730:3"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001402040205171-2/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL34541758/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL34541901/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001402040205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL34541521/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL34541694/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q141175527",
+            "Q34990"
+          ]
+        }
+      ]
+    }
+  ],
   "990001675340205171": [
     {
       "qid": "Q141747816",
@@ -1003,7 +1400,8 @@
         "245:1": "4c3ddf59e4f599b89eb857778a2963234447dd0622471ab03baddfa537ff8634",
         "500:1": "3bcc4266554c729d13fbbc4c02a1ee4a5860fa8944a960a418db946ad3dcd901",
         "856:1": "0aff58ee21b758552d65703765c3bde4c21c46463c9c0340e724f62d4a9fe34d",
-        "942:1": "a716dcb1605d99377d166d9415744b81a5563859a72e6070bab74bdbdbcccdcb"
+        "942:1": "a716dcb1605d99377d166d9415744b81a5563859a72e6070bab74bdbdbcccdcb",
+        "500:5": "2dac1bc95d2263631971930fafb9db1c69ec76e70c37e42b49c2e5e0c2662d74"
       },
       "works": [
         {
@@ -1024,6 +1422,19 @@
             "id": "Q141747941$D0E01AB6-F651-4929-BF48-7EB79CCE563E",
             "sha256": "3c2a40659a6a8491dff16836a3802ffca8f2cb41d7638bb8a315b73734a740fa"
           }
+        },
+        {
+          "value": "Q9184",
+          "target_title": "בראשית",
+          "title": "בראשית א:א-ג:כד",
+          "folio": "2א-6ב",
+          "covers": [
+            "730:3"
+          ],
+          "urls": [
+            "https://haab-digital.klassik-stiftung.de/viewer/api/v1/records/1644807637/files/images/1626926670_0008.tif/full/1400,/0/default.jpg",
+            "https://haab-digital.klassik-stiftung.de/viewer/api/v1/records/1644807637/files/images/1626926670_0013.tif/full/1400,/0/default.jpg"
+          ]
         }
       ]
     }
@@ -1056,6 +1467,117 @@
             "https://content.staatsbibliothek-berlin.de/dc/PPN1010818872-00000004/full/max/0/default.jpg",
             "https://content.staatsbibliothek-berlin.de/dc/PPN1010818872-00000033/full/max/0/default.jpg",
             "https://content.staatsbibliothek-berlin.de/dc/PPN1010818872-00000034/full/max/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001767770205171": [
+    {
+      "qid": "Q141748080",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "810e43fafaf11e75572d44a1001398b03a7d03bdc581102642468ddce7a879b6",
+        "245:1": "19be521ed2b0386087909149c61187c668212ea7d89bde2691de7639b7f71afd",
+        "300:1": "8d70aa6e213cc3921fc804d693a790c7e261b62bba4bcfe24cd40525a790f3d8",
+        "500:1": "6a822a7e397ae23c2f1afae032dcd7d442b66857435c8a073087a3ac39e7bdb2",
+        "500:3": "59dd659b5e51511193466da717fa4d4d131c0c15375dc543cb312a72cd7698a8"
+      },
+      "works": [
+        {
+          "value": "Q141748764",
+          "target_title": "סליחות. מנהג אשכנז לכל השנה",
+          "title": "סליחות. מנהג אשכנז לכל השנה",
+          "folio": "5א-192ב",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001767770205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL70326117/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL70326118/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL70326473/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL70326475/full/1150,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001772940205171": [
+    {
+      "qid": "Q141748082",
+      "uniform_fields": [
+        "730:1",
+        "730:2",
+        "730:3"
+      ],
+      "fields": {
+        "730:1": "dea53abc0cda007b4bda750f382b6b005e0de102e3e742581671cbf7ddd5ef1a",
+        "730:2": "8d728a6a2dbaea0052283b3c5a5609bd2a7a4731774ae421c57f86f644270873",
+        "730:3": "8593a8fea485de361a1f206b84cce038ec9cfc15fd72e95c149fa4b616cec021",
+        "245:1": "26c99785dd73414870c056d21e97af729d7cfb26f5899f79f7c36efebfc6bd5a",
+        "300:1": "580256c2142b861f4ca5915737568701b32bd0a69c184a0fbc1805a75d459dcb",
+        "500:2": "d8a6f9beff89802fd8cf7efea984891c9cd185faf34b1754be9be048918602ee",
+        "500:3": "f9fb5f7e6606c4e5b535ad66a6850bea57a59ee7e8a4674d653ce0053ab64030",
+        "500:5": "d5ad7e3ecfe3b31f64801ab539380ce1884d85fce31a9d5c9602d177eb4866f2",
+        "500:7": "1e5e96f787292718deea569ce4ad9940da61d3f34ab6e5c7dd562febe58916ac",
+        "942:1": "3aeacb2c4dc8503e8dc70f0553f25dcb55c245d95d3b0d3bcec5dce933b29762"
+      },
+      "works": [
+        {
+          "value": "Q141175527",
+          "target_title": "תרגום ערבי לתורה",
+          "title": "תרגום רס״ג לתורה (ויקרא–דברים)",
+          "folio": "Leviticus 1:1–Deuteronomy 34:12 (NLI IIIF frames 6–198)",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001772940205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL262602824/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL262604702/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q1508627",
+            "Q34990"
+          ]
+        },
+        {
+          "value": "Q34990",
+          "target_title": "Torah",
+          "title": "תורה (ויקרא–דברים)",
+          "folio": "Leviticus 1:1–Deuteronomy 34:12 (NLI IIIF frames 6–198)",
+          "covers": [
+            "730:2"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001772940205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL262602824/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL262604702/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q141175527",
+            "Q1508627"
+          ]
+        },
+        {
+          "value": "Q1508627",
+          "target_title": "Targum Onkelos",
+          "title": "תרגום אונקלוס (ויקרא–דברים)",
+          "folio": "Leviticus 1:1–Deuteronomy 34:12 (NLI IIIF frames 6–198)",
+          "covers": [
+            "730:3"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001772940205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL262602824/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL262604702/full/1150,/0/default.jpg"
+          ],
+          "parallel_work_values": [
+            "Q141175527",
+            "Q34990"
           ]
         }
       ]
@@ -1186,6 +1708,110 @@
             "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001850070205171&scope=KTIV&vid=KTIV",
             "https://www.digitalcollections.manchester.ac.uk/iiif/MS-HEBREW-00022"
           ]
+        }
+      ]
+    }
+  ],
+  "990001857260205171": [
+    {
+      "qid": "Q141748150",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "8c0675c3f6f3d7c8ec3355a15a523385de4fee779910d59d0acab914acae204b",
+        "245:1": "0165aef09e2d3dbba566b23da7e594d770875db2ef62bd828b97b392dffc5373",
+        "300:1": "a0ca28ee3e8ddefbf8242f05c6ec65a41befbfde4fe26475904e21ffb6880aef",
+        "500:1": "4326af7bcae49c50b30b7f662e2297c17f179f0dab34a68caf68ff983bb2e1d0",
+        "500:2": "669350092fcf34eb5fd07985e45102d23290a325b863ea4de103ec8eaf50c2d5",
+        "856:1": "4dbaab410fd6c13ca11b56c594efd346e8ac75160f04adc4a9c4a3b0f9fe5ff0"
+      },
+      "works": [
+        {
+          "value": "Q141755223",
+          "target_title": "קינות",
+          "title": "קינות",
+          "folio": "1א-9ב",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001857260205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL69117143/full/1150,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL69117317/full/1150,/0/default.jpg",
+            "https://explore.library.leeds.ac.uk/special-collections-explore/115529"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001936650205171": [
+    {
+      "qid": "Q141748326",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "cc7563691178b0b6d99246863f480bb3b56977b084f1317ef22b67ab2664a171",
+        "245:1": "829035b0e5cf7fc85903d7746c36ac37cb4e2ab6d96dfc7c008ce33d3639c27f",
+        "300:1": "c0fb18fa60aca69466b45526ba157e1a56147bab857f567434b93876d32caa73",
+        "500:1": "acbfc83621ae6d5d65218667815facb7034f99ea3a398046742da85b0f7af49f",
+        "500:2": "86a65034890fed007b5a6df031501d79db6f70b66afd747cf269df8797c2cea0",
+        "500:4": "25989698fabc17e76912c65e8af14a7911e7a0061e6bd059af384281df10f824",
+        "500:5": "c92c15803a943287e99af319c3e6b99608dde26b7c773181da8885845ffa4c0c"
+      },
+      "works": [
+        {
+          "value": "Q141754618",
+          "target_title": "תרגום ארמי לכתובים (שיר השירים)",
+          "title": "תרגום יונתן על שיר השירים (עיבוד ארמי)",
+          "folio": "2ב-28ב (עמודי ב)",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://digi.vatlib.it/view/MSS_Vat.ebr.433/0005",
+            "https://digi.vatlib.it/view/MSS_Vat.ebr.433/0008",
+            "https://digi.vatlib.it/view/MSS_Vat.ebr.433/0060",
+            "https://digi.vatlib.it/view/MSS_Vat.ebr.433/0061",
+            "https://www.nli.org.il/media/26037/vaticanhebmss.pdf"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001950770205171": [
+    {
+      "qid": "Q141748336",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0ace864faeeabf151be38a10d7cda5fc3f25ef38409e5dc9876957967cce8894",
+        "245:1": "ef0bca61b7c559dbba41ebf54a65ec2f6c791f920a4b98272dc0f0c0ad819641",
+        "300:1": "71b365c15da29e3bf4df362ca6c21f5e7a7085eabb01f1e9764634b33837fd04",
+        "500:2": "de66c121e6d555fe81ff61280e0b559265802e92b244ef2eaefe8386b789d722",
+        "500:3": "123dba3209634a6ec7ee9cdec6c8c17b50ffff53a4d8801af57ea2d7cabc057e",
+        "500:4": "c2601d638986fe5db0bd7a34b57cb9e786f78fbe22922df0f07e2b9520da76b4"
+      },
+      "works": [
+        {
+          "value": "Q141990716",
+          "target_title": "מגלת איכה",
+          "title": "מגלת איכה",
+          "folio": "9ב-81ב (קטעים משולבים בקינת סתרים)",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/FL159014170/full/max/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL159014171/full/max/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL159014457/full/max/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141748336$ACBAB84A-C4F1-475D-A1A8-6D5DCC4DC1DC",
+            "sha256": "a2ee6cfe956a957e95b962d54d70e65a305cd52c9fa5ef582fabcf843ce39c86"
+          }
         }
       ]
     }
