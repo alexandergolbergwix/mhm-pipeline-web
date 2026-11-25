@@ -588,8 +588,10 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
         if job.params.get("_gila_full_sources"):
             from app.pipeline.wikidata_gila_holdings_contents import reviewed_work_targets
             from app.pipeline.wikidata_gila_sources import source_topic_ids
+            from app.pipeline.wikidata_gila_uniform_titles import uniform_title_targets
 
             known.update(reviewed_work_targets())
+            known.update(uniform_title_targets())
             known.update(await asyncio.to_thread(source_topic_ids, people_marc.values()))
         seen: set[str] = set()
         await _live_items(job_id, known, entities, seen, "public_items")

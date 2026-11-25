@@ -129,7 +129,8 @@ class RepairCycle:
         self.evidence_batch = job.params.get("_gila_scope") == "people_evidence_batch"
         self.authority_batch = job.params.get("_gila_scope") == "people_authority"
         self.source_evidence_batch = job.params.get("_gila_scope") == "sources_append_only"
-        self.holdings_contents = job.params.get("_gila_scope") == "holdings_and_contents"
+        self.uniform_titles = job.params.get("_gila_scope") == "uniform_titles"
+        self.holdings_contents = self.uniform_titles or job.params.get("_gila_scope") == "holdings_and_contents"
         self.subjects_only = self.source_evidence_batch and job.params.get("_gila_subjects_only") is True
         self.write_maxlag = REFERENCE_JOB_MAXLAG if self.subjects_only else STUDIO_MAXLAG
         self.people_only = self.evidence_batch or self.authority_batch or job.params.get("_gila_requirement") == 5
@@ -139,7 +140,7 @@ class RepairCycle:
         )
         self.preflight_points = {
             "people_authority": (1, 5), "people_evidence_batch": (5,), "sources_append_only": (8,),
-            "holdings_and_contents": (1, 6),
+            "holdings_and_contents": (1, 6), "uniform_titles": (6,),
         }.get(job.params.get("_gila_scope"), (5, 8))
         self.people_links = dict(job.params.get("_gila_people_links") or {})
         self.resolver = ExecutionCredentialResolver(
@@ -437,6 +438,8 @@ class RepairCycle:
 
             points = frozenset(self.preflight_points)
             cases = [row for row in cases if points.intersection(row["points"])]
+            if self.uniform_titles:
+                cases = [row for row in cases if row.get("marc_730")]
             inventory = corpus_inventory(cases, points)
         if self.source_evidence_batch:
             from app.pipeline.wikidata_gila_corpus_repair import source_corpus_inventory
@@ -523,7 +526,7 @@ class RepairCycle:
             if inventory is None or self.source_evidence_batch:
                 if inventory is None:
                     inventory = corpus_inventory(cases)
-                source_cases = cases
+                source_cases = [row for row in cases if not row.get("marc_730")]
                 if self.subjects_only:
                     source_cases = [row for row in cases if row.get("source_repair", {}).get("property") == "P921"]
                 plans.extend(await plan_sources(
@@ -538,9 +541,17 @@ class RepairCycle:
                 with paced_wikidata_evidence_reads():
                     plans.extend(await plan_holding_labels(cases, records, check=check, inventory=inventory))
             elif self.holdings_contents:
-                from app.pipeline.wikidata_gila_corpus_repair import plan_holding_labels
+                from app.pipeline.wikidata_gila_corpus_repair import plan_holding_labels, source_additions_only
 
                 with paced_wikidata_evidence_reads():
+                    uniform = [row for row in cases if row.get("marc_730")]
+                    additions = await plan_sources(
+                        uniform, records, check=check, progress=progress, inventory=inventory,
+                        additions_only=True,
+                    )
+                    if not all(source_additions_only(plan, allow_folio=True) for plan in additions):
+                        raise ValueError("Uniform title repairs must retain the confirmed claims and references.")
+                    plans.extend(additions)
                     plans.extend(await plan_sources(
                         cases, records, check=check, progress=progress, inventory=inventory,
                         additions_only=True, reviewed_corrections=True,

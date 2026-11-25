@@ -8,12 +8,14 @@ import pytest
 from app.pipeline import marc_occurrences as marc
 from app.pipeline import wikidata_gila_corpus_repair as corpus
 from app.pipeline import wikidata_gila_holdings_contents as holdings_contents
+from app.pipeline import wikidata_gila_uniform_titles as uniform_titles
 from app.pipeline.wikidata_gila_audit import build_gila_audit_report, current_holding_label
 from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.wikidata_gila_authority_cache import AuthorityEvidence
 from app.pipeline.wikidata_gila_people_batch import PersonRepairGateway, PlannedEdit, repair_claim_builder, verify_claims
 from app.pipeline.wikidata_gila_people_evidence_batch import evidence_batch, keep_reviewed_targets
 from app.pipeline.wikidata_gila_sources import _reviewed_source_case, full_source_cases
+from app.pipeline.wikidata_gila_execution import semantic_entity
 from app.pipeline.wikidata_source_choices import digest
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
 from converter.wikidata.property_mapping import nli_catalog_url
@@ -139,6 +141,56 @@ def test_uniform_title_occurrences_retain_named_parts_and_language():
     assert case["marc_730"] == record["uniform_title_occurrences"]
     assert case["source_field"] == "730"
     assert "source_repair" not in case
+
+
+def test_reviewed_uniform_title_adds_folio_without_replacing_the_claim(monkeypatch):
+    record = {"marc_occurrences": [
+        {"tag": "730", "subfields": [{"code": "a", "value": "Work title"}]},
+        {"tag": "500", "subfields": [{"code": "a", "value": "Work title, folios 3a-8b"}]},
+    ]}
+    fields = {marc.source_key(row): row for row in marc.occurrences(record)}
+    manuscript, work = item(), item("Q2")
+    work["labels"]["en"] = {"value": "Work title", "language": "en"}
+    cited_url = nli_catalog_url(CN)
+    builder = repair_claim_builder()
+    occurrence = "730:1"
+    original = corpus.source_patches({
+        "control_number": CN, "source_repair": {
+            "property": "P1574", "value": "Q2", "type": "item", "language": None,
+            "qualifiers": {"P1932": "Work title"}, "proof_urls": [cited_url],
+        },
+    }, manuscript, builder)[0]
+    original["id"] = "Q1$work"
+    manuscript["claims"]["P1574"] = [original]
+    proof = {
+        "value": "Q2", "target_title": "Work title", "title": "Work title", "folio": "3a-8b",
+        "covers": [occurrence], "urls": [cited_url],
+        "extend": {"id": original["id"], "sha256": digest(semantic_entity(original))},
+    }
+    review = {"qid": "Q1", "uniform_fields": [occurrence],
+              "fields": {key: digest(row) for key, row in fields.items()}, "works": [proof]}
+    monkeypatch.setattr(uniform_titles, "uniform_title_reviews", lambda: {CN: [review]})
+
+    def result(source, current):
+        return uniform_titles.reviewed_uniform_title(CN, source, [fields[occurrence]], current, {"Q2": work})
+
+    case = {"control_number": CN, **result(record, manuscript)}
+    assert case["source_repair"]["extend_folio_claim"] == original["id"]
+    patch, = corpus.source_patches(case, manuscript, builder)
+    plan = PlannedEdit(manuscript, [patch], ["case"], {})
+    assert corpus.source_additions_only(plan, allow_folio=True)
+    assert not corpus.source_additions_only(plan)
+    assert patch["id"] == original["id"]
+    assert patch["qualifiers"]["P1932"] == original["qualifiers"]["P1932"]
+    assert patch["references"][:1] == original["references"]
+    fresh = deepcopy(manuscript)
+    fresh["lastrevid"] += 1
+    fresh["claims"]["P1574"] = [patch]
+    assert result(record, fresh)["verified"]
+
+    changed = deepcopy(record)
+    changed["marc_occurrences"][1]["subfields"][0]["value"] = "A different work, folios 3a-8b"
+    assert not result(changed, manuscript)
 
 
 def test_shelfmark_fact_uses_the_reviewed_current_number_after_the_edit(monkeypatch):

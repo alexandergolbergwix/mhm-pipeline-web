@@ -128,6 +128,7 @@ def build_gila_audit_report(
     from app.pipeline.wikidata_gila_identity_evidence import live_source_match
     from app.pipeline.wikidata_gila_people import people_role_cases
     from app.pipeline.wikidata_gila_sources import full_source_cases, source_colophon
+    from app.pipeline.wikidata_gila_uniform_titles import reviewed_uniform_title
     from converter.wikidata.content_projection import _work_title_key  # noqa: PLC0415
     from converter.wikidata.work_candidates import uniform_title_matches
 
@@ -358,6 +359,9 @@ def build_gila_audit_report(
                         cases[-1].update(
                             reason="uniform_title_requires_component_proof", source_field="730", marc_730=matches,
                         )
+                        cases[-1].update(reviewed_uniform_title(
+                            cn, full_people_source, matches, public_item, live_entities or {},
+                        ))
             elif candidate.get("identity_scope") == "record":
                 case(
                     3,

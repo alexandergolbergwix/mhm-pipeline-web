@@ -24,6 +24,38 @@ A uniform title still needs proof that the manuscript contains the named part be
 The audit keeps MARC 730 part and language data visible in the case details.
 [MARC 730](https://www.loc.gov/marc/bibliographic/bd730.html)
 
+## Reviewed MARC 730 cases
+
+The repair endpoint accepts scope `uniform_titles` for requirement 6.
+`wikidata_gila_uniform_titles.py` uses `gila_reviewed_uniform_titles.json` for exact work identities and folios.
+Each review binds the public manuscript to the original 730 fields and the exact supporting MARC fields.
+Scan and catalogue URLs document the work or folio proof.
+A scroll can have an exact work with no folio number.
+The audit checks every original 730 field before it credits the case.
+It can add a proven component while the remaining components stay open.
+
+The worker adds a sourced P1574 claim if the work and scope have no competing active claim.
+It can add P958 and a reference to one confirmed work claim with no folios.
+It keeps the claim ID and every old qualifier and reference.
+A conflicting claim needs a separate exact review of its ID and full digest before the worker can give it deprecated rank.
+The worker confirms the first creator before it edits an item.
+This scope excludes item creation and statement removal.
+
+The review started with 106 cases and 142 MARC 730 fields.
+All 142 fields have a blank second indicator.
+The review found public scan manifests for 93 records.
+The manifests gave no work-level ranges.
+The evidence file includes exact boundaries from scanned pages or the holding catalogue.
+
+The scans of NLI Ms. Heb. 2428=38 show Esther on folios 106a–117a.
+The signature at the end of the text is the source of a prior work link.
+The repair gives that exact prior claim deprecated rank and retains its data.
+[NLI scan](https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000454350205171-1/manifest)
+
+The Columbia scan shows the Carpentras prayer on folios 93a–119a.
+The repair adds the range to the existing work claim.
+[Columbia catalogue](https://clio.columbia.edu/catalog/17229167) · [Scanned folio 93a](https://archive.org/download/ldpd_17229167_000/ldpd_17229167_000.pdf#page=199)
+
 ## Exact corrections
 
 `wikidata_gila_holdings_contents.py` checks the full source fields and the exact prior claim.

@@ -118,6 +118,13 @@ def _source_patch(case, target, build_claim):
             "datavalue": {"type": "monolingualtext", "value": {"text": proof_text, "language": "en"}},
         }]
         evidence["snaks-order"].append("P1683")
+    if claim_id := proof.get("extend_folio_claim"):
+        original = deepcopy(next(row for row in target["claims"][pid] if row["id"] == claim_id))
+        qualifiers = original.setdefault("qualifiers", {})
+        original.setdefault("qualifiers-order", list(qualifiers)).append("P958")
+        qualifiers["P958"] = patch["qualifiers"]["P958"]
+        original.setdefault("references", []).extend(patch["references"])
+        return original
     matches = matching_claims(target, pid, proof["value"], proof["qualifiers"], language=proof["language"])
     if not matches:
         return patch
@@ -142,7 +149,7 @@ def _exact_colophon(target, records):
     return ""
 
 
-def source_additions_only(plan):
+def source_additions_only(plan, *, allow_folio=False):
     if plan.en_label is not None or plan.en_description is not None:
         return False
     existing = {
@@ -153,6 +160,14 @@ def source_additions_only(plan):
             return False
         if claim_id := patch.get("id"):
             before = existing.get(claim_id)
+            if allow_folio and before and before.get("mainsnak", {}).get("property") == "P1574":
+                qualifiers = before.get("qualifiers", {})
+                added = patch.get("qualifiers", {}).get("P958", [])
+                if "P958" not in qualifiers and len(added) == 1:
+                    before = {**before, "qualifiers": {**qualifiers, "P958": added}}
+                    before["qualifiers-order"] = [
+                        *before.get("qualifiers-order", list(qualifiers)), "P958",
+                    ]
             if not before or (
                 {key: value for key, value in patch.items() if key != "references"}
                 != {key: value for key, value in before.items() if key != "references"}

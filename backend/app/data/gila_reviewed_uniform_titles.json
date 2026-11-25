@@ -1,0 +1,617 @@
+{
+  "990000454350205171": [
+    {
+      "qid": "Q141746848",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "500:3": "c81f6ec8fc642793ce2fb832b23cafff54128031b27b9bd841acfdd5623e50fe"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "folio": "106א-117א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000454350205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL199981430/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL199981441/full/1450,/0/default.jpg"
+          ],
+          "retire": {
+            "id": "Q141746848$922F737B-B1FC-421C-A168-19B38728103C",
+            "sha256": "ea2a5a986231bf0387a4fd40418ca8d530808c2a242c1620091ff243e857fc18"
+          }
+        }
+      ]
+    }
+  ],
+  "990000538930205171": [
+    {
+      "qid": "Q141746857",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "d32cf19d7ed1403ca2206efc48e7c39f60ed91c2553be59b37159b452c3a4e35",
+        "245:1": "bd3ccfc1d59219eaf1698d1d006bb10a3aae836447c2b3f889c03a71e925dff0",
+        "300:1": "206f7a6e1cdb89de2026a2239570c6dc2cf0f145e3dc2426da511456058ca644",
+        "500:1": "df0d5c49518c60a5d7559bf02597f26de405fcf51381f5662aed9b1b9b24451e",
+        "500:2": "e761942dc93c101425744cafdfc5aaa97307bc609132e58fb34c5898371f7b3f",
+        "500:3": "5835878c51d4fd49c567d9a84f9394b986167368f24589491476bd01fd96ca8f",
+        "942:1": "a15ea0deddde85b388fd1a0d46dd46e83b7ada4e94e0b70e1ed6256f07fe4172"
+      },
+      "works": [
+        {
+          "value": "Q141748765",
+          "target_title": "סליחות מעשרת ימי תשובה עם המסגרת לסליחות",
+          "title": "סליחות מעשרת ימי תשובה עם המסגרת לסליחות",
+          "folio": "1א-10א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000538930205171",
+            "https://iiif.wellcomecollection.org/presentation/v2/b32274762",
+            "https://iiif.wellcomecollection.org/image/b32274762_0005.jp2/full/970,/0/default.jpg",
+            "https://iiif.wellcomecollection.org/image/b32274762_0007.jp2/full/970,/0/default.jpg",
+            "https://iiif.wellcomecollection.org/image/b32274762_0023.jp2/full/970,/0/default.jpg",
+            "https://iiif.wellcomecollection.org/image/b32274762_0024.jp2/full/970,/0/default.jpg"
+          ],
+          "extend": {
+            "id": "Q141746857$6F465160-84BA-484C-A6B3-99FBFE4BB7B5",
+            "sha256": "a99794acac0482a55ca17c2d3358812097e8c373d629756dc05477c4a52efa2d"
+          }
+        }
+      ]
+    }
+  ],
+  "990000612200205171": [
+    {
+      "qid": "Q141746955",
+      "uniform_fields": [
+        "730:1",
+        "730:2"
+      ],
+      "fields": {
+        "730:1": "a41eb0f906e71d4702bac65f2ab7549c4db1d44b1dacac7eed12b8133d5490d7",
+        "730:2": "8d728a6a2dbaea0052283b3c5a5609bd2a7a4731774ae421c57f86f644270873",
+        "500:1": "4171a794620a0bde90ef62d9b75497663ba07d3f1e6ec2067d53acbe775f59aa",
+        "500:3": "ba74b9cf98d37273ca0e0394e839a6b3d7cdd48296e7d8a6b6350ccf2bf10bc2",
+        "245:1": "bab7cf3a2148ba15499ca3670feafc64ee78b4cf81f06b13cf5e9d4186b796ad"
+      },
+      "works": [
+        {
+          "value": "Q683904",
+          "target_title": "Psalm 119",
+          "title": "פרק קיט בתהלים",
+          "folio": "1א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000612200205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL151508673/full/1450,/0/default.jpg"
+          ]
+        },
+        {
+          "value": "Q34990",
+          "target_title": "Torah",
+          "title": "תורה",
+          "folio": "26ב-254א",
+          "covers": [
+            "730:2"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000612200205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL151508726/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL151508728/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL151509066/full/1450,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
+  "990000758110205171": [
+    {
+      "qid": "Q141747058",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "c9d69fd8df7e5b7eb8214587ad8e9d183a22a5b8193f1be446026ead72f32fec",
+        "500:3": "0a776e4e6abda034c03c0bcea1bbfa640655e5cba1ddca0822a928e58dceec69",
+        "740:1": "8bd74d6618c92f93dbcc55626abc046fe47378b39960081a1f8da12ce451f21e"
+      },
+      "works": [
+        {
+          "value": "Q141990813",
+          "target_title": "ספר התרת נדרים",
+          "title": "ספר התרת נדרים",
+          "folio": "124א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000758110205171",
+            "https://iiif.nli.org.il/IIIFv21/FL79580375/full/1450,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
+  "990000828230205171": [
+    {
+      "qid": "Q141747150",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "300:1": "3d0efea89d5f2109f8ccbe92e950e085f4a7a5b2b5607bfb1fb5174f705ec6dd",
+        "942:1": "fb6b67e1acbf1dcdbed5cfe7505b48dc9c453d242994dca7b95ae8b3707bb4ec",
+        "942:2": "7a3542487a93a6a989534da7139f77693dbb794e6a6f3492a2e097553a507b32"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990000828230205171&scope=KTIV&vid=KTIV",
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990000828230205171-1/manifest"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001204270205171": [
+    {
+      "qid": "Q141747476",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "300:1": "f7671a75244f09c47d2ae0be45149fc824262a51e768f4581aeccc3d9d333fdf",
+        "942:1": "e767ea7d813bcc5ed1c86f125392b0dfdf2a54c6f22764833e82264cd82f03df",
+        "942:2": "911167feb41fadb2e15c72dc0bb3cbc82675d148389bda9c074733d9153b825c"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001204270205171&scope=KTIV&vid=KTIV",
+            "https://searcharchives.bl.uk/catalog/040-003359343",
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001204270205171-1/manifest"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001205840205171": [
+    {
+      "qid": "Q141175794",
+      "uniform_fields": [
+        "730:1",
+        "730:2",
+        "730:3"
+      ],
+      "fields": {
+        "730:1": "2376dab25a7eb31b9c6050ec87b350b480b743be3af1cd2c4965db70db2bbbb0",
+        "730:2": "14ad04c118d2c44ba136778824ad4fa2f02289f7276ba480cc7573350543278b",
+        "730:3": "1e534c31a0a4f6c2122e72741ed7a88c84ce3ab4fa3f7c945daa579fb8b138c5",
+        "245:1": "d343ce9282b917c28bc75426d22b8974a1067644e4fe201cd5224cb7b0ea8c5d",
+        "300:1": "b19dbb63262b63435b27c3c6b7403cd49382558c77ca8d86718a8676c637dc30",
+        "500:2": "28a6a1ab4e007ae96ae57f73aa374ced769628ffdb3b51ba694bfefbb404b286",
+        "942:1": "86e6e05339dcfd6baec139b32409ae4a1cacb2500a59c0a731a72a79ddbc5f66",
+        "942:2": "cc169378a1062921865a3b79f09bdb6be7794a4bae35121e4c94a32df45d0417",
+        "942:3": "a1047891a6061f73cae192604a77dbd05b88223133067b29f1985b3270fc34a1"
+      },
+      "works": [
+        {
+          "value": "Q34990",
+          "target_title": "Torah",
+          "title": "תורה",
+          "covers": [
+            "730:1"
+          ],
+          "folio": "Or 2228: 28v–300v; Or 2229: 1r–207v; Or 2230: 1v–110v",
+          "urls": [
+            "https://searcharchives.bl.uk/catalog/032-003375113",
+            "https://searcharchives.bl.uk/catalog/032-003375114",
+            "https://searcharchives.bl.uk/catalog/032-003375115"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001243370205171": [
+    {
+      "qid": "Q141747522",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "44bbd94dfb2565241dcf4800de8bb2c45c990f7583a1df5a8eff7efb5f5eea96",
+        "245:1": "9bbe0fd13890428e65fe76d5a0b80c8cb8a457e8efb09da8e87e31fe90b8f6cd",
+        "500:1": "897cdba7f5a64691d45414c3a9793bf9f3850c537b0123b70269efac83340882",
+        "500:5": "7c713a69fbac7fb9dde6e6ba400fb623ee97b51fc9ab5be5d6f95d0f89d537cb",
+        "942:1": "46fd1b6821951c041952e5fd2b93f64047c7392fa6504af88363040b70119151"
+      },
+      "works": [
+        {
+          "value": "Q141755195",
+          "target_title": "סליחות על צרת הדבר שלא תבא",
+          "title": "סליחות על צרת הדבר שלא תבא",
+          "folio": "1א-9ב",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001243370205171"
+          ],
+          "extend": {
+            "id": "Q141747522$495E526F-F6B7-423F-A114-52A0B0519911",
+            "sha256": "59fc460247b6e159948646e6b655a68a6ce6282a128ba7ca0e3b884e1b0042c6"
+          }
+        }
+      ]
+    }
+  ],
+  "990001326670205171": [
+    {
+      "qid": "Q141747622",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "9f1334f9b875ebba884c087e46ba3f65e3c6aaa99d05757a231650a877b14dfd",
+        "500:1": "96e267dc6e4c45a43f639fab41c00629fe52ce5b3c8ab7f34035b5e999b29af1",
+        "500:2": "153b1c849ad71f0708f1e1875c49c46136f44217b27379c549ea4b0bc979a3ee",
+        "300:1": "721c7ed3b2b1ac342b0f7433a12785e2e02c5dec42e8629a3b83594c49009449"
+      },
+      "works": [
+        {
+          "value": "Q51670",
+          "target_title": "Song of Songs",
+          "title": "שיר השירים",
+          "folio": "עמ' 5-37",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://real-ms.mtak.hu/534/",
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001326670205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL36507982/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL36508064/full/1450,/0/default.jpg"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001371830205171": [
+    {
+      "qid": "Q141747671",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "d32cf19d7ed1403ca2206efc48e7c39f60ed91c2553be59b37159b452c3a4e35",
+        "500:2": "dcf5df2cec910f9cdcd4e2617d76793e1bee47d8d6449e331e31931767a6cab7",
+        "740:1": "858faec75632cd2955092bf5aff3e69f43b611a4d96dba0050712ec95ad5299f",
+        "856:1": "ce9621d6f85e4aba7a3192b0de2fbf799bed549520bb983e7d0d2c392f3963e1"
+      },
+      "works": [
+        {
+          "value": "Q141990201",
+          "target_title": "אשמורת לערב הצום",
+          "title": "אשמורת לערב הצום",
+          "folio": "93א-119א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990001371830205171",
+            "https://clio.columbia.edu/catalog/17229167",
+            "https://archive.org/download/ldpd_17229167_000/ldpd_17229167_000.pdf#page=199",
+            "https://archive.org/download/ldpd_17229167_000/ldpd_17229167_000.pdf#page=251"
+          ],
+          "extend": {
+            "id": "Q141747671$53FB51F0-D27C-4449-AE48-33EEC2B7201D",
+            "sha256": "3735b22591f20d1892680158d8cdf0eb0fa72831da7e85be7fa740d7ae6bd3d9"
+          }
+        }
+      ]
+    }
+  ],
+  "990001373940205171": [
+    {
+      "qid": "Q141747679",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "2376dab25a7eb31b9c6050ec87b350b480b743be3af1cd2c4965db70db2bbbb0",
+        "245:1": "b7c98074a0515e1eebc98da12fc740b8fb70f15bdd1b4b241477f8fb3939144f",
+        "500:1": "4ad4f8333ae2e2b97fd2bcdbfa952f58986c59fe0ac73af2ac7ad2c221dc4ee5"
+      },
+      "works": [
+        {
+          "value": "Q34990",
+          "target_title": "Torah",
+          "title": "ספר תורה",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001373940205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL57869975",
+            "https://iiif.nli.org.il/IIIFv21/FL57871161",
+            "https://iiif.nli.org.il/IIIFv21/FL57871180"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001675340205171": [
+    {
+      "qid": "Q141747816",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "22b26745c07d9dd7a77912c38313dc53c828c6402ce9e4bcf538208fde981f88",
+        "245:1": "3659d696ebaefa744fc802e8cd74822c66a86ada374f66d287403b7448ef827d"
+      },
+      "works": [
+        {
+          "value": "Q33279156",
+          "target_title": "Talmud Bavli- Rosh ha-Shanah",
+          "title": "תלמוד בבלי סדר מועד (ראש השנה)",
+          "folio": "1א-16א",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001675340205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL52182521/full/1450,/0/default.jpg",
+            "https://iiif.nli.org.il/IIIFv21/FL52182536/full/1450,/0/default.jpg",
+            "https://www.csmc.uni-hamburg.de/publications/mc/files/articles/mc06-3reeg.pdf"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001689560205171": [
+    {
+      "qid": "Q141747901",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "942:1": "0af922a6180dfc0d6a1bbf157ca3f740dc4205ffa5c375be8a6dc4aec0627005"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001689560205171&scope=KTIV&vid=KTIV",
+            "https://old-digitalcollections.nypl.org/items/a1bea1f0-01a8-013d-78ad-0242ac110003",
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990001689560205171-1/manifest"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001792130205171": [
+    {
+      "qid": "Q141748099",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "942:1": "eb8983fe5232890bee32a11ef0ef7e7f31f562a8144698d81fccc487e2de8043",
+        "942:2": "a430c007587c48739e32cd581cba1fafe0d15db6e4bfd8bf8d06a7bbd784b219"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001792130205171&scope=KTIV&vid=KTIV",
+            "https://cja.huji.ac.il/browser.php?id=37632&mode=set",
+            "https://api.vam.ac.uk/v2/object/O1364152"
+          ]
+        }
+      ]
+    }
+  ],
+  "990001850070205171": [
+    {
+      "qid": "Q141748143",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "300:1": "63c5765d36f498211eb489701fa539fc44ad3f29fea8b4dba03ac4420cce8b04",
+        "942:1": "d0044571b285290fcfbb214630a891515db294fff08e990aead8ec77c25744ff",
+        "942:2": "43fad78d756df6fe1cf0f35ff7c5c97b9e5cc8467d35ea1ab76b73b7aff59471",
+        "942:3": "1c10ba466e59aaff4c52e8cd9b29c9ff1090706c79d3f67e61aeca289acb8e63"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990001850070205171&scope=KTIV&vid=KTIV",
+            "https://www.digitalcollections.manchester.ac.uk/iiif/MS-HEBREW-00022"
+          ]
+        }
+      ]
+    }
+  ],
+  "990025903200205171": [
+    {
+      "qid": "Q141175899",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "300:1": "1e2fb52de2aa91f9ecfcc5d010706f4dd807cd74087af34f2f452959eefc5614",
+        "340:1": "113227eb32378905db0590e08160f63ea4da3d8e3dbf2992d01c10c9e0af85d7",
+        "340:4": "aaa6b0c50f43f3ea42f351b518df81526aa68b4c909885fb29bdd1b19fd24bce",
+        "500:1": "a36be82860faa75c8bbc76f9a91931019e7485559bd2555ac49c0667a9ff9eb8",
+        "740:1": "1379fb3ce1f0d64a00065046d3d4065ff842691a04531f680384d682be440b30"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "covers": [
+            "730:1"
+          ],
+          "separate_claims": {
+            "Q141175899$F2F8EB8A-F40E-4D56-B0FD-866E1F9F7753": "Q141991953"
+          },
+          "urls": [
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990025903200205171-1/manifest"
+          ]
+        }
+      ]
+    }
+  ],
+  "990025916320205171": [
+    {
+      "qid": "Q141754509",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "300:1": "6eae013c144147276026016d4a0914748f65d7aea19ab35e6c754b23c10dc0b6",
+        "340:1": "1301f3340b194cd7c93115719bf2f45cfa77f78e9a991cccee9d3eb270e776a8",
+        "340:2": "9e6ad09a41f9651dd7eaec7a028c94b3b9328e6d4523887c6aae79ef8e3f68fa",
+        "340:3": "ec1d076d3f28e41b7df387511866c015dbaa7069b22cd9558c30f5bed00bb9b3",
+        "340:4": "aaa6b0c50f43f3ea42f351b518df81526aa68b4c909885fb29bdd1b19fd24bce",
+        "942:1": "ee7607aba75e60ea1c759d0fabb751b8b1c80b1fb0a5aeffb48e6bb591f2c0ee"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990025916320205171&scope=KTIV&vid=KTIV",
+            "https://iiif.nli.org.il/IIIFv21/DOCID/PNX_MANUSCRIPTS990025916320205171-1/manifest",
+            "https://iiif.nli.org.il/IIIFv21/FL88444493",
+            "https://iiif.nli.org.il/IIIFv21/FL88444506",
+            "https://iiif.nli.org.il/IIIFv21/FL88444912"
+          ]
+        }
+      ]
+    }
+  ],
+  "990025934540205171": [
+    {
+      "qid": "Q141748415",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "b040bbc9f187571040887aaba1ee768ccb274a7a0ec87fb75d144dd83e81d206",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "300:1": "708d297dbec402f548da3aef7e69d181e157fafa9716b0da2196b32c966a1466",
+        "340:1": "48079f3fe62d05be25b88ea0d5b8c4d8a2564618eefa17c6b6c6868f96de371c",
+        "942:1": "143d033f3aaee1a9f6ff378351e4ce8e2aad9fe44d954a54250378b471d89cf5"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990025934540205171&scope=KTIV&vid=KTIV",
+            "https://cja.huji.ac.il/?mode=set&id=66"
+          ]
+        }
+      ]
+    }
+  ],
+  "990033790980205171": [
+    {
+      "qid": "Q141748435",
+      "uniform_fields": [
+        "730:1"
+      ],
+      "fields": {
+        "730:1": "0eb59bcc361dfdcd5fb229f918f4c6a0345f75fb41347191ce29f3b61660ea1a",
+        "245:1": "7461c442556e7596f06998e9f30d7c3d67da0e4a75c334826a046c08d0c7d610",
+        "300:1": "0bd98d67dbe93a08ef3ab30a1836f1fbbfa740905884ee0d9374dfcd9f7213e4",
+        "340:1": "0153dedc6ef537e4fb3cde59612d0529c6451a027d5da42e76a3d90f1cb24f5d",
+        "340:2": "e138e1c80a380b04f482de9233cb0080d3d27a29c0043068071ce26fd06f8bd9",
+        "340:3": "d0c20a2d0cc777c1374c27ef716b06a74a7a3aa93576adefaf1496b84f7e5723",
+        "942:1": "3a9b8e8e8476961ec1ef44cad948ced13fe3f2a4addd1d7b5e8b9cbd05eef28b",
+        "942:2": "3a1bc07268bd1c46bdbd822dc34cc12ba054051c56794413cc5b8fb6b8e785ad"
+      },
+      "works": [
+        {
+          "value": "Q131068",
+          "target_title": "Book of Esther",
+          "title": "מגלת אסתר",
+          "covers": [
+            "730:1"
+          ],
+          "urls": [
+            "https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990033790980205171&scope=KTIV&vid=KTIV",
+            "https://cja.huji.ac.il/esther/browser.php?id=39609&mode=set"
+          ]
+        }
+      ]
+    }
+  ]
+}
