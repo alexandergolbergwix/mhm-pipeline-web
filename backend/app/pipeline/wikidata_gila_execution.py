@@ -232,10 +232,12 @@ class LiveRepairGateway:
         self._read_item = read_item
         self._maxlag = maxlag
 
-    def _write_parameters(self, qid, revision, claims, token, en_label=None) -> dict:
+    def _write_parameters(self, qid, revision, claims, token, en_label=None, en_description=None) -> dict:
         edit = {"claims": claims} if claims else {}
         if en_label is not None:
             edit["labels"] = {"en": {"value": en_label, "language": "en"}}
+        if en_description is not None:
+            edit["descriptions"] = {"en": {"value": en_description, "language": "en"}}
         return {
             "action": "wbeditentity", "id": qid, "baserevid": revision,
             "data": json.dumps(edit, ensure_ascii=False),
@@ -279,7 +281,8 @@ class LiveRepairGateway:
         await asyncio.to_thread(check)
 
     async def write(
-        self, qid: str, revision: int, claims: list[dict[str, object]], *, en_label: str | None = None,
+        self, qid: str, revision: int, claims: list[dict[str, object]], *,
+        en_label: str | None = None, en_description: str | None = None,
     ) -> int:
         def send() -> int:
             login = self.uploader._login
@@ -299,6 +302,7 @@ class LiveRepairGateway:
                 API_URL,
                 data=self._write_parameters(
                     qid, revision, claims, token, **({"en_label": en_label} if en_label is not None else {}),
+                    **({"en_description": en_description} if en_description is not None else {}),
                 ),
                 allow_redirects=False,
                 timeout=30,

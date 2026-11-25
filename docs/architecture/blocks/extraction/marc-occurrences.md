@@ -29,6 +29,8 @@ The parser never assigns an unsupported role or date to the first name.
 Original 880 fields remain separate with their linkage subfields.
 
 Structured 505 fields retain a source key for each title and responsibility.
+Prepared records retain complete 730 occurrences as evidence for related or analytical titles.
+The evidence includes the named part, language, and source indicators.
 A single explicit folio in 505$g remains with its unique title.
 Multiple unresolved scopes remain review cases; the parser does not pair them by a guess.
 A person field retains its associated title and every raw authority identifier.

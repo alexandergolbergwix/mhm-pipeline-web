@@ -52,12 +52,28 @@ def _qualified(statement: Mapping[str, object], pid: str, value: str) -> bool:
     )
 
 
-def current_holding_label(cn, source, live) -> str | None:
-    if not source or not live:
+def current_holding(cn, source):
+    if not source:
         return None
     full = prepare_record_for_pipeline(dict(source))
-    if canonical_control_number(full.get("_control_number")) != cn or full.get("holding_subfield_reviews"):
+    if canonical_control_number(full.get("_control_number")) != cn:
         return None
+    if full.get("holding_subfield_reviews"):
+        owners = {
+            _text(name).casefold()
+            for row in marc.occurrences(full, "710")
+            if any(role.casefold().strip(". ") in {"current owner", "בעלים נוכחיים"} for role in marc.values(row, "e"))
+            for name in marc.values(row, "a")
+        }
+        numbered = [
+            row for row in marc.occurrences(full, "942")
+            if row["indicators"][0] == "1"
+            and len(marc.values(row, "a")) == len(marc.values(row, "z")) == 1
+            and _text(marc.values(row, "z")[0])
+        ]
+        if len(numbered) != 1 or _text(marc.values(numbered[0], "a")[0]).casefold() not in owners:
+            return None
+        full = prepare_record_for_pipeline({**source, "reviewed_holding_occurrence": marc.source_key(numbered[0])})
     name = _text(full.get("holding_942_name"))
     shelfmark = _text(full.get("holding_942_shelfmark"))
     if not name or not shelfmark:
@@ -67,15 +83,23 @@ def current_holding_label(cn, source, live) -> str | None:
         if [_text(value) for value in marc.values(row, "a")] == [name]
         and [_text(value) for value in marc.values(row, "z")] == [shelfmark]
     ]
-    if len(exact) != 1 or {row["value"] for row in _live_claims(live, "P3959")} != {cn}:
+    if len(exact) != 1:
         return None
+    return exact[0], shelfmark, normalize("NFC", manuscript_en_label(shelfmark, name, full))
+
+
+def current_holding_label(cn, source, live) -> str | None:
+    holding = current_holding(cn, source)
+    if not holding or not live or {row["value"] for row in _live_claims(live, "P3959")} != {cn}:
+        return None
+    _, shelfmark, label = holding
     claims = _live_claims(live, "P217")
     if (
         len(claims) != 1 or _text(claims[0]["value"]) != shelfmark
         or _reference_status(claims, cn, live=True) != "source_bound"
     ):
         return None
-    return normalize("NFC", manuscript_en_label(shelfmark, name, full))
+    return label
 
 
 def build_gila_audit_report(
@@ -177,6 +201,17 @@ def build_gila_audit_report(
         if expected_holding_label:
             public_label = public_item.get("labels", {}).get("en", {}).get("value") or ""
             holding_verified = normalize("NFC", public_label) == expected_holding_label
+        holding_evidence = {}
+        if full_source_coverage and not holding_verified:
+            from app.pipeline.wikidata_gila_holdings_contents import reviewed_case, reviewed_corrections
+
+            if reviewed_corrections().get(cn, {}).get("property") == "P217":
+                holding = current_holding(cn, full_people_source)
+                holding_evidence = reviewed_case(
+                    cn, full_people_source, public_item, live_entities or {}, holding=holding,
+                )
+                if holding_evidence.get("verified") and holding:
+                    holding_verified = normalize("NFC", public_item.get("labels", {}).get("en", {}).get("value", "")) == holding[2]
         if holding_review:
             case(
                 1,
@@ -215,6 +250,11 @@ def build_gila_audit_report(
                 }:
                     holding_case["holding_label"] = expected_holding_label
                     holding_case["live_revision"] = public_item.get("lastrevid")
+        if repair := holding_evidence.get("source_repair"):
+            for holding_case in cases:
+                if holding_case["point"] == 1:
+                    holding_case["source_repair"] = repair
+                    holding_case["source_value"] = holding_evidence["source_value"]
 
         if not record.get("extent") and record.get("907$n"):
             case(2, "identity_or_scope_uncertain", "907$n", "image_name_does_not_prove_form")
@@ -308,6 +348,16 @@ def build_gila_audit_report(
                     str(candidate.get("source_field") or ""),
                     str(candidate.get("reason") or "work_candidate_requires_review"),
                 )
+                if full_source_coverage and str(candidate.get("source_field", "")).casefold() in {"related_works", "730"}:
+                    title = _work_title_key(candidate.get("raw_title") or candidate.get("title"))
+                    matches = [
+                        row for row in marc.occurrences(full_people_source or {}, "730")
+                        if title in {_work_title_key(value) for value in marc.values(row, "a")}
+                    ]
+                    if matches:
+                        cases[-1].update(
+                            reason="uniform_title_requires_component_proof", source_field="730", marc_730=matches,
+                        )
             elif candidate.get("identity_scope") == "record":
                 case(
                     3,
@@ -464,6 +514,27 @@ def build_gila_audit_report(
         include_claim_payloads=include_repair_payloads,
         full_source_controls=frozenset(people_marc or {}) if full_source_coverage else frozenset(),
     )
+    if full_source_coverage:
+        from app.pipeline.wikidata_gila_holdings_contents import reviewed_case, reviewed_corrections
+
+        for fact in fact_comparison["facts"]:
+            cn = fact["control_number"]
+            if reviewed_corrections().get(cn, {}).get("fact_id") != fact["fact_id"]:
+                continue
+            evidence = reviewed_case(
+                cn, (people_marc or {}).get(cn), (live_entities or {}).get(fact.get("qid")),
+                live_entities or {}, fact_id=fact["fact_id"],
+            )
+            if evidence.get("verified"):
+                counts = fact_comparison["counts"]
+                counts[f"live_{fact['live_status']}"] -= 1
+                counts["live_present"] = counts.get("live_present", 0) + 1
+                fact.update(
+                    live_status="present", live_provenance="source_bound", live_reason="verified_source_assertion",
+                    expected_value=evidence["expected_value"], verified_matches=evidence["verified_matches"],
+                )
+            elif evidence.get("source_repair"):
+                fact["source_repair"] = evidence["source_repair"]
     return {
         "mode": "read_only_local_proposal",
         "live_verified": False,

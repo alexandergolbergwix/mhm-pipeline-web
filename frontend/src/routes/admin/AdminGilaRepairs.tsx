@@ -106,6 +106,7 @@ const explanations: Record<string, string> = {
   verified_before_write: "The source matches the existing statement.",
   case_changed_since_last_audit: "Review the saved source and the current audit.",
   reviewed_existing_source_changed: "The reviewed claim or its reference changed.",
+  uniform_title_requires_component_proof: "Confirm the work and manuscript part in the original MARC 730 field.",
 };
 
 function failureText(error: unknown) {
@@ -417,6 +418,16 @@ function CaseDetails({item, report, runId, expanded, actions}: {
 
   return <div className="space-y-4 border-t border-glass-line px-4 py-4 text-sm">
     {item.source_value && <blockquote className="whitespace-pre-wrap rounded-lg bg-[var(--surface-inset)] p-3" dir="auto">{item.source_value}</blockquote>}
+    {item.marc_730 && <ul className="space-y-2" aria-label="Original MARC 730 fields">
+      {item.marc_730.map(field => <li className="rounded-lg bg-[var(--surface-inset)] p-3" key={field.occurrence}>
+        <span className="font-medium">MARC 730 · occurrence {field.occurrence} · {field.indicators.map(value => value === " " ? "#" : value).join("")}</span>
+        <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-3">
+          {field.subfields.map(({code, value}, index) => <div className="contents" key={index}>
+            <dt className="muted">${code}</dt><dd dir="auto">{value}</dd>
+          </div>)}
+        </dl>
+      </li>)}
+    </ul>}
     <dl className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
       {item.source_field && <div><dt className="muted">MARC field</dt><dd>{item.source_field}</dd></div>}
       {item.person_role && <div><dt className="muted">Source role</dt><dd>{item.person_role}</dd></div>}
@@ -757,6 +768,11 @@ export default function AdminGilaRepairs() {
             disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
             onClick={() => void startAutomatic("sources_append_only")}>
             Preflight and repair all sources
+          </button>
+          <button className="button-ghost"
+            disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
+            onClick={() => void startAutomatic("holdings_and_contents")}>
+            Repair shelfmarks and contents
           </button>
           <button className="button-ghost"
             disabled={!state || active || starting || automaticActive || startingAutomatic || Boolean(refreshError)}

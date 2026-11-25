@@ -11,7 +11,7 @@ from app.pipeline.wikidata_gila_people_batch import PlannedEdit, _load_items, re
 from app.pipeline.wikidata_gila_repairs import build_gila_repair_proposals, validate_gila_repair_proposal
 from app.pipeline.wikidata_gila_sources import matching_claims, source_colophon
 from app.pipeline.wikidata_reference_reader import ReferenceItemReader
-from app.pipeline.wikidata_source_choices import _claim_values
+from app.pipeline.wikidata_source_choices import _claim_values, digest
 from app.publication.reviewed_reference_scope import GILA_CREATOR_UID
 from converter.wikidata.item_models import WikidataStatement
 from converter.wikidata.property_mapping import Q_KTIV, nli_catalog_url
@@ -143,7 +143,7 @@ def _exact_colophon(target, records):
 
 
 def source_additions_only(plan):
-    if plan.en_label is not None:
+    if plan.en_label is not None or plan.en_description is not None:
         return False
     existing = {
         claim["id"]: claim for values in plan.target["claims"].values() for claim in values if claim.get("id")
@@ -164,10 +164,11 @@ def source_additions_only(plan):
     return True
 
 
-async def plan_sources(cases, records, *, check, progress, inventory, additions_only=False):
+async def plan_sources(cases, records, *, check, progress, inventory, additions_only=False, reviewed_corrections=False):
     proposals = [
         case for case in cases
         if case.get("source_repair") or (not additions_only and case["case_id"].startswith("historical:"))
+        if bool(case.get("source_repair", {}).get("retire_claim")) == reviewed_corrections
     ]
     if not proposals:
         return []
@@ -192,8 +193,23 @@ async def plan_sources(cases, records, *, check, progress, inventory, additions_
             inventory[case_id].update(status="needs_review", reason="source_or_target_revision_changed", qid=qid)
             continue
         target = entities[qid]
+        label = description = None
         if proof:
             patches = source_patches(case, target, build_claim)
+            if reviewed_corrections:
+                previous = next((claim for claim in target["claims"].get(proof["property"], [])
+                                 if claim.get("id") == proof["retire_claim"]), None)
+                if (
+                    proof["property"] not in {"P217", "P1574"} or not previous
+                    or previous.get("rank") == "deprecated"
+                    or digest(semantic_entity(previous)) != proof["retire_digest"]
+                    or len(patches) != 1 or patches[0].get("id") or "remove" in patches[0]
+                ):
+                    inventory[case_id].update(status="needs_review", reason="exact_source_proposal_unavailable")
+                    continue
+                patches.append({**previous, "rank": "deprecated"})
+                label = proof.get("en_label")
+                description = proof.get("en_description")
         else:
             proposals_at_revision = build_gila_repair_proposals(
                 {qid: target}, colophons_by_qid={qid: _exact_colophon(target, records)},
@@ -204,7 +220,7 @@ async def plan_sources(cases, records, *, check, progress, inventory, additions_
             proposal = proposals_at_revision[0]
             validate_gila_repair_proposal(proposal, target)
             patches = repair_claims(proposal)
-        plans.append(PlannedEdit(target, patches, [case_id], dependencies))
+        plans.append(PlannedEdit(target, patches, [case_id], dependencies, en_label=label, en_description=description))
     return plans
 
 
@@ -239,7 +255,8 @@ def _merge_group(group):
     patches = {}
     revisions = {}
     labels = {plan.en_label for plan in group if plan.en_label is not None}
-    if len(labels) > 1:
+    descriptions = {plan.en_description for plan in group if plan.en_description is not None}
+    if len(labels) > 1 or len(descriptions) > 1:
         return None
     for plan in group:
         if any(revisions.get(key, value) != value for key, value in plan.revisions.items()):
@@ -275,7 +292,7 @@ def _merge_group(group):
                 patches[key] = combined
     return PlannedEdit(group[0].target, list(patches.values()),
                        [case_id for plan in group for case_id in plan.case_ids], revisions,
-                       en_label=next(iter(labels), None))
+                       en_label=next(iter(labels), None), en_description=next(iter(descriptions), None))
 
 
 async def confirm_corpus_plans(plans, inventory, *, check, progress, uncertain):

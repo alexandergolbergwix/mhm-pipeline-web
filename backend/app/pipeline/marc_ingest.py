@@ -1957,6 +1957,10 @@ def prepare_record_for_pipeline(rec: dict[str, Any]) -> dict[str, Any]:
         row["related_places"] = _normalize_related_places(list(row["related_places"]))
     if row.get("related_works"):
         row["related_works"] = _normalize_related_works(list(row["related_works"]))
+    if uniform_titles := marc_occurrences.occurrences(row, "730"):
+        row["uniform_title_occurrences"] = uniform_titles
+    else:
+        row.pop("uniform_title_occurrences", None)
     _merge_work_mentions_into_contents(row)
     marc_occurrences.mark_derived(row, source_before)
     return row

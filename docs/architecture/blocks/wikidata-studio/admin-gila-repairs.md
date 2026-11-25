@@ -2,6 +2,7 @@
 
 Select **Manuscript audit and repair** in the Admin sidebar to open `/admin/wikidata-gila-repairs`.
 Open **How repairs work** for the source review, release, and dry run steps.
+Use [Repair shelfmarks and contents](gila-holdings-and-contents.md) for the reviewed corrections to requirements 1 and 6.
 The API requires the administrator role and current access to the Gila project.
 The project and run come from the server reference seed.
 

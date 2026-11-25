@@ -16,6 +16,11 @@ export interface GilaCase {
   person_role?: string;
   occurrence?: string;
   source_value?: string;
+  marc_730?: Array<{
+    occurrence: number;
+    indicators: [string, string];
+    subfields: Array<{code: string; value: string}>;
+  }>;
   expected_author?: string;
   expected_value?: string;
   expected_qualifiers?: Record<string, string>;
@@ -116,7 +121,8 @@ export interface CorpusPreflightResult {
   requirements: Array<{point: number; counts: Partial<Record<PreflightStatus, number>>}>;
 }
 
-export type RepairScope = "people_and_sources" | "people_evidence_batch" | "people_authority" | "sources_append_only";
+export type RepairScope = "people_and_sources" | "people_evidence_batch" | "people_authority" | "sources_append_only"
+  | "holdings_and_contents";
 
 export interface AutomaticRepairJob extends AuditJob {
   result: {

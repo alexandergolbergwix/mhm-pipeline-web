@@ -332,6 +332,7 @@ def _case_inventory(packet, audit):
         "expected_author",
         "expected_value",
         "source_repair",
+        "marc_730",
         "holding_label",
         "expected_qualifiers",
         "expected_precision",
@@ -585,8 +586,10 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
         if any(troki.author_statement(item) is not None for item in canonical):
             known.update({troki.WORK_QID, troki.MANUSCRIPT_QID, troki.AUTHOR_QID})
         if job.params.get("_gila_full_sources"):
+            from app.pipeline.wikidata_gila_holdings_contents import reviewed_work_targets
             from app.pipeline.wikidata_gila_sources import source_topic_ids
 
+            known.update(reviewed_work_targets())
             known.update(await asyncio.to_thread(source_topic_ids, people_marc.values()))
         seen: set[str] = set()
         await _live_items(job_id, known, entities, seen, "public_items")

@@ -285,7 +285,7 @@ def apply_claims(entity, patches):
     return expected, additions, old_claim_ids
 
 
-def verify_claims(before, after, revision, patches, *, en_label=None):
+def verify_claims(before, after, revision, patches, *, en_label=None, en_description=None):
     if revision <= before["lastrevid"] or after.get("lastrevid") != revision:
         return False
     expected, additions, old_ids = apply_claims(before, patches)
@@ -302,12 +302,14 @@ def verify_claims(before, after, revision, patches, *, en_label=None):
         old_ids.add(matches[0])
     if en_label is not None:
         expected["labels"]["en"] = {"value": en_label, "language": "en"}
+    if en_description is not None:
+        expected["descriptions"]["en"] = {"value": en_description, "language": "en"}
     return semantic_entity(after) == semantic_entity(expected)
 
 
 class PersonRepairGateway(LiveRepairGateway):
-    def _write_parameters(self, qid, revision, claims, token, en_label=None):
-        data = super()._write_parameters(qid, revision, claims, token, en_label)
+    def _write_parameters(self, qid, revision, claims, token, en_label=None, en_description=None):
+        data = super()._write_parameters(qid, revision, claims, token, en_label, en_description)
         return {
             **data, "assertuser": GILA_CREATOR_NAME,
             "summary": "Repair verified manuscript data from NLI MARC and exact source evidence",
@@ -398,6 +400,7 @@ class PlannedEdit:
     case_ids: list[str]
     revisions: dict[str, int]
     en_label: str | None = None
+    en_description: str | None = None
 
 
 def repair_claim_builder():
@@ -581,6 +584,8 @@ async def apply_planned_edits(
         receipt = {"qid": qid, "revision": revision, "case_ids": case_ids, "claims": patches}
         if plan.en_label is not None:
             receipt["en_label"] = plan.en_label
+        if plan.en_description is not None:
+            receipt["en_description"] = plan.en_description
         updated = None
         for attempt in range(3):
             if attempt:
@@ -596,7 +601,10 @@ async def apply_planned_edits(
             await journal("intent", receipt)
             logger.info("Person repair intent %s at revision %s for %s cases.", qid, revision, len(case_ids))
             try:
-                updated = await gateway.write(qid, revision, patches, en_label=plan.en_label)
+                updated = await gateway.write(
+                    qid, revision, patches, en_label=plan.en_label,
+                    **({"en_description": plan.en_description} if plan.en_description is not None else {}),
+                )
                 break
             except WriteRejectedError as error:
                 await journal("rejected", {**receipt, "code": error.code})
@@ -627,7 +635,7 @@ async def apply_planned_edits(
                     break
                 await asyncio.sleep(delay)
                 fresh = await reader.fetch(qid)
-            if not verify_claims(before, fresh, updated, patches, en_label=plan.en_label):
+            if not verify_claims(before, fresh, updated, patches, en_label=plan.en_label, en_description=plan.en_description):
                 raise ValueError(f"The complete item read-back differs for {qid} at revision {updated}.")
         except Exception:
             await journal("uncertain", {**receipt, "after_revision": updated})

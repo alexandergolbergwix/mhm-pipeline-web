@@ -7,6 +7,7 @@ import pytest
 
 from app.pipeline import wikidata_gila_corpus_repair as corpus
 from app.pipeline.wikidata_gila_audit import current_holding_label
+from app.pipeline.marc_ingest import prepare_record_for_pipeline
 from app.pipeline.wikidata_gila_authority_cache import AuthorityEvidence
 from app.pipeline.wikidata_gila_people_batch import PersonRepairGateway, PlannedEdit, repair_claim_builder, verify_claims
 from app.pipeline.wikidata_gila_people_evidence_batch import evidence_batch, keep_reviewed_targets
@@ -86,6 +87,43 @@ def test_legacy_citation_reconciles_only_to_one_original_occurrence():
     cases = list(full_source_cases(CN, record, legacy, item(), {}, {}, citation_reconciliations=reconciled))
     assert not reconciled
     assert len(cases) == 5
+
+
+def test_current_shelfmark_uses_the_only_complete_current_holder_row():
+    current = {"tag": "942", "indicators": ["1", " "], "subfields": [
+        {"code": "a", "value": "Library"}, {"code": "z", "value": "Ms. 5"},
+    ]}
+    other = {"tag": "942", "indicators": ["4", " "], "subfields": [
+        {"code": "a", "value": "Library"}, {"code": "z", "value": "Acc. 8"},
+    ]}
+    owner = {"tag": "710", "subfields": [
+        {"code": "a", "value": "Library"}, {"code": "e", "value": "current owner"},
+    ]}
+    record = {"001": CN, "942$a": "Library|Library", "942$z": "Acc. 8|Ms. 5", "710$a": "Library",
+              "marc_occurrences": [{"tag": "001", "data": CN}, other, current, owner]}
+    entity = item()
+    entity["claims"]["P217"] = [{
+        "id": "Q1$shelfmark", "mainsnak": {"snaktype": "value", "datavalue": {"value": "Ms. 5"}},
+        "references": [{"snaks": {"P3959": [entity["claims"]["P3959"][0]["mainsnak"]]}}],
+    }]
+    assert current_holding_label(CN, record, entity) == "Library, Ms. 5"
+    other["indicators"] = ["1", " "]
+    assert current_holding_label(CN, record, entity) is None
+
+
+def test_uniform_title_occurrences_retain_named_parts_and_language():
+    fields = [
+        {"tag": "730", "indicators": ["0", " "], "subfields": [
+            {"code": "a", "value": 'תנ"ך'}, {"code": "p", "value": "תורה"}, {"code": "l", "value": "ארמית"},
+        ]},
+        {"tag": "730", "indicators": ["0", "2"], "subfields": [
+            {"code": "a", "value": 'תנ"ך'}, {"code": "p", "value": "ויקרא - דברים"},
+        ]},
+    ]
+    record = prepare_record_for_pipeline({"001": CN, "marc_occurrences": fields})
+    assert [row["occurrence"] for row in record["uniform_title_occurrences"]] == [1, 2]
+    assert [row["subfields"] for row in record["uniform_title_occurrences"]] == [row["subfields"] for row in fields]
+    assert [row["indicators"][1] for row in record["uniform_title_occurrences"]] == [" ", "2"]
 
 
 def test_reviewed_colophons_require_each_folio_before_verification():

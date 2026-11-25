@@ -1155,6 +1155,23 @@ class ManuscriptProjectionMixin:
             source_field = str(
                 rw_dict.get("source_field") or rw_dict.get("field") or "related_works"
             ).strip() or "related_works"
+            if source_field.casefold() in {"related_works", "730"}:
+                uniform_titles = [
+                    row for row in record.get("uniform_title_occurrences", ())
+                    if any(
+                        subfield["code"] == "a"
+                        and subfield["value"].strip().strip(_QUOTE_CHARS + ".").casefold() == rw_title.casefold()
+                        for subfield in row["subfields"]
+                    )
+                ]
+                if uniform_titles:
+                    evidence = {
+                        "raw_title": rw_title, "source_field": "730", "accepted": False,
+                        "reason": "uniform_title_requires_component_proof", "marc_730": uniform_titles,
+                    }
+                    if evidence not in item.work_candidate_evidence:
+                        item.work_candidate_evidence.append(evidence)
+                    continue
             explicit_qid = str(
                 rw_dict.get("wikidata_qid")
                 or rw_dict.get("wikidata_id")
