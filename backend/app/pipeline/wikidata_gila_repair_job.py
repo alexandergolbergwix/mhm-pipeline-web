@@ -201,7 +201,7 @@ class RepairCycle:
                                 **(params or {}), "_gila_cycle_parent": str(self.id),
                                 **({"_gila_full_sources": True} if (self.has_preflight or self.people_only) and kind == JOB_KIND_WIKIDATA_GILA_AUDIT else {}),
                                 **({"_gila_reuse_authority": True}
-                                   if (self.authority_batch or self.source_evidence_batch or self.holdings_contents)
+                                   if (self.corpus or self.authority_batch or self.source_evidence_batch or self.holdings_contents)
                                    and kind == JOB_KIND_WIKIDATA_GILA_AUDIT else {}),
                                 "_gila_cycle_step": phase, "repair_workspace": True,
                             },
@@ -417,15 +417,17 @@ class RepairCycle:
         inventory = None
         planner_options = {}
         source_audit_id = str(audit.id)
-        if self.authority_batch:
+        if self.corpus or self.authority_batch:
             from app.pipeline.wikidata_gila_authority_cache import AuthorityEvidence, CACHE_KEY
             from app.pipeline.wikidata_gila_corpus_repair import corpus_inventory
 
+            points = frozenset(self.preflight_points)
             cases = [
-                row for row in cases
-                if row["points"] in ([1], [5]) and not row["case_id"].startswith("passage:")
+                row for row in cases if points.intersection(row["points"])
+                and not row["case_id"].startswith("passage:")
+                and (self.corpus or len(row["points"]) == 1)
             ]
-            inventory = corpus_inventory(cases, frozenset(self.preflight_points))
+            inventory = corpus_inventory(cases, points)
             for row in cases:
                 inventory[row["case_id"]]["person_role"] = row.get("person_role")
             evidence = AuthorityEvidence.load(
@@ -532,18 +534,17 @@ class RepairCycle:
             **({"inventory": inventory} if inventory is not None else {}), **planner_options,
         )
         if self.has_preflight:
-            from app.pipeline.wikidata_gila_corpus_repair import corpus_inventory, confirm_corpus_plans, plan_sources
+            from app.pipeline.wikidata_gila_corpus_repair import confirm_corpus_plans, plan_sources
 
-            if inventory is None or self.source_evidence_batch:
-                if inventory is None:
-                    inventory = corpus_inventory(cases)
+            if self.corpus or self.source_evidence_batch:
                 source_cases = [row for row in cases if not row.get("marc_730")]
                 if self.subjects_only:
                     source_cases = [row for row in cases if row.get("source_repair", {}).get("property") == "P921"]
-                plans.extend(await plan_sources(
-                    source_cases, records, check=check, progress=progress, inventory=inventory,
-                    additions_only=self.source_evidence_batch,
-                ))
+                with paced_wikidata_evidence_reads():
+                    plans.extend(await plan_sources(
+                        source_cases, records, check=check, progress=progress, inventory=inventory,
+                        additions_only=True,
+                    ))
             elif self.evidence_batch:
                 plans = keep_reviewed_targets(plans, inventory)
             elif self.authority_batch:
@@ -595,13 +596,15 @@ class RepairCycle:
 
                 if not all(source_additions_only(plan, allow_folio=self.contents_only) for plan in plans):
                     raise ValueError("Source proof repairs must retain all existing claims and references.")
+            if self.corpus and any("remove" in patch for plan in plans for patch in plan.patches):
+                raise ValueError("The corpus repair must retain every existing claim.")
             await check_source()
             self.result["corpus_preflight"] = {
                 "records": len(records), "eligible_items": len(plans),
                 **({"source_archive": True, "baseline_audit_id": str(self.source_baseline.id) if self.source_baseline else source_audit_id}
                    if self.source_evidence_batch or self.contents_only else {}),
                 **({"source_audit_id": source_audit_id, "case_count": len(inventory)}
-                   if self.people_only or self.source_evidence_batch or self.holdings_contents else {}),
+                   if self.corpus or self.people_only or self.source_evidence_batch or self.holdings_contents else {}),
                 "requirements": [
                     {"point": point, "counts": dict(Counter(
                         row["status"] for row in inventory.values() if point in row["points"]
@@ -613,7 +616,7 @@ class RepairCycle:
                 job = await authorize_repair_cycle(db, self.id)
                 job.params = {
                     **job.params, "_gila_corpus_preflight": list(inventory.values()),
-                    **({CACHE_KEY: evidence.dump()} if self.authority_batch else {}),
+                    **({CACHE_KEY: evidence.dump()} if self.corpus or self.authority_batch else {}),
                 }
                 job.result = dict(self.result)
                 await db.commit()
@@ -632,7 +635,7 @@ class RepairCycle:
         return set(verified)
 
     async def run(self):
-        if self.source_evidence_batch or self.holdings_contents:
+        if self.corpus or self.source_evidence_batch or self.holdings_contents:
             async with session_scope() as db:
                 job = await authorize_repair_cycle(db, self.id)
                 self.source_baseline = await db.scalar(select(RunJob).where(
@@ -720,11 +723,11 @@ class RepairCycle:
 
             open_ids = (
                 {row["case_id"] for row in await asyncio.to_thread(gila_cases, final)}
-                if verified_people_cases and not (self.source_evidence_batch or self.contents_only) else set()
+                if verified_people_cases and not (self.corpus or self.source_evidence_batch or self.contents_only) else set()
             )
             confirmed_ids = verified_people_cases - open_ids
             verified_source_ids = set()
-            if self.source_evidence_batch or self.contents_only:
+            if self.corpus or self.source_evidence_batch or self.contents_only:
                 from app.pipeline.wikidata_gila_audit_job import gila_audit_export
 
                 export = await asyncio.to_thread(gila_audit_export, final, "verified")
@@ -734,7 +737,7 @@ class RepairCycle:
                 async with session_scope() as db:
                     job = await authorize_repair_cycle(db, self.id)
                     rows = job.params["_gila_corpus_preflight"]
-                    if self.source_evidence_batch or self.contents_only:
+                    if self.corpus or self.source_evidence_batch or self.contents_only:
                         job.params = {**job.params, "_gila_corpus_preflight": [
                             {**row, "outcome": "verified"
                              if row.get("original_case_id", row["case_id"]) in verified_source_ids else "unresolved"}

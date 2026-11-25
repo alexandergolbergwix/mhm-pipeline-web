@@ -39,7 +39,7 @@ from app.pipeline.wikidata_gila_people import (
 )
 from app.pipeline.wikidata_gila_reviewed_people import (
     REVIEWED_LINKED_PEOPLE, ReviewedFormerOwner, ReviewedWorkAuthor, reviewed_former_owner,
-    reviewed_former_owner_url, reviewed_linked_person_url, reviewed_primary_author,
+    reviewed_author_text_patch, reviewed_former_owner_url, reviewed_linked_person_url, reviewed_primary_author,
 )
 from app.pipeline.wikidata_gila_scribe_colophons import (
     ReviewedScribeNote, reviewed_scribe_exclusion, reviewed_scribe_source,
@@ -363,8 +363,17 @@ def patches_for_group(group, target, build_claim, counts, *, inventory=None):
     patches = {}
     case_ids = defaultdict(list)
     conflicts = set()
+    author_retirements = {}
     for case, person in group:
+        try:
+            retired = reviewed_author_text_patch(case.reviewed_author, case.record, target)
+        except ValueError:
+            counts["reviewed_author_text_changed"] += 1
+            _preflight_reason(inventory, case.case_id, "reviewed_author_text_changed", review=True)
+            continue
         patch, reason = scoped_claim(case, person, target, build_claim)
+        if reason == "already_cited" and retired:
+            patch, retired, reason = retired, None, None
         if reason:
             counts[reason] += 1
             _preflight_reason(inventory, case.case_id, reason, review=True)
@@ -381,6 +390,8 @@ def patches_for_group(group, target, build_claim, counts, *, inventory=None):
         else:
             patches[key] = patch
         case_ids[key].append(case.case_id)
+        if retired:
+            author_retirements[key] = retired
     new_authors = {key for key in patches if isinstance(key, tuple) and key[0] == "P50"}
     if len(new_authors) > 1:
         conflicts.update(new_authors)
@@ -390,7 +401,9 @@ def patches_for_group(group, target, build_claim, counts, *, inventory=None):
         for case_id in blocked:
             _preflight_reason(inventory, case_id, "conflicting_claim", review=True)
         del patches[key]
-    return list(patches.values()), [case_id for ids in case_ids.values() for case_id in ids]
+    return [
+        *patches.values(), *(retired for key, retired in author_retirements.items() if key in patches),
+    ], [case_id for ids in case_ids.values() for case_id in ids]
 
 
 @dataclass

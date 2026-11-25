@@ -18470,5 +18470,92 @@
     },
     "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000688750205171",
     "verification_only": true
+  },
+  {
+    "qid": "Q141746842",
+    "control_number": "990000413570205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q440562",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000413570205171",
+    "supporting_note": {
+      "occurrence": "500:3",
+      "source_sha256": "4a95c315312f0e5e42cf7ba0d60167ed5b53b93ea2f715da86f105aee90c5472"
+    },
+    "target_work_qid": "Q141755350",
+    "target_work_title": "פרקי אליהו",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "x",
+        "value": "Grammar"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000413570205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007542518105171.jsonld",
+      "https://www.nli.org.il/he/books/NNL_ALEPH990010727300205171/NLI"
+    ]
+  },
+  {
+    "qid": "Q141746844",
+    "control_number": "990000413680205171",
+    "occurrence": "650:1:1",
+    "source_sha256": "213f4a90acd43462ce8a17db40594450e1bb321f6f31916e1695032099ce57b5",
+    "property": "P921",
+    "value": "Q440562",
+    "qualifiers": {},
+    "type": "item",
+    "proof_url": "https://www.nli.org.il/en/discover/manuscripts/hebrew-manuscripts/viewerpage?vid=NNL_ALEPH990000413680205171",
+    "supporting_note": {
+      "occurrence": "500:2",
+      "source_sha256": "a8d79d4e561e9bb675ef43aeebdeb711a30b24cdb46a4c5a905bb75f8cc16b62"
+    },
+    "target_work_qid": "Q141755339",
+    "target_work_title": "הוראת הדקדוק",
+    "heading_subfields": [
+      {
+        "code": "a",
+        "value": "Hebrew language"
+      },
+      {
+        "code": "x",
+        "value": "Grammar"
+      },
+      {
+        "code": "9",
+        "value": "lat"
+      },
+      {
+        "code": "2",
+        "value": "nli"
+      },
+      {
+        "code": "8",
+        "value": "PreferredLanguageHeading"
+      }
+    ],
+    "authority_urls": [
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990000413680205171.jsonld",
+      "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007542518105171.jsonld"
+    ]
   }
 ]

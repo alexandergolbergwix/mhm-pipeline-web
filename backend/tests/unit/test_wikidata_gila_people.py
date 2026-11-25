@@ -1032,3 +1032,30 @@ async def test_gnd_retries_a_disconnected_read(monkeypatch):
     assert result is response
     assert get.await_count == 2
     wait.assert_awaited_once_with(1)
+
+
+def test_reviewed_author_correction_retains_the_old_statement_and_requires_exact_evidence():
+    from hashlib import sha256
+
+    from app.pipeline.wikidata_gila_execution import semantic_entity
+    from app.pipeline.wikidata_gila_reviewed_people import ReviewedWorkAuthor, reviewed_author_text_patch
+    from app.pipeline.wikidata_source_choices import digest
+
+    prior = {"id": "Q10$old", "rank": "normal", **_claim("Earlier author")}
+    note = "The earlier author annotated this manuscript."
+    record = parse_nli_records(_response(_record(_field("500", ("a", note)))), {CONTROL})[CONTROL]
+    proof = ReviewedWorkAuthor(
+        "Q10", "Correct author", None,
+        retired_text_id=prior["id"],
+        retired_text_digest=digest(semantic_entity(prior)),
+        role_note_digest=sha256(note.encode()).hexdigest(),
+    )
+    target = {"id": "Q10", "claims": {"P2093": [prior]}}
+    assert reviewed_author_text_patch(proof, record, target) == {**prior, "rank": "deprecated"}
+    assert prior["rank"] == "normal"
+
+    with pytest.raises(ValueError, match="changed"):
+        reviewed_author_text_patch(proof, {"001": CONTROL}, target)
+    prior["references"] = []
+    with pytest.raises(ValueError, match="changed"):
+        reviewed_author_text_patch(proof, record, target)

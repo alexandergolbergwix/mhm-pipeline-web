@@ -724,6 +724,7 @@ def people_role_cases(
                 })
                 continue
             linked_proven = set()
+            reviewed_author = None
             if role in ROLE_PROPERTIES and not uncertain and (
                 cn in (linked_bibs or {}) or cn in (linked_frames or {})
             ):
@@ -761,6 +762,7 @@ def people_role_cases(
             if role == "author" and not uncertain and _eligible_role(row, variants, role):
                 reviewed = reviewed_primary_author(cn, row, variants, occurrences)
                 if reviewed and target.get("id") == reviewed.work:
+                    reviewed_author = reviewed
                     linked_proven.update(
                         claim["value"] for claim in _live_claims(target, "P50")
                         if reviewed.matches(entities.get(claim["value"], {}))
@@ -831,6 +833,11 @@ def people_role_cases(
                         authority_rows=authority_rows, viaf_sources=viaf_sources, gnd_sources=gnd_sources,
                         lc_headings=lc_headings,
                     )
+            if reviewed_author and reviewed_author.retired_text_id and any(
+                claim.get("id") == reviewed_author.retired_text_id and claim.get("rank") != "deprecated"
+                for claim in target.get("claims", {}).get("P2093", [])
+            ):
+                verified_link = False
             exclusion_proof = reviewed_scribe_exclusion(record, cn, occurrence, display) if role == "scribe" else None
             exclusion = bool(
                 exact_manuscript and exclusion_proof and _confirmed_scribe_exclusion(target, cn, display, exclusion_proof)

@@ -3,7 +3,10 @@
 Select **Repair all eligible items** on the manuscript audit page.
 The page sends `{"scope":"people_and_sources"}` to `POST /api/admin/wikidata-gila-repairs/repair-all`.
 The existing `wikidata_gila_repair` job audits the corpus before and after the edits.
-The job uses the same audit rules for both reports.
+The preflight uses the full MARC cases for both requirements.
+It reuses authority reads for the same source fingerprint.
+The combined job excludes historical proposals that remove claims.
+The final audit must verify a case before the job reports it as verified.
 
 ## Add source evidence for requirement 8
 
@@ -91,6 +94,10 @@ It includes catalogue status notes, sources that need review, and final outcomes
 The export retains each field's indicators and ordered subfields.
 Catalogue status notes stay in the original audit total.
 
+A reviewed author correction can give an exact incorrect author text claim deprecated rank.
+It preserves the claim ID, value, qualifiers, and references.
+The correction requires the original MARC role note and the exact claim digest.
+The author check stays open while that incorrect claim has active rank.
 The worker checks the project creator UID before each write.
 It keeps the item revision, claim patch, and case IDs in the write intent.
 Each edit uses the exact base revision.

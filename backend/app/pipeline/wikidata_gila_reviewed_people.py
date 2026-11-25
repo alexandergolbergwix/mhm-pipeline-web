@@ -6,7 +6,8 @@ from urllib.parse import urlencode
 
 from app.pipeline import marc_occurrences as marc
 from app.pipeline.wikidata_gila_catalogue_authority import NLI_SRU
-from app.pipeline.wikidata_source_choices import _claim_values
+from app.pipeline.wikidata_gila_execution import semantic_entity
+from app.pipeline.wikidata_source_choices import _claim_values, digest
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,9 @@ class ReviewedWorkAuthor:
     person: ReviewedLinkedPerson
     catalogue_id: str = ""
     dates: str = ""
+    retired_text_id: str = ""
+    retired_text_digest: str = ""
+    role_note_digest: str = ""
 
     def matches(self, candidate):
         return _matches_reviewed_person(candidate, self.person)
@@ -112,6 +116,9 @@ class ReviewedWorkTitle:
 
 
 REVIEWED_WORK_TITLES = {
+    "990001029260205171": ReviewedWorkTitle(
+        "Q141755039", "בעל ברית אברם", "בעל ברית אברהם", "אזולאי, אברהם בן מרדכי",
+    ),
     "990001360250205171": ReviewedWorkTitle(
         "Q141754946", "מאמר שבתות ה'", "מאמר שבתות ה", "מנחם עזריה",
     ),
@@ -133,6 +140,25 @@ _HAMMERSCHLAG = ReviewedLinkedPerson(
     "https://cja.huji.ac.il/?f=maker_name&id=660&mode=treefriend", frozenset(),
 )
 _REVIEWED_PRIMARY_AUTHORS = {
+    "990000413570205171": ReviewedWorkAuthor(
+        "Q141755350", "אליהו בן אשר",
+        ReviewedLinkedPerson(
+            "Q66031", "P244", "n86807326", "https://id.loc.gov/authorities/names/n86807326.html",
+            frozenset({"987007260876405171"}),
+        ),
+        dates="1469-1549",
+    ),
+    "990001029260205171": ReviewedWorkAuthor(
+        "Q141755039", "אזולאי, אברהם בן מרדכי",
+        ReviewedLinkedPerson(
+            "Q1977082", "P244", "nr88012645", "https://id.loc.gov/authorities/names/nr88012645.html",
+            frozenset({"987007300208005171"}),
+        ),
+        dates="1570 בערך-1643",
+        retired_text_id="Q141755039$3945E3C2-8C2E-4705-93A4-76E34FD363A9",
+        retired_text_digest="9c78c99635e7243027644b6d0d377fb7509f80393035da2f2c7bc95470873ea4",
+        role_note_digest="e4c0b8e0dd4c7b2951f2ad2febde2f4d4fe8807b75091b71d984bc30bcd08c7b",
+    ),
     **dict.fromkeys((f"9900007988{suffix}0205171" for suffix in range(4, 10)), _EZOBI),
     "990000988150205171": ReviewedWorkAuthor(
         "Q141755348", "המרשלק, נתן נטע בן משה נפתלי הירש", _HAMMERSCHLAG,
@@ -174,7 +200,9 @@ _REVIEWED_PRIMARY_AUTHORS = {
 def reviewed_primary_author(control, field, variants, occurrences, catalogue_id=""):
     proof = _REVIEWED_PRIMARY_AUTHORS.get(control)
     if (
-        proof and proof.catalogue_id == catalogue_id and marc.source_key(field) == "100:1"
+        proof and (proof.catalogue_id == catalogue_id or (
+            not proof.catalogue_id and catalogue_id in proof.person.mazal_ids
+        )) and marc.source_key(field) == "100:1"
         and [name.strip().rstrip(",") for name in marc.values(field, "a")] == [proof.heading]
         and (not proof.dates or marc.values(field, "d") == [proof.dates])
         and sum(other["tag"] == "100" for other, _ in occurrences) == 1
@@ -182,6 +210,30 @@ def reviewed_primary_author(control, field, variants, occurrences, catalogue_id=
     ):
         return proof
     return None
+
+
+def reviewed_author_text_patch(proof, record, target):
+    """Retain an old claim at deprecated rank only if the exact review still applies."""
+    if not proof or not proof.retired_text_id:
+        return None
+    old = next((
+        claim for claim in target.get("claims", {}).get("P2093", [])
+        if claim.get("id") == proof.retired_text_id
+    ), None)
+    if not old or old.get("rank") == "deprecated":
+        return None
+    notes = marc.occurrences(record, "500")
+    if (
+        target.get("id") != proof.work
+        or digest(semantic_entity(old)) != proof.retired_text_digest
+        or not any(
+            sha256(text.encode("utf-8")).hexdigest() == proof.role_note_digest
+            for row in notes if marc.source_key(row) == "500:1"
+            for text in marc.values(row, "a")
+        )
+    ):
+        raise ValueError("The reviewed author text or its MARC note changed.")
+    return {**old, "rank": "deprecated"}
 
 
 @dataclass(frozen=True)
