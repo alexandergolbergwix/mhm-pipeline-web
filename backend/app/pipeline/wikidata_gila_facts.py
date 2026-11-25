@@ -512,6 +512,59 @@ def _live_work_has_author(
     return len(expected) == 1 and actual == expected and (not native_ids or native_ids == expected)
 
 
+def _exact_contents_author(fact, cn, target, occurrence, works, author_qids, entities):
+    from app.pipeline import marc_occurrences as marc
+    from app.pipeline.wikidata_gila_contents import heading_key
+
+    if not fact.author_name:
+        return True, ()
+    heading_names = set(occurrence.get("author_aliases", ()))
+    name = heading_key(fact.author_name)
+    if not heading_names:
+        heading_names = {name}
+    people = {claim["value"] for claim in _live_claims(target, "P50")}
+    literals = {heading_key(claim["value"]) for claim in _live_claims(target, "P2093")}
+    if not people:
+        return name in heading_names and len(literals) == 1 and literals <= heading_names, ()
+    if len(people) != 1:
+        return False, ()
+    person = entities.get(next(iter(people)), {})
+    if (
+        type(person.get("lastrevid")) is not int or person["lastrevid"] <= 0
+        or any(key in person for key in ("missing", "redirect", "redirects"))
+        or "Q5" not in {claim["value"] for claim in _live_claims(person, "P31")}
+    ):
+        return False, ()
+    approved = author_qids.get((cn, _text(fact.author_name).casefold()), ())
+    if (
+        name in heading_names and len(approved) == 1 and people == approved
+        and _live_work_has_author(fact, target["id"], target, works, author_qids, cn)
+    ):
+        return True, (person,)
+    if not (heading := occurrence.get("author_heading")):
+        return False, ()
+    names = {heading_key(row.get("value")) for row in person.get("labels", {}).values()}
+    names.update(heading_key(row.get("value")) for rows in person.get("aliases", {}).values() for row in rows)
+    for variant in marc.values(heading, "a"):
+        surname, separator, given = variant.strip().rstrip(",").partition(",")
+        if separator:
+            heading_names.add(heading_key(f"{given} {surname}"))
+    dates = re.findall(r"(?<!\d)\d{3,4}(?!\d)", " ".join(marc.values(heading, "d")))
+    published = [
+        {m.group(1).lstrip("0") for c in _live_claims(person, pid)
+         if c.get("precision", 0) >= 9 and (m := re.match(r"^\+(\d+)-", str(c["value"])))}
+        for pid in ("P569", "P570")
+    ]
+    if (
+        len(dates) == 2 and all(years == {date} for date, years in zip(dates, published, strict=True))
+        and names.intersection(heading_names)
+        and name in heading_names | names
+        and literals <= heading_names | names
+    ):
+        return True, (person,)
+    return False, ()
+
+
 def _live_work_sources(target: Mapping[str, object]) -> set[str]:
     claims = target.get("claims") or {}
     if not isinstance(claims, Mapping):
@@ -588,16 +641,24 @@ def compare_gila_source_facts(
     approved_author_qids: Mapping[tuple[str, str], Iterable[str]] | None = None,
     include_claim_payloads: bool = True,
     full_source_controls: frozenset[str] = frozenset(),
+    full_marc_by_cn: Mapping[str, Mapping[str, object]] | None = None,
 ) -> dict[str, object]:
     """Export differences; a read-only comparison never certifies a repair."""
+    from app.pipeline.wikidata_gila_contents import original_work_occurrences, reconcile_work
+
     manuscripts: dict[str, Mapping[str, object]] = {}
     works: dict[str, list[Mapping[str, object]]] = {}
+    work_ids_by_cn: dict[str, set[str]] = {}
     author_qids = {
         (canonical_control_number(cn), _text(name).casefold()): frozenset(qids)
         for (cn, name), qids in (approved_author_qids or {}).items()
     }
     for item in items:
         if item.get("entity_type") == "work":
+            qid = str(item.get("existing_qid") or "")
+            if re.fullmatch(r"Q[1-9][0-9]*", qid):
+                for cn in item.get("records") or []:
+                    work_ids_by_cn.setdefault(canonical_control_number(cn), set()).add(qid)
             for key in (str(item.get("existing_qid") or ""), f"__LOCAL:{item.get('local_id')}"):
                 if key:
                     works.setdefault(key, []).append(item)
@@ -679,6 +740,8 @@ def compare_gila_source_facts(
                         reviewed_identity_current=decision["target_identity_current"],
                     )
                 )
+        original_contents = None
+        full_marc = (full_marc_by_cn or {}).get(cn)
         for index, fact in enumerate(source_facts):
             candidates = [
                 normalize_source_proposal(row)
@@ -877,6 +940,28 @@ def compare_gila_source_facts(
                 if live_entities is not None and not live_target_missing
                 else "not_checked"
             )
+            reviewed_contents = {}
+            if (
+                full_marc and fact.property_id == "P1574"
+                and not (live_status == "present" and live_provenance == "source_bound")
+                and not live_target_missing and not fact.evidence_only
+                and not fact.reviewed_identity_current and live_status != "source_evidence"
+            ):
+                if original_contents is None:
+                    original_contents = original_work_occurrences(full_marc)
+                reviewed_contents = reconcile_work(
+                    entity, cn, fact, original_contents, work_ids_by_cn.get(cn, ()),
+                    live_entities or {},
+                    lambda target, occurrence: _exact_contents_author(
+                        fact, cn, target, occurrence, works, author_qids, live_entities or {},
+                    ),
+                )
+                if reviewed_contents.get("verified"):
+                    live_status = "present"
+                    live_provenance = "source_bound"
+                if repair := reviewed_contents.get("source_repair"):
+                    expected_value = repair["value"]
+                    live_status = "present" if live else "missing"
             provenance_review = any(
                 status
                 in {"missing", "ambiguous_flat", "invalid", "source_mismatch", "group_mismatch"}
@@ -960,10 +1045,12 @@ def compare_gila_source_facts(
                     "expected_unit": fact.unit,
                     "expected_forbids_circa": fact.forbids_circa,
                     "expected_author": fact.author_name,
-                    "verified_matches": [
+                    "verified_matches": reviewed_contents.get("verified_matches") or ([
                         {"statement_id": row.get("claim_id"), "value": row["value"]}
                         for row in verified_match_rows
-                    ] if live_status == "present" and live_provenance in {"source_bound", "not_applicable"} else [],
+                    ] if live_status == "present" and live_provenance in {"source_bound", "not_applicable"} else []),
+                    **({"source_repair": reviewed_contents["source_repair"]}
+                       if reviewed_contents.get("source_repair") else {}),
                     "contradictions": contradictions,
                     "source_scoped": fact.source_scoped,
                     "proposal_status": proposal_status,

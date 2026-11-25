@@ -517,6 +517,7 @@ def build_gila_audit_report(
         approved_author_qids=approved_author_qids,
         include_claim_payloads=include_repair_payloads,
         full_source_controls=frozenset(people_marc or {}) if full_source_coverage else frozenset(),
+        full_marc_by_cn=people_marc if full_source_coverage else None,
     )
     if full_source_coverage:
         from app.pipeline.wikidata_gila_holdings_contents import reviewed_case, reviewed_corrections

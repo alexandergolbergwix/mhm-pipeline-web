@@ -130,7 +130,10 @@ class RepairCycle:
         self.authority_batch = job.params.get("_gila_scope") == "people_authority"
         self.source_evidence_batch = job.params.get("_gila_scope") == "sources_append_only"
         self.uniform_titles = job.params.get("_gila_scope") == "uniform_titles"
-        self.holdings_contents = self.uniform_titles or job.params.get("_gila_scope") == "holdings_and_contents"
+        self.contents_only = job.params.get("_gila_scope") == "contents"
+        self.holdings_contents = (
+            self.uniform_titles or self.contents_only or job.params.get("_gila_scope") == "holdings_and_contents"
+        )
         self.subjects_only = self.source_evidence_batch and job.params.get("_gila_subjects_only") is True
         self.write_maxlag = REFERENCE_JOB_MAXLAG if self.subjects_only else STUDIO_MAXLAG
         self.people_only = self.evidence_batch or self.authority_batch or job.params.get("_gila_requirement") == 5
@@ -140,7 +143,7 @@ class RepairCycle:
         )
         self.preflight_points = {
             "people_authority": (1, 5), "people_evidence_batch": (5,), "sources_append_only": (8,),
-            "holdings_and_contents": (1, 6), "uniform_titles": (6,),
+            "holdings_and_contents": (1, 6), "uniform_titles": (6,), "contents": (6,),
         }.get(job.params.get("_gila_scope"), (5, 8))
         self.people_links = dict(job.params.get("_gila_people_links") or {})
         self.resolver = ExecutionCredentialResolver(
@@ -441,6 +444,14 @@ class RepairCycle:
             if self.uniform_titles:
                 cases = [row for row in cases if row.get("marc_730")]
             inventory = corpus_inventory(cases, points)
+        if self.contents_only:
+            from app.pipeline.wikidata_gila_corpus_repair import contents_corpus_inventory
+
+            baseline = self.source_baseline or audit
+            previous = await asyncio.to_thread(gila_cases, baseline) if self.source_baseline else ()
+            export = await asyncio.to_thread(gila_audit_export, audit, "verified")
+            checked = {row["case_id"] for row in (export or {}).get("verified_checks", ())}
+            inventory = contents_corpus_inventory(cases, previous, checked)
         if self.source_evidence_batch:
             from app.pipeline.wikidata_gila_corpus_repair import source_corpus_inventory
 
@@ -540,6 +551,21 @@ class RepairCycle:
 
                 with paced_wikidata_evidence_reads():
                     plans.extend(await plan_holding_labels(cases, records, check=check, inventory=inventory))
+            elif self.contents_only:
+                from app.pipeline.wikidata_gila_corpus_repair import source_additions_only
+
+                candidates = [
+                    row for row in cases
+                    if (proof := row.get("source_repair")) and proof["property"] == "P1574"
+                    and not proof.get("retire_claim")
+                ]
+                with paced_wikidata_evidence_reads():
+                    plans = await plan_sources(
+                        candidates, records, check=check, progress=progress, inventory=inventory,
+                        additions_only=True,
+                    )
+                if not all(source_additions_only(plan, allow_folio=True) for plan in plans):
+                    raise ValueError("Contents repairs must preserve all existing claims and references.")
             elif self.holdings_contents:
                 from app.pipeline.wikidata_gila_corpus_repair import plan_holding_labels, source_additions_only
 
@@ -564,16 +590,16 @@ class RepairCycle:
                 plans = await confirm_corpus_plans(
                     plans, inventory, check=check, progress=progress, uncertain=uncertain,
                 )
-            if self.source_evidence_batch:
+            if self.source_evidence_batch or self.contents_only:
                 from app.pipeline.wikidata_gila_corpus_repair import source_additions_only
 
-                if not all(source_additions_only(plan) for plan in plans):
+                if not all(source_additions_only(plan, allow_folio=self.contents_only) for plan in plans):
                     raise ValueError("Source proof repairs must retain all existing claims and references.")
             await check_source()
             self.result["corpus_preflight"] = {
                 "records": len(records), "eligible_items": len(plans),
                 **({"source_archive": True, "baseline_audit_id": str(self.source_baseline.id) if self.source_baseline else source_audit_id}
-                   if self.source_evidence_batch else {}),
+                   if self.source_evidence_batch or self.contents_only else {}),
                 **({"source_audit_id": source_audit_id, "case_count": len(inventory)}
                    if self.people_only or self.source_evidence_batch or self.holdings_contents else {}),
                 "requirements": [
@@ -684,7 +710,8 @@ class RepairCycle:
                 self.attention("publication", str(exc))
         final = await self.stage(
             JOB_KIND_WIKIDATA_GILA_AUDIT, "verify", "Recheck all nine requests against live Wikidata.",
-            {"_gila_people_source_audit": str(audit.id)}, full=bool(verified_people_cases) or self.source_evidence_batch,
+            {"_gila_people_source_audit": str(audit.id)},
+            full=bool(verified_people_cases) or self.source_evidence_batch or self.contents_only,
         )
         if final.status != "succeeded":
             raise ValueError(final.error or "The verification audit did not finish.")
@@ -693,11 +720,11 @@ class RepairCycle:
 
             open_ids = (
                 {row["case_id"] for row in await asyncio.to_thread(gila_cases, final)}
-                if verified_people_cases and not self.source_evidence_batch else set()
+                if verified_people_cases and not (self.source_evidence_batch or self.contents_only) else set()
             )
             confirmed_ids = verified_people_cases - open_ids
             verified_source_ids = set()
-            if self.source_evidence_batch:
+            if self.source_evidence_batch or self.contents_only:
                 from app.pipeline.wikidata_gila_audit_job import gila_audit_export
 
                 export = await asyncio.to_thread(gila_audit_export, final, "verified")
@@ -707,7 +734,7 @@ class RepairCycle:
                 async with session_scope() as db:
                     job = await authorize_repair_cycle(db, self.id)
                     rows = job.params["_gila_corpus_preflight"]
-                    if self.source_evidence_batch:
+                    if self.source_evidence_batch or self.contents_only:
                         job.params = {**job.params, "_gila_corpus_preflight": [
                             {**row, "outcome": "verified"
                              if row.get("original_case_id", row["case_id"]) in verified_source_ids else "unresolved"}
@@ -725,6 +752,27 @@ class RepairCycle:
                 if self.authority_batch else len(confirmed_ids)
             )
         self.result["audit_id"] = str(final.id)
+        if self.contents_only:
+            baseline = self.source_baseline or audit
+            before_coverage = baseline.result.get("contents_passage_coverage")
+            if before_coverage is None:
+                from app.pipeline.wikidata_gila_audit_job import gila_people_marc
+                from app.pipeline.wikidata_gila_contents import contents_passage_coverage
+
+                passages = [
+                    {**row, "source_text": row.get("source_value")}
+                    for row in await asyncio.to_thread(gila_cases, baseline)
+                    if row["case_id"].startswith("passage:") and row.get("source_field") in {"740", "505"}
+                ]
+                checked = await asyncio.to_thread(gila_audit_export, baseline, "verified")
+                before_coverage = await asyncio.to_thread(
+                    contents_passage_coverage, passages, (checked or {}).get("verified_checks", ()),
+                    await asyncio.to_thread(gila_people_marc, baseline),
+                )
+            self.result["contents_passage_comparison"] = {
+                "before": before_coverage,
+                "after": final.result.get("contents_passage_coverage"),
+            }
         comparison = compare_requirements(audit.result, final.result)
         if self.source_baseline:
             source_comparison = {

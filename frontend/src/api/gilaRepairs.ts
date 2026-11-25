@@ -55,6 +55,13 @@ export interface GilaPreparation extends AuditJob {
   open_case_counts?: {manual_review: number; not_checked: number} | null;
 }
 
+export type ContentsPassageCoverage = Record<"740" | "505", {
+  total: number;
+  verified: number;
+  title_matches: number;
+  with_folios: number;
+}>;
+
 export interface GilaReport {
   id: string;
   finished_at: string;
@@ -65,6 +72,7 @@ export interface GilaReport {
   reference_items: number;
   reference_blocks: number;
   case_count: number;
+  contents_passage_coverage?: ContentsPassageCoverage;
   people_coverage?: {
     records_with_full_marc: number;
     source_roles: number;
@@ -122,7 +130,7 @@ export interface CorpusPreflightResult {
 }
 
 export type RepairScope = "people_and_sources" | "people_evidence_batch" | "people_authority" | "sources_append_only"
-  | "holdings_and_contents";
+  | "holdings_and_contents" | "contents";
 
 export interface AutomaticRepairJob extends AuditJob {
   result: {
@@ -131,6 +139,10 @@ export interface AutomaticRepairJob extends AuditJob {
     reference_items_corrected: number;
     repeated_references?: number;
     corpus_preflight?: CorpusPreflightResult;
+    contents_passage_comparison?: {
+      before: ContentsPassageCoverage | null;
+      after: ContentsPassageCoverage | null;
+    };
     corpus_verified?: Array<{point: number; cases: number}>;
     people_batch?: {
       cases_verified?: number;

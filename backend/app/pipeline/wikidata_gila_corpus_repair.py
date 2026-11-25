@@ -62,6 +62,29 @@ def source_corpus_inventory(cases, previous_cases=(), already_verified=frozenset
     return inventory
 
 
+def contents_corpus_inventory(cases, previous_cases=(), already_verified=frozenset()):
+    current = {row["case_id"]: row for row in cases}
+    combined = {row["case_id"]: row for row in previous_cases}
+    combined.update(current)
+    inventory = corpus_inventory(combined.values(), frozenset({6}))
+    for case_id, row in inventory.items():
+        case = combined[case_id]
+        row["occurrence"] = case.get("source_key") or case.get("occurrence")
+        row["source_value"] = case.get("source_value")
+        if case_id not in current:
+            row["source_snapshot"] = "baseline"
+            if case_id in already_verified:
+                row.update(status="already_verified", reason="verified_before_write")
+            else:
+                row.update(status="needs_review", reason="case_changed_since_last_audit")
+        elif row["status"] == "needs_evidence" and (
+            case.get("live_status") in {"identity_review", "source_evidence"}
+            or case.get("reason") == "stale_catalogue_edit"
+        ):
+            row["status"] = "needs_review"
+    return inventory
+
+
 def source_preflight_archive(rows, records, previous_records):
     def index_fields(snapshot, control_numbers):
         return {

@@ -2,7 +2,7 @@ import {useCallback, useEffect, useState} from "react";
 import {useLocation} from "react-router-dom";
 
 import {ApiError} from "@/api/client";
-import {GilaRepairs, type AuditDisposition, type AuditExportKind, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus, type CorpusPreflightResult, type PreflightCase, type PreflightStatus, type RepairScope} from "@/api/gilaRepairs";
+import {GilaRepairs, type AuditDisposition, type AuditExportKind, type CaseFilter, type GilaCase, type GilaCaseReview, type GilaReport, type GilaStatus, type ContentsPassageCoverage, type CorpusPreflightResult, type PreflightCase, type PreflightStatus, type RepairScope} from "@/api/gilaRepairs";
 import type {ReferenceRepairStatus, ReferenceScope} from "@/api/referenceRepairs";
 import {AdminLayout} from "@/components/admin/AdminLayout";
 import {Glass} from "@/components/glass";
@@ -138,6 +138,25 @@ function downloadJson(data: unknown, name: string) {
   link.download = name;
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function ContentsCoverage({coverage, before}: {
+  coverage: ContentsPassageCoverage; before?: ContentsPassageCoverage | null;
+}) {
+  return <section className="rounded-xl border border-soft p-4" aria-label="MARC contents coverage">
+    <h3 className="font-medium">MARC contents coverage</h3>
+    <p className="text-sm muted">This passage count is separate from the requirement 6 score.</p>
+    {(["740", "505"] as const).map(tag => {
+      const row = coverage[tag];
+      const previous = before?.[tag];
+      return <p key={tag} className="text-sm">
+        MARC {tag} · {previous && `${previous.verified.toLocaleString()} of ${previous.total.toLocaleString()} → `}
+        {row.verified.toLocaleString()} of {row.total.toLocaleString()} passages verified
+        {" · "}{row.title_matches.toLocaleString()} match a public title
+        {" · "}{row.with_folios.toLocaleString()} have matching folios
+      </p>;
+    })}
+  </section>;
 }
 
 function CorpusPreflight({jobId, summary, finished}: {
@@ -775,6 +794,11 @@ export default function AdminGilaRepairs() {
             Repair shelfmarks and contents
           </button>
           <button className="button-ghost"
+            disabled={!state || startingAutomatic || automaticActive || starting || active || preparing || Boolean(refreshError)}
+            onClick={() => void startAutomatic("contents")}>
+            Preflight and repair all contents
+          </button>
+          <button className="button-ghost"
             disabled={!state || active || starting || automaticActive || startingAutomatic || Boolean(refreshError)}
             onClick={() => void start()}>
             {buildProgress ? "Rebuild in progress" : starting || active ? "Audit in progress"
@@ -805,6 +829,9 @@ export default function AdminGilaRepairs() {
         {automaticResult && <>
           {automaticResult.corpus_preflight && <CorpusPreflight key={automatic.id} jobId={automatic.id}
             summary={automaticResult.corpus_preflight} finished={automatic.status === "succeeded"} />}
+          {automaticResult.contents_passage_comparison?.after && <ContentsCoverage
+            coverage={automaticResult.contents_passage_comparison.after}
+            before={automaticResult.contents_passage_comparison.before} />}
           {automaticResult.corpus_verified?.map(row => <p key={row.point} className="text-sm">
             Requirement {row.point} · {row.cases.toLocaleString()} repaired cases verified
           </p>)}
@@ -919,6 +946,8 @@ export default function AdminGilaRepairs() {
             {" "}{report.people_coverage.uncertainty_preserved.toLocaleString()} retain uncertainty from the source.
           </p>
         </section>}
+        {report.contents_passage_coverage && !automaticResult?.contents_passage_comparison?.after
+          && <ContentsCoverage coverage={report.contents_passage_coverage} />}
         {report.requirement_coverage.model_decision && <p className="text-sm muted">{report.requirement_coverage.model_decision}</p>}
         <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {report.email_points.map(row => {

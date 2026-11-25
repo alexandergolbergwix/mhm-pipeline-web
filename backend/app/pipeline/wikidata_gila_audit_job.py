@@ -325,6 +325,7 @@ def _case_inventory(packet, audit):
         "qids",
         "control_number",
         "source_field",
+        "source_key",
         "occurrence",
         "person_role",
         "property",
@@ -726,6 +727,14 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             "verified": verified_export(packet, additional_cases),
             "proven-claim-errors": await proven_claim_errors(packet, entities, people_marc),
         }
+        contents_coverage = None
+        if audit["full_source_coverage"]:
+            from app.pipeline.wikidata_gila_contents import contents_passage_coverage
+
+            contents_coverage = await asyncio.to_thread(
+                contents_passage_coverage, packet["source_passages"],
+                exports["verified"]["verified_checks"], people_marc,
+            )
         packet["all_requirements_verified"] = all(
             point["status"] == "verified" for point in packet["email_points"]
         )
@@ -793,6 +802,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             }
             | {
                 "people_coverage": people_summary,
+                **({"contents_passage_coverage": contents_coverage} if contents_coverage is not None else {}),
                 "audit_exports": {
                     "verified_statements": exports["verified"]["matched_statement_count"],
                     "proven_claim_errors": len(exports["proven-claim-errors"]["claims"]),

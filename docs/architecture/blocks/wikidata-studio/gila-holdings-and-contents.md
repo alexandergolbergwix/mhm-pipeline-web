@@ -6,6 +6,8 @@ The job checks requirements 1 and 6 in the full MARC audit.
 It records the initial audit, eligible corrections, and final live result.
 The existing preflight API accepts point 6 for this scope.
 
+The [full contents preflight](gila-contents-preflight.md) covers the scored requirement 6 cases and reports MARC passage coverage.
+
 ## Source evidence
 
 `wikidata_gila_audit.py` uses a unique complete MARC 942 row with first indicator 1 when repeated numbers block the normal current-holder check.

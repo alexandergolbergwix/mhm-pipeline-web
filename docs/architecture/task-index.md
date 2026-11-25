@@ -94,6 +94,7 @@ Joined person-role descriptions: [description hygiene](blocks/wikidata-studio/pe
 | Review a source occurrence or Gila coverage | [Source review](blocks/wikidata-studio/source-review.md) |
 | Preflight all people and current label repairs | [Bulk authority and current label repair](blocks/wikidata-studio/gila-authority-and-label-repair.md) |
 | Run or extend the creator-only manuscript repair job | [Case review](blocks/wikidata-studio/gila-case-review.md) and Rules W-364 to W-384 |
+| Preflight and repair all requirement 6 cases | [Full contents preflight](blocks/wikidata-studio/gila-contents-preflight.md) |
 | Resume an exact historical repair, with an optional finite wait | [Repair retries](blocks/wikidata-studio/repair-retries.md); retain due dates after slow commits and typed service-delay evidence (W-344–W-345) |
 | Run reviewed reference repairs one item at a time | [Sequential reference repairs](blocks/wikidata-studio/reference-repair-queue.md); exact checkpoints, creator checks, and normal maxlag |
 | Store Wikidata candidates and apply filters locally | [Local Wikidata mirror](blocks/caching/wikidata-mirror.md); optional [QLever discovery](blocks/caching/wikidata-qlever.md) |
