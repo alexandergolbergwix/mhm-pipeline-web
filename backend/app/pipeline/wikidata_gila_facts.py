@@ -655,7 +655,7 @@ def compare_gila_source_facts(
     }
     for item in items:
         if item.get("entity_type") == "work":
-            qid = str(item.get("existing_qid") or "")
+            qid = str(item.get("existing_qid") or item.get("contents_ledger_candidate") or "")
             if re.fullmatch(r"Q[1-9][0-9]*", qid):
                 for cn in item.get("records") or []:
                     work_ids_by_cn.setdefault(canonical_control_number(cn), set()).add(qid)

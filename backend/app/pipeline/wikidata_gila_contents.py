@@ -20,6 +20,20 @@ def heading_key(value):
     return title_key(str(value or "").replace(",", " "))
 
 
+def legacy_work_candidates(ledger):
+    """Find single-QID work keys for the full MARC proof to check independently."""
+    prefix = "wikidata:work:"
+    targets = defaultdict(set)
+    for key, qid in ledger.items():
+        if key.startswith(prefix):
+            basis = key[len(prefix):].partition(":author:")[0]
+            targets[basis].add(qid)
+    return {
+        basis: next(iter(qids)) for basis, qids in targets.items()
+        if len(qids) == 1 and all(re.fullmatch(r"Q[1-9][0-9]*", qid) for qid in qids)
+    }
+
+
 def original_work_occurrences(record):
     fields = marc.occurrences(record)
     tags = {field["tag"] for field in fields}

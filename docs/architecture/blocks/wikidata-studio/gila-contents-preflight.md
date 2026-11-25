@@ -9,6 +9,8 @@ Download the preflight archive to inspect the source alongside its outcome.
 `wikidata_gila_contents.py` checks the original MARC work occurrence.
 A new or reused work link needs a unique live work identity and exact source scope.
 A shared title needs an author link that matches authority evidence or the original heading and dates.
+A legacy ledger key can supply a candidate when its exact local work key has one public QID.
+The audit checks that QID against MARC before it prepares a repair.
 The planner checks each public revision, the first creator, and all evidence dependencies.
 It permits only additions to P1574, its source references, or a missing P958 qualifier.
 The final audit credits a case only when the verified export names the same case ID.

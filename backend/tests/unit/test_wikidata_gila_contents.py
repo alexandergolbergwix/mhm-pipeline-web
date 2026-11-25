@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-from app.pipeline.wikidata_gila_contents import contents_passage_coverage
+from app.pipeline.wikidata_gila_contents import contents_passage_coverage, legacy_work_candidates
 from app.pipeline.wikidata_gila_corpus_repair import (
     contents_corpus_inventory,
     source_additions_only,
@@ -39,11 +39,12 @@ def work(qid="Q200", *, control=CN, author=AUTHOR):
     }}
 
 
-def contents_fact(target, works, *, full=True):
+def contents_fact(target, works, *, full=True, legacy=False):
     source = {"001": CN, "marc_occurrences": [
         {"tag": "001", "data": CN}, field("100", AUTHOR), field("245", TITLE),
     ]}
-    items = [{"entity_type": "work", "existing_qid": row["id"], "records": [CN]} for row in works]
+    key = "contents_ledger_candidate" if legacy else "existing_qid"
+    items = [{"entity_type": "work", key: row["id"], "records": [CN]} for row in works]
     report = compare_gila_source_facts(
         [source], items, qids_by_cn={CN: "Q100"},
         live_entities={row["id"]: row for row in [target, *works]},
@@ -72,6 +73,19 @@ def test_contents_reconciliation_adds_an_exact_work_and_credits_the_same_case():
     assert verified["live_provenance"] == "source_bound"
     assert verified["verified_matches"] == [{"statement_id": "Q100$work", "value": "Q200"}]
     assert "source_repair" not in verified
+
+
+def test_legacy_work_key_supplies_a_candidate_without_certifying_it():
+    candidates = legacy_work_candidates({
+        "wikidata:work:work:unique": "Q200",
+        "wikidata:work:work:unique:author:א": "Q200",
+        "wikidata:work:work:ambiguous": "Q201",
+        "wikidata:work:work:ambiguous:author:ב": "Q202",
+        "wikidata-test:work:work:other": "Q203",
+    })
+    assert candidates == {"work:unique": "Q200"}
+    assert contents_fact(manuscript(), [work(candidates["work:unique"])], legacy=True)["source_repair"]
+    assert "source_repair" not in contents_fact(manuscript(), [work(author="מחבר אחר")], legacy=True)
 
 
 def test_contents_reconciliation_rejects_other_sources_authors_duplicates_and_conflicts():

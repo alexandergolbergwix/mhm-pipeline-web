@@ -126,7 +126,10 @@ def _catalogue_mappings(records, ledger):
     return mappings
 
 
-async def _canonical_items(projection, run_id, snapshot, ledger):
+async def _canonical_items(projection, run_id, snapshot, ledger, *, full_sources=False):
+    from app.pipeline.wikidata_gila_contents import legacy_work_candidates
+
+    legacy_works = legacy_work_candidates(ledger) if full_sources else {}
     items = []
     fields = (
         "local_id",
@@ -149,6 +152,9 @@ async def _canonical_items(projection, run_id, snapshot, ledger):
                     ledger,
                     ledger_key_for_item(item, "wikidata"),
                 )
+            if compact.get("entity_type") == "work" and not compact.get("existing_qid"):
+                if candidate := legacy_works.get(compact.get("local_id")):
+                    compact["contents_ledger_candidate"] = candidate
             items.append(compact)
     return items
 
@@ -527,7 +533,9 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             )
             records = await load_run_marc_records(db, run_id)
             ledger = await load_global_ledger(db, is_test=False)
-            canonical = await _canonical_items(projection, run_id, snapshot, ledger)
+            canonical = await _canonical_items(
+                projection, run_id, snapshot, ledger, full_sources=bool(job.params.get("_gila_full_sources")),
+            )
             proof_authority = await load_authority_evidence(db, run_id)
             fingerprint = gila_record_fingerprint(records)
             cache = None
@@ -591,6 +599,7 @@ async def _run_audit(job_id: uuid.UUID, entities: PublicAuditSnapshot) -> None:
             from app.pipeline.wikidata_gila_sources import source_topic_ids
             from app.pipeline.wikidata_gila_uniform_titles import uniform_title_targets
 
+            known.update(item["contents_ledger_candidate"] for item in canonical if item.get("contents_ledger_candidate"))
             known.update(reviewed_work_targets())
             known.update(uniform_title_targets())
             known.update(await asyncio.to_thread(source_topic_ids, people_marc.values()))
