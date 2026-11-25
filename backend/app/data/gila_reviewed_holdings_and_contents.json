@@ -179,5 +179,80 @@
     "previous_claim": "Q141748441$D17F616E-6405-4F66-A335-942757A3AF05",
     "previous_claim_sha256": "762af18abbe26c45f7524a60701dd7174d8f63c5eb1de47c27aeac4205516a00",
     "target_title": "ספר איוב"
+  },
+  "990001191230205171": {
+    "qid": "Q141747466",
+    "property": "P1574",
+    "value": "Q141175558",
+    "type": "item",
+    "qualifiers": {
+      "P1932": "מנחת יהודה"
+    },
+    "previous_qualifiers": {
+      "P1932": "מנחת יהודה",
+      "P1480": "Q18122778"
+    },
+    "fact_id": "b13c5352901cdc88409d61cf364698753e37087b53a4d75079997a2df442a6fb",
+    "source_field": "245:1",
+    "source_sha256": "53f14ed3b7e00c337e25204db93d4f03e973f98887ee7ae3f82d57120ae9734d",
+    "previous_claim": "Q141747466$EFC2B019-E6EA-4BF4-A11E-9FEB319D8576",
+    "previous_value": "Q133459046",
+    "previous_claim_sha256": "89c3b6f2b96cc597671a396047ecaf1da2d19dd2c398e9e506944009faef686b",
+    "target_title": "מנחת יהודה : פרוש על שמואל, מלכים וישעיהו",
+    "authority": {
+      "qid": "Q118186113",
+      "identifier": "987007595556205171",
+      "work_author": "חנין, יהודה בן יעקב",
+      "work_control_number": "990001238980205171",
+      "marc_fields": {
+        "100:1": "c9612a6887adf47a0693a6d7adec60c15dd07c7bf449a072a966f89f00abce79",
+        "500:1": "64b6bc33c2e95511a0ae3c54e0bc5ac36b7e34fc6a2ea8d1912e1cbd5bba5449",
+        "500:2": "f27d8921eb2b7083f77bfa28fdc51eede2f43625a0f20f555aa8da12f10396bc",
+        "500:3": "c54f6018581214a913a25c863aaa5d68df1d333954f3781118cc8aff2b043880"
+      },
+      "proof_urls": [
+        "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001191230205171.jsonld",
+        "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007595556205171.jsonld",
+        "https://www.nli.org.il/he/books/NNL_ALEPH990040507650205171/NLI",
+        "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001238980205171.jsonld"
+      ]
+    }
+  },
+  "990001238980205171": {
+    "qid": "Q141362080",
+    "property": "P1574",
+    "value": "Q141175558",
+    "type": "item",
+    "qualifiers": {
+      "P1932": "מנחת יהודה"
+    },
+    "previous_qualifiers": {
+      "P1932": "מנחת יהודה",
+      "P1480": "Q18122778"
+    },
+    "fact_id": "a863b5ef73185db4605eb239254f4b5a81e578605203d55fee4ea71f916f2227",
+    "source_field": "245:1",
+    "source_sha256": "8cd198d55332003f2420df473b24a147e2fce5d0762108ae042db3cc000d149d",
+    "previous_claim": "Q141362080$47259335-1865-4EF1-AC04-393B33CF825E",
+    "previous_value": "Q133459046",
+    "previous_claim_sha256": "22801bd2f29bd480b53771530cc16350ad7a81a48ae03e6f919664d402039662",
+    "target_title": "מנחת יהודה : פרוש על שמואל, מלכים וישעיהו",
+    "authority": {
+      "qid": "Q118186113",
+      "identifier": "987007595556205171",
+      "work_author": "חנין, יהודה בן יעקב",
+      "work_control_number": "990001238980205171",
+      "marc_fields": {
+        "100:1": "c9612a6887adf47a0693a6d7adec60c15dd07c7bf449a072a966f89f00abce79",
+        "500:1": "64b6bc33c2e95511a0ae3c54e0bc5ac36b7e34fc6a2ea8d1912e1cbd5bba5449",
+        "500:2": "29b1095d1d399e5dba5ec7df0556ac38586f8c3f405fd60da3c9727654f58c5d",
+        "500:4": "43e6ac4cb74f2ee5c71e4f5274e92ec8fd176442f8b7db1fecd44e9015682ee7"
+      },
+      "proof_urls": [
+        "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/bibs/990001238980205171.jsonld",
+        "https://open-na.hosted.exlibrisgroup.com/alma/972NNL_INST/authorities/987007595556205171.jsonld",
+        "https://www.nli.org.il/he/books/NNL_ALEPH990040507650205171/NLI"
+      ]
+    }
   }
 }

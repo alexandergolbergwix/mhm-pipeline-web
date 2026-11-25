@@ -553,7 +553,8 @@ def build_gila_audit_report(
                 counts["live_present"] = counts.get("live_present", 0) + 1
                 fact.update(
                     live_status="present", live_provenance="source_bound", live_reason="verified_source_assertion",
-                    expected_value=evidence["expected_value"], verified_matches=evidence["verified_matches"],
+                    expected_value=evidence["expected_value"], expected_qualifiers=evidence["expected_qualifiers"],
+                    verified_matches=evidence["verified_matches"],
                 )
                 if holding:
                     fact["source_value"] = holding[1]

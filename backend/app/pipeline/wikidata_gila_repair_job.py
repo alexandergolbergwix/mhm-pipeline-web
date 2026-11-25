@@ -130,9 +130,11 @@ class RepairCycle:
         self.authority_batch = job.params.get("_gila_scope") == "people_authority"
         self.source_evidence_batch = job.params.get("_gila_scope") == "sources_append_only"
         self.uniform_titles = job.params.get("_gila_scope") == "uniform_titles"
+        self.reviewed_work_links = job.params.get("_gila_scope") == "reviewed_work_links"
         self.contents_only = job.params.get("_gila_scope") == "contents"
         self.holdings_contents = (
-            self.uniform_titles or self.contents_only or job.params.get("_gila_scope") == "holdings_and_contents"
+            self.uniform_titles or self.contents_only or self.reviewed_work_links
+            or job.params.get("_gila_scope") == "holdings_and_contents"
         )
         self.subjects_only = self.source_evidence_batch and job.params.get("_gila_subjects_only") is True
         self.write_maxlag = REFERENCE_JOB_MAXLAG if self.subjects_only else STUDIO_MAXLAG
@@ -144,6 +146,7 @@ class RepairCycle:
         self.preflight_points = {
             "people_authority": (1, 5), "people_evidence_batch": (5,), "sources_append_only": (8,),
             "holdings_and_contents": (1, 6), "uniform_titles": (6,), "contents": (6,),
+            "reviewed_work_links": (6,),
         }.get(job.params.get("_gila_scope"), (5, 8))
         self.people_links = dict(job.params.get("_gila_people_links") or {})
         self.resolver = ExecutionCredentialResolver(
@@ -445,6 +448,8 @@ class RepairCycle:
             cases = [row for row in cases if points.intersection(row["points"])]
             if self.uniform_titles:
                 cases = [row for row in cases if row.get("marc_730")]
+            if self.reviewed_work_links:
+                cases = [row for row in cases if row.get("source_repair", {}).get("reviewed_work_link")]
             inventory = corpus_inventory(cases, points)
         if self.contents_only:
             from app.pipeline.wikidata_gila_corpus_repair import contents_corpus_inventory
@@ -567,6 +572,12 @@ class RepairCycle:
                     )
                 if not all(source_additions_only(plan, allow_folio=True) for plan in plans):
                     raise ValueError("Contents repairs must preserve all existing claims and references.")
+            elif self.reviewed_work_links:
+                with paced_wikidata_evidence_reads():
+                    plans = await plan_sources(
+                        cases, records, check=check, progress=progress, inventory=inventory,
+                        additions_only=True, reviewed_corrections=True,
+                    )
             elif self.holdings_contents:
                 from app.pipeline.wikidata_gila_corpus_repair import plan_holding_labels, source_additions_only
 
@@ -721,13 +732,17 @@ class RepairCycle:
         if "people_batch" in self.result:
             from app.pipeline.wikidata_gila_audit_job import gila_cases
 
+            exact_final_proof = (
+                self.corpus or self.source_evidence_batch or self.contents_only or self.reviewed_work_links
+            )
+
             open_ids = (
                 {row["case_id"] for row in await asyncio.to_thread(gila_cases, final)}
-                if verified_people_cases and not (self.corpus or self.source_evidence_batch or self.contents_only) else set()
+                if verified_people_cases and not exact_final_proof else set()
             )
             confirmed_ids = verified_people_cases - open_ids
             verified_source_ids = set()
-            if self.corpus or self.source_evidence_batch or self.contents_only:
+            if exact_final_proof:
                 from app.pipeline.wikidata_gila_audit_job import gila_audit_export
 
                 export = await asyncio.to_thread(gila_audit_export, final, "verified")
@@ -737,7 +752,7 @@ class RepairCycle:
                 async with session_scope() as db:
                     job = await authorize_repair_cycle(db, self.id)
                     rows = job.params["_gila_corpus_preflight"]
-                    if self.corpus or self.source_evidence_batch or self.contents_only:
+                    if exact_final_proof:
                         job.params = {**job.params, "_gila_corpus_preflight": [
                             {**row, "outcome": "verified"
                              if row.get("original_case_id", row["case_id"]) in verified_source_ids else "unresolved"}

@@ -85,4 +85,19 @@ The first batch records 182 items with matching live labels and shelfmarks acros
 It also records 11 reviewed shelfmark corrections and the Book of Job link at folios 107a–112b.
 [Ktiv Book of Job source record](https://www.nli.org.il/he/discover/manuscripts/hebrew-manuscripts/itempage?docId=PNX_MANUSCRIPTS990034538980205171&scope=KTIV&vid=KTIV)
 
+## Authority proof for primary work links
+
+An administrator can submit scope `reviewed_work_links` to the existing repair endpoint.
+This scope uses only the authority reviews for existing P1574 links.
+The worker checks the original 100 and 245 fields and the reviewed contents notes.
+It checks the exact NLI authority ID and the source references on the replacement work.
+The worker adds the new link and gives the exact old claim deprecated rank.
+It keeps the original qualifiers and references on the old claim.
+The final audit reports all nine requirements.
+
+The review matches both *Minhat Yehuda* manuscripts to Judah ben Hanin's work.
+The two manuscripts include different parts of the same commentary.
+The printed edition confirms the work title, author, and two-column structure.
+[NLI authority](https://www.nli.org.il/he/a-topic/987007595556205171) · [NLI edition](https://www.nli.org.il/he/books/NNL_ALEPH990040507650205171/NLI)
+
 The corpus repair tests check repeated current-holder rows, exact shelfmark selection, and retention of MARC 730 parts and languages.

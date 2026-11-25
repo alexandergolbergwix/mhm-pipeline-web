@@ -61,7 +61,7 @@ class RepairAllRequest(BaseModel):
     requirement: Literal[5] | None = None
     scope: Literal[
         "people_and_sources", "people_evidence_batch", "people_authority", "sources_append_only", "holdings_and_contents",
-        "uniform_titles", "contents",
+        "uniform_titles", "contents", "reviewed_work_links",
     ] | None = None
 
 
