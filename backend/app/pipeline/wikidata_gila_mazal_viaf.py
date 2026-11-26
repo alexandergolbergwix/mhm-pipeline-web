@@ -65,6 +65,7 @@ def cluster_keys(aid: str, payload: Mapping) -> frozenset[tuple[str, str]]:
 
 
 async def read_viaf_mazal(ids, progress=None) -> dict[str, frozenset[tuple[str, str]]]:
+    """Distinguish an unavailable lookup from a response without proof for the ID."""
     ids = sorted({aid for aid in ids if _MAZAL.fullmatch(aid)})
     if not ids:
         return {}
@@ -89,8 +90,8 @@ async def read_viaf_mazal(ids, progress=None) -> dict[str, frozenset[tuple[str, 
                         break
                 response.raise_for_status()
                 data = response.json()
-                if isinstance(data, Mapping) and (keys := cluster_keys(aid, data)):
-                    results[aid] = keys
+                if isinstance(data, Mapping):
+                    results[aid] = cluster_keys(aid, data)
             except (httpx.HTTPError, ValueError) as exc:
                 logger.info("VIAF cross-reference unavailable for %s (%s).", aid, type(exc).__name__)
             await asyncio.sleep(0.5)

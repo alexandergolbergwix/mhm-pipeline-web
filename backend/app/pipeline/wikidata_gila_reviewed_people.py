@@ -70,6 +70,17 @@ REVIEWED_LINKED_PEOPLE = {
     ),
 }
 
+_REVIEWED_VIAF_LINKS = {
+    "987007583337405171": ("268998259", ReviewedLinkedPerson(
+        "Q105644274", "P268", "17163680d", "https://data.bnf.fr/ark:/12148/cb17163680d",
+        frozenset({"987007583337405171"}),
+    )),
+    "987007308955805171": ("239255952", ReviewedLinkedPerson(
+        "Q114258921", "P9756", "47056", "https://sdbm.library.upenn.edu/names/47056",
+        frozenset({"987007308955805171"}),
+    )),
+}
+
 
 def _matches_reviewed_person(candidate, proof):
     if proof.property_id:
@@ -90,6 +101,14 @@ def _matches_reviewed_person(candidate, proof):
 def reviewed_linked_person_url(candidate, authority_id):
     proof = REVIEWED_LINKED_PEOPLE.get(authority_id)
     return proof.url if proof and _matches_reviewed_person(candidate, proof) else None
+
+
+def reviewed_viaf_link_matches(candidate, authority_id):
+    """Check the exact VIAF citation against an independent reviewed authority record."""
+    if authority_id not in _REVIEWED_VIAF_LINKS:
+        return False
+    identifier, proof = _REVIEWED_VIAF_LINKS[authority_id]
+    return _claim_values(candidate, "P214") == [identifier] and _matches_reviewed_person(candidate, proof)
 
 
 @dataclass(frozen=True)

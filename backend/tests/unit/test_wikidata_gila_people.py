@@ -885,6 +885,44 @@ def test_bibframe_exact_owner_role_and_viaf_authority_close_the_audit_case():
     assert not people_role_cases(raw, final, people, linked_frames=frames, linked_viaf={aid: keys})[0]["verified"]
 
 
+def test_reviewed_person_keeps_credit_when_viaf_cannot_supply_evidence():
+    from app.pipeline.wikidata_gila_linked_people import ALMA, bib_url
+    from app.pipeline.wikidata_gila_mazal_viaf import viaf_mazal_url
+
+    aid = "987007583337405171"
+    heading = "Eustachio, Giovanni Paulo"
+    raw = parse_nli_records(_response(_record(_field(
+        "700", ("a", heading), ("e", "mentioned"),
+    ))), {CONTROL})[CONTROL]
+    bibs = {CONTROL: {
+        "@id": bib_url(CONTROL),
+        "contributor": {"@id": f"{ALMA}/authorities/{aid}", "label": heading},
+    }}
+    person = {"id": "Q105644274", "claims": {
+        "P31": [_claim({"id": "Q5"})], "P214": [_claim("268998259")], "P268": [_claim("17163680d")],
+    }}
+    claim = _claim({"id": person["id"]}, qualifiers={"P1932": heading})
+    claim["references"][0]["snaks"]["P854"] = [_snak(bib_url(CONTROL)), _snak(viaf_mazal_url(aid))]
+    manuscript = {"id": "Q10", "claims": {"P3959": [_claim(CONTROL)], "P3342": [claim]}}
+
+    def verified(viaf):
+        case, = people_role_cases(raw, manuscript, {person["id"]: person}, linked_bibs=bibs, linked_viaf=viaf)
+        return case["verified"]
+
+    assert verified({aid: {("P214", "268998259")}})
+    assert verified({})
+    assert not verified({aid: frozenset()})
+    assert not verified({aid: {("P214", "999999")}})
+    person["claims"]["P8189"] = [_claim("987007265745905171")]
+    assert not verified({})
+    del person["claims"]["P8189"]
+    person["claims"]["P268"] = [_claim("00000000x")]
+    assert not verified({})
+    person["claims"]["P268"] = [_claim("17163680d")]
+    claim["references"][0]["snaks"]["P854"].pop()
+    assert not verified({})
+
+
 @pytest.mark.asyncio
 async def test_dated_mazal_batch_requires_one_preferred_name_and_exact_years(monkeypatch):
     from unittest.mock import AsyncMock

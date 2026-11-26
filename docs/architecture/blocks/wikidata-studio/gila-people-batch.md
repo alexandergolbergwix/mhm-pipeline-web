@@ -65,7 +65,7 @@ The page displays the current phase and the before and after verification counts
 - `wikidata_gila_linked_people.py` checks NLI links and matches exact authority IDs.
 - `wikidata_gila_bibframe_people.py` matches the exact MARC fields on NLI agents.
 - `wikidata_gila_mazal_viaf.py` confirms the MAZAL source ID and resolves exact authority cross-references.
-- `wikidata_gila_reviewed_people.py` lists reviewed NLI cross-references for existing author identities.
+- `wikidata_gila_reviewed_people.py` lists reviewed NLI cross-references for existing person identities.
 - `wikidata_gila_gnd_evidence.py` checks GND response identity and retries transport errors.
 - `wikidata_gila_scribe_colophons.py` binds reviewed scribes to exact source notes.
 - `wikidata_gila_people_batch.py` plans, groups, and verifies exact live changes.

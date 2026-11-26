@@ -50,6 +50,7 @@ class AuthorityEvidence:
         missing = set(requested) - rows.keys()
         reused = len(requested) - len(missing)
         self.reused += reused
+        observed_empty_viaf = {}
 
         async def combined_progress(processed, total):
             if progress:
@@ -58,6 +59,8 @@ class AuthorityEvidence:
         if missing:
             fresh = await fetch(missing, combined_progress)
             rows.update({key: result for key, result in fresh.items() if key in missing and result})
+            if group == "viaf":
+                observed_empty_viaf = {key: result for key, result in fresh.items() if key in missing and not result}
         elif reused:
             await combined_progress(0, 0)
-        return {key: rows[key] for key in requested if key in rows}
+        return {**observed_empty_viaf, **{key: rows[key] for key in requested if key in rows}}

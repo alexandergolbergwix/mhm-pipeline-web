@@ -4586,3 +4586,11 @@ Wikidata returned the original revision. The verifier stopped the batch.
 Convert the source label and the live label to NFC before comparison.
 Send the same NFC source label for an eligible edit.
 The audit can verify an equivalent live label with the same shelfmark proof.
+
+## Rule W-387 — Verify reviewed VIAF links during an outage
+
+The v890 audit reopened four live claims after it could no longer read their cited VIAF links.
+Use an independent reviewed authority record when VIAF is unavailable.
+Require the exact MARC role, source reference, and current Wikidata identifiers.
+A fresh VIAF response with no matching proof keeps the case open.
+See [Reviewed evidence when VIAF fails](../blocks/wikidata-studio/gila-authority-and-label-repair.md#reviewed-evidence-when-viaf-fails).

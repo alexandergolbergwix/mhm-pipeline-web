@@ -28,7 +28,7 @@ from app.pipeline.wikidata_gila_linked_people import (
 from app.pipeline.wikidata_gila_mazal_viaf import viaf_matches, viaf_mazal_url
 from app.pipeline.wikidata_gila_reviewed_people import (
     REVIEWED_WORK_TITLES, reviewed_former_owner, reviewed_former_owner_url,
-    reviewed_linked_person_url, reviewed_primary_author,
+    reviewed_linked_person_url, reviewed_primary_author, reviewed_viaf_link_matches,
 )
 from app.pipeline.wikidata_gila_scribe_colophons import (
     DELFOGIT_HEADING, DELFOGIT_PARMA, DELFOGIT_PENN, DELFOGIT_QID, DELFOGIT_WRONG_IDS,
@@ -755,10 +755,12 @@ def people_role_cases(
                         claim, cn, source_url, url,
                     ):
                         linked_proven.add(claim["value"])
-                    elif viaf_matches(candidate, linked_id, (linked_viaf or {}).get(linked_id)) and has_linked_source(
-                        claim, cn, source_url, viaf_mazal_url(linked_id),
-                    ):
-                        linked_proven.add(claim["value"])
+                    elif has_linked_source(claim, cn, source_url, viaf_mazal_url(linked_id)):
+                        keys = (linked_viaf or {}).get(linked_id)
+                        if viaf_matches(candidate, linked_id, keys) or (
+                            keys is None and reviewed_viaf_link_matches(candidate, linked_id)
+                        ):
+                            linked_proven.add(claim["value"])
             if role == "author" and not uncertain and _eligible_role(row, variants, role):
                 reviewed = reviewed_primary_author(cn, row, variants, occurrences)
                 if reviewed and target.get("id") == reviewed.work:

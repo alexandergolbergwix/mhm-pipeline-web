@@ -1432,3 +1432,4 @@ Verify jobs pass `source` (`legacy`|`canonical`) and `approved_only` with
 242. **R242 — Retry interrupted GND reads (W-385).** Retry a transport error twice. Require valid authority evidence. Keep the same rule in the [bulk people repair](gila-people-batch.md).
 
 243. **R243 — Compare current holding labels in Unicode NFC (W-386).** Compare the source and live labels in NFC. An equivalent label requires no edit.
+244. **R244 — Keep reviewed authority proof during VIAF outages (W-387).** Require the exact MARC role, citation, and live authority IDs. A fresh VIAF response takes precedence.

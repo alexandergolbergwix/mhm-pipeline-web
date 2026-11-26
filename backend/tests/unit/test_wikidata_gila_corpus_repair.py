@@ -489,6 +489,9 @@ async def test_authority_cache_reuses_exact_reads_and_retries_missing_evidence()
     snapshot = cache.dump()
     resumed = AuthorityEvidence.load(snapshot, "original")
     fetch.reset_mock()
+    fetch.return_value = {"B": frozenset()}
+    assert await resumed.read("viaf", {"B", "C"}, fetch, None) == {"B": frozenset()}
+    assert resumed.viaf == {"A": keys}
     fetch.return_value = {"B": keys}
     assert await resumed.read("viaf", {"A", "B"}, fetch, None) == {"A": keys, "B": keys}
     assert fetch.call_args.args[0] == {"B"}
